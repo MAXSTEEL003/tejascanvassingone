@@ -1,0 +1,216 @@
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Geist+Mono:wght@100..900&family=Instrument+Serif:ital@0;1&display=swap');
+@import "tailwindcss";
+
+@variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --breakpoint-xs: 400px;
+  --font-sans: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-serif: "Instrument Serif", Georgia, serif;
+  --font-display: "Instrument Serif", Georgia, serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, monospace;
+  
+  /* Light Theme (Porcelain & Executive Gold) */
+  --color-surface: #ffffff;
+  --color-surface-dim: #f8fafc;
+  --color-surface-bright: #ffffff;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #f8fafc;
+  --color-surface-container: #f1f5f9;
+  --color-surface-container-high: #e2e8f0;
+  --color-surface-container-highest: #cbd5e1;
+  --color-on-surface: #0f172a;
+  --color-on-surface-variant: #475569;
+  --color-inverse-surface: #0f172a;
+  --color-inverse-on-surface: #ffffff;
+  --color-outline: #94a3b8;
+  --color-outline-variant: #e2e8f0;
+  --color-surface-tint: #d97706;
+  --color-primary: #d97706; /* Rich Executive Amber Gold for Light Mode */
+  --color-on-primary: #ffffff;
+  --color-primary-container: #fef3c7;
+  --color-on-primary-container: #78350f;
+  --color-inverse-primary: #f59e0b;
+  --color-secondary: #b45309;
+  --color-on-secondary: #ffffff;
+  --color-secondary-container: #fef08a;
+  --color-on-secondary-container: #854d0e;
+  --color-background: #f8fafc;
+  --color-on-background: #0f172a;
+
+  /* Dark Theme Variable Overrides (Midnight Gold Obsidian) */
+  --color-dark-surface: #0a0a0a;
+  --color-dark-surface-dim: #0a0a0a;
+  --color-dark-surface-bright: #2e2d2d;
+  --color-dark-surface-container-lowest: #050505;
+  --color-dark-surface-container-low: #121212;
+  --color-dark-surface-container: #181818;
+  --color-dark-surface-container-high: #222222;
+  --color-dark-surface-container-highest: #2d2c2c;
+  --color-dark-on-surface: #e5e2e1;
+  --color-dark-on-surface-variant: #d0c5af;
+  --color-dark-inverse-surface: #e5e2e1;
+  --color-dark-inverse-on-surface: #313030;
+  --color-dark-outline: #99907c;
+  --color-dark-outline-variant: #4d4635;
+  --color-dark-surface-tint: #e9c349;
+  --color-dark-primary: #f2ca50;
+  --color-dark-on-primary: #3c2f00;
+  --color-dark-primary-container: #d4af37;
+  --color-dark-on-primary-container: #554300;
+  --color-dark-secondary: #e6c26f;
+  --color-dark-on-secondary: #3e2e00;
+  --color-dark-secondary-container: #654c00;
+  --color-dark-on-secondary-container: #e1bf6b;
+  --color-dark-background: #0a0a0a;
+  --color-dark-on-background: #e5e2e1;
+
+  --radius-sm: 0.125rem;
+  --radius-md: 0.25rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+
+  --color-rose-50: #ffe5e5;
+  --color-rose-100: #ffcccc;
+  --color-rose-500: #e60000;
+  --color-rose-600: #dc2626;
+  --color-rose-700: #b91c1c;
+  --color-rose-950: #4a0000;
+  
+  --color-emerald-50: #f0fdf4;
+  --color-emerald-100: #dcfce7;
+  --color-emerald-500: #10b981;
+  --color-emerald-600: #059669;
+  
+  --color-blue-50: #f0f9ff;
+  --color-blue-600: #0284c7;
+  --color-blue-700: #0369a1;
+
+  --color-neutral-50: #fafafa;
+  --color-neutral-100: #f5f5f5;
+  --color-neutral-200: #e5e5e5;
+  --color-neutral-300: #d4d4d4;
+  --color-neutral-400: #a3a3a3;
+  --color-neutral-500: #737373;
+  --color-neutral-600: #525252;
+  --color-neutral-700: #404040;
+  --color-neutral-800: #262626;
+  --color-neutral-900: #171717;
+
+  /* Force these specifically for print/export */
+  --print-text: #000000;
+  --print-bg: #ffffff;
+}
+
+@layer base {
+  :root {
+    --primary-glow: rgba(242, 202, 80, 0.25);
+  }
+
+  .dark {
+    --color-surface: var(--color-dark-surface);
+    --color-surface-dim: var(--color-dark-surface-dim);
+    --color-surface-bright: var(--color-dark-surface-bright);
+    --color-surface-container-lowest: var(--color-dark-surface-container-lowest);
+    --color-surface-container-low: var(--color-dark-surface-container-low);
+    --color-surface-container: var(--color-dark-surface-container);
+    --color-surface-container-high: var(--color-dark-surface-container-high);
+    --color-surface-container-highest: var(--color-dark-surface-container-highest);
+    --color-on-surface: var(--color-dark-on-surface);
+    --color-on-surface-variant: var(--color-dark-on-surface-variant);
+    --color-inverse-surface: var(--color-dark-inverse-surface);
+    --color-inverse-on-surface: var(--color-dark-inverse-on-surface);
+    --color-outline: var(--color-dark-outline);
+    --color-outline-variant: var(--color-dark-outline-variant);
+    --color-surface-tint: var(--color-dark-surface-tint);
+    --color-primary: var(--color-dark-primary);
+    --color-on-primary: var(--color-dark-on-primary);
+    --color-primary-container: var(--color-dark-primary-container);
+    --color-on-primary-container: var(--color-dark-on-primary-container);
+    --color-secondary: var(--color-dark-secondary);
+    --color-on-secondary: var(--color-dark-on-secondary);
+    --color-secondary-container: var(--color-dark-secondary-container);
+    --color-on-secondary-container: var(--color-dark-on-secondary-container);
+    --color-background: var(--color-dark-background);
+    --color-on-background: var(--color-dark-on-background);
+    --primary-glow: rgba(242, 202, 80, 0.4);
+  }
+}
+
+@layer components {
+  .liquid-glass {
+    @apply bg-surface/70 backdrop-blur-2xl border border-white/10 shadow-[0_15px_40px_-15px_rgba(0,0,0,0.1)];
+    position: relative;
+  }
+  
+  .dark .liquid-glass {
+    @apply bg-surface-container/70 border-white/5;
+  }
+
+  .liquid-glass::after {
+    content: "";
+    @apply absolute inset-0 rounded-[inherit] border border-white/5 pointer-events-none;
+  }
+
+  .premium-border {
+    @apply border border-outline-variant/30 hover:border-primary/40 transition-all duration-300;
+  }
+
+  .nav-active-glow {
+    @apply relative after:absolute after:right-0 after:top-1/2 after:-translate-y-1/2 after:w-1 after:h-4 after:bg-primary after:rounded-full after:shadow-[0_0_15px_var(--primary-glow)];
+  }
+
+  /* Highly tactile interactive row and card classes */
+  .interactive-tr {
+    @apply transition-all duration-300 hover:scale-[1.01] hover:bg-neutral-50/70 dark:hover:bg-neutral-900/40 active:scale-[0.995] hover:shadow-[0_4px_16px_rgba(0,0,0,0.025)] dark:hover:shadow-[0_4px_20px_rgba(0,0,0,0.15)] relative z-10;
+  }
+  
+  .interactive-card {
+    @apply transition-all duration-300 hover:scale-[1.02] hover:-translate-y-[2px] hover:shadow-[0_12px_24px_rgba(0,0,0,0.06)] dark:hover:shadow-[0_16px_32px_rgba(0,0,0,0.3)] active:scale-[0.99] cursor-pointer;
+  }
+
+  .h1 { @apply font-serif text-5xl font-normal leading-[1.05] tracking-tight text-on-surface; }
+  .h2 { @apply font-serif text-3xl font-normal leading-[1.15] tracking-tight text-on-surface; }
+  .h3 { @apply font-serif text-2xl font-normal leading-[1.25] text-on-surface; }
+  .body-lg { @apply font-sans text-base leading-relaxed text-on-surface; }
+  .body-sm { @apply font-sans text-sm leading-relaxed text-on-surface; }
+  .label-caps { @apply font-sans text-[10px] font-bold uppercase tracking-[0.15em] text-secondary; }
+  .mono-data { @apply font-mono text-[13px] font-medium tracking-tight; }
+}
+
+/* Premium hidden scrollbar utility for sleek million-dollar SaaS interfaces */
+.no-scrollbar::-webkit-scrollbar,
+.scrollbar-none::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.no-scrollbar,
+.scrollbar-none {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
+}
+
+body {
+  @apply bg-background font-sans text-on-background antialiased transition-colors duration-500 overflow-x-hidden;
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm 15mm;
+  }
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+  header, nav, aside, footer, .no-print, button, input {
+    display: none !important;
+  }
+}
+
