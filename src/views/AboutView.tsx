@@ -360,44 +360,44 @@ export default function AboutView() {
       <PwaInstallModal isOpen={isPwaModalOpen} onClose={() => setIsPwaModalOpen(false)} />
 
       {/* ── Apple Glass Mobile-Optimized Floating Navigation Header ── */}
-      <header className="fixed top-0 left-0 right-0 z-50 transition-all duration-300 py-2.5 px-3 sm:px-6">
+      <header className="fixed top-0 left-0 right-0 z-50 transition-all duration-300 py-2 sm:py-3 px-2.5 sm:px-6">
         <div 
-          className="max-w-[1280px] mx-auto px-4 py-2.5 rounded-full transition-all duration-300 flex items-center justify-between shadow-[0_8px_32px_0_rgba(0,0,0,0.12)] border border-white/40"
+          className="max-w-[1280px] mx-auto px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-2xl sm:rounded-full transition-all duration-300 flex items-center justify-between shadow-[0_8px_32px_0_rgba(0,0,0,0.18)]"
           style={{
-            background: isScrolled ? "rgba(248, 244, 238, 0.92)" : "rgba(13, 35, 24, 0.8)",
+            background: isScrolled ? "rgba(255, 255, 255, 0.92)" : "rgba(8, 20, 14, 0.85)",
             backdropFilter: "blur(28px) saturate(200%)",
             WebkitBackdropFilter: "blur(28px) saturate(200%)",
             boxShadow: isScrolled 
-              ? "inset 0 1px 1px 0 rgba(255,255,255,0.9), 0 8px 24px -6px rgba(0,0,0,0.1)"
-              : "inset 0 1px 1px 0 rgba(255,255,255,0.25), 0 8px 24px -6px rgba(0,0,0,0.3)",
-            borderColor: isScrolled ? "rgba(201, 161, 88, 0.35)" : "rgba(255, 255, 255, 0.25)"
+              ? "0 4px 20px -2px rgba(0,0,0,0.08), inset 0 1px 1px 0 rgba(255,255,255,0.9)"
+              : "0 8px 32px -4px rgba(0,0,0,0.35), inset 0 1px 1px 0 rgba(255,255,255,0.2)",
+            borderColor: isScrolled ? "rgba(201, 161, 88, 0.25)" : "rgba(255, 255, 255, 0.18)",
+            borderWidth: "1px",
+            borderStyle: "solid"
           }}
         >
 
           {/* Brand Identity with Rounded Logo Border */}
           <div onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="flex items-center gap-2.5 group cursor-pointer select-none">
-            <div className="relative">
+            <div className="relative shrink-0">
               <img
                 src="/logo.png"
                 alt="Tejas Canvassing Logo"
-                className="w-9 h-9 object-contain rounded-xl p-0.5 border border-amber-400/40 bg-white/10 transition-transform duration-300 group-hover:scale-105 shadow-sm"
+                className="w-8 h-8 sm:w-9 sm:h-9 object-contain rounded-xl p-0.5 border border-amber-400/40 bg-white/10 transition-transform duration-300 group-hover:scale-105 shadow-xs"
               />
             </div>
-            <div>
-              <div
-                className="tracking-widest transition-colors duration-300 leading-none"
+            <div className="flex flex-col">
+              <span
+                className="tracking-wider transition-colors duration-300 font-bold leading-tight truncate max-w-[135px] xs:max-w-[180px] sm:max-w-none"
                 style={{
                   fontFamily: "var(--font-serif)",
-                  fontSize: "14px",
-                  fontWeight: 600,
-                  letterSpacing: "0.12em",
+                  fontSize: "13.5px",
                   color: isScrolled ? "#0D2318" : "#ffffff",
                 }}
               >
                 TEJAS CANVASSING
-              </div>
-              <div
-                className="tracking-[0.16em] uppercase transition-colors duration-300 mt-0.5"
+              </span>
+              <span
+                className="tracking-[0.14em] uppercase transition-colors duration-300 leading-none mt-0.5"
                 style={{
                   fontSize: "7.5px",
                   color: isScrolled ? "var(--gold)" : "rgba(255,255,255,0.75)",
@@ -405,7 +405,7 @@ export default function AboutView() {
                 }}
               >
                 Est. 2008 · M. Adinarayan
-              </div>
+              </span>
             </div>
           </div>
 
@@ -431,22 +431,22 @@ export default function AboutView() {
             {/* Install App Button */}
             <button
               onClick={() => setIsPwaModalOpen(true)}
-              className="px-3.5 py-2 rounded-full border transition-all duration-300 text-[11px] font-bold tracking-wider uppercase flex items-center gap-1.5 cursor-pointer shadow-xs hover:scale-105 active:scale-95"
+              className="px-3 py-1.5 rounded-full border transition-all duration-300 text-[10.5px] font-bold tracking-wider uppercase flex items-center gap-1.5 cursor-pointer hover:scale-105 active:scale-95"
               style={{
-                borderColor: isScrolled ? "rgba(201,161,88,0.4)" : "rgba(255,255,255,0.35)",
+                borderColor: isScrolled ? "rgba(201,161,88,0.4)" : "rgba(255,255,255,0.3)",
                 color: isScrolled ? "var(--brand-dark)" : "#ffffff",
-                background: isScrolled ? "rgba(201,161,88,0.15)" : "rgba(255,255,255,0.15)",
+                background: isScrolled ? "rgba(201,161,88,0.12)" : "rgba(255,255,255,0.12)",
                 backdropFilter: "blur(12px)",
               }}
             >
-              <Download className="w-3.5 h-3.5 text-amber-500" />
+              <Download className="w-3 h-3 text-amber-400" />
               <span>Install App</span>
             </button>
 
             {/* Log In Button */}
             <button
               onClick={() => navigate('/login')}
-              className="px-5 py-2 rounded-full transition-all duration-300 hover:scale-105 active:scale-95 text-[11px] font-extrabold tracking-widest uppercase flex items-center gap-1.5 cursor-pointer shadow-md"
+              className="px-4 py-1.5 rounded-full transition-all duration-300 hover:scale-105 active:scale-95 text-[11px] font-extrabold tracking-widest uppercase flex items-center gap-1.5 cursor-pointer shadow-md"
               style={{
                 background: "linear-gradient(135deg, #C9A158 0%, #E8C97A 100%)",
                 color: "var(--brand-dark)",
@@ -457,26 +457,27 @@ export default function AboutView() {
             </button>
           </div>
 
-          {/* Right Mobile Actions - Clean & Mobile Native */}
-          <div className="flex lg:hidden items-center gap-2">
+          {/* Right Mobile Actions - Clean & Perfectly Proportioned */}
+          <div className="flex lg:hidden items-center gap-1.5">
             <button
               onClick={() => navigate('/login')}
-              className="px-3.5 py-1.5 rounded-full transition-all duration-300 active:scale-95 text-[10.5px] font-extrabold tracking-wider uppercase flex items-center gap-1 cursor-pointer shadow-md"
+              className="px-3 py-1.5 rounded-full transition-all duration-300 active:scale-95 text-[10.5px] font-extrabold tracking-wider uppercase flex items-center gap-1 cursor-pointer shadow-sm"
               style={{
                 background: "linear-gradient(135deg, #C9A158 0%, #E8C97A 100%)",
                 color: "var(--brand-dark)",
               }}
             >
-              <LogIn className="w-3.5 h-3.5" />
+              <LogIn className="w-3 h-3" />
               <span>Log In</span>
             </button>
 
             <button
-              className="p-1.5 transition-colors duration-200 rounded-full cursor-pointer hover:bg-white/10"
+              className="p-1.5 transition-colors duration-200 rounded-full cursor-pointer hover:bg-white/10 shrink-0"
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
               style={{ color: isScrolled ? "#111827" : "#ffffff" }}
+              aria-label="Toggle navigation menu"
             >
-              {isMobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
+              {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
             </button>
           </div>
 
