@@ -15,7 +15,8 @@ import {
   ShieldCheck,
   Send,
   User,
-  Sliders
+  Sliders,
+  Download
 } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { motion, AnimatePresence } from 'motion/react';
@@ -219,6 +220,16 @@ export default function Navbar({
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3">
+          {/* PWA Download / Add to Home Screen Button */}
+          <button
+            onClick={() => window.dispatchEvent(new Event('open-pwa-install-modal'))}
+            className="px-2.5 py-1.5 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 text-xs font-bold shadow-2xs"
+            title="Download App / Add to Home Screen"
+          >
+            <Download className="w-4 h-4" />
+            <span className="hidden sm:inline">Install App</span>
+          </button>
+
           {/* Dark / Light Mode Toggle */}
           <button 
             onClick={toggleTheme}

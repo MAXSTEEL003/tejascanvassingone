@@ -104,6 +104,17 @@
 
 @layer base {
   :root {
+    --font-serif: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+    --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+    --gold: #C9A158;
+    --gold-light: #E8C97A;
+    --gold-dark: #9A7A3E;
+    --brand-dark: #0D2318;
+    --brand: #1A4731;
+    --brand-mid: #2D6A4F;
+    --warm-bg: #F8F4EE;
+    --warm-bg-alt: #F0EBE1;
+    --dark-bg: #0C1A12;
     --primary-glow: rgba(242, 202, 80, 0.25);
   }
 

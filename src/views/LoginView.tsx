@@ -118,20 +118,15 @@ function GoogleGIcon({ className = "w-4 h-4" }: { className?: string }) {
 
 interface LoginViewProps {
   defaultStep?: 'splash' | 'onboarding' | 'login';
+  defaultTab?: 'signin' | 'signup';
   secretRole?: 'admin' | 'employee';
 }
 
-export default function LoginView({ defaultStep = 'splash', secretRole }: LoginViewProps) {
+export default function LoginView({ defaultStep = 'splash', defaultTab = 'signin', secretRole }: LoginViewProps) {
   const navigate = useNavigate();
 
-  // Screen flow: 'splash' -> 'onboarding' -> 'login'
-  const [currentStep, setCurrentStep] = useState<'splash' | 'onboarding' | 'login'>(() => {
-    if (secretRole) return 'login';
-    if (localStorage.getItem('tejas_intro_viewed') === 'true') {
-      return defaultStep === 'splash' ? 'login' : defaultStep;
-    }
-    return defaultStep;
-  });
+  // Screen flow: directly start on 'login' (no intro/splash required)
+  const [currentStep, setCurrentStep] = useState<'splash' | 'onboarding' | 'login'>('login');
 
   // Login Mode: 'merchant' vs 'admin_employee' (Only accessible via secret URL)
   const [loginMode, setLoginMode] = useState<'merchant' | 'admin_employee'>(() => {
@@ -144,7 +139,7 @@ export default function LoginView({ defaultStep = 'splash', secretRole }: LoginV
   });
 
   // Input states
-  const [merchantAuthTab, setMerchantAuthTab] = useState<'signin' | 'signup'>('signin');
+  const [merchantAuthTab, setMerchantAuthTab] = useState<'signin' | 'signup'>(defaultTab);
   const [identifier, setIdentifier] = useState('9845012345');
   const [email, setEmail] = useState('tejas@example.com');
   const [password, setPassword] = useState('wholesale2026');
@@ -683,11 +678,11 @@ export default function LoginView({ defaultStep = 'splash', secretRole }: LoginV
               <div className="px-6 pt-5 pb-1 flex items-center justify-between">
                 <button
                   type="button"
-                  onClick={() => setCurrentStep('onboarding')}
-                  className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors cursor-pointer"
+                  onClick={() => navigate('/about')}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors cursor-pointer"
                 >
-                  <ChevronLeft className="w-3.5 h-3.5" />
-                  <span>Intro</span>
+                  <ChevronLeft className="w-4 h-4 text-amber-500" />
+                  <span>About Us</span>
                 </button>
 
                 {secretRole ? (

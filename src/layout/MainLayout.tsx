@@ -9,8 +9,9 @@ import CommandPalette from '../components/CommandPalette';
 import GlobalCartDrawer from '../components/GlobalCartDrawer';
 import { auth, setCollectionDoc, getCollectionDocs } from '../lib/firebase';
 import { cn } from '../lib/utils';
-import { Store, Package, LogOut, Percent, User, Building, Phone, X, Check, Sun, Moon, Search, Plus, Trash2, Warehouse, MapPin, ShoppingBasket, Building2, ShieldCheck, Edit3, Lock, Unlock, Settings, CheckCircle2, Copy, Calendar, Clock } from 'lucide-react';
+import { Store, Package, LogOut, Percent, User, Building, Phone, X, Check, Sun, Moon, Search, Plus, Trash2, Warehouse, MapPin, ShoppingBasket, Building2, ShieldCheck, Edit3, Lock, Unlock, Settings, CheckCircle2, Copy, Calendar, Clock, Download } from 'lucide-react';
 import { getDeliveryLocations, saveDeliveryLocations, addDeliveryLocation, removeDeliveryLocation, DeliveryLocation } from '../utils/deliveryLocations';
+import PwaInstallModal from '../components/PwaInstallModal';
 
 function MerchantHeader({ onSearchClick }: { onSearchClick?: () => void }) {
   const navigate = useNavigate();
@@ -195,8 +196,18 @@ function MerchantHeader({ onSearchClick }: { onSearchClick?: () => void }) {
           </div>
         </div>
 
-        {/* Right Tools: Dark/Light Mode, Logout */}
+        {/* Right Tools: Download App, Dark/Light Mode, Logout */}
         <div className="flex items-center gap-1 sm:gap-1.5">
+          {/* Download App / Add to Home Screen Button */}
+          <button
+            onClick={() => window.dispatchEvent(new Event('open-pwa-install-modal'))}
+            className="w-8 h-8 rounded-xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/40 transition-all active:scale-95 cursor-pointer flex items-center justify-center shadow-xs"
+            title="Download App / Add to Home Screen"
+            aria-label="Download App"
+          >
+            <Download className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+          </button>
+
           {/* Light / Dark Mode Toggle Button */}
           <button
             onClick={toggleTheme}
@@ -1138,7 +1149,7 @@ function EmployeeHeader() {
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-white/90 dark:bg-[#07130e]/90 backdrop-blur-md border-b border-slate-200/80 dark:border-neutral-800 px-4 py-2.5 flex items-center justify-between shadow-2xs">
+    <header className="sticky top-0 z-40 bg-white/90 dark:bg-[#07130e]/90 backdrop-blur-md border-b border-slate-200/80 dark:border-neutral-800 px-4 pt-[calc(0.625rem+env(safe-area-inset-top,0px))] pb-2.5 flex items-center justify-between shadow-2xs">
       <div className="flex items-center gap-2.5 min-w-0">
         <div className="w-8 h-8 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center shrink-0">
           <Warehouse className="w-4 h-4 text-amber-600 dark:text-amber-400" />
@@ -1156,6 +1167,16 @@ function EmployeeHeader() {
       </div>
 
       <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => window.dispatchEvent(new Event('open-pwa-install-modal'))}
+          className="p-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 cursor-pointer transition-all border border-amber-500/20 flex items-center gap-1.5"
+          title="Download App / Add to Home Screen"
+        >
+          <Download className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+          <span className="text-[10px] font-extrabold">App</span>
+        </button>
+
         <button
           type="button"
           onClick={toggleTheme}
@@ -1189,7 +1210,7 @@ function EmployeeBottomBar() {
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-[#07130e]/95 backdrop-blur-md border-t border-slate-200/80 dark:border-neutral-800 px-3 py-2 flex items-center justify-around shadow-lg max-w-md sm:max-w-md md:max-w-lg mx-auto">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-[#07130e]/95 backdrop-blur-md border-t border-slate-200/80 dark:border-neutral-800 px-3 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom,0px))] flex items-center justify-around shadow-lg max-w-none sm:max-w-md md:max-w-lg mx-auto">
       {tabs.map((tab) => {
         const isActive = location.pathname === tab.path;
         return (
@@ -1266,8 +1287,8 @@ function MainLayoutContent({ onSearchClick }: { onSearchClick: () => void }) {
 
   if (role === 'merchant') {
     return (
-      <div className="min-h-screen bg-slate-100/70 dark:bg-[#030906] flex justify-center text-slate-900 dark:text-slate-100 font-sans antialiased">
-        <div className="w-full max-w-md sm:max-w-md md:max-w-lg min-h-screen bg-[#fafaf9] dark:bg-[#07110c] shadow-2xl relative flex flex-col border-x-0 sm:border-x border-slate-200/60 dark:border-emerald-950/40">
+      <div className="min-h-dvh bg-[#fafaf9] dark:bg-[#07110c] sm:bg-slate-100/70 sm:dark:bg-[#030906] flex justify-center text-slate-900 dark:text-slate-100 font-sans antialiased">
+        <div className="w-full max-w-none sm:max-w-md md:max-w-lg min-h-dvh bg-[#fafaf9] dark:bg-[#07110c] sm:shadow-2xl relative flex flex-col border-none sm:border-x border-slate-200/60 dark:border-emerald-950/40">
           <MerchantHeader onSearchClick={onSearchClick} />
           <main className="flex-1 w-full relative pb-20">
             <AnimatePresence mode="wait" initial={false}>
@@ -1294,8 +1315,8 @@ function MainLayoutContent({ onSearchClick }: { onSearchClick: () => void }) {
 
   if (role === 'employee') {
     return (
-      <div className="min-h-screen bg-slate-100/70 dark:bg-[#030906] flex justify-center text-slate-900 dark:text-slate-100 font-sans antialiased">
-        <div className="w-full max-w-md sm:max-w-md md:max-w-lg min-h-screen bg-[#fafaf9] dark:bg-[#07110c] shadow-2xl relative flex flex-col border-x-0 sm:border-x border-slate-200/60 dark:border-emerald-950/40">
+      <div className="min-h-dvh bg-[#fafaf9] dark:bg-[#07110c] sm:bg-slate-100/70 sm:dark:bg-[#030906] flex justify-center text-slate-900 dark:text-slate-100 font-sans antialiased">
+        <div className="w-full max-w-none sm:max-w-md md:max-w-lg min-h-dvh bg-[#fafaf9] dark:bg-[#07110c] sm:shadow-2xl relative flex flex-col border-none sm:border-x border-slate-200/60 dark:border-emerald-950/40">
           <EmployeeHeader />
           <main className="flex-1 w-full relative pb-20 p-2 sm:p-3">
             <AnimatePresence mode="wait" initial={false}>
@@ -1363,12 +1384,20 @@ function MainLayoutContent({ onSearchClick }: { onSearchClick: () => void }) {
 
 export default function MainLayout() {
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [isPwaModalOpen, setIsPwaModalOpen] = useState(false);
+
+  useEffect(() => {
+    const handleOpenPwa = () => setIsPwaModalOpen(true);
+    window.addEventListener('open-pwa-install-modal', handleOpenPwa);
+    return () => window.removeEventListener('open-pwa-install-modal', handleOpenPwa);
+  }, []);
 
   return (
     <CartProvider>
       <MainLayoutContent onSearchClick={() => setIsCommandPaletteOpen(true)} />
       <GlobalCartDrawer />
       <CommandPalette isOpen={isCommandPaletteOpen} setIsOpen={setIsCommandPaletteOpen} />
+      <PwaInstallModal isOpen={isPwaModalOpen} onClose={() => setIsPwaModalOpen(false)} />
     </CartProvider>
   );
 }

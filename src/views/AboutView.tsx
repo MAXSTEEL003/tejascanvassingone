@@ -1,1231 +1,1362 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { 
-  ArrowRight, 
-  CheckCircle2, 
-  MapPin, 
-  Phone, 
-  Mail, 
-  Clock, 
-  ShieldCheck, 
-  Award, 
-  Truck, 
-  Scale, 
-  Building2, 
-  Sparkles, 
-  MessageSquare, 
-  FileCheck, 
-  ChevronRight, 
-  ExternalLink, 
-  Check, 
-  Star,
-  Layers,
-  ShoppingBag,
-  LogIn,
-  Receipt,
-  Wallet,
-  TrendingUp,
-  HelpCircle,
-  FileText
-} from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
-import { cn } from '../lib/utils';
-import { TejasBotanicalLogo } from './LoginView';
+  Menu, X, Globe, Phone, Mail, MapPin, Linkedin, Instagram, Twitter, 
+  ArrowRight, ArrowUpRight, Sprout, Factory, FlaskConical, Package, Ship, 
+  Leaf, Award, Truck, TrendingDown, ShieldCheck, Clock, ChevronLeft, ChevronRight, 
+  Send, MessageCircle, LogIn, UserPlus, Download, Sparkles, CheckCircle2, Star, User, Info, ChefHat, ShoppingBag
+} from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
+import PwaInstallModal from "../components/PwaInstallModal";
 
-// Portfolio products from tejascanvassing.com
-interface ProductItem {
-  id: string;
-  name: string;
-  category: 'basmati' | 'kollam' | 'sona' | 'pulses' | 'specialty';
-  badge: string;
-  image: string;
-  description: string;
-  highlights: string[];
-}
+// ── Hero Config ──
+const HERO_IMAGE = "https://images.unsplash.com/photo-1763397929062-eb0582008877?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxyaWNlJTIwcGFkZHklMjBmaWVsZCUyMGdvbGRlbiUyMHN1bnJpc2UlMjBjaW5lbWF0aWMlMjBhZXJpYWx8ZW58MXx8fHwxNzcxNzg0NTE2fDA&ixlib=rb-4.1.0&q=80&w=1920";
 
-const PRODUCTS: ProductItem[] = [
-  {
-    id: 'kollam-raw',
-    name: 'Kollam Raw Rice',
-    category: 'kollam',
-    badge: 'South India Favorite',
-    image: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?auto=format&fit=crop&w=800&q=80',
-    description: 'Pure Kollam raw rice known for its naturally soft texture, bright white grain and excellent cooking quality. A staple for households across South India.',
-    highlights: ['Naturally Soft Texture', 'Bright White Grain', 'Daily Meal Perfection']
-  },
-  {
-    id: 'kollam-steam',
-    name: 'Kollam Raw & Steam Rice',
-    category: 'kollam',
-    badge: 'Consistent Batch Quality',
-    image: 'https://images.unsplash.com/photo-1516684732162-798a0062be99?auto=format&fit=crop&w=800&q=80',
-    description: 'A trusted name offering both Kollam raw and steam varieties. Consistent quality and superior taste make it a favourite among retailers and households.',
-    highlights: ['Low Moisture Content', 'Superior Swell Ratio', 'Zero Adulteration']
-  },
-  {
-    id: 'hmt-rice',
-    name: 'HMT · Steam · Raw · Kollam',
-    category: 'specialty',
-    badge: 'Versatile Staple',
-    image: 'https://images.unsplash.com/photo-1596560548464-f010549b84d7?auto=format&fit=crop&w=800&q=80',
-    description: 'A versatile brand offering HMT steam, raw and Kollam raw rice — catering to the widest range of cooking preferences across all wholesale markets.',
-    highlights: ['Multiple Processing Options', 'Uniform Grains', 'High Demand SKU']
-  },
-  {
-    id: 'basmati-1121',
-    name: 'Basmati 1121 & 1509',
-    category: 'basmati',
-    badge: 'Export Grade 8.35mm+',
-    image: 'https://images.unsplash.com/photo-1574323347407-f5e1ad6d020b?auto=format&fit=crop&w=800&q=80',
-    description: 'Premium Basmati 1121 with extra-long grains, rich natural aroma and fluffy non-sticky texture. Ideal for biryani, pulao and fine dining preparations.',
-    highlights: ['Extra-Long 8.35mm+', 'Non-Sticky Fluffiness', 'Aged 12-24 Months']
-  },
-  {
-    id: 'scented-rice',
-    name: 'Aromatic Scented Rice',
-    category: 'specialty',
-    badge: 'Delicate Natural Fragrance',
-    image: 'https://images.unsplash.com/photo-1590080875515-8a3a8dc5735e?auto=format&fit=crop&w=800&q=80',
-    description: 'A fragrant, naturally scented rice variety prized for its delicate aroma and light texture. Perfect for aromatic rice dishes, festive platters, and everyday cooking.',
-    highlights: ['Natural Aroma Compound', 'Delicate Texture', 'Festive Favorite']
-  },
-  {
-    id: 'sona-masoori',
-    name: 'Sona Masoori · Steam · KNM',
-    category: 'sona',
-    badge: 'Low Starch Medium Grain',
-    image: 'https://images.unsplash.com/photo-1536304993881-ff6e9eefa2a6?auto=format&fit=crop&w=800&q=80',
-    description: 'Offering Sona Masoori raw, steam rice and KNM steam — a comprehensive range for diverse market needs, known for its lightness and consistent quality.',
-    highlights: ['Easy Digestibility', 'Low Glycemic Index', 'Fastest Moving SKU']
-  },
-  {
-    id: 'urad-dal',
-    name: 'Premium Sortex Urad Dal',
-    category: 'pulses',
-    badge: 'Farm Cleaned Staples',
-    image: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=800&q=80',
-    description: 'High-quality Urad Dal sourced from premium farms. Clean, well-sorted and packed for long shelf life — a must-have for any wholesale staples portfolio.',
-    highlights: ['Laser Sortex Cleaned', 'High Protein Yield', 'Extended Shelf Life']
-  }
+// ── Trust Strip Stats ──
+const trustStats = [
+  { value: "Est. 2008", label: "Owner: M. Adinarayan" },
+  { value: "300+", label: "Happy Customers" },
+  { value: "3 States", label: "KA · TN · AP" },
+  { value: "Trusted", label: "Mill Suppliers" },
 ];
 
-const APP_WORKFLOW_STEPS = [
+export interface ProductItem {
+  id: number;
+  name: string;
+  type: string;
+  isFamous: boolean;
+  badge: string;
+  description: string;
+  image: string;
+  tags: string[];
+  origin: string;
+  history?: string;
+  sourcingLocation?: string;
+  cookingSpecs?: string[];
+  packagingOptions?: string;
+}
+
+// ── Products List ──
+const products: ProductItem[] = [
   {
-    step: '01',
-    label: 'Mandi Rates',
-    title: 'Live Mandi Quotes & Variety Specifications',
-    badge: 'Step 1 · Discovery & Daily Quotes',
-    icon: TrendingUp,
-    description: 'Track daily spot quotes per Quintal (100 kg) and Metric Ton directly from APMC Yeshwanthpur and sourcing mills across Karnataka, Andhra Pradesh, Maharashtra, and North India.',
-    points: [
-      'Real-time mandi rates with daily price trend movements',
-      'Detailed grain specifications: moisture % (12.5%–14%), broken grain % (<2%), grain length (mm)',
-      'Satake laser Sortex certification and mill origin transparency',
-      'View available dispatch lots ready for immediate mill loading'
-    ],
-    preview: {
-      tag: 'Live Trade Quote',
-      title: 'Kollam Raw Rice · 2026 Season Batch',
-      price: '₹ 4,150 / Qtl',
-      metric: '₹ 41,500 / Metric Ton',
-      detail1: 'Moisture: 13.2% · Broken: 1.8% · 2x Polish',
-      detail2: 'Origin: Gangavathi Mills, Koppal District',
-      status: 'Ready for Dispatch (120 MT available)'
-    }
+    id: 1,
+    name: "Keshar Kali",
+    type: "Kollam Raw Rice",
+    isFamous: true,
+    badge: "⭐ Famous Flagship Brand",
+    description: "Our world-famous Keshar Kali Kollam raw rice, renowned across Karnataka, Tamil Nadu, and Andhra for its naturally soft texture, bright white grain, and unmatched cooking quality.",
+    image: "/images/keshar_kali.png",
+    tags: ["Keshar Kali", "Famous Brand", "Kollam Raw"],
+    origin: "Maharashtra & South India",
+    history: "Keshar Kali has been Tejas Canvassing's premier signature brand since 2008. Hand-selected from top South Asian millers, it has built a 17-year reputation among 300+ merchants for zero-adulteration and bright white kernel purity.",
+    sourcingLocation: "Gangavathi & Koppal Belt, Karnataka · APMC Yard Yeshwanthpur Desk",
+    cookingSpecs: ["Grain Swell Ratio: 3.8x", "Moisture Content: 12.8%", "100% Laser Sortex Cleaned", "Double Polish Bright Kernel"],
+    packagingOptions: "25 kg & 50 kg Branded Non-Woven Bags with High-Barrier Inner Liner"
   },
   {
-    step: '02',
-    label: 'Bulk Orders',
-    title: 'Wholesale Truckload & Custom Bag Booking',
-    badge: 'Step 2 · Procurement & Bag Customization',
-    icon: ShoppingBag,
-    description: 'Place direct wholesale consignments from half truckload (10–12 MT) to full interstate truckloads (20–25 MT or 50 MT) in seconds with locked-in prices.',
-    points: [
-      'Choose packaging type: 25kg / 50kg non-woven branded bags, high-barrier BOPP, or master sacks',
-      'Input delivery destination APMC yard, godown address, and preferred delivery date',
-      'Instant price-lock protecting merchants from midday mandi fluctuations',
-      'Clear minimum order thresholds with transparent bulk tier discounts'
-    ],
-    preview: {
-      tag: 'Truckload Consignment',
-      title: 'Full Truckload Booking · 25.0 Metric Tons',
-      price: '500 Bags × 50 kg',
-      metric: 'Consignment Value: ₹ 10,37,500',
-      detail1: 'Packaging: Branded High-Barrier Non-Woven Bags',
-      detail2: 'Delivery Destination: Godown #14, Yeshwanthpur APMC',
-      status: 'Reserved & Allocated at Mill Warehouse'
-    }
+    id: 2,
+    name: "JMR",
+    type: "HMT · Steam · Raw · Kollam",
+    isFamous: true,
+    badge: "⭐ Famous Flagship Brand",
+    description: "Our highly sought-after JMR brand offering HMT steam, raw, and Kollam raw rice varieties — trusted by over 300 happy wholesale customers.",
+    image: "/images/jmr.jpg",
+    tags: ["JMR Brand", "Famous Staples", "HMT Steam"],
+    origin: "Miryalaguda & Andhra",
+    history: "JMR is a staple favorite in wholesale markets across Chennai, Bengaluru, and Vijayawada. Known for uniform grain length and minimal broken ratio, it is the fastest-moving SKU for commercial caterers and retailers.",
+    sourcingLocation: "Miryalaguda Milling Hub, Andhra Pradesh & Telangana",
+    cookingSpecs: ["Medium Grain Slender", "Moisture: 13.0%", "Easy Digestibility Low Starch", "Steam & Raw Options"],
+    packagingOptions: "25 kg, 50 kg Jute & BOPP Woven Master Sacks"
   },
   {
-    step: '03',
-    label: 'Digital Patti',
-    title: 'Automated Digital Patti & Commercial Transparency',
-    badge: 'Step 3 · Accounting & Invoice Patti',
-    icon: Receipt,
-    description: 'Eliminate confusion with automated digital Mandi Patti generation. Every expense line is itemized transparently with zero hidden markups.',
-    points: [
-      'Clear breakdown: Base Grain Cost + APMC Mandi Cess (1.5%) + Hammali Loading (₹12/bag)',
-      'Interstate freight allocation calculated per tonne-kilometer',
-      'Transparent broker canvassing commission (0.5% – 1.0%) with official patti numbering',
-      'Downloadable PDF patti invoice and instant shareable summary on WhatsApp'
-    ],
-    preview: {
-      tag: 'Mandi Digital Patti #PAT-2026-0842',
-      title: 'Tejas Canvassing Official Commission Patti',
-      price: 'Net Amount: ₹ 10,37,500',
-      metric: 'Brokerage Fee (0.75%): ₹ 7,781',
-      detail1: 'Base Commodity: ₹10,12,500 | APMC Cess (1.5%): ₹15,188',
-      detail2: 'Hammali Loading (500 bags @ ₹12): ₹6,000 | Freight: Paid by Buyer',
-      status: 'Official APMC Brokerage Document · GSTIN Compliant'
-    }
+    id: 3,
+    name: "Simha",
+    type: "Urad Dal",
+    isFamous: true,
+    badge: "⭐ Famous Flagship Brand",
+    description: "Our premium Simha Urad Dal — laser-cleaned, well-sorted, and famous for its high protein yield and extended shelf life across wholesale markets.",
+    image: "/images/simha.png",
+    tags: ["Simha Brand", "Famous Urad Dal", "Sortex Cleaned"],
+    origin: "Karnataka, India",
+    history: "Simha Urad Dal is famous for high batter fluffiness and fermentation performance, making it the preferred choice for South Indian tiffin centers and commercial idli/dosa batter manufacturers.",
+    sourcingLocation: "North Karnataka Pulse Mills & APMC Canvassing Desk",
+    cookingSpecs: ["99.9% Laser Sortex Cleaned", "Zero Stone & Chalky Grain", "High Protein Yield", "Extended Shelf Storage"],
+    packagingOptions: "30 kg & 50 kg Master Wholesale Bags"
   },
   {
-    step: '04',
-    label: 'Lorry Transit',
-    title: 'Real-Time Lorry Dispatch & Weight Verification',
-    badge: 'Step 4 · Dispatch & Highway Transit',
+    id: 4,
+    name: "Mahendra Cow",
+    type: "Kollam Raw & Steam Rice",
+    isFamous: false,
+    badge: "Trusted Quality",
+    description: "A trusted name offering both Kollam raw and steam varieties with consistent quality and superior taste for retailers and households.",
+    image: "/images/cow.jpg",
+    tags: ["Kollam Raw", "Steam Rice", "Trusted Supplier"],
+    origin: "Miryalaguda, India",
+    history: "Mahendra Cow delivers reliable everyday family rice with predictable cooking parameters, ensuring retail merchants get repeat customer satisfaction.",
+    sourcingLocation: "Miryalaguda & Raichur Mills",
+    cookingSpecs: ["Moisture: 13.2%", "Broken < 2%", "Soft Non-Sticky Cook"],
+    packagingOptions: "25 kg & 50 kg Branded Bags"
+  },
+  {
+    id: 5,
+    name: "Bellric",
+    type: "Basmati 1121",
+    isFamous: false,
+    badge: "Export Grade 8.35mm+",
+    description: "Premium Basmati 1121 with extra-long grains, rich natural aroma and fluffy non-sticky texture. Ideal for biryani and pulao.",
+    image: "/images/bellric.png",
+    tags: ["Basmati 1121", "Long Grain", "Aromatic"],
+    origin: "Punjab & North India",
+    history: "Aged for 12–24 months in temperature-controlled warehouses, Bellric Basmati elongates over 2x upon cooking with delicate natural aroma.",
+    sourcingLocation: "Punjab & Haryana Basmati Belt",
+    cookingSpecs: ["Avg Grain Length: 8.35mm+", "Aged 12-24 Months", "Elongation Ratio: 2.2x", "Rich Natural Aroma"],
+    packagingOptions: "10 kg, 25 kg & 50 kg Premium BOPP Bags"
+  },
+  {
+    id: 6,
+    name: "Keshar Madhuram",
+    type: "Scented Rice",
+    isFamous: false,
+    badge: "Delicate Fragrance",
+    description: "A fragrant, naturally scented rice variety prized for its delicate aroma and light texture, perfect for festive dishes.",
+    image: "/images/keshar_madhuram.png",
+    tags: ["Scented Variety", "Aromatic", "Premium"],
+    origin: "Maharashtra, India",
+    history: "Harvested from aromatic rice fields, Keshar Madhuram brings delicate natural fragrance to festive dining and authentic rice platters.",
+    sourcingLocation: "Maharashtra Aromatic Belt",
+    cookingSpecs: ["Natural Aroma Compound", "Light Digestible Grain", "Delicate Texture"],
+    packagingOptions: "25 kg Branded Packs"
+  },
+  {
+    id: 7,
+    name: "VNT Anuram",
+    type: "Sona Masoori · Steam · KNM",
+    isFamous: false,
+    badge: "Daily Staple",
+    description: "Offering Sona Masoori raw, steam rice and KNM steam — known for its lightness, easy digestibility, and consistent batch quality.",
+    image: "/images/vnt_anuram.jpg",
+    tags: ["Sona Masoori", "Steam Rice", "KNM Steam"],
+    origin: "Andhra Pradesh, India",
+    history: "VNT Anuram Sona Masoori is ideal for low-glycemic, light daily meals, widely distributed across Karnataka and Andhra APMC yards.",
+    sourcingLocation: "Guntur & Krishna Delta, Andhra Pradesh",
+    cookingSpecs: ["Medium Grain Lightness", "Low Glycemic Index", "Uniform Steam Processing"],
+    packagingOptions: "25 kg & 50 kg Bags"
+  },
+];
+
+// ── Supply Chain Steps ──
+const supplySteps = [
+  {
+    id: 1,
+    title: "Trusted Supplier Partnerships",
+    detail: "Direct procurement from our network of verified millers and trusted farm suppliers across Karnataka, Tamil Nadu, and Andhra Pradesh.",
+    icon: Sprout,
+  },
+  {
+    id: 2,
+    title: "Precision Processing",
+    detail: "Optical color sorting and state-of-the-art milling technology preserve grain integrity, aroma, and whiteness uniformity.",
+    icon: Factory,
+  },
+  {
+    id: 3,
+    title: "Quality Verification",
+    detail: "Every consignment is checked for moisture levels, grain length, broken ratio, and cleanliness before loading.",
+    icon: FlaskConical,
+  },
+  {
+    id: 4,
+    title: "Hygienic Packaging",
+    detail: "Secure, moisture-proof packaging in 25 kg and 50 kg non-woven and BOPP bags designed for long shelf life.",
+    icon: Package,
+  },
+  {
+    id: 5,
+    title: "Delivery to Karnataka, TN & Andhra",
+    detail: "Direct logistics network ensuring fast, reliable delivery to APMC yards, mandis, and godowns across South India.",
+    icon: Ship,
+  },
+];
+
+// ── Why Choose Us Features ──
+const FIELD_IMAGE = "https://images.unsplash.com/photo-1761446261012-527815651ded?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxhZ3JpY3VsdHVyZSUyMGdyYWluJTIwZmFybWluZyUyMGxhbmRzY2FwZSUyMGdvbGRlbiUyMHN1bnJpc2UlMjBjaW5lbWF0aWMlMjBhZXJpYWx8ZW58MXx8fHwxNzcxNzg0NTE2fDA&ixlib=rb-4.1.0&q=80&w=1080";
+const features = [
+  {
+    id: 1,
+    title: "Established Since 2008",
+    description: "Founded by M. Adinarayan in 2008, Tejas Canvassing has over 17 years of trusted canvassing experience in APMC Yard Yeshwanthpur.",
+    icon: User,
+  },
+  {
+    id: 2,
+    title: "Over 300 Happy Customers",
+    description: "Serving over 300 satisfied wholesale buyers, retailers, and distributors with transparent pricing and dependable supply.",
+    icon: Award,
+  },
+  {
+    id: 3,
+    title: "Famous Brands: Keshar Kali, JMR, Simha",
+    description: "We are renowned for our signature Keshar Kali Kollam, JMR Steam & Raw, and Simha Urad Dal staple lines.",
+    icon: Star,
+  },
+  {
+    id: 4,
+    title: "Serving Karnataka, Tamil Nadu & Andhra",
+    description: "Comprehensive distribution network covering all major mandis and APMC yards across Karnataka, Tamil Nadu, and Andhra Pradesh.",
     icon: Truck,
-    description: 'Monitor your consignment in real-time as it moves from the processing mill to your wholesale godown with verified weighbridge slips.',
-    points: [
-      'Live milestone updates: "Mill Loading" → "Weighbridge Out" → "Highway Transit" → "Gate Arrival"',
-      'Instant access to driver contact number, truck license plate, and government e-way bill',
-      'Digital weighbridge slips documenting tare weight, gross weight, and certified net weight',
-      'Toll crossing and transit alerts straight to your trade dashboard'
-    ],
-    preview: {
-      tag: 'Lorry Transit Dispatch',
-      title: 'Ashok Leyland 10-Tyre (KA-01-AK-7842)',
-      price: 'Net Cargo: 25,020 kg (Verified)',
-      metric: 'Gross: 38,420 kg · Tare: 13,400 kg',
-      detail1: 'Driver: Manjunath Gowda (+91 98450-XXXXX)',
-      detail2: 'e-Way Bill: #291847192841 · Mill Gate Pass: GP-9821',
-      status: 'In Transit · Approving Electronic Gate Pass'
-    }
   },
   {
-    step: '05',
-    label: 'Merchant Ledger',
-    title: 'Running Ledger, Advances & Credit Statements',
-    badge: 'Step 5 · Settlement & Account Statements',
-    icon: Wallet,
-    description: 'Maintain a pristine, audit-ready financial ledger. Reconcile advances, invoice debits, weighing adjustments, and credit line terms in one unified hub.',
-    points: [
-      'Running trade balance tracking total purchases, payments disbursed, and payable balance',
-      'Token advance tracking with verified RTGS / NEFT payment confirmations within minutes',
-      'Rolling credit terms (15 to 30 days) for verified regular wholesale merchants',
-      'Monthly audit-ready PDF account statements for tax and APMC audit filing'
-    ],
-    preview: {
-      tag: 'Merchant Account Ledger',
-      title: 'Wholesale Trade Account · V.K FOODS',
-      price: 'Credit Limit: ₹ 80.0 Lakh',
-      metric: 'Current Due: ₹ 7,50,000 (Within 15-day term)',
-      detail1: 'Total Purchases (FY 2025-26): ₹ 1.48 Crore',
-      detail2: 'Last Payment: ₹ 10,00,000 via RTGS (Ref: UTR-981247)',
-      status: 'Pristine APMC Credit Standing · AAA Grade'
-    }
-  }
+    id: 5,
+    title: "Network of Trusted Suppliers",
+    description: "Direct ties with top-tier millers and farm suppliers eliminate unnecessary markups while guaranteeing origin purity.",
+    icon: ShieldCheck,
+  },
+  {
+    id: 6,
+    title: "On-Time Dispatch & Delivery",
+    description: "Dedicated transport coordination ensures every truck consignment arrives safely on schedule with complete documentation.",
+    icon: Clock,
+  },
+];
+
+// ── Regional Focus ──
+const MARKET_IMAGE = "https://images.unsplash.com/photo-1759272548470-d0686d071036?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjYXJnbyUyMHNoaXBwaW5nJTIwY29udGFpbmVyJTIwcG9ydCUyMGdsb2JhbCUyMGxvZ2lzdGljc3xlbnwxfHx8fDE3NzE3ODQ1MTh8MA&ixlib=rb-4.1.0&q=80&w=1080";
+const regions = [
+  {
+    name: "Karnataka (APMC Yard HQ)",
+    markets: ["Bengaluru · APMC Yeshwanthpur", "Mysuru", "Hubballi", "Belagavi", "Davanagere"],
+    color: "var(--gold)",
+  },
+  {
+    name: "Tamil Nadu",
+    markets: ["Chennai Mandis", "Coimbatore APMC", "Madurai", "Tiruchirappalli", "Salem"],
+    color: "#34D399",
+  },
+  {
+    name: "Andhra Pradesh",
+    markets: ["Vijayawada", "Guntur Mandi", "Visakhapatnam", "Miryalaguda", "Hyderabad"],
+    color: "#60A5FA",
+  },
+];
+
+// ── Testimonials ──
+const testimonials = [
+  {
+    id: 1,
+    quote: "We've been procuring Keshar Kali and JMR rice from M. Adinarayan sir at Tejas Canvassing for years. Over 300 traders in our market trust their quality and timely dispatch.",
+    name: "Ramesh Gowda",
+    role: "Wholesale Merchant",
+    company: "APMC Yard Yeshwanthpur, Bengaluru",
+    initials: "RG",
+    accentColor: "var(--gold)",
+  },
+  {
+    id: 2,
+    quote: "Their Simha Urad Dal and Keshar Kali Kollam are our top sellers in Chennai. Honest weight, clean bags, and trusted suppliers make Tejas Canvassing our #1 choice.",
+    name: "S. Murugan",
+    role: "Distributor",
+    company: "Chennai Wholesale Market, Tamil Nadu",
+    initials: "SM",
+    accentColor: "#34D399",
+  },
+  {
+    id: 3,
+    quote: "Tejas Canvassing has been supplying our network across Andhra and Karnataka since 2008. Reliable pricing and M. Adinarayan sir's business integrity are unmatched.",
+    name: "K. Venkateshwarlu",
+    role: "Commission Agent",
+    company: "Vijayawada Mandi, Andhra Pradesh",
+    initials: "KV",
+    accentColor: "#60A5FA",
+  },
+];
+
+const navLinks = [
+  { label: "Famous Brands", href: "#products" },
+  { label: "Process", href: "#process" },
+  { label: "Why Us", href: "#why-us" },
+  { label: "Regions", href: "#global-presence" },
 ];
 
 export default function AboutView() {
   const navigate = useNavigate();
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [activeAppStep, setActiveAppStep] = useState<number>(0);
-  
-  // Inquiry form states
-  const [formState, setFormState] = useState({
-    name: '',
-    phone: '',
-    city: '',
-    variety: 'Basmati 1121 & 1509',
-    volume: '10 to 25 MT',
-    notes: ''
+  const [isScrolled, setIsScrolled] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isPwaModalOpen, setIsPwaModalOpen] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<ProductItem | null>(null);
+
+  // Testimonials state
+  const [testiIndex, setTestiIndex] = useState(0);
+
+  // Inquiry Form state
+  const [formData, setFormData] = useState({
+    name: "",
+    company: "",
+    email: "",
+    phone: "",
+    riceType: "Keshar Kali (Kollam Raw)",
+    quantity: "",
+    message: ""
   });
-  const [formSubmitted, setFormSubmitted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const filteredProducts = selectedCategory === 'all'
-    ? PRODUCTS
-    : PRODUCTS.filter(p => p.category === selectedCategory);
+  // Check if merchant is currently registered / signed in
+  const [isLoggedInMerchant, setIsLoggedInMerchant] = useState(() => {
+    return !!localStorage.getItem('userRole');
+  });
 
-  const handleWhatsAppSend = (e: React.FormEvent) => {
-    e.preventDefault();
-    const text = `*New Enquiry — Tejas Canvassing*\n*Name:* ${formState.name || 'Merchant'}\n*Phone:* ${formState.phone || 'N/A'}\n*Destination City:* ${formState.city || 'Karnataka'}\n*Rice / Product:* ${formState.variety}\n*Volume:* ${formState.volume}\n*Notes:* ${formState.notes || 'Interested in wholesale procurement.'}`;
-    window.open(`https://wa.me/919916416995?text=${encodeURIComponent(text)}`, '_blank');
-    setFormSubmitted(true);
+  // Force Light Theme by Default for About Us
+  useEffect(() => {
+    document.documentElement.classList.remove('dark');
+    localStorage.setItem('theme', 'light');
+    
+    const handleScroll = () => setIsScrolled(window.scrollY > 30);
+    window.addEventListener("scroll", handleScroll, { passive: true });
+
+    const handleAuthSync = () => {
+      setIsLoggedInMerchant(!!localStorage.getItem('userRole'));
+    };
+    window.addEventListener('storage', handleAuthSync);
+    window.addEventListener('role-changed', handleAuthSync);
+
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      window.removeEventListener('storage', handleAuthSync);
+      window.removeEventListener('role-changed', handleAuthSync);
+    };
+  }, []);
+
+  const goToTesti = (next: number) => {
+    setTestiIndex(next);
   };
 
+  const handleFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    await new Promise((r) => setTimeout(r, 600));
+
+    const msg = [
+      `*New Enquiry — Tejas Canvassing*`,
+      `*Owner:* M. Adinarayan (Est. 2008)`,
+      ``,
+      `*Name:* ${formData.name}`,
+      `*Company:* ${formData.company || "N/A"}`,
+      `*Email:* ${formData.email}`,
+      `*Phone:* ${formData.phone || "N/A"}`,
+      `*Product/Brand:* ${formData.riceType}`,
+      `*Quantity Needed:* ${formData.quantity || "N/A"}`,
+      `*Message:* ${formData.message || "N/A"}`,
+    ].join("\n");
+
+    const waUrl = `https://wa.me/919916416995?text=${encodeURIComponent(msg)}`;
+    window.open(waUrl, "_blank");
+    setIsSubmitting(false);
+  };
+
+  const currentTesti = testimonials[testiIndex];
+
   return (
-    <div className="min-h-screen bg-[#fafaf9] dark:bg-[#050e0a] text-slate-900 dark:text-slate-100 font-sans antialiased selection:bg-emerald-500 selection:text-white">
-      
-      {/* ========================================================================= */}
-      {/* 1. TOP NAVBAR                                                             */}
-      {/* ========================================================================= */}
-      <nav className="sticky top-0 z-50 bg-[#fafaf9]/95 dark:bg-[#050e0a]/95 backdrop-blur-md border-0 shadow-none px-4 sm:px-8 py-3.5">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          
-          {/* Brand Identity */}
-          <div 
-            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-            className="flex items-center gap-2.5 cursor-pointer group select-none"
-          >
-            <TejasBotanicalLogo className="w-8 h-8 text-[#143e2e] dark:text-emerald-400 group-hover:scale-105 transition-transform" />
+    <div className="font-sans text-stone-800 min-h-screen flex flex-col selection:bg-amber-400 selection:text-emerald-950 pb-[env(safe-area-inset-bottom,0px)]" style={{ background: "var(--warm-bg)", fontFamily: "var(--font-sans)" }}>
+      <PwaInstallModal isOpen={isPwaModalOpen} onClose={() => setIsPwaModalOpen(false)} />
+
+      {/* ── Apple Glass Mobile-Optimized Floating Navigation Header ── */}
+      <header className="fixed top-0 left-0 right-0 z-50 transition-all duration-300 py-2.5 px-3 sm:px-6">
+        <div 
+          className="max-w-[1280px] mx-auto px-4 py-2.5 rounded-full transition-all duration-300 flex items-center justify-between shadow-[0_8px_32px_0_rgba(0,0,0,0.12)] border border-white/40"
+          style={{
+            background: isScrolled ? "rgba(248, 244, 238, 0.92)" : "rgba(13, 35, 24, 0.8)",
+            backdropFilter: "blur(28px) saturate(200%)",
+            WebkitBackdropFilter: "blur(28px) saturate(200%)",
+            boxShadow: isScrolled 
+              ? "inset 0 1px 1px 0 rgba(255,255,255,0.9), 0 8px 24px -6px rgba(0,0,0,0.1)"
+              : "inset 0 1px 1px 0 rgba(255,255,255,0.25), 0 8px 24px -6px rgba(0,0,0,0.3)",
+            borderColor: isScrolled ? "rgba(201, 161, 88, 0.35)" : "rgba(255, 255, 255, 0.25)"
+          }}
+        >
+
+          {/* Brand Identity with Rounded Logo Border */}
+          <div onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="flex items-center gap-2.5 group cursor-pointer select-none">
+            <div className="relative">
+              <img
+                src="/logo.png"
+                alt="Tejas Canvassing Logo"
+                className="w-9 h-9 object-contain rounded-xl p-0.5 border border-amber-400/40 bg-white/10 transition-transform duration-300 group-hover:scale-105 shadow-sm"
+              />
+            </div>
             <div>
-              <span className="font-serif text-xl sm:text-2xl font-normal tracking-tight text-[#143e2e] dark:text-white block leading-none">
-                Tejas Canvassing
-              </span>
-              <span className="text-[9px] uppercase tracking-[0.22em] text-slate-500 dark:text-emerald-400/80 font-semibold block mt-0.5">
-                Premium Rice Dealers · Est. 2010
-              </span>
+              <div
+                className="tracking-widest transition-colors duration-300 leading-none"
+                style={{
+                  fontFamily: "var(--font-serif)",
+                  fontSize: "14px",
+                  fontWeight: 600,
+                  letterSpacing: "0.12em",
+                  color: isScrolled ? "#0D2318" : "#ffffff",
+                }}
+              >
+                TEJAS CANVASSING
+              </div>
+              <div
+                className="tracking-[0.16em] uppercase transition-colors duration-300 mt-0.5"
+                style={{
+                  fontSize: "7.5px",
+                  color: isScrolled ? "var(--gold)" : "rgba(255,255,255,0.75)",
+                  fontWeight: 600
+                }}
+              >
+                Est. 2008 · M. Adinarayan
+              </div>
             </div>
           </div>
 
-          {/* Center Links (Desktop) */}
-          <div className="hidden md:flex items-center gap-6 text-xs font-semibold text-slate-600 dark:text-slate-300">
-            <a href="#understanding-app" className="text-emerald-700 dark:text-emerald-400 font-bold hover:underline flex items-center gap-1">
-              <span>How App Works</span>
-              <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300">New User</span>
-            </a>
-            <a href="#products" className="hover:text-[#143e2e] dark:hover:text-emerald-400 transition-colors">Products</a>
-            <a href="#process" className="hover:text-[#143e2e] dark:hover:text-emerald-400 transition-colors">Process</a>
-            <a href="#why-us" className="hover:text-[#143e2e] dark:hover:text-emerald-400 transition-colors">Why Us</a>
-            <a href="#domestic-reach" className="hover:text-[#143e2e] dark:hover:text-emerald-400 transition-colors">Domestic Reach</a>
-            <a href="#contact" className="hover:text-[#143e2e] dark:hover:text-emerald-400 transition-colors">Contact</a>
-          </div>
+          {/* Desktop Nav */}
+          <div className="hidden lg:flex items-center gap-6">
+            {navLinks.map((link) => (
+              <a
+                key={link.label}
+                href={link.href}
+                className="transition-all duration-200 relative group text-[11px] font-semibold uppercase tracking-[0.18em]"
+                style={{
+                  color: isScrolled ? "#374151" : "rgba(255,255,255,0.9)",
+                }}
+              >
+                {link.label}
+                <span
+                  className="absolute -bottom-1 left-0 w-0 h-px transition-all duration-300 group-hover:w-full"
+                  style={{ background: "var(--gold)" }}
+                />
+              </a>
+            ))}
 
-          {/* Right Action Portal Buttons */}
-          <div className="flex items-center gap-2">
+            {/* Install App Button */}
+            <button
+              onClick={() => setIsPwaModalOpen(true)}
+              className="px-3.5 py-2 rounded-full border transition-all duration-300 text-[11px] font-bold tracking-wider uppercase flex items-center gap-1.5 cursor-pointer shadow-xs hover:scale-105 active:scale-95"
+              style={{
+                borderColor: isScrolled ? "rgba(201,161,88,0.4)" : "rgba(255,255,255,0.35)",
+                color: isScrolled ? "var(--brand-dark)" : "#ffffff",
+                background: isScrolled ? "rgba(201,161,88,0.15)" : "rgba(255,255,255,0.15)",
+                backdropFilter: "blur(12px)",
+              }}
+            >
+              <Download className="w-3.5 h-3.5 text-amber-500" />
+              <span>Install App</span>
+            </button>
+
+            {/* Log In Button */}
             <button
               onClick={() => navigate('/login')}
-              className="px-5 py-2 rounded-full bg-[#143e2e] hover:bg-[#0f2e22] text-white text-xs font-bold transition-all cursor-pointer shadow-sm flex items-center gap-1.5"
+              className="px-5 py-2 rounded-full transition-all duration-300 hover:scale-105 active:scale-95 text-[11px] font-extrabold tracking-widest uppercase flex items-center gap-1.5 cursor-pointer shadow-md"
+              style={{
+                background: "linear-gradient(135deg, #C9A158 0%, #E8C97A 100%)",
+                color: "var(--brand-dark)",
+              }}
             >
               <LogIn className="w-3.5 h-3.5" />
-              <span>Log In to App</span>
+              <span>Log In</span>
             </button>
           </div>
 
-        </div>
-      </nav>
-
-      {/* ========================================================================= */}
-      {/* 2. HERO SECTION                                                           */}
-      {/* ========================================================================= */}
-      <header className="relative overflow-hidden pt-12 pb-16 sm:pt-20 sm:pb-24 px-4 sm:px-8 border-b border-slate-200/80 dark:border-emerald-950/40">
-        
-        {/* Subtle decorative glow */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-6xl h-80 bg-emerald-500/5 blur-[120px] pointer-events-none" />
-
-        <div className="max-w-5xl mx-auto text-center space-y-6 relative z-10">
-          
-          {/* Badge */}
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#143e2e]/5 dark:bg-emerald-500/10 border border-[#143e2e]/15 dark:border-emerald-500/20 text-[#143e2e] dark:text-emerald-400 text-[11px] font-bold uppercase tracking-wider">
-            <span>🌿</span>
-            <span>Premium Quality Rice Dealers · APMC Yard Yeshwanthpur</span>
-          </div>
-
-          {/* Headline */}
-          <h1 className="font-serif text-4xl sm:text-6xl md:text-7xl font-normal tracking-tight text-slate-900 dark:text-white leading-[1.1] max-w-4xl mx-auto">
-            Connecting the finest rice-growing regions with wholesale markets across India.
-          </h1>
-
-          {/* Subtitle */}
-          <p className="text-base sm:text-lg text-slate-600 dark:text-slate-300 font-normal leading-relaxed max-w-2xl mx-auto">
-            Sourcing the finest Basmati, Sona Masoori and premium rice varieties directly from farms to wholesale markets across India. Trusted by 150+ partners in 20+ states.
-          </p>
-
-          {/* CTA Buttons */}
-          <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+          {/* Right Mobile Actions - Clean & Mobile Native */}
+          <div className="flex lg:hidden items-center gap-2">
             <button
               onClick={() => navigate('/login')}
-              className="px-6 py-3 rounded-xl bg-[#143e2e] hover:bg-[#0f2e22] text-white text-xs sm:text-sm font-semibold transition-all shadow-sm flex items-center gap-2 cursor-pointer"
+              className="px-3.5 py-1.5 rounded-full transition-all duration-300 active:scale-95 text-[10.5px] font-extrabold tracking-wider uppercase flex items-center gap-1 cursor-pointer shadow-md"
+              style={{
+                background: "linear-gradient(135deg, #C9A158 0%, #E8C97A 100%)",
+                color: "var(--brand-dark)",
+              }}
             >
-              <LogIn className="w-4 h-4" />
-              <span>Log In to Wholesale Portal</span>
+              <LogIn className="w-3.5 h-3.5" />
+              <span>Log In</span>
             </button>
-            <a
-              href="#understanding-app"
-              className="px-6 py-3 rounded-xl bg-white dark:bg-neutral-900 hover:bg-slate-100 dark:hover:bg-neutral-800 text-slate-900 dark:text-white border border-slate-200 dark:border-neutral-800 text-xs sm:text-sm font-semibold transition-all flex items-center gap-2"
-            >
-              <span>Understand How App Works</span>
-              <ChevronRight className="w-4 h-4 text-emerald-600" />
-            </a>
+
             <button
-              onClick={() => navigate('/intro')}
-              className="px-4 py-3 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-[#143e2e] dark:text-emerald-300 text-xs sm:text-sm font-semibold transition-all flex items-center gap-1.5 cursor-pointer"
+              className="p-1.5 transition-colors duration-200 rounded-full cursor-pointer hover:bg-white/10"
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              style={{ color: isScrolled ? "#111827" : "#ffffff" }}
             >
-              <Sparkles className="w-4 h-4 text-emerald-600" />
-              <span>Interactive App Tour</span>
+              {isMobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
             </button>
-          </div>
-
-          {/* Editorial Hero Visual Banner */}
-          <div className="pt-8 sm:pt-12">
-            <div className="relative rounded-3xl overflow-hidden shadow-2xl border border-slate-200/90 dark:border-emerald-950/60 aspect-[16/8] sm:aspect-[21/9]">
-              <img
-                src="https://images.unsplash.com/photo-1536304993881-ff6e9eefa2a6?auto=format&fit=crop&w=1600&q=85"
-                alt="Aerial Rice Paddy Field"
-                className="w-full h-full object-cover"
-                referrerPolicy="no-referrer"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent flex items-end p-6 sm:p-10">
-                <div className="text-left text-white max-w-xl">
-                  <span className="text-[10px] font-bold uppercase tracking-[0.25em] text-emerald-300 block mb-1">
-                    Direct Farm Sourcing
-                  </span>
-                  <p className="font-serif text-2xl sm:text-3xl font-normal leading-snug">
-                    "Quality without compromise, supply without disruption."
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Key Metrics Bar */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 sm:gap-4 pt-6 text-left">
-            {[
-              { val: '15+', label: 'Years of Market Excellence', sub: 'Est. 2010 in APMC Yard' },
-              { val: '150+', label: 'Wholesale Partners', sub: 'Distributors & Millers' },
-              { val: '20+', label: 'States Covered', sub: 'Pan-India Distribution' },
-              { val: '50,000 MT', label: 'Annual Supply Capacity', sub: 'High Volume Procurement' },
-              { val: '7 Checkpoints', label: 'Quality Guarantee', sub: 'FSSAI, ISO 22000' }
-            ].map((stat, i) => (
-              <div key={i} className="p-4 rounded-2xl bg-white dark:bg-[#0a1811] border border-slate-200/80 dark:border-emerald-950/40 shadow-xs">
-                <span className="font-serif text-2xl sm:text-3xl font-normal text-[#143e2e] dark:text-emerald-400 block">
-                  {stat.val}
-                </span>
-                <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block mt-1">
-                  {stat.label}
-                </span>
-                <span className="text-[10px] text-slate-500 dark:text-slate-400 block">
-                  {stat.sub}
-                </span>
-              </div>
-            ))}
           </div>
 
         </div>
       </header>
 
-      {/* ========================================================================= */}
-      {/* 2.5 FIRST-TIME USER GUIDE: UNDERSTANDING THE APP (`#understanding-app`)     */}
-      {/* ========================================================================= */}
-      <section id="understanding-app" className="py-16 sm:py-24 px-4 sm:px-8 max-w-7xl mx-auto border-b border-slate-200/80 dark:border-emerald-950/40 scroll-mt-20">
-        <div className="space-y-4 text-center max-w-3xl mx-auto mb-12">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-100 dark:bg-emerald-950/80 border border-emerald-300 dark:border-emerald-800/60 text-[#143e2e] dark:text-emerald-300 text-[10px] font-extrabold uppercase tracking-widest">
-            <HelpCircle className="w-3.5 h-3.5 text-emerald-600" />
-            <span>First-Time User Guide · Platform Operations</span>
-          </div>
-          <h2 className="font-serif text-3xl sm:text-5xl font-normal tracking-tight text-slate-900 dark:text-white">
-            Understanding the Tejas Canvassing App
-          </h2>
-          <p className="text-sm sm:text-base text-slate-600 dark:text-slate-300 leading-relaxed">
-            Built specifically for wholesale rice merchants, commission agents, and millers. From discovering live mandi rates to booking truckloads, tracking lorries, and settling digital patti invoices — here is how the platform operates.
-          </p>
-        </div>
-
-        {/* Step Selector Pills */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 mb-10">
-          {APP_WORKFLOW_STEPS.map((step, idx) => {
-            const Icon = step.icon;
-            const isActive = activeAppStep === idx;
-            return (
-              <button
-                key={step.step}
-                type="button"
-                onClick={() => setActiveAppStep(idx)}
-                className={cn(
-                  "p-3.5 rounded-2xl text-left transition-all border cursor-pointer relative overflow-hidden flex flex-col justify-between min-h-[90px]",
-                  isActive
-                    ? "bg-[#143e2e] dark:bg-[#0f2e22] text-white border-[#143e2e] shadow-md scale-[1.02]"
-                    : "bg-white dark:bg-[#0a1811] text-slate-700 dark:text-slate-300 border-slate-200/80 dark:border-emerald-950/60 hover:border-emerald-400/50"
-                )}
-              >
-                <div className="flex items-center justify-between w-full">
-                  <span className={cn(
-                    "text-[10px] font-black tracking-widest uppercase",
-                    isActive ? "text-emerald-300" : "text-slate-400"
-                  )}>
-                    Step {step.step}
-                  </span>
-                  <Icon className={cn(
-                    "w-4 h-4",
-                    isActive ? "text-emerald-300" : "text-slate-400"
-                  )} />
-                </div>
-                <div className="mt-2">
-                  <span className="font-bold text-xs block leading-tight">
-                    {step.label}
-                  </span>
-                </div>
+      {/* Mobile Glass Menu */}
+      <AnimatePresence>
+        {isMobileMenuOpen && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-3 z-50 flex flex-col justify-between lg:hidden rounded-3xl p-6 shadow-2xl border border-white/20"
+            style={{ 
+              background: "rgba(13, 35, 24, 0.95)", 
+              backdropFilter: "blur(32px) saturate(200%)",
+              fontFamily: "var(--font-serif)" 
+            }}
+          >
+            <div className="flex items-center justify-between pb-4 border-b border-white/10">
+              <div className="flex items-center gap-2">
+                <img src="/logo.png" alt="Logo" className="w-7 h-7 object-contain rounded-lg border border-amber-400/40 p-0.5 bg-white/10" />
+                <span className="text-white font-bold text-sm tracking-wider">TEJAS CANVASSING</span>
+              </div>
+              <button onClick={() => setIsMobileMenuOpen(false)} className="p-1 text-white/70">
+                <X size={22} />
               </button>
-            );
-          })}
-        </div>
+            </div>
 
-        {/* Active Step Showcase Card */}
-        {(() => {
-          const currentStepData = APP_WORKFLOW_STEPS[activeAppStep];
-          return (
-            <div className="bg-white dark:bg-[#0a1811] rounded-3xl border border-slate-200/90 dark:border-emerald-950/60 p-6 sm:p-10 shadow-sm transition-all">
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-                
-                {/* Left Content Column */}
-                <div className="lg:col-span-7 space-y-6">
-                  <div className="space-y-2">
-                    <span className="inline-block px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-[#143e2e] dark:text-emerald-300 text-[10px] font-extrabold uppercase tracking-widest border border-emerald-200/60 dark:border-emerald-800/40">
-                      {currentStepData.badge}
+            <nav className="flex flex-col items-center gap-5 py-4">
+              {navLinks.map((link, i) => (
+                <motion.a
+                  key={link.label}
+                  href={link.href}
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.06 }}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="text-white/90 hover:text-amber-300 transition-colors text-2xl font-light tracking-wide text-center"
+                >
+                  {link.label}
+                </motion.a>
+              ))}
+              
+              <div className="w-full pt-4 border-t border-white/10 flex flex-col gap-3">
+                <button
+                  onClick={() => { setIsMobileMenuOpen(false); navigate(isLoggedInMerchant ? '/store' : '/signup'); }}
+                  className="w-full py-3.5 text-emerald-950 bg-amber-400 font-sans font-extrabold text-xs uppercase tracking-widest rounded-full shadow-lg flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                >
+                  {isLoggedInMerchant ? <LogIn size={16} /> : <UserPlus size={16} />}
+                  <span>{isLoggedInMerchant ? "Log In to Webstore" : "Sign Up"}</span>
+                </button>
+
+                <button
+                  onClick={() => { setIsMobileMenuOpen(false); setIsPwaModalOpen(true); }}
+                  className="w-full py-3 text-white/90 bg-white/10 border border-white/20 font-sans font-semibold text-xs uppercase tracking-widest rounded-full flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                >
+                  <Download size={14} className="text-amber-400" />
+                  <span>Install App</span>
+                </button>
+              </div>
+            </nav>
+
+            <div className="text-center text-[10px] text-white/40 tracking-wider">
+              Owner: M. Adinarayan · APMC Yard Yeshwanthpur
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <main className="flex-grow pt-0">
+        
+        {/* ── 1. CINEMATIC MOBILE HERO SECTION ── */}
+        <section className="relative flex items-end overflow-hidden min-h-[100dvh]" style={{ background: "#08140e" }}>
+          <div className="absolute inset-0 z-0 bg-[#08140e]">
+            <img
+              src={HERO_IMAGE}
+              alt="Aerial Rice Paddy Field"
+              className="w-full h-full object-cover"
+              style={{ objectPosition: "center 40%" }}
+            />
+            <div className="absolute inset-0" style={{ background: "linear-gradient(to right, rgba(8,20,14,0.94) 0%, rgba(8,20,14,0.75) 55%, rgba(8,20,14,0.45) 100%)" }} />
+            <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(8,20,14,0.9) 0%, transparent 65%)" }} />
+          </div>
+
+          <div className="relative z-10 w-full max-w-[1400px] mx-auto px-4 sm:px-8 pb-14 pt-28 sm:pt-36">
+            <div className="max-w-[780px]">
+              
+              {/* Mobile Eyebrow Badge */}
+              <motion.div
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6 }}
+                className="inline-flex items-center gap-2 px-3 py-1 rounded-full mb-5 shadow-sm border border-white/20 max-w-full"
+                style={{
+                  background: "rgba(255, 255, 255, 0.1)",
+                  backdropFilter: "blur(16px)",
+                }}
+              >
+                <div className="w-2 h-2 rounded-full bg-amber-400 shrink-0" style={{ boxShadow: "0 0 8px rgba(251,191,36,0.8)" }} />
+                <span className="truncate" style={{ fontSize: "9.5px", letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--gold-light)", fontWeight: 700 }}>
+                  Owner: M. Adinarayan · Est. 2008
+                </span>
+              </motion.div>
+
+              {/* Mobile Scaled Headline */}
+              <motion.h1
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.7, delay: 0.1 }}
+                className="text-white mb-4 leading-tight"
+                style={{
+                  fontFamily: "var(--font-serif)",
+                  fontSize: "clamp(36px, 7.5vw, 84px)",
+                  fontWeight: 400,
+                  letterSpacing: "-0.02em",
+                }}
+              >
+                Tejas Canvassing
+              </motion.h1>
+
+              <motion.p
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.2 }}
+                className="mb-8 text-xs sm:text-base text-white/85 font-light leading-relaxed max-w-lg"
+              >
+                Founded in 2008 by M. Adinarayan, Tejas Canvassing is renowned for famous flagship brands — <span className="font-semibold text-amber-300">Keshar Kali</span>, <span className="font-semibold text-amber-300">JMR</span>, and <span className="font-semibold text-amber-300">Simha</span> — delivered across Karnataka, Tamil Nadu, and Andhra Pradesh. Trusted by over 300 happy wholesale buyers.
+              </motion.p>
+
+              {/* Subtle Small Install App Button (Non-Distracting) */}
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.25 }}
+                className="mb-3"
+              >
+                <button
+                  onClick={() => setIsPwaModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-[10.5px] font-bold tracking-wider uppercase rounded-full border border-white/25 bg-white/10 text-amber-300 backdrop-blur-md hover:bg-white/20 transition-all cursor-pointer active:scale-95 shadow-xs"
+                >
+                  <Download size={13} className="text-amber-400" />
+                  <span>Install App</span>
+                </button>
+              </motion.div>
+
+              {/* Main Hero Action Buttons */}
+              <motion.div
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.3 }}
+                className="flex flex-col sm:flex-row gap-3 mb-10"
+              >
+                <button
+                  onClick={() => navigate(isLoggedInMerchant ? '/store' : '/signup')}
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 px-7 py-3.5 text-xs font-extrabold tracking-widest uppercase rounded-full shadow-xl cursor-pointer"
+                  style={{
+                    background: "linear-gradient(135deg, #C9A158 0%, #E8C97A 100%)",
+                    color: "var(--brand-dark)",
+                    boxShadow: "0 6px 24px rgba(201,161,88,0.4)",
+                  }}
+                >
+                  {isLoggedInMerchant ? (
+                    <>
+                      <LogIn size={15} />
+                      <span>Log In to Webstore</span>
+                    </>
+                  ) : (
+                    <>
+                      <UserPlus size={15} />
+                      <span>Sign Up</span>
+                    </>
+                  )}
+                </button>
+
+                <a
+                  href="#contact"
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 transition-all duration-300 active:scale-95 px-6 py-3.5 text-xs font-semibold tracking-widest uppercase rounded-full text-white border border-white/30 backdrop-blur-xl shadow-md cursor-pointer bg-white/10 hover:bg-white/20"
+                >
+                  <span>Request Quote</span>
+                  <ArrowRight size={14} />
+                </a>
+              </motion.div>
+
+              {/* Mobile 2x2 Stat Grid */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.8, delay: 0.4 }}
+                className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-3 rounded-2xl border border-white/20 bg-white/5 backdrop-blur-xl"
+              >
+                {[
+                  { value: "Est. 2008", label: "Year Founded" },
+                  { value: "300+", label: "Happy Customers" },
+                  { value: "3 States", label: "KA · TN · AP" },
+                  { value: "Trusted", label: "Mill Partners" },
+                ].map((stat) => (
+                  <div key={stat.label} className="p-2.5 text-center rounded-xl bg-white/5 border border-white/10">
+                    <span style={{ fontFamily: "var(--font-serif)", fontSize: "20px", fontWeight: 600, color: "#ffffff", display: "block" }}>
+                      {stat.value}
                     </span>
-                    <h3 className="font-serif text-2xl sm:text-3xl font-normal text-slate-900 dark:text-white leading-snug">
-                      {currentStepData.title}
+                    <span style={{ fontSize: "8.5px", letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,0.6)", fontWeight: 500 }}>
+                      {stat.label}
+                    </span>
+                  </div>
+                ))}
+              </motion.div>
+
+            </div>
+          </div>
+        </section>
+
+        {/* ── 2. TRUST STRIP ── */}
+        <section className="py-12 relative z-20" style={{ background: "var(--brand-dark)" }}>
+          <div className="max-w-[1400px] mx-auto px-4 sm:px-8">
+            <div className="flex items-center justify-center gap-3 mb-8">
+              <div className="h-px flex-1 bg-white/10 max-w-[80px]" />
+              <span style={{ fontSize: "9px", letterSpacing: "0.25em", textTransform: "uppercase", color: "var(--gold)", fontWeight: 700 }}>
+                Tejas Canvassing Highlights
+              </span>
+              <div className="h-px flex-1 bg-white/10 max-w-[80px]" />
+            </div>
+
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
+              {trustStats.map((stat) => (
+                <div
+                  key={stat.label}
+                  className="flex flex-col items-center justify-center text-center p-5 sm:p-8 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl"
+                >
+                  <span style={{ fontFamily: "var(--font-serif)", fontSize: "clamp(26px, 5vw, 48px)", fontWeight: 400, color: "#ffffff", marginBottom: "4px" }}>
+                    {stat.value}
+                  </span>
+                  <div className="w-6 h-px mb-2" style={{ background: "var(--gold)" }} />
+                  <span style={{ fontSize: "9.5px", letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,255,255,0.6)", fontWeight: 500 }}>
+                    {stat.label}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* ── 3. PRODUCT SHOWCASE (TAP PRODUCT CARD TO EXPAND DETAILS) ── */}
+        <section id="products" style={{ background: "var(--warm-bg)", padding: "72px 0 96px" }}>
+          <div className="max-w-[1400px] mx-auto px-4 sm:px-8">
+            
+            <div className="mb-10">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="h-px w-6" style={{ background: "var(--gold)" }} />
+                <span style={{ fontSize: "9.5px", letterSpacing: "0.2em", textTransform: "uppercase", color: "var(--gold)", fontWeight: 700 }}>
+                  Our Famous Portfolio Brands (Tap Card for Details)
+                </span>
+              </div>
+              <h2 style={{ fontFamily: "var(--font-serif)", fontSize: "clamp(30px, 6vw, 64px)", fontWeight: 400, color: "#0D1F15", lineHeight: 1.1 }}>
+                Famous Brands:<br />
+                <span style={{ fontStyle: "italic", color: "var(--gold-dark)" }}>Keshar Kali · JMR · Simha</span>
+              </h2>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+              {products.map((product) => (
+                <article
+                  key={product.id}
+                  onClick={() => setSelectedProduct(product)}
+                  className="group flex flex-col rounded-2xl overflow-hidden transition-all duration-300 border bg-white/90 shadow-md relative cursor-pointer hover:shadow-xl hover:-translate-y-1"
+                  style={{
+                    borderColor: product.isFamous ? "rgba(201, 161, 88, 0.7)" : "rgba(0,0,0,0.08)",
+                  }}
+                >
+                  {product.isFamous && (
+                    <div className="absolute top-3 right-3 z-10 px-2.5 py-1 bg-amber-400 text-emerald-950 text-[9px] font-extrabold uppercase tracking-wider rounded-full shadow-md flex items-center gap-1">
+                      <Star className="w-2.5 h-2.5 fill-emerald-950" />
+                      <span>Famous Brand</span>
+                    </div>
+                  )}
+
+                  <div className="relative overflow-hidden h-52">
+                    <img
+                      src={product.image}
+                      alt={product.name}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    />
+                    <div className="absolute top-3 left-3 px-2.5 py-1 bg-[#0d2318]/85 backdrop-blur-md text-white text-[8.5px] uppercase tracking-widest font-bold rounded-full border border-white/20">
+                      {product.origin}
+                    </div>
+                    
+                    <div className="absolute bottom-2 right-2 px-2.5 py-1 bg-black/60 backdrop-blur-md text-amber-300 text-[9.5px] font-semibold rounded-full flex items-center gap-1 border border-white/20">
+                      <Info className="w-3 h-3" />
+                      <span>Tap for History & Specs</span>
+                    </div>
+                  </div>
+                  
+                  <div className="flex flex-col flex-grow p-5">
+                    <span style={{ fontSize: "8.5px", letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--gold-dark)", fontWeight: 700, marginBottom: "4px" }}>
+                      {product.type}
+                    </span>
+                    <h3 style={{ fontFamily: "var(--font-serif)", fontSize: "22px", fontWeight: 600, color: "#111827", marginBottom: "6px" }}>
+                      {product.name}
                     </h3>
-                    <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed pt-1">
-                      {currentStepData.description}
+                    <p style={{ fontSize: "12.5px", fontWeight: 300, color: "#6B7280", lineHeight: 1.6, marginBottom: "16px" }} className="flex-grow">
+                      {product.description}
+                    </p>
+                    
+                    <div className="flex items-center justify-between pt-3 border-t border-stone-200/60 text-[10.5px] font-bold text-emerald-800">
+                      <span>View Full Specifications</span>
+                      <ArrowUpRight className="w-4 h-4 text-amber-600" />
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+
+          </div>
+        </section>
+
+        {/* ── 4. SUPPLY CHAIN (ROUNDED LOGO) ── */}
+        <section id="process" style={{ background: "#ffffff", padding: "72px 0 96px" }}>
+          <div className="max-w-[1400px] mx-auto px-4 sm:px-8">
+            
+            <div className="mb-10">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="h-px w-6" style={{ background: "var(--gold)" }} />
+                <span style={{ fontSize: "9.5px", letterSpacing: "0.2em", textTransform: "uppercase", color: "var(--gold)", fontWeight: 700 }}>
+                  Suppliers & Process
+                </span>
+              </div>
+              <h2 style={{ fontFamily: "var(--font-serif)", fontSize: "clamp(30px, 6vw, 60px)", fontWeight: 400, color: "#0D1F15", lineHeight: 1.1 }}>
+                Trusted Suppliers to<br />
+                <span style={{ fontStyle: "italic" }}>Your APMC Yard</span>
+              </h2>
+            </div>
+
+            <div className="grid lg:grid-cols-5 gap-6 items-stretch">
+              
+              {/* Brand Glass Column with Rounded Logo */}
+              <div
+                className="lg:col-span-2 relative overflow-hidden rounded-2xl flex flex-col items-center justify-center p-8 text-center shadow-lg border border-white/20"
+                style={{ minHeight: "360px", background: "var(--brand-dark)" }}
+              >
+                <img 
+                  src="/logo.png" 
+                  alt="Tejas Canvassing Logo" 
+                  className="w-20 h-20 sm:w-24 sm:h-24 object-contain rounded-2xl p-2 border-2 border-amber-400/50 bg-white/10 backdrop-blur-md mb-5 shadow-xl" 
+                />
+                <div style={{ fontFamily: "var(--font-serif)", fontSize: "18px", fontWeight: 600, letterSpacing: "0.18em", color: "#ffffff" }}>
+                  TEJAS CANVASSING
+                </div>
+                <div style={{ fontSize: "8.5px", letterSpacing: "0.2em", color: "var(--gold)", textTransform: "uppercase", fontWeight: 700, marginTop: "4px" }}>
+                  Owner: M. Adinarayan · Est. 2008
+                </div>
+                
+                <div className="mt-6 p-3.5 rounded-xl bg-white/5 border border-white/10 backdrop-blur-md max-w-xs">
+                  <p style={{ fontFamily: "var(--font-serif)", fontSize: "14px", fontStyle: "italic", color: "rgba(255,255,255,0.85)" }}>
+                    "17+ Years of Business Integrity & Over 300 Happy Customers"
+                  </p>
+                </div>
+              </div>
+
+              {/* Timeline Cards */}
+              <div className="lg:col-span-3 flex flex-col gap-3">
+                {supplySteps.map((step) => {
+                  const Icon = step.icon;
+                  return (
+                    <div 
+                      key={step.id} 
+                      className="flex items-start gap-4 p-4 rounded-xl border bg-stone-50/70 border-stone-200/80"
+                    >
+                      <div className="w-9 h-9 flex items-center justify-center rounded-xl bg-[#1b4332] text-amber-300 shrink-0 shadow-xs">
+                        <Icon size={18} />
+                      </div>
+                      <div>
+                        <h3 style={{ fontFamily: "var(--font-serif)", fontSize: "18px", fontWeight: 600, color: "#111827", marginBottom: "2px" }}>
+                          {step.title}
+                        </h3>
+                        <p style={{ fontSize: "12px", fontWeight: 300, color: "#6B7280", lineHeight: 1.6 }}>
+                          {step.detail}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+            </div>
+
+          </div>
+        </section>
+
+        {/* ── 5. WHY CHOOSE US ── */}
+        <section id="why-us" className="relative overflow-hidden py-20" style={{ background: "#0d2318" }}>
+          <div className="absolute inset-0 z-0 opacity-20">
+            <img src={FIELD_IMAGE} alt="Field" className="w-full h-full object-cover" />
+          </div>
+
+          <div className="max-w-[1400px] mx-auto px-4 sm:px-8 relative z-10">
+            <div className="mb-10">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="h-px w-6" style={{ background: "var(--gold)" }} />
+                <span style={{ fontSize: "9.5px", letterSpacing: "0.2em", textTransform: "uppercase", color: "var(--gold)", fontWeight: 700 }}>
+                  Why Choose Tejas Canvassing
+                </span>
+              </div>
+              <h2 style={{ fontFamily: "var(--font-serif)", fontSize: "clamp(30px, 6vw, 60px)", fontWeight: 400, color: "#ffffff" }}>
+                The Tejas <span style={{ fontStyle: "italic", color: "var(--gold-light)" }}>Advantage</span>
+              </h2>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {features.map((feat) => {
+                const Icon = feat.icon;
+                return (
+                  <div 
+                    key={feat.id} 
+                    className="p-6 rounded-2xl border border-[#c9a158]/30 bg-[#0d2318]/90 backdrop-blur-xl shadow-lg"
+                  >
+                    <div className="w-10 h-10 mb-4 flex items-center justify-center rounded-xl bg-[#c9a158]/15 border border-[#c9a158]/35 text-[#c9a158] shadow-xs">
+                      <Icon size={20} />
+                    </div>
+                    <h3 style={{ fontFamily: "var(--font-serif)", fontSize: "20px", fontWeight: 500, color: "#ffffff", marginBottom: "6px" }}>
+                      {feat.title}
+                    </h3>
+                    <p style={{ fontSize: "12px", fontWeight: 300, color: "rgba(255,255,255,0.7)", lineHeight: 1.6 }}>
+                      {feat.description}
                     </p>
                   </div>
-
-                  {/* Functional Points */}
-                  <div className="space-y-3 pt-2">
-                    {currentStepData.points.map((point, pIdx) => (
-                      <div key={pIdx} className="flex items-start gap-3">
-                        <div className="w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 flex items-center justify-center shrink-0 mt-0.5">
-                          <Check className="w-3 h-3 stroke-[3]" />
-                        </div>
-                        <span className="text-xs sm:text-sm text-slate-700 dark:text-slate-200">
-                          {point}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Navigation within guide */}
-                  <div className="flex items-center gap-3 pt-4 border-t border-slate-100 dark:border-neutral-900">
-                    <button
-                      type="button"
-                      disabled={activeAppStep === 0}
-                      onClick={() => setActiveAppStep(prev => Math.max(0, prev - 1))}
-                      className="px-4 py-2 rounded-xl text-xs font-semibold border border-slate-200 dark:border-neutral-800 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-neutral-800 transition-colors"
-                    >
-                      Previous Step
-                    </button>
-                    <button
-                      type="button"
-                      disabled={activeAppStep === APP_WORKFLOW_STEPS.length - 1}
-                      onClick={() => setActiveAppStep(prev => Math.min(APP_WORKFLOW_STEPS.length - 1, prev + 1))}
-                      className="px-4 py-2 rounded-xl text-xs font-semibold bg-[#143e2e] hover:bg-[#0f2e22] text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <span>Next Step</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Right Simulation Preview Column */}
-                <div className="lg:col-span-5">
-                  <div className="p-6 rounded-2xl bg-[#fafaf9] dark:bg-[#06120d] border border-slate-200 dark:border-emerald-950/80 shadow-inner relative overflow-hidden">
-                    <div className="flex items-center justify-between pb-4 border-b border-slate-200/80 dark:border-neutral-800">
-                      <span className="text-[10px] font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-400">
-                        {currentStepData.preview.tag}
-                      </span>
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                    </div>
-
-                    <div className="py-4 space-y-3">
-                      <h4 className="font-serif text-lg font-normal text-slate-900 dark:text-white">
-                        {currentStepData.preview.title}
-                      </h4>
-                      <div className="p-3 rounded-xl bg-white dark:bg-[#0a1811] border border-slate-200/70 dark:border-emerald-950/60 space-y-1">
-                        <span className="font-serif text-2xl font-bold text-[#143e2e] dark:text-emerald-400 block">
-                          {currentStepData.preview.price}
-                        </span>
-                        <span className="text-xs font-semibold text-slate-600 dark:text-slate-300 block">
-                          {currentStepData.preview.metric}
-                        </span>
-                      </div>
-
-                      <div className="space-y-1.5 text-[11px] text-slate-600 dark:text-slate-300">
-                        <p className="flex items-center gap-2">
-                          <span className="w-1.5 h-1.5 rounded-full bg-[#143e2e] dark:bg-emerald-400" />
-                          <span>{currentStepData.preview.detail1}</span>
-                        </p>
-                        <p className="flex items-center gap-2">
-                          <span className="w-1.5 h-1.5 rounded-full bg-[#143e2e] dark:bg-emerald-400" />
-                          <span>{currentStepData.preview.detail2}</span>
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="pt-3 border-t border-slate-200/80 dark:border-neutral-800 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-                      <span>{currentStepData.preview.status}</span>
-                    </div>
-                  </div>
-                </div>
-
-              </div>
+                );
+              })}
             </div>
-          );
-        })()}
 
-        {/* First-Time User CTA Action Card */}
-        <div className="mt-8 p-6 sm:p-8 rounded-3xl bg-gradient-to-br from-[#143e2e] to-[#0a2319] text-white flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl border border-emerald-800/40">
-          <div className="space-y-2 text-center md:text-left max-w-xl">
-            <span className="text-[10px] font-bold uppercase tracking-[0.25em] text-emerald-300 block">
-              Ready To Procure?
-            </span>
-            <h3 className="font-serif text-2xl sm:text-3xl font-normal leading-snug">
-              Sign In to Your Wholesale Trade Desk
-            </h3>
-            <p className="text-xs sm:text-sm text-emerald-100/80 leading-relaxed">
-              Log in with your merchant credentials to browse live mill inventories, configure customized bags, lock in daily rates, and download your digital patti invoices.
-            </p>
           </div>
-          <div className="flex flex-col sm:flex-row items-center gap-3 shrink-0 w-full md:w-auto">
-            <button
-              onClick={() => navigate('/login')}
-              className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-white hover:bg-slate-100 text-[#143e2e] font-bold text-xs sm:text-sm transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <LogIn className="w-4 h-4" />
-              <span>Sign In to Trade Desk</span>
-            </button>
-            <button
-              onClick={() => navigate('/intro')}
-              className="w-full sm:w-auto px-5 py-3.5 rounded-xl bg-emerald-900/60 hover:bg-emerald-900/90 text-white font-semibold text-xs sm:text-sm border border-emerald-700/60 transition-all flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <Sparkles className="w-4 h-4 text-emerald-300" />
-              <span>Interactive Tour</span>
-            </button>
-          </div>
-        </div>
+        </section>
 
-      </section>
-
-      {/* ========================================================================= */}
-      {/* 3. PRODUCTS PORTFOLIO SECTION (`#products`)                               */}
-      {/* ========================================================================= */}
-      <section id="products" className="py-16 sm:py-24 px-4 sm:px-8 max-w-7xl mx-auto">
-        <div className="space-y-4 text-center max-w-3xl mx-auto mb-10">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#143e2e]/5 dark:bg-emerald-500/10 text-[#143e2e] dark:text-emerald-400 text-[10px] font-extrabold uppercase tracking-widest">
-            Premium Commodity Offerings
-          </div>
-          <h2 className="font-serif text-3xl sm:text-5xl font-normal tracking-tight text-slate-900 dark:text-white">
-            Our Rice Portfolio
-          </h2>
-          <p className="text-sm sm:text-base text-slate-600 dark:text-slate-300 leading-relaxed">
-            Every brand we carry is rigorously selected for quality, consistency and market trust — from aromatic Basmati to everyday Kollam raw rice.
-          </p>
-
-          {/* Category Filter Chips */}
-          <div className="flex flex-wrap items-center justify-center gap-2 pt-4">
-            {[
-              { id: 'all', label: 'All Varieties' },
-              { id: 'basmati', label: 'Basmati 1121 & 1509' },
-              { id: 'kollam', label: 'Kollam Raw & Steam' },
-              { id: 'sona', label: 'Sona Masoori' },
-              { id: 'specialty', label: 'HMT & Scented' },
-              { id: 'pulses', label: 'Sortex Pulses' }
-            ].map(cat => (
-              <button
-                key={cat.id}
-                onClick={() => setSelectedCategory(cat.id)}
-                className={cn(
-                  "px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer",
-                  selectedCategory === cat.id
-                    ? "bg-[#143e2e] text-white shadow-xs"
-                    : "bg-white dark:bg-neutral-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-neutral-800 hover:border-slate-400"
-                )}
-              >
-                {cat.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Product Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredProducts.map((prod) => (
-            <div
-              key={prod.id}
-              className="group bg-white dark:bg-[#0a1811] rounded-3xl overflow-hidden border border-slate-200/90 dark:border-emerald-950/50 shadow-xs hover:shadow-md transition-all flex flex-col justify-between"
-            >
+        {/* ── 6. REGIONAL SERVICE LOCATIONS ── */}
+        <section id="global-presence" style={{ background: "#ffffff", padding: "72px 0 96px" }}>
+          <div className="max-w-[1400px] mx-auto px-4 sm:px-8">
+            <div className="grid lg:grid-cols-2 gap-10 items-center">
               <div>
-                {/* Product Photo */}
-                <div className="relative aspect-[16/10] overflow-hidden">
-                  <img
-                    src={prod.image}
-                    alt={prod.name}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                    referrerPolicy="no-referrer"
-                  />
-                  <span className="absolute top-3 left-3 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-md text-white text-[10px] font-semibold">
-                    {prod.badge}
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="h-px w-6" style={{ background: "var(--gold)" }} />
+                  <span style={{ fontSize: "9.5px", letterSpacing: "0.2em", textTransform: "uppercase", color: "var(--gold)", fontWeight: 700 }}>
+                    Our Service Locations
                   </span>
                 </div>
+                <h2 style={{ fontFamily: "var(--font-serif)", fontSize: "clamp(30px, 6vw, 60px)", fontWeight: 400, color: "#0D1F15", marginBottom: "12px" }}>
+                  Serving <span style={{ fontStyle: "italic" }}>Karnataka, Tamil Nadu & Andhra</span>
+                </h2>
+                <p style={{ fontSize: "13.5px", fontWeight: 300, color: "#6B7280", lineHeight: 1.7, marginBottom: "24px" }}>
+                  With headquarters at APMC Yard Yeshwanthpur, we provide dedicated rice canvassing across South India.
+                </p>
 
-                {/* Card Content */}
-                <div className="p-6 space-y-3">
-                  <h3 className="font-serif text-2xl font-normal text-slate-900 dark:text-white leading-tight">
-                    {prod.name}
-                  </h3>
-                  <p className="text-xs sm:text-[13px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                    {prod.description}
-                  </p>
-
-                  {/* Highlights */}
-                  <div className="space-y-1.5 pt-1">
-                    {prod.highlights.map((hl, idx) => (
-                      <div key={idx} className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                        <span>{hl}</span>
+                <div className="space-y-3">
+                  {regions.map((reg) => (
+                    <div 
+                      key={reg.name} 
+                      className="p-4 rounded-xl flex items-start gap-3 bg-stone-50 border border-stone-200/80"
+                    >
+                      <span className="w-2.5 h-2.5 rounded-full mt-1.5 shrink-0" style={{ background: reg.color }} />
+                      <div>
+                        <h4 style={{ fontFamily: "var(--font-serif)", fontSize: "17px", fontWeight: 600, color: "#111827" }}>
+                          {reg.name}
+                        </h4>
+                        <p style={{ fontSize: "11.5px", color: "#6B7280", fontWeight: 300, lineHeight: 1.5, marginTop: "2px" }}>
+                          {reg.markets.join(" · ")}
+                        </p>
                       </div>
-                    ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="relative aspect-[16/10] sm:aspect-[4/5] rounded-2xl overflow-hidden shadow-xl border border-slate-200">
+                <img src={MARKET_IMAGE} alt="Wholesale Market" className="w-full h-full object-cover" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+                
+                <div 
+                  className="absolute bottom-4 left-4 p-4 rounded-xl text-white shadow-xl border border-white/20 bg-[#0d2318]/90 backdrop-blur-md"
+                >
+                  <div style={{ fontFamily: "var(--font-serif)", fontSize: "36px", fontWeight: 500, lineHeight: 1 }}>
+                    300<span style={{ color: "var(--gold)" }}>+</span>
+                  </div>
+                  <div style={{ fontSize: "9px", letterSpacing: "0.16em", textTransform: "uppercase", color: "rgba(255,255,255,0.75)", fontWeight: 600, marginTop: "2px" }}>
+                    Happy Customers (KA · TN · AP)
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ── 7. TESTIMONIALS ── */}
+        <section style={{ padding: "72px 0 96px", background: "var(--warm-bg)" }}>
+          <div className="max-w-[1400px] mx-auto px-4 sm:px-8">
+            <div className="flex items-center justify-between gap-4 mb-8">
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="h-px w-6" style={{ background: "var(--gold)" }} />
+                  <span style={{ fontSize: "9.5px", letterSpacing: "0.2em", textTransform: "uppercase", color: "var(--gold)", fontWeight: 700 }}>
+                    Client Testimonials
+                  </span>
+                </div>
+                <h2 style={{ fontFamily: "var(--font-serif)", fontSize: "clamp(28px, 5.5vw, 60px)", fontWeight: 400, color: "#0D1F15" }}>
+                  Trusted by <span style={{ fontStyle: "italic" }}>300+ Merchants</span>
+                </h2>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => goToTesti(testiIndex === 0 ? testimonials.length - 1 : testiIndex - 1)}
+                  className="w-9 h-9 border border-stone-300 flex items-center justify-center rounded-full text-slate-700 bg-white shadow-xs"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                <button
+                  onClick={() => goToTesti(testiIndex === testimonials.length - 1 ? 0 : testiIndex + 1)}
+                  className="w-9 h-9 border border-stone-300 flex items-center justify-center rounded-full text-slate-700 bg-white shadow-xs"
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            </div>
+
+            <div 
+              className="p-6 sm:p-12 rounded-2xl shadow-lg border border-[#c9a158]/30 bg-white/90 backdrop-blur-xl"
+            >
+              <blockquote style={{ fontFamily: "var(--font-serif)", fontSize: "clamp(18px, 4vw, 26px)", fontStyle: "italic", color: "#1F2937", lineHeight: 1.5, marginBottom: "24px" }}>
+                "{currentTesti.quote}"
+              </blockquote>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full flex items-center justify-center font-serif text-base font-bold shadow-xs bg-[#c9a158]/20 text-[#9A7A3E]">
+                  {currentTesti.initials}
+                </div>
+                <div>
+                  <h4 style={{ fontSize: "14px", fontWeight: 700, color: "#111827" }}>{currentTesti.name}</h4>
+                  <p style={{ fontSize: "11.5px", color: "#6B7280" }}>{currentTesti.role} · {currentTesti.company}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ── 8. MOBILE-FIRST INQUIRY FORM ── */}
+        <section id="contact" style={{ background: "var(--brand-dark)", padding: "72px 0 96px" }}>
+          <div className="max-w-[1400px] mx-auto px-4 sm:px-8">
+            <div className="grid lg:grid-cols-5 gap-10">
+              
+              <div className="lg:col-span-2 text-white">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="h-px w-6" style={{ background: "var(--gold)" }} />
+                  <span style={{ fontSize: "9.5px", letterSpacing: "0.2em", textTransform: "uppercase", color: "var(--gold)", fontWeight: 700 }}>
+                    Get a Quote
+                  </span>
+                </div>
+                <h2 style={{ fontFamily: "var(--font-serif)", fontSize: "clamp(30px, 6vw, 54px)", fontWeight: 400, lineHeight: 1.1, marginBottom: "16px" }}>
+                  Let's Build a<br />
+                  <span style={{ fontStyle: "italic", color: "var(--gold-light)" }}>Supply Partnership</span>
+                </h2>
+                <p style={{ fontSize: "13.5px", fontWeight: 300, color: "rgba(255,255,255,0.75)", lineHeight: 1.7, marginBottom: "24px" }}>
+                  Connect directly with M. Adinarayan & Tejas Canvassing for wholesale pricing on Keshar Kali, JMR, and Simha lines.
+                </p>
+
+                <div className="space-y-3">
+                  <div className="flex items-start gap-3 text-xs text-white/90 p-3.5 rounded-xl bg-white/5 border border-white/10 backdrop-blur-md">
+                    <MapPin className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                    <span className="leading-relaxed">123, 4th Main Rd, APMC Yard, Yeshwanthpur, Bengaluru 560022</span>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-white/90 p-3.5 rounded-xl bg-white/5 border border-white/10 backdrop-blur-md">
+                    <Phone className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>+91 9916416995 / +91 9342380981</span>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-white/90 p-3.5 rounded-xl bg-white/5 border border-white/10 backdrop-blur-md">
+                    <Mail className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>tejascanvassing@gmail.com</span>
                   </div>
                 </div>
               </div>
 
-              {/* Bottom Card Action */}
-              <div className="px-6 pb-6 pt-2">
+              {/* Form Panel */}
+              <div 
+                className="lg:col-span-3 p-6 sm:p-10 rounded-2xl shadow-xl border border-white/20 bg-white/5 backdrop-blur-2xl"
+              >
+                <h3 style={{ fontFamily: "var(--font-serif)", fontSize: "22px", color: "#ffffff", marginBottom: "20px" }}>
+                  Inquiry Details
+                </h3>
+
+                <form onSubmit={handleFormSubmit} className="space-y-4 text-white">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    <div>
+                      <label className="text-[9.5px] uppercase tracking-widest text-white/70 block mb-1 font-semibold">Full Name</label>
+                      <input
+                        required
+                        type="text"
+                        value={formData.name}
+                        onChange={e => setFormData({...formData, name: e.target.value})}
+                        placeholder="John Doe"
+                        className="w-full px-3.5 py-3 rounded-xl bg-white/10 border border-white/20 text-white text-xs outline-none focus:border-amber-400 backdrop-blur-md transition-all"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[9.5px] uppercase tracking-widest text-white/70 block mb-1 font-semibold">Company Name</label>
+                      <input
+                        required
+                        type="text"
+                        value={formData.company}
+                        onChange={e => setFormData({...formData, company: e.target.value})}
+                        placeholder="Global Foods Ltd."
+                        className="w-full px-3.5 py-3 rounded-xl bg-white/10 border border-white/20 text-white text-xs outline-none focus:border-amber-400 backdrop-blur-md transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    <div>
+                      <label className="text-[9.5px] uppercase tracking-widest text-white/70 block mb-1 font-semibold">Email Address</label>
+                      <input
+                        required
+                        type="email"
+                        value={formData.email}
+                        onChange={e => setFormData({...formData, email: e.target.value})}
+                        placeholder="john@example.com"
+                        className="w-full px-3.5 py-3 rounded-xl bg-white/10 border border-white/20 text-white text-xs outline-none focus:border-amber-400 backdrop-blur-md transition-all"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[9.5px] uppercase tracking-widest text-white/70 block mb-1 font-semibold">Phone / WhatsApp</label>
+                      <input
+                        required
+                        type="tel"
+                        value={formData.phone}
+                        onChange={e => setFormData({...formData, phone: e.target.value})}
+                        placeholder="+91 98450 XXXXX"
+                        className="w-full px-3.5 py-3 rounded-xl bg-white/10 border border-white/20 text-white text-xs outline-none focus:border-amber-400 backdrop-blur-md transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    <div>
+                      <label className="text-[9.5px] uppercase tracking-widest text-white/70 block mb-1 font-semibold">Brand / Variety</label>
+                      <select
+                        value={formData.riceType}
+                        onChange={e => setFormData({...formData, riceType: e.target.value})}
+                        className="w-full px-3.5 py-3 rounded-xl bg-[#0d2318] border border-white/20 text-white text-xs outline-none focus:border-amber-400 backdrop-blur-md transition-all"
+                      >
+                        <option value="Keshar Kali (Famous Kollam)">Keshar Kali (Famous Kollam Raw)</option>
+                        <option value="JMR (Famous HMT & Raw)">JMR (Famous HMT & Raw)</option>
+                        <option value="Simha Urad Dal (Famous Pulses)">Simha Urad Dal (Famous Pulses)</option>
+                        <option value="Mahendra Cow (Kollam)">Mahendra Cow (Kollam)</option>
+                        <option value="Basmati 1121">Basmati 1121</option>
+                        <option value="Sona Masoori">Sona Masoori</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[9.5px] uppercase tracking-widest text-white/70 block mb-1 font-semibold">Quantity (MT)</label>
+                      <input
+                        type="number"
+                        value={formData.quantity}
+                        onChange={e => setFormData({...formData, quantity: e.target.value})}
+                        placeholder="e.g. 50"
+                        className="w-full px-3.5 py-3 rounded-xl bg-white/10 border border-white/20 text-white text-xs outline-none focus:border-amber-400 backdrop-blur-md transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[9.5px] uppercase tracking-widest text-white/70 block mb-1 font-semibold">Additional Requirements</label>
+                    <textarea
+                      rows={3}
+                      value={formData.message}
+                      onChange={e => setFormData({...formData, message: e.target.value})}
+                      placeholder="Describe packaging preferences (25kg/50kg), delivery location..."
+                      className="w-full px-3.5 py-3 rounded-xl bg-white/10 border border-white/20 text-white text-xs outline-none focus:border-amber-400 resize-none transition-all"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="w-full py-4 bg-gradient-to-r from-amber-400 to-amber-300 text-[#0d2318] font-extrabold text-xs uppercase tracking-widest rounded-full shadow-xl flex items-center justify-center gap-2 cursor-pointer mt-4 active:scale-95"
+                  >
+                    <Send size={14} />
+                    <span>Send Inquiry to WhatsApp</span>
+                  </button>
+                </form>
+              </div>
+
+            </div>
+          </div>
+        </section>
+
+      </main>
+
+      {/* ── EXPANDED PRODUCT DETAILS MODAL (APPLE GLASS) ── */}
+      <AnimatePresence>
+        {selectedProduct && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSelectedProduct(null)}
+              className="fixed inset-0 bg-black/75 backdrop-blur-md"
+            />
+
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative bg-[#0d2318] text-white rounded-3xl overflow-hidden shadow-2xl border border-amber-400/40 max-w-2xl w-full z-10 max-h-[90vh] flex flex-col my-auto"
+            >
+              {/* Modal Header Bar */}
+              <div className="relative h-48 sm:h-56 shrink-0 overflow-hidden">
+                <img src={selectedProduct.image} alt={selectedProduct.name} className="w-full h-full object-cover" />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#0d2318] via-[#0d2318]/50 to-transparent" />
+                
+                <button
+                  onClick={() => setSelectedProduct(null)}
+                  className="absolute top-4 right-4 p-2 rounded-full bg-black/60 text-white/80 hover:text-white backdrop-blur-md border border-white/20 cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+
+                <div className="absolute bottom-4 left-6 right-6 flex items-end justify-between">
+                  <div>
+                    <span className="text-[9px] uppercase tracking-widest text-amber-300 font-extrabold block mb-1">
+                      {selectedProduct.type}
+                    </span>
+                    <h3 style={{ fontFamily: "var(--font-serif)", fontSize: "28px" }} className="font-semibold text-white leading-none">
+                      {selectedProduct.name}
+                    </h3>
+                  </div>
+                  {selectedProduct.isFamous && (
+                    <span className="px-3 py-1 bg-amber-400 text-emerald-950 font-black text-[9px] uppercase tracking-wider rounded-full flex items-center gap-1 shadow-md">
+                      <Star className="w-3 h-3 fill-emerald-950" />
+                      <span>Famous Brand</span>
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-6 sm:p-8 space-y-6 overflow-y-auto flex-grow">
+                {/* 1. History & Heritage */}
+                {selectedProduct.history && (
+                  <div className="space-y-1.5 p-4 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md">
+                    <div className="flex items-center gap-2 text-amber-400 text-xs font-bold uppercase tracking-wider">
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>History & Brand Heritage</span>
+                    </div>
+                    <p className="text-xs text-white/80 leading-relaxed font-light">
+                      {selectedProduct.history}
+                    </p>
+                  </div>
+                )}
+
+                {/* 2. Sourcing Mill Location */}
+                {selectedProduct.sourcingLocation && (
+                  <div className="space-y-1.5 p-4 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md">
+                    <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold uppercase tracking-wider">
+                      <MapPin className="w-3.5 h-3.5" />
+                      <span>Sourcing Mill Location & Origin</span>
+                    </div>
+                    <p className="text-xs text-white/80 leading-relaxed font-light">
+                      {selectedProduct.sourcingLocation}
+                    </p>
+                  </div>
+                )}
+
+                {/* 3. Cooking & Grain Specs */}
+                {selectedProduct.cookingSpecs && (
+                  <div className="space-y-2 p-4 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md">
+                    <div className="flex items-center gap-2 text-sky-400 text-xs font-bold uppercase tracking-wider">
+                      <ChefHat className="w-3.5 h-3.5" />
+                      <span>Grain & Cooking Specifications</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      {selectedProduct.cookingSpecs.map((spec, idx) => (
+                        <div key={idx} className="flex items-center gap-1.5 text-[11px] text-white/85">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
+                          <span>{spec}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 4. Packaging Formats */}
+                {selectedProduct.packagingOptions && (
+                  <div className="space-y-1.5 p-4 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md">
+                    <div className="flex items-center gap-2 text-amber-300 text-xs font-bold uppercase tracking-wider">
+                      <Package className="w-3.5 h-3.5" />
+                      <span>Packaging & Dispatch Formats</span>
+                    </div>
+                    <p className="text-xs text-white/80 leading-relaxed font-light">
+                      {selectedProduct.packagingOptions}
+                    </p>
+                  </div>
+                )}
+
+                {/* Action CTA */}
                 <button
                   onClick={() => {
-                    setFormState(prev => ({ ...prev, variety: prod.name }));
+                    const brandName = selectedProduct.name;
+                    setSelectedProduct(null);
+                    setFormData(prev => ({ ...prev, riceType: brandName }));
                     const contactElem = document.getElementById('contact');
                     if (contactElem) contactElem.scrollIntoView({ behavior: 'smooth' });
                   }}
-                  className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-[#143e2e] text-slate-800 hover:text-white dark:bg-neutral-850 dark:hover:bg-emerald-900/60 dark:text-slate-200 text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                  className="w-full py-4 bg-gradient-to-r from-amber-400 to-amber-300 text-[#0d2318] font-extrabold text-xs uppercase tracking-widest rounded-full shadow-xl flex items-center justify-center gap-2 cursor-pointer active:scale-95"
                 >
-                  <span>Request Wholesale Quote</span>
-                  <ChevronRight className="w-3.5 h-3.5" />
+                  <Send size={14} />
+                  <span>Inquire Wholesale Quote for {selectedProduct.name}</span>
                 </button>
               </div>
-            </div>
-          ))}
 
-          {/* Custom Sourcing Card */}
-          <div className="bg-[#143e2e] text-white rounded-3xl p-6 sm:p-8 flex flex-col justify-between shadow-md">
-            <div className="space-y-3">
-              <span className="px-2.5 py-1 rounded-full bg-white/10 text-emerald-300 text-[10px] font-bold uppercase tracking-widest inline-block">
-                Tailored Procurement
-              </span>
-              <h3 className="font-serif text-3xl font-normal leading-tight">
-                Looking for a Specific Grain Variety?
-              </h3>
-              <p className="text-xs sm:text-[13px] text-white/80 leading-relaxed font-normal">
-                "We also source any type of rice according to customer needs." Whether you require specific moisture grading, custom packaging, or regional specialties (BPT, RNR, IR-64, or Brown Rice), our network delivers.
-              </p>
-            </div>
-            
-            <div className="pt-6">
-              <a
-                href="#contact"
-                className="w-full py-3 rounded-xl bg-white text-[#143e2e] hover:bg-slate-100 text-xs font-bold transition-all text-center block"
-              >
-                Specify Custom Requirements
-              </a>
-            </div>
+            </motion.div>
           </div>
-        </div>
+        )}
+      </AnimatePresence>
 
-      </section>
-
-      {/* ========================================================================= */}
-      {/* 4. PROCESS & SUPPLY CHAIN (`#process`)                                     */}
-      {/* ========================================================================= */}
-      <section id="process" className="py-16 sm:py-24 bg-white dark:bg-[#07130e] border-y border-slate-200/80 dark:border-emerald-950/40 px-4 sm:px-8">
-        <div className="max-w-7xl mx-auto space-y-12">
-          
-          <div className="max-w-3xl space-y-3">
-            <span className="text-[10px] font-extrabold uppercase tracking-widest text-emerald-700 dark:text-emerald-400">
-              End-to-End Supply Chain
-            </span>
-            <h2 className="font-serif text-3xl sm:text-5xl font-normal tracking-tight text-slate-900 dark:text-white leading-tight">
-              We maintain complete control over the supply chain.
-            </h2>
-            <p className="text-sm sm:text-base text-slate-600 dark:text-slate-300 leading-relaxed">
-              From procurement agreements with farmers to delivery at wholesale markets and distributors across India. This end-to-end visibility ensures consistent quality and reliable supply.
-            </p>
-          </div>
-
-          {/* 4-Step Process Timeline */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            {[
-              {
-                step: '01',
-                title: 'Direct Farm Procurement',
-                desc: 'Direct procurement from contracted farms across the finest rice-growing belts — Punjab, Andhra Pradesh, and Tamil Nadu. Eliminates intermediaries for fair, traceable grain.',
-                icon: ShieldCheck
-              },
-              {
-                step: '02',
-                title: 'State-of-the-Art Satake Milling',
-                desc: 'Satake milling and optical color sorting preserve grain integrity, natural aroma, and whiteness uniformity without breakage.',
-                icon: Building2
-              },
-              {
-                step: '03',
-                title: 'Rigorous Lab Quality Testing',
-                desc: 'Every batch is tested across 7 checkpoints: moisture content, purity percentage, grain length elongation, broken grain ratio, and food safety compliance.',
-                icon: FileCheck
-              },
-              {
-                step: '04',
-                title: 'Pan-India Wholesale Logistics',
-                desc: 'Pan-India logistics with reliable transport partners — ensuring on-time delivery to wholesale markets, mandis, and distributors across 20+ states.',
-                icon: Truck
-              }
-            ].map((p, idx) => (
-              <div
-                key={idx}
-                className="p-6 rounded-2xl bg-[#fafaf9] dark:bg-[#0a1811] border border-slate-200/80 dark:border-emerald-950/40 space-y-4"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-serif text-3xl text-emerald-800 dark:text-emerald-400 font-normal">
-                    {p.step}
-                  </span>
-                  <p.icon className="w-5 h-5 text-slate-400 dark:text-slate-500" />
-                </div>
-                <h3 className="font-serif text-xl font-normal text-slate-900 dark:text-white">
-                  {p.title}
-                </h3>
-                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                  {p.desc}
-                </p>
-              </div>
-            ))}
-          </div>
-
-        </div>
-      </section>
-
-      {/* ========================================================================= */}
-      {/* 5. WHY PARTNER WITH US (`#why-us`)                                         */}
-      {/* ========================================================================= */}
-      <section id="why-us" className="py-16 sm:py-24 px-4 sm:px-8 max-w-7xl mx-auto space-y-12">
-        <div className="text-center max-w-3xl mx-auto space-y-3">
-          <span className="text-[10px] font-extrabold uppercase tracking-widest text-emerald-700 dark:text-emerald-400">
-            Why Partner With Us
-          </span>
-          <h2 className="font-serif text-3xl sm:text-5xl font-normal tracking-tight text-slate-900 dark:text-white">
-            Built on Transparency, Reliability, and Scale.
-          </h2>
-          <p className="text-sm sm:text-base text-slate-600 dark:text-slate-300">
-            We don't just supply rice — we build long-term supply partnerships built on transparency, reliability, and shared commercial success across India.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {[
-            {
-              title: '200+ Contracted Farms',
-              desc: 'We operate direct procurement agreements with 200+ certified farms across India, eliminating middlemen and ensuring fair, traceable supply.',
-              icon: '🌾'
-            },
-            {
-              title: '7-Step Quality Checkpoints',
-              desc: 'Our 7-step quality assurance protocol guarantees identical standards across every delivery, batch after batch, every season.',
-              icon: '🔬'
-            },
-            {
-              title: '50,000 MT Annual Capacity',
-              desc: '50,000 MT annual capacity with efficient logistics and just-in-time delivery — built for retailers, distributors and wholesale buyers across India.',
-              icon: '📦'
-            },
-            {
-              title: 'Margin-Protecting Pricing',
-              desc: 'Farm-to-market optimization allows us to price premium rice at rates that protect your margins and keep your customers happy.',
-              icon: '💰'
-            },
-            {
-              title: 'FSSAI & ISO Certified',
-              desc: 'FSSAI, ISO 22000, and HACCP compliance across all products. Every single grain meets India’s highest food safety standards.',
-              icon: '🏆'
-            },
-            {
-              title: 'Dedicated Logistics Coordinators',
-              desc: 'Dedicated logistics coordinators ensure every order arrives on schedule with full documentation and batch quality certificates.',
-              icon: '⏱️'
-            }
-          ].map((item, idx) => (
-            <div
-              key={idx}
-              className="p-6 rounded-3xl bg-white dark:bg-[#0a1811] border border-slate-200/80 dark:border-emerald-950/40 shadow-xs space-y-3"
-            >
-              <span className="text-2xl block">{item.icon}</span>
-              <h3 className="font-serif text-xl font-normal text-slate-900 dark:text-white">
-                {item.title}
-              </h3>
-              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed font-normal">
-                {item.desc}
-              </p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* ========================================================================= */}
-      {/* 6. DOMESTIC REACH & DISTRIBUTION NETWORK (`#domestic-reach`)               */}
-      {/* ========================================================================= */}
-      <section id="domestic-reach" className="py-16 sm:py-24 bg-slate-900 text-white px-4 sm:px-8">
-        <div className="max-w-7xl mx-auto space-y-12">
-          
-          <div className="max-w-3xl space-y-3">
-            <span className="text-[10px] font-extrabold uppercase tracking-widest text-emerald-400">
-              Pan-India Distribution
-            </span>
-            <h2 className="font-serif text-3xl sm:text-5xl font-normal tracking-tight leading-tight">
-              Trusted by 150+ Partners in 20+ States
-            </h2>
-            <p className="text-sm sm:text-base text-slate-300 leading-relaxed font-light">
-              With a dedicated distribution network, strong relationships with mandis and wholesale markets, and reliable logistics, we deliver consistently to every major rice market across India.
-            </p>
-          </div>
-
-          {/* Regional Hub Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {[
-              {
-                region: 'Karnataka (Headquarters)',
-                hub: 'APMC Yard, Yeshwanthpur',
-                coverage: 'Bengaluru, Mysuru, Hubballi, Belagavi, Davanagere, Shimoga',
-                notes: 'Primary canvassing headquarters and direct APMC yard distribution'
-              },
-              {
-                region: 'Maharashtra & West',
-                hub: 'Vashi APMC & Pune Mandi',
-                coverage: 'Mumbai, Pune, Nagpur, Nashik, Kolhapur',
-                notes: 'Dedicated Basmati & Sona Masoori retail chain supply'
-              },
-              {
-                region: 'Tamil Nadu & South',
-                hub: 'Chennai & Madurai APMC',
-                coverage: 'Chennai, Coimbatore, Madurai, Tiruchirappalli, Salem',
-                notes: 'Kollam raw, steam, and Ponni rice wholesale fulfillment'
-              },
-              {
-                region: 'Delhi NCR & North',
-                hub: 'Delhi Wholesale Mandis',
-                coverage: 'New Delhi, Noida, Gurugram, Jaipur, Lucknow',
-                notes: 'Direct Punjab & Haryana farm Basmati 1121 and 1509 allocations'
-              },
-              {
-                region: 'Andhra Pradesh & Telangana',
-                hub: 'Hyderabad & Miryalaguda',
-                coverage: 'Hyderabad, Warangal, Vijayawada, Guntur, Rajahmundry',
-                notes: 'Premium Sona Masoori steam and raw paddy milling centers'
-              },
-              {
-                region: 'Gujarat & Rajasthan',
-                hub: 'Ahmedabad & Surat Mandis',
-                coverage: 'Ahmedabad, Surat, Vadodara, Rajkot, Jaipur',
-                notes: 'High-volume commercial dining and catering supply partnerships'
-              }
-            ].map((market, idx) => (
-              <div
-                key={idx}
-                className="p-6 rounded-2xl bg-slate-800/80 border border-slate-700/80 space-y-2.5"
-              >
-                <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold">
-                  <MapPin className="w-3.5 h-3.5 shrink-0" />
-                  <span>{market.region}</span>
-                </div>
-                <h4 className="font-serif text-lg font-normal text-white">
-                  {market.hub}
-                </h4>
-                <p className="text-xs text-slate-300 leading-relaxed font-light">
-                  <strong className="text-white font-semibold">Key Markets:</strong> {market.coverage}
-                </p>
-                <p className="text-[11px] text-slate-400 italic pt-1">
-                  {market.notes}
-                </p>
-              </div>
-            ))}
-          </div>
-
-          {/* Testimonial Quote */}
-          <div className="p-8 rounded-3xl bg-emerald-950/40 border border-emerald-800/40 max-w-4xl mx-auto space-y-4 text-center">
-            <div className="flex justify-center text-amber-400 gap-1">
-              {[...Array(5)].map((_, i) => (
-                <Star key={i} className="w-4 h-4 fill-amber-400" />
-              ))}
-            </div>
-            <blockquote className="font-serif text-xl sm:text-2xl font-normal leading-relaxed text-slate-200">
-              "We've been sourcing Basmati from Tejas Canvassing for over four years. Their consistency in quality and delivery reliability is genuinely unmatched in the Indian wholesale market."
-            </blockquote>
-            <div className="text-xs text-emerald-300 font-semibold">
-              Procurement Manager · Delhi Wholesale Traders, New Delhi
-            </div>
-          </div>
-
-        </div>
-      </section>
-
-      {/* ========================================================================= */}
-      {/* 7. CONTACT & INQUIRY FORM (`#contact`)                                    */}
-      {/* ========================================================================= */}
-      <section id="contact" className="py-16 sm:py-24 px-4 sm:px-8 max-w-7xl mx-auto space-y-12">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-start">
-          
-          {/* Left Info Column */}
-          <div className="lg:col-span-5 space-y-6">
-            <span className="text-[10px] font-extrabold uppercase tracking-widest text-emerald-700 dark:text-emerald-400">
-              Start a Partnership
-            </span>
-            <h2 className="font-serif text-3xl sm:text-5xl font-normal tracking-tight text-slate-900 dark:text-white leading-tight">
-              Get in Touch with Tejas Canvassing
-            </h2>
-            <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed font-normal">
-              Share your requirements and our team will respond with pricing, availability, and delivery options within one business day.
-            </p>
-
-            {/* Direct Contact Details */}
-            <div className="space-y-4 pt-2">
-              <div className="flex items-start gap-3 p-4 rounded-2xl bg-white dark:bg-[#0a1811] border border-slate-200/80 dark:border-emerald-950/40">
-                <MapPin className="w-5 h-5 text-emerald-700 dark:text-emerald-400 shrink-0 mt-0.5" />
-                <div>
-                  <span className="text-xs font-bold text-slate-900 dark:text-white block">Headquarters</span>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                    APMC Yard, Yeshwanthpur,<br />
-                    Bengaluru, Karnataka 560022
-                  </p>
-                  <a 
-                    href="https://maps.app.goo.gl/TZcms2SCaaN6GC2SA" 
-                    target="_blank" 
-                    rel="noreferrer"
-                    className="text-[11px] text-emerald-700 dark:text-emerald-400 font-semibold hover:underline inline-flex items-center gap-1 mt-1"
-                  >
-                    <span>Open in Google Maps</span>
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3 p-4 rounded-2xl bg-white dark:bg-[#0a1811] border border-slate-200/80 dark:border-emerald-950/40">
-                <Phone className="w-5 h-5 text-emerald-700 dark:text-emerald-400 shrink-0 mt-0.5" />
-                <div>
-                  <span className="text-xs font-bold text-slate-900 dark:text-white block">Phone & WhatsApp</span>
-                  <p className="text-xs text-slate-600 dark:text-slate-400">
-                    +91 9916416995 / +91 9342380981
-                  </p>
-                  <a 
-                    href="https://wa.me/919916416995" 
-                    target="_blank" 
-                    rel="noreferrer"
-                    className="text-[11px] text-emerald-700 dark:text-emerald-400 font-semibold hover:underline inline-flex items-center gap-1 mt-1"
-                  >
-                    <span>Chat on WhatsApp Business</span>
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3 p-4 rounded-2xl bg-white dark:bg-[#0a1811] border border-slate-200/80 dark:border-emerald-950/40">
-                <Mail className="w-5 h-5 text-emerald-700 dark:text-emerald-400 shrink-0 mt-0.5" />
-                <div>
-                  <span className="text-xs font-bold text-slate-900 dark:text-white block">Direct Email</span>
-                  <a 
-                    href="mailto:tejascanvassing@gmail.com" 
-                    className="text-xs text-slate-600 dark:text-slate-400 hover:text-emerald-700 dark:hover:text-emerald-400"
-                  >
-                    tejascanvassing@gmail.com
-                  </a>
-                  <span className="text-[10px] text-slate-400 block mt-0.5">Response within 24 business hours</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Right Inquiry Form */}
-          <div className="lg:col-span-7 bg-white dark:bg-[#0a1811] p-6 sm:p-8 rounded-3xl border border-slate-200/90 dark:border-emerald-950/50 shadow-md">
-            <h3 className="font-serif text-2xl font-normal text-slate-900 dark:text-white mb-2">
-              Wholesale Supply Inquiry
-            </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mb-6 font-normal">
-              Fill in your specifications below or submit directly to our WhatsApp procurement desk.
-            </p>
-
-            {formSubmitted ? (
-              <div className="p-6 rounded-2xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-900 text-center space-y-3">
-                <CheckCircle2 className="w-10 h-10 text-emerald-600 mx-auto" />
-                <h4 className="font-serif text-xl text-emerald-900 dark:text-emerald-200">
-                  Enquiry Transmitted Successfully
-                </h4>
-                <p className="text-xs text-emerald-800 dark:text-emerald-300">
-                  Our trading desk at APMC Yeshwanthpur will verify market rates and contact you shortly.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setFormSubmitted(false)}
-                  className="px-4 py-2 rounded-xl bg-emerald-700 text-white text-xs font-semibold hover:bg-emerald-800 cursor-pointer"
-                >
-                  Send Another Enquiry
-                </button>
-              </div>
-            ) : (
-              <form onSubmit={handleWhatsAppSend} className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                      Your Name / Trading Firm
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={formState.name}
-                      onChange={e => setFormState({ ...formState, name: e.target.value })}
-                      placeholder="e.g. V.K Foods, Ramesh Trading"
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#fafaf9] dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-[#143e2e]/20"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                      Phone Number (WhatsApp)
-                    </label>
-                    <input
-                      type="tel"
-                      required
-                      value={formState.phone}
-                      onChange={e => setFormState({ ...formState, phone: e.target.value })}
-                      placeholder="+91 98450 XXXXX"
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#fafaf9] dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-[#143e2e]/20"
-                    />
+      {/* ── Footer ── */}
+      <footer style={{ background: "var(--dark-bg)", color: "#9CA3AF" }}>
+        <div style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", padding: "48px 0" }}>
+          <div className="max-w-[1400px] mx-auto px-4 sm:px-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8">
+              <div className="lg:col-span-2">
+                <div className="flex items-center gap-3 mb-4">
+                  <img src="/logo.png" alt="Tejas Canvassing" className="w-10 h-10 object-contain rounded-xl p-1 border border-amber-400/40 bg-white/10 shadow-md" />
+                  <div>
+                    <span className="text-white tracking-widest block" style={{ fontFamily: "var(--font-serif)", fontSize: "15px", fontWeight: 600 }}>
+                      TEJAS CANVASSING
+                    </span>
+                    <span className="text-[9.5px] text-amber-400 font-semibold tracking-wider block">
+                      Owner: M. Adinarayan · Est. 2008
+                    </span>
                   </div>
                 </div>
+                <p style={{ fontSize: "13px", color: "#6B7280", maxWidth: "340px", lineHeight: 1.7 }}>
+                  Serving over 300 happy customers across Karnataka, Tamil Nadu, and Andhra Pradesh with famous brands like Keshar Kali, JMR, and Simha.
+                </p>
+              </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                      Product / Variety
-                    </label>
-                    <select
-                      value={formState.variety}
-                      onChange={e => setFormState({ ...formState, variety: e.target.value })}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#fafaf9] dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-[#143e2e]/20"
-                    >
-                      <option value="Basmati 1121 & 1509">Basmati 1121 & 1509</option>
-                      <option value="Kollam Raw Rice">Kollam Raw Rice</option>
-                      <option value="Kollam Raw & Steam">Kollam Raw & Steam</option>
-                      <option value="Sona Masoori Steam & KNM">Sona Masoori Steam & KNM</option>
-                      <option value="HMT Steam & Raw">HMT Steam & Raw</option>
-                      <option value="Aromatic Scented Rice">Aromatic Scented Rice</option>
-                      <option value="Sortex Urad Dal">Sortex Urad Dal</option>
-                      <option value="Custom Variety Sourcing">Custom Variety Sourcing</option>
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                      Estimated Volume (Metric Tons)
-                    </label>
-                    <select
-                      value={formState.volume}
-                      onChange={e => setFormState({ ...formState, volume: e.target.value })}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#fafaf9] dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-[#143e2e]/20"
-                    >
-                      <option value="1 to 5 MT (Sample Batch)">1 to 5 MT (Sample Batch)</option>
-                      <option value="10 to 25 MT (1 Truckload)">10 to 25 MT (1 Full Truckload)</option>
-                      <option value="50 to 100 MT">50 to 100 MT</option>
-                      <option value="100+ MT (Bulk Contract)">100+ MT (Bulk Contract)</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                    Destination City / Mandi Port
-                  </label>
-                  <input
-                    type="text"
-                    value={formState.city}
-                    onChange={e => setFormState({ ...formState, city: e.target.value })}
-                    placeholder="e.g. Yeshwanthpur APMC, Vashi APMC, Chennai Mandi"
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#fafaf9] dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-[#143e2e]/20"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                    Additional Specifications or Packing Preferences
-                  </label>
-                  <textarea
-                    rows={3}
-                    value={formState.notes}
-                    onChange={e => setFormState({ ...formState, notes: e.target.value })}
-                    placeholder="Describe your packaging preferences (25kg/50kg non-woven or jute), delivery timeline, or specific moisture/broken percentage requirements..."
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#fafaf9] dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-[#143e2e]/20 resize-none"
-                  />
-                </div>
-
-                <div className="pt-2 flex flex-col sm:flex-row gap-3">
-                  <button
-                    type="submit"
-                    className="flex-1 py-3 px-6 rounded-xl bg-[#25D366] hover:bg-[#20ba59] text-white text-xs sm:text-sm font-bold shadow-xs transition-all cursor-pointer flex items-center justify-center gap-2"
-                  >
-                    <MessageSquare className="w-4 h-4" />
-                    <span>Transmit Enquiry to WhatsApp</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setFormSubmitted(true);
-                    }}
-                    className="py-3 px-6 rounded-xl bg-[#143e2e] hover:bg-[#0f2e22] text-white text-xs sm:text-sm font-bold shadow-xs transition-all cursor-pointer flex items-center justify-center gap-2"
-                  >
-                    <span>Submit Form</span>
-                  </button>
-                </div>
-              </form>
-            )}
-
-          </div>
-
-        </div>
-      </section>
-
-      {/* ========================================================================= */}
-      {/* 8. FOOTER                                                                 */}
-      {/* ========================================================================= */}
-      <footer className="border-t border-slate-200 dark:border-emerald-950/60 bg-white dark:bg-[#030906] py-12 px-4 sm:px-8">
-        <div className="max-w-7xl mx-auto space-y-8">
-          
-          <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-            
-            <div className="flex items-center gap-2.5">
-              <TejasBotanicalLogo className="w-8 h-8 text-[#143e2e] dark:text-emerald-400" />
               <div>
-                <span className="font-serif text-xl font-normal text-slate-900 dark:text-white">
-                  Tejas Canvassing
-                </span>
-                <span className="text-[9px] tracking-[0.25em] text-slate-400 uppercase font-semibold block">
-                  Wholesale Rice Trading
-                </span>
+                <h5 className="text-white mb-3 uppercase tracking-widest text-[9.5px] font-semibold">Famous Brands</h5>
+                <ul className="space-y-1.5 text-xs text-gray-400">
+                  <li><a href="#products" className="hover:text-white text-amber-300">⭐ Keshar Kali Kollam</a></li>
+                  <li><a href="#products" className="hover:text-white text-amber-300">⭐ JMR Steam & Raw</a></li>
+                  <li><a href="#products" className="hover:text-white text-amber-300">⭐ Simha Urad Dal</a></li>
+                </ul>
+              </div>
+
+              <div>
+                <h5 className="text-white mb-3 uppercase tracking-widest text-[9.5px] font-semibold">Wholesale Portal</h5>
+                <ul className="space-y-1.5 text-xs text-gray-400">
+                  <li><button onClick={() => navigate('/login')} className="hover:text-white text-amber-300 text-left cursor-pointer font-bold">🛒 Merchant Log In & Webstore</button></li>
+                  <li><button onClick={() => navigate('/admintejas1679')} className="hover:text-white text-left cursor-pointer">Admin Access</button></li>
+                  <li><button onClick={() => navigate('/employee1977')} className="hover:text-white text-left cursor-pointer">Employee Portal</button></li>
+                </ul>
+              </div>
+
+              <div>
+                <h5 className="text-white mb-3 uppercase tracking-widest text-[9.5px] font-semibold">Contact APMC Desk</h5>
+                <p className="text-xs text-gray-400 leading-relaxed">
+                  123, 4th Main Rd, APMC Yard,<br />
+                  Yeshwanthpur, Bengaluru 560022<br />
+                  Ph: +91 9916416995
+                </p>
               </div>
             </div>
-
-            <div className="flex flex-wrap items-center justify-center gap-6 text-xs text-slate-500 dark:text-slate-400">
-              <a href="#products" className="hover:text-[#143e2e] dark:hover:text-emerald-400">Products</a>
-              <a href="#process" className="hover:text-[#143e2e] dark:hover:text-emerald-400">Supply Chain</a>
-              <a href="#why-us" className="hover:text-[#143e2e] dark:hover:text-emerald-400">Why Us</a>
-              <a href="#domestic-reach" className="hover:text-[#143e2e] dark:hover:text-emerald-400">Reach</a>
-              <a href="#contact" className="hover:text-[#143e2e] dark:hover:text-emerald-400">Contact</a>
-              <span className="text-slate-300 dark:text-neutral-800">|</span>
-              <button onClick={() => navigate('/store')} className="hover:underline text-[#143e2e] dark:text-emerald-400 font-semibold cursor-pointer">
-                Store
-              </button>
-              <button onClick={() => navigate('/login')} className="hover:underline text-[#143e2e] dark:text-emerald-400 font-semibold cursor-pointer">
-                Merchant Login
-              </button>
-            </div>
-
           </div>
+        </div>
 
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-slate-100 dark:border-neutral-900 pt-6 text-[11px] text-slate-400">
-            <p>
-              © 2025 Tejas Canvassing Pvt. Ltd. All rights reserved.
-            </p>
-            <div className="flex items-center gap-3">
-              <span>FSSAI Certified</span>
-              <span>•</span>
-              <span>ISO 22000 Compliant</span>
-              <span>•</span>
-              <span>APMC Yard, Yeshwanthpur</span>
-            </div>
+        <div className="max-w-[1400px] mx-auto px-4 sm:px-8 py-5 flex flex-col sm:flex-row justify-between items-center text-[11px] text-gray-500 gap-3 text-center sm:text-left">
+          <p>© 2025 Tejas Canvassing Pvt. Ltd. Founded by M. Adinarayan (2008).</p>
+          <div className="flex items-center gap-3 text-gray-400">
+            <span>300+ Happy Customers</span>
+            <span>•</span>
+            <span>Karnataka · TN · AP</span>
           </div>
-
         </div>
       </footer>
 

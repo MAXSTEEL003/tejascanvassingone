@@ -23,7 +23,8 @@ import {
   BookOpen,
   Clock,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Download
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -128,11 +129,23 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
         ))}
       </nav>
 
-      <div className="px-3 mt-auto pt-4 border-t border-outline-variant">
+      <div className="px-3 mt-auto pt-4 border-t border-outline-variant space-y-1">
+        <button
+          onClick={() => window.dispatchEvent(new Event('open-pwa-install-modal'))}
+          title={isCollapsed ? "Download App" : undefined}
+          className={cn(
+            "w-full flex items-center text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-xl transition-all cursor-pointer font-bold",
+            isCollapsed ? "justify-center px-0 py-3" : "gap-3 px-3.5 py-2.5"
+          )}
+        >
+          <Download className="w-5 h-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+          {!isCollapsed && <span className="text-xs font-bold whitespace-nowrap">Download App</span>}
+        </button>
+
         <button 
           title={isCollapsed ? "Support" : undefined}
           className={cn(
-            "w-full flex items-center text-secondary hover:bg-surface-container rounded-lg transition-all",
+            "w-full flex items-center text-secondary hover:bg-surface-container rounded-lg transition-all cursor-pointer",
             isCollapsed ? "justify-center px-0 py-3" : "gap-3 px-4 py-3"
           )}
         >

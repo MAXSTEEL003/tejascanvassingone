@@ -156,11 +156,11 @@ function RootRedirect() {
 export default function App() {
   useEffect(() => {
     const saved = getStorageItem('theme');
-    if (!saved || saved === 'dark') {
+    if (saved === 'dark') {
       document.documentElement.classList.add('dark');
-      setStorageItem('theme', 'dark');
     } else {
       document.documentElement.classList.remove('dark');
+      setStorageItem('theme', 'light');
     }
 
     // Automatic local cache purge for production deployment readiness
@@ -204,11 +204,12 @@ export default function App() {
       <CartProvider>
         <BrowserRouter>
           <Routes>
-            <Route path="/login" element={<LoginView defaultStep="login" />} />
+            <Route path="/login" element={<LoginView defaultStep="login" defaultTab="signin" />} />
+            <Route path="/signup" element={<LoginView defaultStep="login" defaultTab="signup" />} />
             <Route path="/admintejas1679" element={<LoginView defaultStep="login" secretRole="admin" />} />
             <Route path="/employee1977" element={<LoginView defaultStep="login" secretRole="employee" />} />
             <Route path="/intro" element={<LoginView defaultStep="splash" />} />
-            <Route path="/onboarding" element={<LoginView defaultStep="onboarding" />} />
+            <Route path="/onboarding" element={<LoginView defaultStep="login" defaultTab="signup" />} />
             <Route path="/about" element={<AboutView />} />
             
             <Route element={<PrivateRoute><MainLayout /></PrivateRoute>}>

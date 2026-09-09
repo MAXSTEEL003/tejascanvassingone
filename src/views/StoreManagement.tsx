@@ -1248,6 +1248,61 @@ export default function StoreManagement() {
     );
   }
 
+  if (loading) {
+    return (
+      <div className="min-h-[85vh] w-full flex items-center justify-center p-6 relative overflow-hidden font-sans select-none" style={{ background: "radial-gradient(circle at 50% 30%, #0d2318 0%, #06100c 100%)" }}>
+        {/* Ambient Glowing Glass Orbs */}
+        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-amber-500/15 rounded-full blur-[100px] pointer-events-none" />
+        <div className="absolute bottom-1/3 left-1/2 -translate-x-1/2 translate-y-1/2 w-96 h-96 bg-emerald-500/20 rounded-full blur-[100px] pointer-events-none" />
+        
+        {/* Apple Glass Frosted Container */}
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.94 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+          className="relative z-10 max-w-sm w-full bg-white/10 dark:bg-emerald-950/40 border border-white/25 dark:border-amber-400/30 p-8 rounded-3xl shadow-[0_16px_48px_0_rgba(0,0,0,0.4)] backdrop-blur-2xl text-center space-y-6"
+        >
+          {/* Logo with Glowing Aura */}
+          <div className="relative mx-auto w-20 h-20 flex items-center justify-center">
+            <div className="absolute inset-0 rounded-2xl bg-gradient-to-tr from-amber-400 to-emerald-500 animate-spin blur-md opacity-60" style={{ animationDuration: '4s' }} />
+            <div className="relative w-16 h-16 rounded-2xl bg-[#0d2318] border border-amber-400/50 p-2 shadow-inner flex items-center justify-center">
+              <img src="/logo.png" alt="Tejas Canvassing Logo" className="w-12 h-12 object-contain rounded-xl" />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <h2 className="text-xl font-bold tracking-wider text-white font-serif uppercase">
+              TEJAS CANVASSING
+            </h2>
+            <p className="text-[10px] font-bold tracking-[0.2em] uppercase text-amber-300">
+              Est. 2008 · M. Adinarayan
+            </p>
+          </div>
+
+          {/* Loading Bar & Pulse Indicator */}
+          <div className="space-y-3.5 pt-2">
+            <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden p-0.5 border border-white/15">
+              <motion.div 
+                className="h-full bg-gradient-to-r from-amber-400 via-emerald-400 to-amber-400 rounded-full"
+                initial={{ x: '-100%' }}
+                animate={{ x: '100%' }}
+                transition={{ repeat: Infinity, duration: 1.4, ease: 'easeInOut' }}
+              />
+            </div>
+            <div className="flex items-center justify-center gap-2 text-xs text-white/80 font-medium tracking-wide">
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+              <span>Syncing APMC Store Catalog & Live Rates...</span>
+            </div>
+          </div>
+
+          <div className="text-[10px] text-white/50 tracking-widest uppercase border-t border-white/10 pt-3">
+            Keshar Kali · JMR · Simha Flagship Lines
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
   const activeDeliveryLocation = deliveryLocations.find(l => l.id === selectedLocationId) || deliveryLocations[0];
 
   return (
