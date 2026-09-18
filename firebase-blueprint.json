@@ -1,0 +1,180 @@
+{
+  "entities": {
+    "ArrivalEntry": {
+      "title": "Arrival Entry",
+      "description": "A single entry record representing a commodity arrival at the regional warehouse.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "date": { "type": "string" },
+        "vehicle": { "type": "string" },
+        "name": { "type": "string" },
+        "particulars": { "type": "string" },
+        "bags": { "type": "number" },
+        "gross": { "type": "number" },
+        "tare": { "type": "number" },
+        "weight": { "type": "number" },
+        "rate": { "type": "number" },
+        "total": { "type": "number" },
+        "paid": { "type": "number" },
+        "balance": { "type": "number" },
+        "remarks": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["date"]
+    },
+    "ProcurementRequest": {
+      "title": "Procurement Request",
+      "description": "An incoming demand order pending grouping, approval, or batch processing.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "date": { "type": "string" },
+        "buyer": { "type": "string" },
+        "initials": { "type": "string" },
+        "qty": { "type": "number" },
+        "rate": { "type": "number" },
+        "urgency": { "type": "string", "enum": ["Critical", "Standard", "High"] },
+        "status": { "type": "string" },
+        "color": { "type": "string" },
+        "supplier": { "type": "string" },
+        "product": { "type": "string" }
+      },
+      "required": ["id", "buyer", "qty", "rate"]
+    },
+    "PlacedOrder": {
+      "title": "Placed Shipment Batch",
+      "description": "A consolidated shipment batch dispatched and tracked in transit.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "date": { "type": "string" },
+        "items": { "type": "string" },
+        "total": { "type": "string" },
+        "status": { "type": "string" },
+        "progress": { "type": "number" },
+        "origin": { "type": "string" },
+        "destination": { "type": "string" },
+        "buyer": { "type": "string" },
+        "originalOrders": { "type": "array" },
+        "sellerEmail": { "type": "string" },
+        "companyEmail": { "type": "string" },
+        "purchaseOrderSent": { "type": "boolean" },
+        "purchaseOrderSentAt": { "type": "string" }
+      },
+      "required": ["id", "total"]
+    },
+    "Stakeholder": {
+      "title": "Mandi Stakeholder",
+      "description": "Registered partners, buyers, and suppliers in the grain trade portal.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "state": { "type": "string" },
+        "mandi": { "type": "string" },
+        "gstin": { "type": "string" },
+        "address": { "type": "string" },
+        "profileLocked": { "type": "boolean" }
+      },
+      "required": ["id", "name"]
+    },
+    "Complaint": {
+      "title": "Merchant Complaint",
+      "description": "A support ticket or complaint filed by a merchant stakeholder targeting the administration.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "merchantId": { "type": "string" },
+        "merchantName": { "type": "string" },
+        "merchantEmail": { "type": "string" },
+        "subject": { "type": "string" },
+        "message": { "type": "string" },
+        "status": { "type": "string", "enum": ["Pending", "Reviewed", "Resolved"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["merchantId", "merchantName", "message", "subject", "createdAt"]
+    },
+    "PattiRecord": {
+      "title": "Patti Record",
+      "description": "Historical commission patti settlement calculations generated for custom transactions.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "date": { "type": "string" },
+        "sellerName": { "type": "string" },
+        "arrivalDt": { "type": "string" },
+        "subTotal": { "type": "number" },
+        "grandTotal": { "type": "number" }
+      },
+      "required": ["id", "sellerName"]
+    },
+    "ProductItem": {
+      "title": "Product Item",
+      "description": "An item in the mandi general grain inventory tracker.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "brand": { "type": "string" },
+        "price": { "type": "number" },
+        "status": { "type": "string" },
+        "image": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    },
+    "LedgerEntry": {
+      "title": "Ledger Entry",
+      "description": "A single entry debit or credit ledger mapped to a buyer or supplier under a Purchase Order batch.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "purchaseOrderNo": { "type": "string" },
+        "date": { "type": "string" },
+        "partyName": { "type": "string" },
+        "partyType": { "type": "string", "enum": ["Buyer", "Supplier"] },
+        "qty": { "type": "number" },
+        "amount": { "type": "number" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "purchaseOrderNo", "partyName", "qty", "amount"]
+    }
+  },
+  "firestore": {
+    "arrival_entries": {
+      "schema": "ArrivalEntry",
+      "description": "Collection of commodity warehouse arrivals."
+    },
+    "procurement_requests": {
+      "schema": "ProcurementRequest",
+      "description": "Collection of unassigned active buyer demands."
+    },
+    "placed_orders": {
+      "schema": "PlacedOrder",
+      "description": "Collection of grouped orders and transit pipeline shipments."
+    },
+    "stakeholders": {
+      "schema": "Stakeholder",
+      "description": "Collection of registered business stakeholders."
+    },
+    "patti_history": {
+      "schema": "PattiRecord",
+      "description": "Collection of completed Patti settlement calculations."
+    },
+    "product_inventory": {
+      "schema": "ProductItem",
+      "description": "Collection of products listed in the grain and seed inventory."
+    },
+    "ledgers": {
+      "schema": "LedgerEntry",
+      "description": "Collection of interactive general transaction ledgers for traders, millers, and buyers."
+    },
+    "complaints": {
+      "schema": "Complaint",
+      "description": "Collection of merchant support requests and complaints submitted to the system administrator."
+    }
+  }
+}
