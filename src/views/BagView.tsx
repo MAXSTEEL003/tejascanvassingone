@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   ShoppingBag, Trash2, ArrowRight, MapPin, CheckCircle2, 
   Loader2, Store, Warehouse, Plus, Truck, Share2, Copy, Check, X,
-  ChevronLeft, AlertCircle, ShieldCheck
+  ChevronLeft, ChevronDown, ChevronUp, AlertCircle, ShieldCheck
 } from 'lucide-react';
 import { useCart, CartItem } from '../context/CartContext';
 import { cn, formatINR } from '../lib/utils';
@@ -29,6 +29,26 @@ export default function BagView() {
   // Delivery locations
   const [deliveryLocations, setDeliveryLocations] = useState<DeliveryLocation[]>(() => getDeliveryLocations());
   const [globalLocationId, setGlobalLocationId] = useState<string>(() => getSelectedDeliveryLocationId());
+
+  // Custom dropdown states
+  const [isGlobalDropdownOpen, setIsGlobalDropdownOpen] = useState(false);
+  const [activeItemDropdownId, setActiveItemDropdownId] = useState<string | null>(null);
+  const globalDropdownRef = useRef<HTMLDivElement>(null);
+  const itemDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdowns on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (globalDropdownRef.current && !globalDropdownRef.current.contains(e.target as Node)) {
+        setIsGlobalDropdownOpen(false);
+      }
+      if (itemDropdownRef.current && !itemDropdownRef.current.contains(e.target as Node)) {
+        setActiveItemDropdownId(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Add location modal
   const [isAddLocOpen, setIsAddLocOpen] = useState(false);
@@ -421,8 +441,11 @@ export default function BagView() {
         </button>
       </div>
 
-      {/* Global Delivery Address: Simple Words & Dropdown */}
-      <div className="bg-emerald-50/80 dark:bg-[#0c1f17] border border-emerald-500/25 dark:border-emerald-900/50 rounded-xl p-2.5 space-y-1.5 shadow-2xs">
+      {/* Global Delivery Address Card */}
+      <div 
+        ref={globalDropdownRef}
+        className="bg-emerald-50/90 dark:bg-[#0c1f17] border border-emerald-500/25 dark:border-emerald-900/50 rounded-2xl p-3 space-y-2 shadow-2xs relative"
+      >
         <div className="flex items-center justify-between">
           <span className="text-xs font-bold text-emerald-950 dark:text-emerald-200 flex items-center gap-1.5">
             <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
@@ -434,52 +457,157 @@ export default function BagView() {
               setAddLocTargetItemId(null);
               setIsAddLocOpen(true);
             }}
-            className="text-xs font-bold text-emerald-700 dark:text-emerald-400 hover:underline cursor-pointer flex items-center gap-0.5"
+            className="text-xs font-bold text-emerald-700 dark:text-emerald-400 hover:text-emerald-800 hover:underline cursor-pointer flex items-center gap-1 transition-colors"
           >
-            <Plus className="w-3 h-3" />
+            <Plus className="w-3.5 h-3.5" />
             <span>Add Address</span>
           </button>
         </div>
 
-        {/* Clean Dropdown */}
-        <select
-          value={globalLocationId}
-          onChange={(e) => handleGlobalLocationChange(e.target.value)}
-          className="w-full p-2 rounded-lg bg-white dark:bg-neutral-900 border border-emerald-500/30 dark:border-neutral-700 text-xs font-bold text-slate-800 dark:text-slate-200 outline-none cursor-pointer"
-        >
-          {deliveryLocations.map((loc) => (
-            <option key={loc.id} value={loc.id}>
-              {loc.type === 'Shop' ? '🏪 Shop' : '🏭 Godown'}: {loc.name} ({loc.address.slice(0, 32)}...)
-            </option>
-          ))}
-          <option value="__add_new__">+ Add New Delivery Address...</option>
-        </select>
+        {/* Custom Dropdown Trigger */}
+        <div className="relative">
+          {(() => {
+            const chosenLoc = deliveryLocations.find(l => l.id === globalLocationId) || deliveryLocations[0] || {
+              id: 'default-shop',
+              name: 'Main Shop (APMC Yard)',
+              type: 'Shop',
+              address: 'No. 15, APMC Yard, Yeshwanthpur, Bangalore, Karnataka - 560022',
+              isDefault: true
+            };
+
+            return (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setIsGlobalDropdownOpen(!isGlobalDropdownOpen)}
+                  className="w-full p-2.5 rounded-xl bg-white dark:bg-neutral-900 border border-emerald-500/30 dark:border-neutral-700 hover:border-emerald-500 text-left transition-all duration-200 shadow-2xs flex items-center justify-between gap-2.5 cursor-pointer group"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                    <div className="w-8 h-8 rounded-lg bg-emerald-100/80 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 flex items-center justify-center shrink-0 text-sm">
+                      {chosenLoc.type === 'Shop' ? '🏪' : '🏭'}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-black text-slate-900 dark:text-white truncate">
+                          {chosenLoc.type === 'Shop' ? 'Shop' : 'Godown'}: {chosenLoc.name}
+                        </span>
+                        {chosenLoc.isDefault && (
+                          <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-bold shrink-0">
+                            Default
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                        {chosenLoc.address}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="p-1 rounded-md text-slate-400 group-hover:text-emerald-600 transition-colors shrink-0">
+                    <ChevronDown className={cn("w-4 h-4 transition-transform duration-200", isGlobalDropdownOpen && "rotate-180")} />
+                  </div>
+                </button>
+
+                {/* Floating Dropdown Popover */}
+                {isGlobalDropdownOpen && (
+                  <div className="absolute top-full left-0 right-0 mt-1.5 bg-white dark:bg-[#0c1f17] border border-emerald-500/25 dark:border-neutral-700 rounded-2xl shadow-xl p-1.5 z-40 space-y-1 animate-fadeIn">
+                    <div className="px-2 py-1 text-[10px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500 border-b border-slate-100 dark:border-neutral-800">
+                      Choose Delivery Destination
+                    </div>
+                    <div className="max-h-56 overflow-y-auto space-y-1 py-0.5">
+                      {deliveryLocations.map((loc) => {
+                        const isSelected = loc.id === globalLocationId;
+                        return (
+                          <button
+                            key={loc.id}
+                            type="button"
+                            onClick={() => {
+                              handleGlobalLocationChange(loc.id);
+                              setIsGlobalDropdownOpen(false);
+                            }}
+                            className={cn(
+                              "w-full text-left p-2 rounded-xl flex items-center justify-between gap-2.5 transition-all cursor-pointer",
+                              isSelected
+                                ? "bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-500/30 text-emerald-950 dark:text-emerald-200 shadow-2xs"
+                                : "hover:bg-slate-50 dark:hover:bg-neutral-800/60 text-slate-800 dark:text-slate-200"
+                            )}
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                              <span className="text-base shrink-0">
+                                {loc.type === 'Shop' ? '🏪' : '🏭'}
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-xs font-bold truncate">
+                                    {loc.name}
+                                  </span>
+                                  {loc.isDefault && (
+                                    <span className="text-[8.5px] px-1.5 py-0.2 rounded-full bg-emerald-100/70 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 font-bold shrink-0">
+                                      Default
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-[10.5px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                                  {loc.address}
+                                </p>
+                              </div>
+                            </div>
+                            {isSelected && (
+                              <div className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                                <Check className="w-3 h-3 stroke-[2.5]" />
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="pt-1 border-t border-slate-100 dark:border-neutral-800">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsGlobalDropdownOpen(false);
+                          setAddLocTargetItemId(null);
+                          setIsAddLocOpen(true);
+                        }}
+                        className="w-full text-left p-2 rounded-xl text-xs font-bold text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 flex items-center gap-2 cursor-pointer transition-colors"
+                      >
+                        <div className="w-6 h-6 rounded-lg bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                          <Plus className="w-3.5 h-3.5" />
+                        </div>
+                        <span>Add New Delivery Address...</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
+            );
+          })()}
+        </div>
       </div>
 
       {/* Items List (Compact Mobile View) */}
-      <div className="space-y-2">
+      <div className="space-y-2.5">
         {items.map((item) => {
           const itLoc = getItemLocation(item);
 
           return (
             <div 
               key={item.id}
-              className="bg-white dark:bg-[#0a1b14] border border-slate-200/90 dark:border-emerald-950/60 rounded-xl p-2.5 shadow-2xs space-y-2 text-xs"
+              className="bg-white dark:bg-[#0a1b14] border border-slate-200/90 dark:border-emerald-950/60 rounded-2xl p-3 shadow-2xs space-y-2.5 text-xs"
             >
               {/* Product Header */}
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
-                  <h3 className="font-bold text-slate-900 dark:text-white text-xs leading-snug">
+                  <h3 className="font-black text-slate-900 dark:text-white text-sm leading-snug">
                     {item.name}
                   </h3>
                   <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 flex-wrap">
-                    <span>{item.variety || 'Rice'}</span>
+                    <span className="font-medium">{item.variety || 'Rice'}</span>
                     <span>•</span>
-                    <span className="text-emerald-700 dark:text-emerald-400 font-semibold truncate max-w-[140px]">
+                    <span className="text-emerald-700 dark:text-emerald-400 font-bold truncate max-w-[150px]">
                       {item.supplier || 'DIRECT MILL'}
                     </span>
                     <span>•</span>
-                    {/* Explicitly state Rate is per Qty */}
                     <span className="text-slate-800 dark:text-slate-200 font-bold">
                       Rate: ₹{formatINR(item.price)} / Qty
                     </span>
@@ -489,39 +617,99 @@ export default function BagView() {
                 <button
                   type="button"
                   onClick={() => removeItem(item.id)}
-                  className="text-slate-400 hover:text-rose-600 p-1 cursor-pointer shrink-0"
+                  className="text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 p-1.5 rounded-lg cursor-pointer shrink-0 transition-colors"
                   title="Remove item"
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
+                  <Trash2 className="w-4 h-4" />
                 </button>
               </div>
 
-              {/* Per-Item Deliver To Dropdown (Simple words) */}
-              <div className="bg-slate-50 dark:bg-neutral-900/60 p-1.5 rounded-lg border border-slate-100 dark:border-neutral-800 flex items-center justify-between gap-2">
-                <span className="text-[10px] font-bold text-slate-500 shrink-0">Deliver to:</span>
-                <select
-                  value={itLoc.id}
-                  onChange={(e) => handleItemLocationChange(item.id, e.target.value)}
-                  className="flex-1 p-1 rounded bg-white dark:bg-neutral-800 border border-slate-200 dark:border-neutral-700 text-[11px] font-bold text-slate-800 dark:text-slate-200 outline-none cursor-pointer truncate"
-                >
-                  {deliveryLocations.map((loc) => (
-                    <option key={loc.id} value={loc.id}>
-                      {loc.type === 'Shop' ? '🏪 Shop' : '🏭 Godown'}: {loc.name}
-                    </option>
-                  ))}
-                  <option value="__add_new__">+ Add New Address...</option>
-                </select>
+              {/* Per-Item Deliver To Dropdown (Never overflows) */}
+              <div className="bg-slate-50 dark:bg-neutral-900/60 p-1.5 px-2.5 rounded-xl border border-slate-100 dark:border-neutral-800/80 flex items-center justify-between gap-2 min-w-0 w-full relative">
+                <span className="text-[10.5px] font-bold text-slate-500 shrink-0 flex items-center gap-1">
+                  <MapPin className="w-3 h-3 text-emerald-600 shrink-0" />
+                  <span>Deliver to:</span>
+                </span>
+
+                <div className="relative min-w-0 flex-1">
+                  <button
+                    type="button"
+                    onClick={() => setActiveItemDropdownId(activeItemDropdownId === item.id ? null : item.id)}
+                    className="w-full flex items-center justify-between gap-1.5 px-2.5 py-1 rounded-lg bg-white dark:bg-neutral-800 border border-slate-200 dark:border-neutral-700 hover:border-emerald-500 text-[11px] font-bold text-slate-800 dark:text-slate-200 outline-none cursor-pointer transition-all shadow-2xs group"
+                  >
+                    <div className="flex items-center gap-1.5 min-w-0 truncate">
+                      <span className="shrink-0 text-xs">
+                        {itLoc.type === 'Shop' ? '🏪' : '🏭'}
+                      </span>
+                      <span className="truncate">{itLoc.name}</span>
+                    </div>
+                    <ChevronDown className={cn("w-3 h-3 text-slate-400 group-hover:text-emerald-600 shrink-0 transition-transform duration-200", activeItemDropdownId === item.id && "rotate-180")} />
+                  </button>
+
+                  {/* Floating Popover for this item */}
+                  {activeItemDropdownId === item.id && (
+                    <div 
+                      ref={itemDropdownRef}
+                      className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-neutral-900 border border-emerald-500/25 dark:border-neutral-700 rounded-xl shadow-xl p-1.5 z-40 space-y-1 animate-fadeIn max-h-48 overflow-y-auto"
+                    >
+                      {deliveryLocations.map((loc) => {
+                        const isSelected = itLoc.id === loc.id;
+                        return (
+                          <button
+                            key={loc.id}
+                            type="button"
+                            onClick={() => {
+                              handleItemLocationChange(item.id, loc.id);
+                              setActiveItemDropdownId(null);
+                            }}
+                            className={cn(
+                              "w-full text-left p-1.5 rounded-lg flex items-center justify-between gap-2 transition-colors cursor-pointer text-xs",
+                              isSelected 
+                                ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 font-bold" 
+                                : "hover:bg-slate-50 dark:hover:bg-neutral-800 text-slate-700 dark:text-slate-300"
+                            )}
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs">{loc.type === 'Shop' ? '🏪' : '🏭'}</span>
+                                <span className="font-bold truncate">{loc.name}</span>
+                              </div>
+                              <div className="text-[9.5px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                                {loc.address}
+                              </div>
+                            </div>
+                            {isSelected && <Check className="w-3 h-3 text-emerald-600 shrink-0" />}
+                          </button>
+                        );
+                      })}
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveItemDropdownId(null);
+                          setAddLocTargetItemId(item.id);
+                          setIsAddLocOpen(true);
+                        }}
+                        className="w-full text-left p-1.5 text-[10.5px] font-bold text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 rounded-lg flex items-center gap-1 cursor-pointer pt-1.5 border-t border-slate-100 dark:border-neutral-800"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>Add New Address...</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Quantity Stepper & Item Total */}
-              <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-neutral-800">
-                <div className="flex items-center gap-1">
+              <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-neutral-800/80">
+                <div className="flex items-center gap-1.5">
                   <span className="text-[11px] font-bold text-slate-500">Qty:</span>
-                  <div className="flex items-center bg-slate-100 dark:bg-neutral-800 rounded-lg border border-slate-200 dark:border-neutral-700 h-7">
+                  <div className="flex items-center bg-slate-100 dark:bg-neutral-800/90 rounded-xl border border-slate-200/90 dark:border-neutral-700 h-8 shadow-2xs overflow-hidden">
                     <button
                       type="button"
                       onClick={() => updateQty(item.id, Math.max(1, item.qty - (item.qty > 10 ? 5 : 1)))}
-                      className="w-6 h-full flex items-center justify-center text-slate-700 dark:text-slate-200 font-black cursor-pointer hover:bg-slate-200 dark:hover:bg-neutral-700 select-none"
+                      className="w-7 h-full flex items-center justify-center text-slate-700 dark:text-slate-200 font-black cursor-pointer hover:bg-slate-200/80 dark:hover:bg-neutral-700 active:bg-slate-300 select-none transition-colors"
+                      title="Decrease quantity"
                     >
                       -
                     </button>
@@ -533,12 +721,13 @@ export default function BagView() {
                         const val = parseInt(e.target.value) || 0;
                         updateQty(item.id, Math.max(0, val));
                       }}
-                      className="w-11 text-center font-mono font-bold text-xs bg-transparent border-0 outline-none text-slate-900 dark:text-white"
+                      className="w-12 text-center font-mono font-bold text-xs bg-transparent border-0 outline-none text-slate-900 dark:text-white"
                     />
                     <button
                       type="button"
                       onClick={() => updateQty(item.id, item.qty + (item.qty >= 10 ? 5 : 1))}
-                      className="w-6 h-full flex items-center justify-center text-slate-700 dark:text-slate-200 font-black cursor-pointer hover:bg-slate-200 dark:hover:bg-neutral-700 select-none"
+                      className="w-7 h-full flex items-center justify-center text-slate-700 dark:text-slate-200 font-black cursor-pointer hover:bg-slate-200/80 dark:hover:bg-neutral-700 active:bg-slate-300 select-none transition-colors"
+                      title="Increase quantity"
                     >
                       +
                     </button>
@@ -551,7 +740,7 @@ export default function BagView() {
                         key={inc}
                         type="button"
                         onClick={() => updateQty(item.id, item.qty + inc)}
-                        className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 dark:bg-neutral-800 text-[10px] font-bold text-slate-600 dark:text-slate-300 cursor-pointer"
+                        className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-emerald-50 dark:bg-neutral-800 dark:hover:bg-emerald-950/40 border border-slate-200/80 dark:border-neutral-700 hover:border-emerald-400 text-[10.5px] font-bold text-slate-700 dark:text-slate-300 hover:text-emerald-800 dark:hover:text-emerald-300 cursor-pointer shadow-2xs transition-all active:scale-95"
                       >
                         +{inc}
                       </button>
@@ -560,8 +749,8 @@ export default function BagView() {
                 </div>
 
                 <div className="text-right">
-                  <span className="text-[10px] text-slate-400 block">Total</span>
-                  <span className="font-mono font-bold text-xs text-slate-900 dark:text-white">
+                  <span className="text-[9.5px] uppercase tracking-wider font-bold text-slate-400 block">Total</span>
+                  <span className="font-mono font-black text-sm text-slate-900 dark:text-white">
                     ₹{formatINR(item.price * item.qty)}
                   </span>
                 </div>
@@ -572,27 +761,27 @@ export default function BagView() {
       </div>
 
       {/* Loading Days: Simple Tap Pills (No hard-to-use slider) */}
-      <div className="bg-white dark:bg-[#0a1b14] border border-slate-200/90 dark:border-emerald-950/60 rounded-xl p-2.5 shadow-2xs space-y-1.5 text-xs">
+      <div className="bg-white dark:bg-[#0a1b14] border border-slate-200/90 dark:border-emerald-950/60 rounded-2xl p-3 shadow-2xs space-y-2 text-xs">
         <div className="flex items-center justify-between">
-          <span className="font-bold flex items-center gap-1 text-slate-800 dark:text-slate-200">
-            <Truck className="w-3.5 h-3.5 text-emerald-600" />
+          <span className="font-bold flex items-center gap-1.5 text-slate-800 dark:text-slate-200">
+            <Truck className="w-4 h-4 text-emerald-600 shrink-0" />
             <span>Loading Time:</span>
           </span>
-          <span className="font-mono font-bold text-emerald-700 dark:text-emerald-400">
+          <span className="font-mono font-black text-emerald-700 dark:text-emerald-400 text-xs px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-500/20">
             {loadingDays} Days
           </span>
         </div>
-        <div className="grid grid-cols-4 gap-1.5 pt-0.5">
+        <div className="grid grid-cols-4 gap-2 pt-0.5">
           {[2, 3, 5, 7].map((days) => (
             <button
               key={days}
               type="button"
               onClick={() => setLoadingDays(days)}
               className={cn(
-                "py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer text-center",
+                "py-2 rounded-xl text-xs font-bold transition-all cursor-pointer text-center active:scale-95",
                 loadingDays === days
-                  ? "bg-emerald-700 text-white shadow-xs"
-                  : "bg-slate-100 dark:bg-neutral-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200"
+                  ? "bg-emerald-700 text-white shadow-xs font-black ring-2 ring-emerald-600/30"
+                  : "bg-slate-100/90 dark:bg-neutral-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200/90 border border-slate-200/60 dark:border-neutral-700"
               )}
             >
               {days} Days
@@ -602,26 +791,28 @@ export default function BagView() {
       </div>
 
       {/* Reassurance Banner: Explicitly NO payment method needed */}
-      <div className="bg-emerald-500/10 border border-emerald-500/25 rounded-xl p-2.5 flex items-center gap-2 text-xs">
-        <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-        <div className="text-[11px] text-emerald-900 dark:text-emerald-200 font-medium">
-          <strong className="block font-bold">No Payment Required at Order Time</strong>
+      <div className="bg-emerald-500/10 dark:bg-emerald-950/30 border border-emerald-500/25 dark:border-emerald-800/40 rounded-2xl p-3 flex items-start gap-2.5 text-xs">
+        <div className="w-6 h-6 rounded-full bg-emerald-600/15 text-emerald-600 flex items-center justify-center shrink-0 mt-0.5">
+          <ShieldCheck className="w-4 h-4 stroke-[2.2]" />
+        </div>
+        <div className="text-[11px] text-emerald-900 dark:text-emerald-200 font-medium leading-relaxed">
+          <strong className="block font-bold text-xs text-emerald-950 dark:text-emerald-100 mb-0.5">No Payment Required at Order Time</strong>
           Payment is handled directly on delivery invoice terms with the mill.
         </div>
       </div>
 
       {/* Order Summary & One-Tap Place Order Button */}
-      <div className="bg-white dark:bg-[#0a1b14] border border-slate-200/90 dark:border-emerald-950/60 rounded-xl p-3 shadow-2xs space-y-2.5">
+      <div className="bg-white dark:bg-[#0a1b14] border border-slate-200/90 dark:border-emerald-950/60 rounded-2xl p-3.5 shadow-xs space-y-3">
         <div className="flex justify-between items-baseline">
           <div>
-            <span className="text-[11px] font-bold text-slate-500 block">Total Quantity</span>
-            <span className="text-xs font-mono font-bold text-slate-800 dark:text-slate-200">
+            <span className="text-[10.5px] uppercase tracking-wider font-bold text-slate-500 block">Total Quantity</span>
+            <span className="text-sm font-mono font-black text-slate-800 dark:text-slate-200">
               {totalQty} Qty
             </span>
           </div>
           <div className="text-right">
-            <span className="text-[11px] font-bold text-slate-500 block">Total Amount</span>
-            <span className="text-base font-mono font-black text-emerald-700 dark:text-emerald-400">
+            <span className="text-[10.5px] uppercase tracking-wider font-bold text-slate-500 block">Total Amount</span>
+            <span className="text-lg font-mono font-black text-emerald-700 dark:text-emerald-400">
               ₹{formatINR(totalAmount)}
             </span>
           </div>
@@ -632,7 +823,7 @@ export default function BagView() {
           type="button"
           disabled={isPlacingOrder}
           onClick={handlePlaceOrder}
-          className="w-full py-3 rounded-xl bg-[#143e2e] hover:bg-[#0f3225] disabled:opacity-50 text-white font-black text-xs uppercase tracking-wider shadow-sm flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-98"
+          className="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-800 to-[#123d2b] hover:from-emerald-900 hover:to-[#0d2e20] disabled:opacity-50 text-white font-black text-xs sm:text-sm uppercase tracking-wider shadow-md flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-98"
         >
           {isPlacingOrder ? (
             <>
