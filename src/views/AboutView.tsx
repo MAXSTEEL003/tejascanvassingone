@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { 
-  Menu, X, Globe, Phone, Mail, MapPin, Linkedin, Instagram, Twitter, 
+  Menu, X, Globe, Phone, Mail, MapPin, 
   ArrowRight, ArrowUpRight, Sprout, Factory, FlaskConical, Package, Ship, 
-  Leaf, Award, Truck, TrendingDown, ShieldCheck, Clock, ChevronLeft, ChevronRight, 
-  Send, MessageCircle, LogIn, UserPlus, Download, Sparkles, CheckCircle2, Star, User, Info, ChefHat, ShoppingBag,
-  Search, SlidersHorizontal, Tag, Eye, ChevronDown, ChevronUp, Calculator, ExternalLink
+  Leaf, Award, Truck, ShieldCheck, ChevronLeft, ChevronRight, 
+  Send, MessageCircle, LogIn, UserPlus, Download, Sparkles, CheckCircle2, Star, User, Clock
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import PwaInstallModal from "../components/PwaInstallModal";
@@ -180,11 +179,8 @@ export default function AboutView() {
     return !!localStorage.getItem('userRole');
   });
 
-  // Force Light Theme by Default for About Us
+  // Sync scroll and merchant auth state
   useEffect(() => {
-    document.documentElement.classList.remove('dark');
-    localStorage.setItem('theme', 'light');
-    
     const handleScroll = () => setIsScrolled(window.scrollY > 30);
     window.addEventListener("scroll", handleScroll, { passive: true });
 
@@ -250,28 +246,28 @@ export default function AboutView() {
         >
 
           {/* Brand Identity with Rounded Logo Border */}
-          <div onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="flex items-center gap-2.5 group cursor-pointer select-none">
+          <div onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="flex items-center gap-2 group cursor-pointer select-none shrink-0">
             <div className="relative shrink-0">
               <img
                 src="/logo.png"
                 alt="Tejas Canvassing Logo"
-                className="w-8 h-8 sm:w-9 sm:h-9 object-contain rounded-xl p-0.5 border border-amber-400/40 bg-white/10 transition-transform duration-300 group-hover:scale-105 shadow-xs"
+                className="w-7 h-7 sm:w-9 sm:h-9 object-contain rounded-xl p-0.5 border border-amber-400/40 bg-white/10 transition-transform duration-300 group-hover:scale-105 shadow-xs"
               />
             </div>
             <div className="flex flex-col">
               <span
-                className="tracking-wider transition-colors duration-300 font-bold leading-tight truncate max-w-[135px] xs:max-w-[180px] sm:max-w-none text-white"
+                className="tracking-wider transition-colors duration-300 font-bold leading-tight whitespace-nowrap text-white"
                 style={{
                   fontFamily: "var(--font-serif)",
-                  fontSize: "13.5px",
+                  fontSize: "13px",
                 }}
               >
                 TEJAS CANVASSING
               </span>
               <span
-                className="tracking-[0.14em] uppercase transition-colors duration-300 leading-none mt-0.5"
+                className="tracking-[0.14em] uppercase transition-colors duration-300 leading-none mt-0.5 whitespace-nowrap"
                 style={{
-                  fontSize: "7.5px",
+                  fontSize: "7px",
                   color: "var(--gold)",
                   fontWeight: 600
                 }}
@@ -337,10 +333,10 @@ export default function AboutView() {
           </div>
 
           {/* Right Mobile Actions - Clean & Perfectly Proportioned */}
-          <div className="flex lg:hidden items-center gap-1.5">
+          <div className="flex lg:hidden items-center gap-1.5 shrink-0">
             <button
               onClick={() => navigate('/login')}
-              className="px-3 py-1.5 rounded-full transition-all duration-300 active:scale-95 text-[10.5px] font-extrabold tracking-wider uppercase flex items-center gap-1 cursor-pointer shadow-sm"
+              className="px-2.5 py-1.5 rounded-full transition-all duration-300 active:scale-95 text-[10px] font-extrabold tracking-wider uppercase flex items-center gap-1 cursor-pointer shadow-sm shrink-0"
               style={{
                 background: "linear-gradient(135deg, #C9A158 0%, #E8C97A 100%)",
                 color: "var(--brand-dark)",
@@ -419,12 +415,22 @@ export default function AboutView() {
               
               <div className="w-full pt-4 border-t border-white/10 flex flex-col gap-3">
                 <button
-                  onClick={() => { setIsMobileMenuOpen(false); navigate(isLoggedInMerchant ? '/store' : '/signup'); }}
+                  onClick={() => { setIsMobileMenuOpen(false); navigate('/login'); }}
                   className="w-full py-3.5 text-emerald-950 bg-amber-400 font-sans font-extrabold text-xs uppercase tracking-widest rounded-full shadow-lg flex items-center justify-center gap-2 cursor-pointer active:scale-95"
                 >
-                  {isLoggedInMerchant ? <LogIn size={16} /> : <UserPlus size={16} />}
-                  <span>{isLoggedInMerchant ? "Log In to Webstore" : "Sign Up"}</span>
+                  <LogIn size={16} />
+                  <span>Login to Portal</span>
                 </button>
+
+                {!isLoggedInMerchant && (
+                  <button
+                    onClick={() => { setIsMobileMenuOpen(false); navigate('/signup'); }}
+                    className="w-full py-2.5 text-white/80 bg-white/5 border border-white/10 font-sans font-semibold text-[11px] uppercase tracking-wider rounded-full flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+                  >
+                    <UserPlus size={14} />
+                    <span>New Merchant Registration</span>
+                  </button>
+                )}
 
                 <button
                   onClick={() => { setIsMobileMenuOpen(false); setIsPwaModalOpen(true); }}
@@ -449,14 +455,14 @@ export default function AboutView() {
         <AboutScrollExperience />
 
         {/* ── 2. QUICK ACTION: REQUEST QUOTE ── */}
-        <section className="py-8 sm:py-10 relative z-20 border-t border-b border-white/10" style={{ background: "#0A160F" }}>
-          <div className="max-w-[1400px] mx-auto px-4 sm:px-8 flex items-center justify-center">
+        <section className="py-4 sm:py-5 relative z-20 border-t border-b border-white/10" style={{ background: "#0A160F" }}>
+          <div className="max-w-[1400px] mx-auto px-4 flex items-center justify-center">
             <a
               href="#contact"
-              className="inline-flex items-center gap-2.5 px-8 sm:px-10 py-3.5 sm:py-4 text-xs sm:text-sm font-extrabold uppercase tracking-widest rounded-full text-stone-950 bg-amber-400 hover:bg-amber-300 shadow-xl shadow-amber-400/20 transition-all cursor-pointer hover:scale-105 active:scale-95"
+              className="inline-flex items-center gap-1.5 px-5 py-2 text-[11px] font-bold uppercase tracking-wider rounded-full text-white bg-white/10 hover:bg-white/20 border border-white/20 transition-all cursor-pointer hover:scale-105 active:scale-95 backdrop-blur-md shadow-xs"
             >
               <span>Request Quote</span>
-              <ArrowRight size={16} />
+              <ArrowRight size={13} />
             </a>
           </div>
         </section>

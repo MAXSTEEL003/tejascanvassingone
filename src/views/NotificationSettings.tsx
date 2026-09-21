@@ -142,7 +142,7 @@ export default function NotificationSettings() {
   const [directMailLink, setDirectMailLink] = useState('');
   const [directGmailLink, setDirectGmailLink] = useState('');
   const [dispatchHistory, setDispatchHistory] = useState<DispatchLog[]>([]);
-  const [gatewayStatus, setGatewayStatus] = useState<{ smtp: boolean; twilio: boolean; aisensy?: boolean }>({ smtp: false, twilio: false, aisensy: false });
+  const [gatewayStatus, setGatewayStatus] = useState<{ smtp: boolean; aisensy?: boolean }>({ smtp: false, aisensy: false });
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
   const role = localStorage.getItem('userRole') || 'admin';
@@ -257,7 +257,6 @@ export default function NotificationSettings() {
   };
 
   const [lastWaResult, setLastWaResult] = useState<any>(null);
-  const [sandboxCode, setSandboxCode] = useState<string>('');
   
   // AiSensy WhatsApp API State (Primary)
   const [showAiSensyConfig, setShowAiSensyConfig] = useState<boolean>(true);
@@ -313,13 +312,6 @@ export default function NotificationSettings() {
     }
   };
 
-  // Twilio WhatsApp API State (Fallback)
-  const [showTwilioConfig, setShowTwilioConfig] = useState<boolean>(false);
-  const [customSid, setCustomSid] = useState<string>('');
-  const [customToken, setCustomToken] = useState<string>('');
-  const [customSender, setCustomSender] = useState<string>('+14155238886');
-  const [isVerifyingTwilio, setIsVerifyingTwilio] = useState<boolean>(false);
-  const [twilioVerifyFeedback, setTwilioVerifyFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const [showSmtpConfig, setShowSmtpConfig] = useState<boolean>(false);
   const [customSmtpHost, setCustomSmtpHost] = useState<string>('smtp.gmail.com');
@@ -372,46 +364,6 @@ export default function NotificationSettings() {
     }
   };
 
-  const handleVerifyAndSaveTwilio = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!customSid.trim() || !customToken.trim()) return;
-    setIsVerifyingTwilio(true);
-    setTwilioVerifyFeedback(null);
-    try {
-      const res = await fetch('/api/update-twilio-credentials', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          accountSid: customSid.trim(),
-          authToken: customToken.trim(),
-          whatsappNumber: customSender.trim()
-        })
-      });
-
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setTwilioVerifyFeedback({
-          type: 'success',
-          text: data.message || 'Twilio credentials verified and connected successfully!'
-        });
-        setGatewayStatus(prev => ({ ...prev, twilio: true }));
-        fetchHistory();
-      } else {
-        setTwilioVerifyFeedback({
-          type: 'error',
-          text: data.error || 'Twilio authentication failed. Please check your Account SID and Auth Token on console.twilio.com'
-        });
-      }
-    } catch (err: any) {
-      setTwilioVerifyFeedback({
-        type: 'error',
-        text: `Network error verifying credentials: ${err.message || 'Unknown error'}`
-      });
-    } finally {
-      setIsVerifyingTwilio(false);
-    }
-  };
-
   const handleSendTestWhatsApp = async () => {
     setIsSendingTestWa(true);
     setTestFeedback(null);
@@ -428,12 +380,6 @@ export default function NotificationSettings() {
         payload.campaignName = customAiSensyCampaign.trim() || 'order_notification';
       }
 
-      if (customSid.trim() && customToken.trim()) {
-        payload.accountSid = customSid.trim();
-        payload.authToken = customToken.trim();
-        payload.fromSender = customSender.trim();
-      }
-
       const res = await fetch('/api/dispatch-whatsapp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -448,11 +394,6 @@ export default function NotificationSettings() {
             type: 'success',
             text: `WhatsApp Alert Delivered via AiSensy Gateway! (Campaign: ${data.campaignName || 'order_notification'})`
           });
-        } else if (data.isLiveSent) {
-          setTestFeedback({
-            type: 'success',
-            text: `WhatsApp Delivered via Twilio Gateway! (SID: ${data.messageSid || 'OK'})`
-          });
         } else {
           setTestFeedback({
             type: 'success',
@@ -463,12 +404,10 @@ export default function NotificationSettings() {
         const errorText = data.error || data.message || 'Dispatch failed';
         setTestFeedback({
           type: 'error',
-          text: `${data.gateway === 'aisensy' ? 'AiSensy' : 'WhatsApp Gateway'} Error: ${errorText}`
+          text: `${data.gateway === 'aisensy' ? 'AiSensy' : 'WhatsApp'} Error: ${errorText}`
         });
         if (data.gateway === 'aisensy') {
           setShowAiSensyConfig(true);
-        } else if (data.code === 20003 || data.isAuthError) {
-          setShowTwilioConfig(true);
         }
       }
       if (data.directUrl) setDirectWaLink(data.directUrl);
@@ -955,7 +894,7 @@ export default function NotificationSettings() {
             </AnimatePresence>
 
             {/* Gateway Connectivity Diagnostic Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className={cn(
                 "p-5 rounded-3xl border flex items-start gap-3.5 transition-all",
                 gatewayStatus.aisensy 
@@ -1012,36 +951,6 @@ export default function NotificationSettings() {
                     {gatewayStatus.smtp 
                       ? 'Connected to your SMTP server. Automated POs are delivered directly to real supplier inboxes.'
                       : 'Running in simulation mode. Dispatches are logged in the audit trail, and you can 1-click launch Gmail / Mail clients to send immediately.'}
-                  </p>
-                </div>
-              </div>
-
-              <div className={cn(
-                "p-5 rounded-3xl border flex items-start gap-3.5 transition-all",
-                gatewayStatus.twilio 
-                  ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-800 dark:text-emerald-300"
-                  : "bg-surface-container border-outline-variant/30 text-secondary"
-              )}>
-                <div className={cn(
-                  "p-2.5 rounded-2xl shrink-0 mt-0.5",
-                  gatewayStatus.twilio ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-300" : "bg-surface-container-high text-secondary"
-                )}>
-                  <MessageSquare className="w-5 h-5" />
-                </div>
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <h4 className="font-black text-xs uppercase tracking-wider">Twilio WhatsApp (Fallback)</h4>
-                    <span className={cn(
-                      "px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest",
-                      gatewayStatus.twilio ? "bg-emerald-600 text-white" : "bg-outline-variant/50 text-secondary"
-                    )}>
-                      {gatewayStatus.twilio ? 'Connected' : 'Secondary'}
-                    </span>
-                  </div>
-                  <p className="text-[11px] opacity-80 leading-relaxed font-medium">
-                    {gatewayStatus.twilio 
-                      ? 'Twilio fallback gateway active.'
-                      : 'Twilio gateway acts as secondary fallback when AiSensy is not configured.'}
                   </p>
                 </div>
               </div>
@@ -1276,157 +1185,6 @@ export default function NotificationSettings() {
                 )}
               </div>
 
-              {/* Twilio Sandbox & Diagnostic Helper Panel */}
-              <div className="p-4 sm:p-5 rounded-2xl bg-surface-container-low border border-outline-variant/40 space-y-3">
-                <div className="flex items-center gap-2">
-                  <div className="p-1.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-lg">
-                    <Smartphone className="w-4 h-4" />
-                  </div>
-                  <h4 className="text-xs font-black uppercase tracking-wider text-on-surface">
-                    Twilio Sandbox & WhatsApp Delivery Guide
-                  </h4>
-                </div>
-
-                <p className="text-[11px] text-secondary leading-relaxed font-medium">
-                  Twilio's sender number <code className="px-1.5 py-0.5 bg-surface-container-highest rounded text-on-surface font-mono font-bold">+1 415 523 8886</code> operates in <strong>Twilio Sandbox Mode</strong>. To receive automated backend WhatsApp messages on a test device:
-                </p>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
-                  <div className="p-3 bg-surface-container rounded-xl border border-outline-variant/30 space-y-2">
-                    <p className="text-[11px] font-bold text-on-surface flex items-center gap-1.5">
-                      <span className="w-4 h-4 rounded-full bg-emerald-500 text-white text-[9px] font-black flex items-center justify-center">1</span>
-                      Join Twilio Sandbox on WhatsApp
-                    </p>
-                    <p className="text-[10px] text-secondary leading-normal">
-                      Send your Twilio Sandbox keyword (found in your Twilio Console, e.g. <code className="text-on-surface font-bold font-mono">join &lt;your-code&gt;</code>) to <strong className="text-on-surface">+1 415 523 8886</strong> on WhatsApp once.
-                    </p>
-                    <div className="flex items-center gap-2 pt-1">
-                      <input
-                        type="text"
-                        placeholder="e.g. join gentle-lion"
-                        value={sandboxCode}
-                        onChange={(e) => setSandboxCode(e.target.value)}
-                        className="flex-1 bg-surface-container-low border border-outline-variant rounded-lg px-2.5 py-1.5 text-[11px] font-mono outline-none"
-                      />
-                      <a
-                        href={`https://wa.me/14155238886?text=${encodeURIComponent(sandboxCode || 'join')}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all no-underline shrink-0"
-                      >
-                        Join Sandbox
-                      </a>
-                    </div>
-                  </div>
-
-                  <div className="p-3 bg-surface-container rounded-xl border border-outline-variant/30 space-y-2">
-                    <p className="text-[11px] font-bold text-on-surface flex items-center gap-1.5">
-                      <span className="w-4 h-4 rounded-full bg-blue-500 text-white text-[9px] font-black flex items-center justify-center">2</span>
-                      Instant 1-Click WhatsApp (No Sandbox)
-                    </p>
-                    <p className="text-[10px] text-secondary leading-normal">
-                      Click the green <strong>"Launch Direct WhatsApp"</strong> button above. It opens WhatsApp immediately with the trade payload and recipient phone number pre-filled, bypassing all Sandbox requirements.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Twilio Credential Management & Auth Recovery Card */}
-                <div className="p-4 bg-surface-container rounded-2xl border border-outline-variant/50 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 bg-purple-500/10 text-purple-600 dark:text-purple-400 rounded-lg">
-                        <Key className="w-3.5 h-3.5" />
-                      </div>
-                      <span className="text-xs font-black uppercase tracking-wider text-on-surface">
-                        Twilio API Credentials & Auth Config
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setShowTwilioConfig(!showTwilioConfig)}
-                      className="text-[10px] font-bold text-primary hover:underline"
-                    >
-                      {showTwilioConfig ? 'Hide Credentials Form' : 'Update / Verify Credentials'}
-                    </button>
-                  </div>
-
-                  {showTwilioConfig && (
-                    <form onSubmit={handleVerifyAndSaveTwilio} className="space-y-3 pt-2 border-t border-outline-variant/30">
-                      <div className="bg-purple-500/10 border border-purple-500/20 rounded-xl p-3 text-[11px] text-purple-900 dark:text-purple-200 space-y-1">
-                        <p className="font-bold flex items-center gap-1.5">
-                          <span>How to get your active Twilio credentials:</span>
-                        </p>
-                        <ol className="list-decimal list-inside space-y-0.5 text-[10px] opacity-90">
-                          <li>Open <a href="https://console.twilio.com" target="_blank" rel="noopener noreferrer" className="font-bold underline text-primary">console.twilio.com</a> in your browser.</li>
-                          <li>In the <strong>"Account Info"</strong> section on your dashboard, copy your <strong>Account SID</strong> and click <strong>"Show"</strong> next to <strong>Auth Token</strong>.</li>
-                          <li>Paste both below and click <strong>"Verify & Connect Credentials"</strong> to establish live cellular connectivity.</li>
-                        </ol>
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                          <label className="text-[9px] font-black uppercase tracking-widest text-secondary block">
-                            Account SID (AC...) or API Key SID (SK...)
-                          </label>
-                          <input
-                            type="text"
-                            value={customSid}
-                            onChange={(e) => setCustomSid(e.target.value)}
-                            placeholder="ACxxxxxxxx... or SKxxxxxxxx..."
-                            className="w-full bg-surface-container-low border border-outline-variant rounded-lg px-3 py-2 text-xs font-mono font-bold outline-none text-on-surface"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[9px] font-black uppercase tracking-widest text-secondary block">
-                            Auth Token or API Key Secret
-                          </label>
-                          <input
-                            type="password"
-                            value={customToken}
-                            onChange={(e) => setCustomToken(e.target.value)}
-                            placeholder="Primary Auth Token or API Key Secret"
-                            className="w-full bg-surface-container-low border border-outline-variant rounded-lg px-3 py-2 text-xs font-mono font-bold outline-none text-on-surface"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between gap-3 pt-1">
-                        <div className="text-[10px] text-secondary">
-                          Sender: <code className="font-mono font-bold text-on-surface">{customSender}</code>
-                        </div>
-                        <button
-                          type="submit"
-                          disabled={isVerifyingTwilio || !customSid || !customToken}
-                          className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-black uppercase tracking-wider transition-all disabled:opacity-50 flex items-center gap-1.5 cursor-pointer shadow-sm"
-                        >
-                          {isVerifyingTwilio ? (
-                            <>
-                              <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                              Verifying with Twilio...
-                            </>
-                          ) : (
-                            <>
-                              <Check className="w-3.5 h-3.5" />
-                              Verify & Connect Credentials
-                            </>
-                          )}
-                        </button>
-                      </div>
-
-                      {twilioVerifyFeedback && (
-                        <div className={cn(
-                          "p-2.5 rounded-lg text-[11px] font-medium border flex items-center gap-2",
-                          twilioVerifyFeedback.type === 'success' 
-                            ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-800 dark:text-emerald-300"
-                            : "bg-red-500/10 border-red-500/30 text-red-800 dark:text-red-200"
-                        )}>
-                          {twilioVerifyFeedback.type === 'success' ? <Check className="w-4 h-4 shrink-0 text-emerald-600" /> : <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />}
-                          <span>{twilioVerifyFeedback.text}</span>
-                        </div>
-                      )}
-                    </form>
-                  )}
-                </div>
-
                 {lastWaResult && (
                   <div className={cn(
                     "p-3 rounded-xl border text-[11px] font-mono",
@@ -1444,52 +1202,21 @@ export default function NotificationSettings() {
                       </span>
                     </div>
                     <div>{lastWaResult.message || lastWaResult.error}</div>
-                    {lastWaResult.messageSid && (
-                      <div className="mt-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
-                        Twilio Message SID: {lastWaResult.messageSid}
-                      </div>
-                    )}
-                    {(lastWaResult.code || lastWaResult.error) && !lastWaResult.success && (
-                      <div className="mt-2 text-[10px] opacity-90 space-y-1.5 pt-1 border-t border-red-500/20">
-                        {lastWaResult.code && <div>Twilio Error Code: <strong>{lastWaResult.code}</strong></div>}
-                        {lastWaResult.isContentSidError && (
-                          <div className="p-2.5 rounded-lg bg-surface-container border border-red-500/30 text-on-surface space-y-2 mt-1">
-                            <p className="font-bold text-[11px] text-amber-700 dark:text-amber-300 flex items-center gap-1.5">
-                              <AlertCircle className="w-3.5 h-3.5" />
-                              2 Quick Solutions to Deliver This Message:
-                            </p>
-                            <div className="flex flex-wrap gap-2 pt-1">
-                              <a
-                                href={lastWaResult.directUrl || directWaLink}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition-all no-underline flex items-center gap-1.5 shadow-sm"
-                              >
-                                <ExternalLink className="w-3 h-3" />
-                                1. Launch Direct WhatsApp (Instant)
-                              </a>
-                              <a
-                                href={`https://wa.me/14155238886?text=${encodeURIComponent(sandboxCode || 'join')}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition-all no-underline flex items-center gap-1.5 shadow-sm"
-                              >
-                                <MessageSquare className="w-3 h-3" />
-                                2. Activate 24h Sandbox Window
-                              </a>
-                            </div>
-                          </div>
-                        )}
-                        {lastWaResult.moreInfo && (
-                          <div className="pt-0.5">
-                            Documentation: <a href={lastWaResult.moreInfo} target="_blank" rel="noopener noreferrer" className="underline font-bold">{lastWaResult.moreInfo}</a>
-                          </div>
-                        )}
+                    {(lastWaResult.directUrl || directWaLink) && (
+                      <div className="pt-2">
+                        <a
+                          href={lastWaResult.directUrl || directWaLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition-all no-underline shadow-sm"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          Launch Direct WhatsApp
+                        </a>
                       </div>
                     )}
                   </div>
                 )}
-              </div>
             </div>
 
             {/* SECTION 2: Automated Purchase Order Email Test */}

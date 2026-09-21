@@ -33,7 +33,7 @@ import {
   ConfirmationResult
 } from 'firebase/auth';
 import { auth, setCollectionDoc } from '../lib/firebase';
-import { loginWithServer, getVerifiedUserRole } from '../lib/auth';
+import { loginWithServer, getVerifiedUserRole, isAuthorizedAdminGoogleAccount, createClientAuthToken, setAuthSession } from '../lib/auth';
 
 declare global {
   interface Window {
@@ -122,9 +122,10 @@ interface LoginViewProps {
   defaultStep?: string;
   defaultTab?: 'signin' | 'signup';
   secretRole?: 'admin' | 'employee';
+  defaultPortal?: 'merchant' | 'employee' | 'admin';
 }
 
-export default function LoginView({ defaultTab = 'signin', secretRole }: LoginViewProps) {
+export default function LoginView({ defaultTab = 'signin', secretRole, defaultPortal }: LoginViewProps) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const rawRedirect = searchParams.get('redirect');
@@ -134,25 +135,27 @@ export default function LoginView({ defaultTab = 'signin', secretRole }: LoginVi
   useEffect(() => {
     try {
       const activeRole = getVerifiedUserRole();
-      if (secretRole === 'admin' && activeRole === 'admin') {
+      if ((secretRole === 'admin' || defaultPortal === 'admin') && activeRole === 'admin') {
         const target = redirectTarget || (location.pathname.startsWith('/admin') ? location.pathname : '/admin');
         navigate(target, { replace: true });
-      } else if (secretRole === 'employee' && activeRole === 'employee') {
+      } else if ((secretRole === 'employee' || defaultPortal === 'employee') && activeRole === 'employee') {
         const target = redirectTarget || '/inventory';
         navigate(target, { replace: true });
       }
     } catch {}
-  }, [secretRole, redirectTarget, navigate]);
+  }, [secretRole, defaultPortal, redirectTarget, navigate]);
 
-  // Login Mode: 'merchant' vs 'admin_employee' (Only accessible via secret URL)
-  const [loginMode, setLoginMode] = useState<'merchant' | 'admin_employee'>(() => {
-    return secretRole ? 'admin_employee' : 'merchant';
+  // Active Portal Selection: 'merchant' | 'employee' | 'admin'
+  const [activePortal, setActivePortal] = useState<'merchant' | 'employee' | 'admin'>(() => {
+    if (secretRole === 'admin' || defaultPortal === 'admin') return 'admin';
+    if (secretRole === 'employee' || defaultPortal === 'employee') return 'employee';
+    return 'merchant';
   });
-  
-  // Specific role inside admin_employee: 'admin' | 'employee'
-  const [staffRole, setStaffRole] = useState<'admin' | 'employee'>(() => {
-    return secretRole === 'employee' ? 'employee' : 'admin';
-  });
+
+  // Synchronize internal state with activePortal
+  const loginMode = activePortal === 'merchant' ? 'merchant' : 'admin_employee';
+  const staffRole = activePortal === 'admin' ? 'admin' : 'employee';
+  const setStaffRole = (r: 'admin' | 'employee') => setActivePortal(r);
 
   // Input states
   const [merchantAuthTab, setMerchantAuthTab] = useState<'signin' | 'signup'>(defaultTab);
@@ -347,7 +350,80 @@ export default function LoginView({ defaultTab = 'signin', secretRole }: LoginVi
     }
   };
 
-  // Google Sign-In
+  // Dedicated Google Sign-In for Admin (Restricted to exactly the 2 authorized Google accounts)
+  const handleAdminGoogleSignIn = async () => {
+    setLoading(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
+    try {
+      const googleProvider = new GoogleAuthProvider();
+      googleProvider.setCustomParameters({ prompt: 'select_account' });
+      const result = await signInWithPopup(auth, googleProvider);
+      const user = result.user;
+      const userEmail = (user.email || '').toLowerCase().trim();
+
+      // Check if account is one of the exactly two authorized Google accounts
+      if (!isAuthorizedAdminGoogleAccount(userEmail)) {
+        await auth.signOut();
+        try {
+          localStorage.removeItem('userRole');
+          localStorage.removeItem('tejas_auth_token_v1');
+          localStorage.removeItem('tejas_auth_user_v1');
+        } catch {}
+        setErrorMsg(`Access Denied. Google account (${userEmail || 'Unknown'}) is not authorized for Admin access.`);
+        setLoading(false);
+        return;
+      }
+
+      // Authorized Google account!
+      const userUid = user.uid || 'admin-tejas-01';
+      const userName = user.displayName || 'Tejas Adinarayan (Admin HQ)';
+
+      localStorage.setItem('userRole', 'admin');
+      localStorage.setItem('userEmail', userEmail);
+      localStorage.setItem('userName', userName);
+      localStorage.setItem('userId', userUid);
+      localStorage.setItem('tejas_intro_viewed', 'true');
+
+      const token = createClientAuthToken({
+        sub: userUid,
+        username: userEmail.split('@')[0] || 'tejasadinarayan',
+        role: 'admin',
+        name: userName,
+        email: userEmail,
+      });
+      setAuthSession(token, {
+        sub: userUid,
+        username: userEmail.split('@')[0] || 'tejasadinarayan',
+        role: 'admin',
+        name: userName,
+        email: userEmail,
+      });
+
+      window.dispatchEvent(new Event('role-changed'));
+      window.dispatchEvent(new Event('storage'));
+
+      setSuccessMsg(`Welcome, ${userName}! Launching Executive Console...`);
+      const target = (redirectTarget && !redirectTarget.includes('admintejas1679') && redirectTarget.startsWith('/')) 
+        ? redirectTarget 
+        : '/admin';
+      setTimeout(() => {
+        setLoading(false);
+        navigate(target, { replace: true });
+      }, 400);
+    } catch (err: any) {
+      console.error("Admin Google Sign-in error:", err);
+      if (err?.code === 'auth/popup-closed-by-user') {
+        setErrorMsg('Sign-in popup was closed. Please try again.');
+      } else {
+        setErrorMsg(err?.message || 'Google Sign-In failed. Please try again.');
+      }
+      setLoading(false);
+    }
+  };
+
+  // Google Sign-In for Merchants
   const handleGoogleSignIn = async () => {
     setLoading(true);
     setErrorMsg(null);
@@ -359,11 +435,44 @@ export default function LoginView({ defaultTab = 'signin', secretRole }: LoginVi
       const user = result.user;
 
       const userUid = user.uid || `usr-${Date.now()}`;
-      const userEmail = user.email || 'tejas@example.com';
+      const userEmail = (user.email || '').toLowerCase().trim();
       const userName = user.displayName || 'TEJAS CANVASSING';
 
+      // If an authorized admin signs in via Google, route them to Admin HQ!
+      if (isAuthorizedAdminGoogleAccount(userEmail)) {
+        localStorage.setItem('userRole', 'admin');
+        localStorage.setItem('userEmail', userEmail);
+        localStorage.setItem('userName', userName || 'Tejas Adinarayan (Admin HQ)');
+        localStorage.setItem('userId', userUid);
+        localStorage.setItem('tejas_intro_viewed', 'true');
+
+        const token = createClientAuthToken({
+          sub: userUid,
+          username: userEmail.split('@')[0] || 'tejasadinarayan',
+          role: 'admin',
+          name: userName,
+          email: userEmail,
+        });
+        setAuthSession(token, {
+          sub: userUid,
+          username: userEmail.split('@')[0] || 'tejasadinarayan',
+          role: 'admin',
+          name: userName,
+          email: userEmail,
+        });
+
+        window.dispatchEvent(new Event('role-changed'));
+        window.dispatchEvent(new Event('storage'));
+
+        setSuccessMsg(`Authorized Admin detected! Welcome, ${userName}.`);
+        setTimeout(() => {
+          navigate('/admin', { replace: true });
+        }, 400);
+        return;
+      }
+
       localStorage.setItem('userRole', 'merchant');
-      localStorage.setItem('userEmail', userEmail);
+      localStorage.setItem('userEmail', userEmail || 'tejas@example.com');
       localStorage.setItem('userName', userName);
       localStorage.setItem('userId', userUid);
       localStorage.setItem('tejas_intro_viewed', 'true');
@@ -390,6 +499,11 @@ export default function LoginView({ defaultTab = 'signin', secretRole }: LoginVi
         navigate(target, { replace: true });
       }, 500);
     } catch (err: any) {
+      if (err?.code === 'auth/popup-closed-by-user') {
+        setErrorMsg('Sign-in popup was closed. Please try again.');
+        setLoading(false);
+        return;
+      }
       // Fallback for iFrame preview restrictions
       const cleanEmail = email.includes('@') ? email : 'merchant.google@riceaggregator.com';
       localStorage.setItem('userRole', 'merchant');
@@ -485,6 +599,54 @@ export default function LoginView({ defaultTab = 'signin', secretRole }: LoginVi
     }
   };
 
+  // 3-tab Portal Selector (Merchant | Employee | Admin)
+  const renderPortalTabs = () => {
+    if (secretRole) return null;
+    return (
+      <div className="grid grid-cols-3 p-1 bg-slate-200/70 dark:bg-[#0c1813] rounded-xl border border-slate-200 dark:border-neutral-800 text-xs font-bold">
+        <button
+          type="button"
+          onClick={() => { setActivePortal('merchant'); setErrorMsg(null); setSuccessMsg(null); }}
+          className={cn(
+            "py-1.5 px-1.5 rounded-lg flex items-center justify-center gap-1 transition-all cursor-pointer text-[11px]",
+            activePortal === 'merchant'
+              ? "bg-white dark:bg-neutral-800 text-slate-900 dark:text-white shadow-xs font-extrabold"
+              : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+          )}
+        >
+          <Briefcase className="w-3.5 h-3.5 text-emerald-600" />
+          <span>Merchant</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => { setActivePortal('employee'); setErrorMsg(null); setSuccessMsg(null); }}
+          className={cn(
+            "py-1.5 px-1.5 rounded-lg flex items-center justify-center gap-1 transition-all cursor-pointer text-[11px]",
+            activePortal === 'employee'
+              ? "bg-white dark:bg-neutral-800 text-slate-900 dark:text-white shadow-xs font-extrabold"
+              : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+          )}
+        >
+          <Warehouse className="w-3.5 h-3.5 text-amber-600" />
+          <span>Employee</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => { setActivePortal('admin'); setErrorMsg(null); setSuccessMsg(null); }}
+          className={cn(
+            "py-1.5 px-1.5 rounded-lg flex items-center justify-center gap-1 transition-all cursor-pointer text-[11px]",
+            activePortal === 'admin'
+              ? "bg-white dark:bg-neutral-800 text-amber-700 dark:text-amber-400 shadow-xs font-extrabold"
+              : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+          )}
+        >
+          <ShieldCheck className="w-3.5 h-3.5 text-amber-500" />
+          <span>Admin</span>
+        </button>
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-[#f3f4f3] dark:bg-[#030906] flex flex-col items-center justify-center p-0 sm:py-6 sm:px-4 font-sans antialiased text-slate-900 dark:text-slate-100 select-none overflow-x-hidden">
       
@@ -502,16 +664,16 @@ export default function LoginView({ defaultTab = 'signin', secretRole }: LoginVi
                   id="btn-login-back-to-about"
                   onClick={() => navigate('/about')}
                   className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors cursor-pointer py-1.5 px-2.5 -ml-2 rounded-xl hover:bg-slate-200/60 dark:hover:bg-neutral-800/60 group"
-                  title="Go back to About Us"
+                  title="Go back to Public Front Page"
                 >
                   <ArrowLeft className="w-4 h-4 text-[#143e2e] dark:text-emerald-400 transition-transform group-hover:-translate-x-0.5 stroke-[2.5]" />
-                  <span>About Us</span>
+                  <span>Front Page</span>
                 </button>
 
                 {secretRole ? (
                   <span className="text-[9px] font-extrabold uppercase tracking-wider text-amber-700 dark:text-amber-400 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/20 flex items-center gap-1 font-mono">
                     <Lock className="w-2.5 h-2.5 text-amber-600 dark:text-amber-400" />
-                    Secret Portal ({secretRole === 'admin' ? 'Admin' : 'Employee'})
+                    {secretRole === 'admin' ? 'Admin Portal' : 'Employee Portal'}
                   </span>
                 ) : null}
               </div>
@@ -530,8 +692,13 @@ export default function LoginView({ defaultTab = 'signin', secretRole }: LoginVi
                     </h2>
                   </div>
 
+                  {/* Portal Selector Tabs (Merchant | Employee | Admin) */}
+                  <div className="pt-2">
+                    {renderPortalTabs()}
+                  </div>
+
                   {/* Sign In vs Create Account Tab Switcher */}
-                  <div className="grid grid-cols-2 p-1 bg-slate-200/60 dark:bg-[#0c1813] rounded-xl border border-slate-200 dark:border-neutral-800 text-xs font-bold my-3">
+                  <div className="grid grid-cols-2 p-1 bg-slate-200/60 dark:bg-[#0c1813] rounded-xl border border-slate-200 dark:border-neutral-800 text-xs font-bold my-2">
                     <button
                       type="button"
                       onClick={() => { setMerchantAuthTab('signin'); setErrorMsg(null); setSuccessMsg(null); }}
@@ -788,7 +955,7 @@ export default function LoginView({ defaultTab = 'signin', secretRole }: LoginVi
                     type="button"
                     onClick={handleGoogleSignIn}
                     disabled={loading}
-                    className="w-full py-2.5 px-4 rounded-xl bg-white dark:bg-[#0c1813] hover:bg-slate-50 dark:hover:bg-neutral-850 border border-slate-200/90 dark:border-neutral-800 text-slate-700 dark:text-slate-200 font-medium text-xs shadow-2xs transition-all cursor-pointer flex items-center justify-center gap-2.5 active:scale-[0.98]"
+                    className="w-full py-2.5 px-4 rounded-xl bg-white dark:bg-[#0c1813] hover:bg-slate-50 dark:hover:bg-neutral-800 border border-slate-200/90 dark:border-neutral-800 text-slate-700 dark:text-slate-200 font-medium text-xs shadow-2xs transition-all cursor-pointer flex items-center justify-center gap-2.5 active:scale-[0.98]"
                   >
                     <GoogleGIcon className="w-4 h-4" />
                     <span>Continue with Google</span>
@@ -827,119 +994,119 @@ export default function LoginView({ defaultTab = 'signin', secretRole }: LoginVi
                     </p>
                   </div>
 
-                  {/* Staff Role Switcher Tabs */}
-                  <div className="grid grid-cols-2 p-1 bg-slate-200/60 dark:bg-[#0c1813] rounded-xl border border-slate-200 dark:border-neutral-800 text-xs font-bold">
-                    <button
-                      type="button"
-                      onClick={() => { setStaffRole('admin'); setErrorMsg(null); setSuccessMsg(null); }}
-                      className={cn(
-                        "py-1.5 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer",
-                        staffRole === 'admin'
-                          ? "bg-white dark:bg-neutral-800 text-slate-900 dark:text-white shadow-xs font-bold"
-                          : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
-                      )}
-                    >
-                      <Building2 className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>Admin (HQ)</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setStaffRole('employee'); setErrorMsg(null); setSuccessMsg(null); }}
-                      className={cn(
-                        "py-1.5 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer",
-                        staffRole === 'employee'
-                          ? "bg-white dark:bg-neutral-800 text-slate-900 dark:text-white shadow-xs font-bold"
-                          : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
-                      )}
-                    >
-                      <Warehouse className="w-3.5 h-3.5 text-amber-600" />
-                      <span>Employee (Desk)</span>
-                    </button>
-                  </div>
+                  {/* Portal Selector Tabs (Merchant | Employee | Admin) */}
+                  {renderPortalTabs()}
 
                   {/* Role Detail Forms */}
                   {staffRole === 'admin' ? (
-                    <form onSubmit={(e) => handleStaffSignIn(e, 'admin')} className="bg-white dark:bg-[#0c1813] border border-slate-200/90 dark:border-neutral-800 rounded-2xl p-4 space-y-3 shadow-2xs">
-                      <div className="flex items-center justify-between border-b border-slate-100 dark:border-neutral-800 pb-2">
-                        <div>
-                          <span className="text-xs font-bold text-slate-900 dark:text-white block">
-                            Aggregator HQ Terminal
-                          </span>
-                          <span className="text-[10px] text-slate-400">
-                            Tejas Canvassing Brokerage
-                          </span>
+                    <div className="bg-white dark:bg-[#0c1813] border border-slate-200/90 dark:border-neutral-800 rounded-2xl p-4 sm:p-5 space-y-3.5 shadow-xs text-left">
+                      <div className="flex items-center justify-between border-b border-slate-100 dark:border-neutral-800 pb-2.5">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-xl bg-emerald-500/10 dark:bg-emerald-950/60 border border-emerald-500/20 flex items-center justify-center shrink-0">
+                            <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                          </div>
+                          <div>
+                            <span className="text-xs font-bold text-slate-900 dark:text-white block leading-tight">
+                              Aggregator HQ Terminal
+                            </span>
+                            <span className="text-[10px] text-slate-400">
+                              Tejas Canvassing Brokerage
+                            </span>
+                          </div>
                         </div>
-                        <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 font-mono">
-                          Protected
+                        <span className="px-2 py-0.5 rounded text-[9px] font-extrabold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 font-mono tracking-wider">
+                          Google Auth
                         </span>
+                      </div>
+
+                      <div className="space-y-1">
+                        <h3 className="text-xs font-bold text-slate-900 dark:text-white">
+                          Authorized Executive Access
+                        </h3>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                          Sign in with your authorized Google account to access full admin controls, order ledger, analytics, and brokering operations.
+                        </p>
                       </div>
 
                       {/* Error / Success Notifications */}
                       {errorMsg && (
-                        <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-700 dark:text-rose-400 text-xs font-semibold flex items-center gap-2">
-                          <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
-                          <span>{errorMsg}</span>
+                        <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-700 dark:text-rose-400 text-xs font-semibold flex items-start gap-2">
+                          <AlertCircle className="w-4 h-4 shrink-0 text-rose-500 mt-0.5" />
+                          <span className="leading-snug">{errorMsg}</span>
                         </div>
                       )}
                       {successMsg && (
-                        <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-xs font-semibold flex items-center gap-2">
-                          <Check className="w-4 h-4 shrink-0 text-emerald-500" />
-                          <span>{successMsg}</span>
+                        <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-xs font-semibold flex items-start gap-2">
+                          <Check className="w-4 h-4 shrink-0 text-emerald-500 mt-0.5" />
+                          <span className="leading-snug">{successMsg}</span>
                         </div>
                       )}
 
-                      {/* Admin Username Input */}
-                      <div className="space-y-1">
-                        <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block">
-                          Admin Username
-                        </label>
-                        <div className="relative flex items-center">
-                          <Building2 className="absolute left-3 w-4 h-4 text-slate-400" />
-                          <input
-                            type="text"
-                            required
-                            value={staffUsername}
-                            onChange={(e) => setStaffUsername(e.target.value)}
-                            placeholder="e.g. tejasadinarayan"
-                            className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-[#07130e] border border-slate-200 dark:border-neutral-800 rounded-xl text-xs text-slate-900 dark:text-white font-medium outline-none focus:ring-2 focus:ring-emerald-500/30"
-                          />
-                        </div>
-                      </div>
-
-                      {/* Admin Password Input */}
-                      <div className="space-y-1">
-                        <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block">
-                          Admin Password
-                        </label>
-                        <div className="relative flex items-center">
-                          <Lock className="absolute left-3 w-4 h-4 text-slate-400" />
-                          <input
-                            type={showStaffPassword ? "text" : "password"}
-                            required
-                            value={staffPassword}
-                            onChange={(e) => setStaffPassword(e.target.value)}
-                            placeholder="Enter admin password"
-                            className="w-full pl-9 pr-9 py-2 bg-slate-50 dark:bg-[#07130e] border border-slate-200 dark:border-neutral-800 rounded-xl text-xs text-slate-900 dark:text-white font-medium outline-none focus:ring-2 focus:ring-emerald-500/30"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowStaffPassword(prev => !prev)}
-                            className="absolute right-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
-                          >
-                            {showStaffPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                          </button>
-                        </div>
-                      </div>
-
+                      {/* Primary Google Sign-In Button */}
                       <button
-                        type="submit"
+                        type="button"
+                        id="btn-admin-google-signin"
+                        onClick={handleAdminGoogleSignIn}
                         disabled={loading}
-                        className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-black text-white font-semibold text-xs shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-[0.98] mt-1"
+                        className="w-full py-3 px-4 rounded-xl bg-white dark:bg-[#14231c] hover:bg-slate-50 dark:hover:bg-[#192d24] border-2 border-emerald-600/50 dark:border-emerald-500/50 text-slate-900 dark:text-white font-bold text-xs shadow-xs transition-all cursor-pointer flex items-center justify-center gap-2.5 active:scale-[0.98] group"
                       >
-                        <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                        <span>{loading ? 'Authenticating...' : 'Sign In as Admin'}</span>
+                        <GoogleGIcon className="w-4 h-4 transition-transform group-hover:scale-110" />
+                        <span>{loading ? 'Verifying Google Account...' : 'Sign In with Google'}</span>
                       </button>
-                    </form>
+
+                      {/* Strict Security Policy Note */}
+                      <div className="p-2.5 rounded-xl bg-slate-100/70 dark:bg-[#07130e] border border-slate-200/80 dark:border-neutral-800 text-[10.5px] text-slate-500 dark:text-slate-400 space-y-0.5">
+                        <div className="flex items-center gap-1 font-bold text-slate-700 dark:text-slate-300">
+                          <Lock className="w-3 h-3 text-amber-500 shrink-0" />
+                          <span>Strict Access Protection</span>
+                        </div>
+                        <p className="leading-snug text-[10px]">
+                          Only 2 authorized Google accounts (Admin Tejas and designated account) can access this portal. All other Google accounts will be denied.
+                        </p>
+                      </div>
+
+                      {/* Discreet Fallback: Master Password login */}
+                      <div className="pt-0.5 border-t border-slate-100 dark:border-neutral-800/80">
+                        <details className="group/fallback text-left">
+                          <summary className="text-[10px] font-semibold text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 cursor-pointer list-none flex items-center justify-between py-1">
+                            <span>Alternative: Sign In with Password</span>
+                            <span className="group-open/fallback:rotate-180 transition-transform">▾</span>
+                          </summary>
+                          <form onSubmit={(e) => handleStaffSignIn(e, 'admin')} className="pt-2 space-y-2">
+                            <input
+                              type="text"
+                              value={staffUsername}
+                              onChange={(e) => setStaffUsername(e.target.value)}
+                              placeholder="Admin Username"
+                              className="w-full px-3 py-1.5 bg-slate-50 dark:bg-[#07130e] border border-slate-200 dark:border-neutral-800 rounded-lg text-xs outline-none"
+                            />
+                            <div className="relative flex items-center">
+                              <input
+                                type={showStaffPassword ? "text" : "password"}
+                                value={staffPassword}
+                                onChange={(e) => setStaffPassword(e.target.value)}
+                                placeholder="Admin Password"
+                                className="w-full px-3 py-1.5 bg-slate-50 dark:bg-[#07130e] border border-slate-200 dark:border-neutral-800 rounded-lg text-xs outline-none pr-8"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setShowStaffPassword(prev => !prev)}
+                                className="absolute right-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                              >
+                                {showStaffPassword ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                              </button>
+                            </div>
+                            <button
+                              type="submit"
+                              disabled={loading}
+                              className="w-full py-1.5 rounded-lg bg-slate-900 hover:bg-black text-white font-semibold text-xs transition-colors"
+                            >
+                              Sign In with Password
+                            </button>
+                          </form>
+                        </details>
+                      </div>
+                    </div>
                   ) : (
                     <form onSubmit={(e) => handleStaffSignIn(e, 'employee')} className="bg-white dark:bg-[#0c1813] border border-slate-200/90 dark:border-neutral-800 rounded-2xl p-4 space-y-3 shadow-2xs">
                       <div className="flex items-center justify-between border-b border-slate-100 dark:border-neutral-800 pb-2">

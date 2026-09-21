@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Sparkles, ChevronRight, Check } from 'lucide-react';
+import { Sparkles, ChevronRight } from 'lucide-react';
 
 interface TejasBagMockupProps {
   isPouring?: boolean;
@@ -145,7 +145,7 @@ export default function TejasBagMockup({
         </div>
 
         {/* MAIN BAG 3D BODY WRAPPER */}
-        <div className="relative w-[320px] sm:w-[380px] md:w-[420px] transition-transform duration-300">
+        <div className="relative w-[min(320px,calc(100vw-3.5rem))] sm:w-[380px] md:w-[420px] max-w-full transition-transform duration-300">
 
           {/* LEFT TOP CORNER TIE STRING (Twisted jute twine with tassel) */}
           <div className="absolute -left-6 top-7 z-30 pointer-events-none">

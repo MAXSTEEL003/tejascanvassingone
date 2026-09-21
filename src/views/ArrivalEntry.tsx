@@ -952,7 +952,7 @@ export default function ArrivalEntry() {
           <span className="w-full text-center px-1.5 py-1 bg-red-600 dark:bg-red-900 text-white dark:text-red-200 text-[9px] font-black uppercase rounded flex items-center justify-center gap-1 border border-red-500 animate-pulse leading-none shadow-sm shadow-red-500/10">
             🚨 COLLECT ({numDays}D)
           </span>
-          <span className="text-[7.5px] font-black text-red-650 dark:text-red-400 text-center tracking-wider uppercase whitespace-nowrap leading-none mt-0.5">
+          <span className="text-[7.5px] font-black text-red-600 dark:text-red-400 text-center tracking-wider uppercase whitespace-nowrap leading-none mt-0.5">
             COMPULSORY DUE!
           </span>
         </div>
@@ -2626,7 +2626,7 @@ export default function ArrivalEntry() {
                   "h-8 px-3 rounded-t-lg border-x border-t flex items-center gap-2 cursor-pointer text-xs font-bold transition-all relative select-none group",
                   isSelected 
                     ? "bg-surface text-primary border-outline-variant font-black z-10 -mb-[5px] shadow-sm" 
-                    : "bg-neutral-200 dark:bg-neutral-800 text-secondary border-transparent hover:bg-neutral-150 dark:hover:bg-neutral-750"
+                    : "bg-neutral-200 dark:bg-neutral-800 text-secondary border-transparent hover:bg-neutral-100 dark:hover:bg-neutral-700"
                 )}
               >
                 {isEditingThisSheet ? (

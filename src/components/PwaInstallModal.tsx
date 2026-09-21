@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Download, Share, PlusSquare, CheckCircle2, X, Smartphone, Sparkles, Monitor } from 'lucide-react';
+import { Download, Share, PlusSquare, CheckCircle2, X, Smartphone, Monitor } from 'lucide-react';
 
 interface PwaInstallModalProps {
   isOpen: boolean;
@@ -58,7 +58,7 @@ export default function PwaInstallModal({ isOpen, onClose }: PwaInstallModalProp
           initial={{ y: 50, opacity: 0, scale: 0.95 }}
           animate={{ y: 0, opacity: 1, scale: 1 }}
           exit={{ y: 50, opacity: 0, scale: 0.95 }}
-          className="w-full max-w-md bg-surface border border-outline-variant rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden text-on-surface font-sans"
+          className="w-full max-w-md bg-surface border border-outline-variant rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden text-on-surface font-sans pb-[env(safe-area-inset-bottom,0px)]"
         >
           {/* Header Banner */}
           <div className="relative bg-gradient-to-br from-[#143e2e] via-[#0d2a1f] to-[#07110c] p-6 text-white overflow-hidden">

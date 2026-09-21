@@ -6,57 +6,29 @@ import {
   Search, 
   Layers, 
   Warehouse, 
-  ShieldCheck, 
   TrendingUp, 
   TrendingDown,
-  Activity, 
   MapPin, 
-  ShoppingBag,
-  DollarSign,
-  Briefcase,
-  HelpCircle,
-  Clock,
-  Eye,
-  Info,
-  Sparkles,
-  Award,
-  Plus,
-  Minus,
-  Trash2,
-  CheckCircle2,
-  Calendar,
-  Building,
-  Check,
-  X,
-  Loader2,
-  Percent,
-  Filter,
-  ArrowUpDown,
-  Truck,
-  Package,
-  Scale,
-  Droplets,
-  BadgeCheck,
-  Heart,
-  Star,
-  Menu,
-  LayoutGrid,
-  Home,
-  User,
-  ChevronLeft,
-  ChevronRight,
+  Eye, 
+  Sparkles, 
+  Plus, 
+  CheckCircle2, 
+  Check, 
+  X, 
+  BadgeCheck, 
+  Heart, 
+  Star, 
+  ChevronLeft, 
+  ChevronRight, 
   ChevronDown,
-  ChevronUp,
-  Lock,
-  ShieldAlert
+  ShoppingBag
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, formatINR } from '../lib/utils';
-import { auth, getCollectionDocs, setCollectionDoc, createLedgerEntriesForOrder, addCollectionDoc } from '../lib/firebase';
+import { auth, getCollectionDocs, setCollectionDoc, addCollectionDoc } from '../lib/firebase';
 import { useCart } from '../context/CartContext';
 import RicePouchGraphic from '../components/RicePouchGraphic';
 import { getDeliveryLocations, getSelectedDeliveryLocationId, setSelectedDeliveryLocationId, DeliveryLocation, addDeliveryLocation } from '../utils/deliveryLocations';
-import { generateSupplierPOEmailHtml, generateBuyerConfirmationEmailHtml, resolveSupplierProfile } from '../utils/poEmailTemplate';
 
 // Products in the store are strictly driven by Firebase Firestore (product_inventory).
 // No mock or hardcoded products are used.
@@ -908,203 +880,6 @@ export default function StoreManagement() {
     };
   };
 
-  const handleUpdateCartQty = (productId: string, newQty: number) => {
-    updateQty(productId, newQty);
-  };
-
-  const handleRemoveFromCart = (productId: string) => {
-    removeItem(productId);
-  };
-
-  const handlePlaceOrder = async () => {
-    if (cart.length === 0) return;
-    setIsPlacingOrder(true);
-
-    try {
-      // 1. Group cart items by supplier
-      const itemsBySupplier: Record<string, typeof cart> = {};
-      cart.forEach(item => {
-        const supplier = item.product?.supplier || (item as any).supplier || registeredSuppliers[0]?.name || 'DIRECT MILL';
-        if (!itemsBySupplier[supplier]) {
-          itemsBySupplier[supplier] = [];
-        }
-        itemsBySupplier[supplier].push(item);
-      });
-
-      const placedGroupedOrders: any[] = [];
-
-      // 2. Generate separate PO for each supplier
-      for (const [supplier, supplierItems] of Object.entries(itemsBySupplier)) {
-        const batchId = `TC-${Math.floor(1000 + Math.random() * 9000)}`;
-        const totalQty = supplierItems.reduce((sum, item) => sum + item.qty, 0);
-        const totalAmt = supplierItems.reduce((sum, item) => sum + (item.qty * item.product.price), 0);
-
-        // Sub items compatible with system schemas
-        const subOrders = supplierItems.map(item => ({
-          id: `TC-SUB-${Math.floor(100000 + Math.random() * 900000)}`,
-          buyer: buyerName || 'Registered Merchant',
-          qty: item.qty,
-          rate: item.product.price,
-          product: item.product.name,
-          supplier: supplier,
-          status: 'Placed',
-          loadingDays: loadingDays
-        }));
-
-        const initials = (buyerName || 'RM')
-          .split(' ')
-          .filter(Boolean)
-          .map(n => n[0])
-          .join('')
-          .toUpperCase()
-          .slice(0, 2) || 'RM';
-
-        const avgRate = Number((totalAmt / (totalQty || 1)).toFixed(2));
-        const firstProduct = supplierItems[0]?.product.name || 'Premium Rice';
-
-        const groupedOrder = {
-          id: batchId,
-          date: (() => {
-            const d = new Date();
-            const day = d.getDate();
-            const monthNames = [
-               'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-               'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-            ];
-            const m = monthNames[d.getMonth()];
-            const yyyy = d.getFullYear();
-            return `${day}-${m}-${yyyy}`;
-          })(),
-          items: `${supplierItems.map(si => `${si.product.name} (${si.qty} QTLS)`).join(', ')}`,
-          total: `₹ ${formatINR(totalAmt)}`,
-          status: 'Awaiting Settlement',
-          progress: 5,
-          origin: supplier.includes('SAI TEJA') ? 'Nalgonda, TS' : 'Punjab Hub',
-          destination: 'APMC Yard, Bangalore',
-          buyer: buyerName || 'Registered Merchant',
-          supplier: supplier,
-          originalOrders: subOrders,
-          purchaseOrderSent: true,
-          purchaseOrderSentAt: new Date().toISOString(),
-          loadingDays: loadingDays,
-          gstin: gstin || '29AAGCV7712M1ZP',
-          phone: phone || '9342380981',
-          address: address || 'No. 15, APMC Yard, Yeshwanthpur, Bangalore, Karnataka - 560022',
-          qty: totalQty,
-          rate: avgRate,
-          product: firstProduct,
-          initials: initials,
-          urgency: 'Standard',
-          color: 'zinc'
-        };
-
-        // Save ONLY to active requests array (procurement_requests) so it shows up in main orders dashboard for admin approval
-        const pendingOrder = {
-          ...groupedOrder,
-          status: 'Pending Approval'
-        };
-
-        await setCollectionDoc('procurement_requests', batchId, pendingOrder);
-
-        const existingProcurements = JSON.parse(localStorage.getItem('procurement_requests') || '[]');
-        localStorage.setItem('procurement_requests', JSON.stringify([pendingOrder, ...existingProcurements]));
-
-        placedGroupedOrders.push(pendingOrder);
-
-        // Auto-dispatch Email, WhatsApp & SMS notifications
-        const storeBuyerPhone = phone || localStorage.getItem('userPhone') || '9342380981';
-        const storeBuyerName = buyerName || localStorage.getItem('userName') || 'Merchant Store Buyer';
-        const storeBuyerEmail = email || localStorage.getItem('userEmail') || 'tejasadinarayan@gmail.com';
-        const supplierProf = resolveSupplierProfile(supplier);
-
-        // 1. Send Purchase Order Email to Supplier
-        const supplierEmailHtml = generateSupplierPOEmailHtml(supplier, pendingOrder, subOrders);
-        fetch('/api/dispatch-po', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            to: supplierProf.email,
-            supplierName: supplier,
-            subject: `PURCHASE ORDER - ${batchId} - Tejas Canvassing`,
-            html: supplierEmailHtml,
-            htmlContent: supplierEmailHtml,
-            textContent: `Purchase Order ${batchId} for ${supplier} (${totalQty} QTLS). Total: ₹ ${formatINR(totalAmt)}.`
-          })
-        })
-        .then(res => res.json())
-        .then(data => console.log(`Store PO Email dispatched to ${supplier}:`, data))
-        .catch(err => console.warn(`Store PO Email dispatch error for ${supplier}:`, err?.message || err));
-
-        // 2. Send Order Confirmation Email to Buyer
-        if (storeBuyerEmail) {
-          const buyerEmailHtml = generateBuyerConfirmationEmailHtml(storeBuyerName, pendingOrder, supplierItems.map(si => ({
-            product: si.product.name,
-            qty: si.qty,
-            rate: si.product.price,
-            total: `₹ ${formatINR(si.qty * si.product.price)}`
-          })));
-
-          fetch('/api/dispatch-po', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              to: storeBuyerEmail,
-              recipientName: storeBuyerName,
-              subject: `ORDER CONFIRMATION - ${batchId} - Tejas Canvassing`,
-              html: buyerEmailHtml,
-              htmlContent: buyerEmailHtml,
-              textContent: `Hello ${storeBuyerName}, your procurement request ${batchId} for ${totalQty} QTLS has been registered on Tejas Canvassing.`
-            })
-          })
-          .then(res => res.json())
-          .then(data => console.log(`Store Buyer Confirmation Email dispatched to ${storeBuyerEmail}:`, data))
-          .catch(err => console.warn(`Store Buyer Email dispatch error:`, err?.message || err));
-        }
-
-        const storeWhatsappMsg = `Hello ${storeBuyerName},\n\nYour procurement request ${batchId} for ${totalQty} QTLS (${firstProduct}) has been submitted successfully on Tejas Canvassing!\n\nSupplier: ${supplier}\nTotal: ₹ ${formatINR(totalAmt)}\n\nOur brokerage desk is processing your order.`;
-
-        fetch('/api/dispatch-whatsapp', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            to: storeBuyerPhone,
-            buyerName: storeBuyerName,
-            message: storeWhatsappMsg
-          })
-        }).catch(err => console.warn('Store WhatsApp dispatch note:', err?.message || err));
-
-        fetch('/api/dispatch-sms', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            to: storeBuyerPhone,
-            recipientName: storeBuyerName,
-            message: `Tejas Canvassing: Procurement request ${batchId} for ${totalQty} QTLS has been registered. Total: ₹${formatINR(totalAmt)}.`
-          })
-        }).catch(err => console.warn('Store SMS dispatch note:', err?.message || err));
-      }
-
-      setIsCartOpen(false);
-      setTimeout(() => {
-        setOrderSuccess(placedGroupedOrders);
-        clearCart();
-      }, 350);
-
-      // Refresh dynamic listings stats
-      const cloudPlaced = await getCollectionDocs('placed_orders').catch(() => []);
-      const localPlaced = JSON.parse(localStorage.getItem('placed_orders') || '[]');
-      const cloudProcurements = await getCollectionDocs('procurement_requests').catch(() => []);
-      const localProcurements = JSON.parse(localStorage.getItem('procurement_requests') || '[]');
-      setDbOrders([...cloudPlaced, ...localPlaced]);
-      setDbProcurements([...cloudProcurements, ...localProcurements]);
-
-    } catch (error) {
-      console.error('Error placing grouped orders', error);
-      alert('An error occurred while placing your order. Please try again.');
-    } finally {
-      setIsPlacingOrder(false);
-    }
-  };
 
   // Extract clean categories for user filter pills
   const availableCategories = React.useMemo(() => {
@@ -1465,7 +1240,7 @@ export default function StoreManagement() {
                                 <div className="flex items-center gap-1">
                                   <span className="font-bold text-xs truncate">{loc.name}</span>
                                   <span className={cn(
-                                    "text-[8px] font-extrabold uppercase px-1 py-0.2 rounded font-mono",
+                                    "text-[8px] font-extrabold uppercase px-1 py-0.5 rounded font-mono",
                                     loc.type === 'Godown' ? "bg-amber-500/10 text-amber-700 dark:text-amber-400" : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
                                   )}>
                                     {loc.type}
@@ -1514,7 +1289,7 @@ export default function StoreManagement() {
         {/* --- LIVE SCROLLING ANNOUNCEMENT TICKER BAR (Controlled by Admin) --- */}
         {tickerMessages.some((t: any) => t.active !== false) && (
           <div className="w-full bg-[#143e2e] text-white rounded-lg px-2.5 py-1 shadow-xs flex items-center gap-2 overflow-hidden border border-emerald-800/50">
-            <span className="shrink-0 text-[8px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 px-1.5 py-0.2 rounded-full border border-emerald-400/20 flex items-center gap-1">
+            <span className="shrink-0 text-[8px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded-full border border-emerald-400/20 flex items-center gap-1">
               <Sparkles className="w-2 h-2 text-emerald-400 animate-spin" />
               Live Alert
             </span>
@@ -1548,7 +1323,7 @@ export default function StoreManagement() {
               </div>
               <div className="min-w-0 space-y-0.5 text-left">
                 <div className="flex items-center gap-1">
-                  <span className="text-[7.5px] font-black uppercase tracking-widest text-amber-800 dark:text-amber-400 bg-amber-200/60 dark:bg-amber-950/80 px-1 py-0.2 rounded font-mono">
+                  <span className="text-[7.5px] font-black uppercase tracking-widest text-amber-800 dark:text-amber-400 bg-amber-200/60 dark:bg-amber-950/80 px-1 py-0.5 rounded font-mono">
                     Daily Rates
                   </span>
                   <span className="text-[8.5px] text-amber-700/80 dark:text-amber-300/80 font-medium">
@@ -1681,7 +1456,7 @@ export default function StoreManagement() {
                     "px-3 py-1.5 rounded-full text-[11px] font-bold transition-all duration-150 cursor-pointer whitespace-nowrap shadow-2xs flex items-center gap-1 active:scale-95 shrink-0",
                     isSelected
                       ? "bg-[#0e4835] dark:bg-emerald-600 text-white shadow-xs"
-                      : "bg-white dark:bg-[#0c1813] text-slate-700 dark:text-slate-300 border border-slate-200/90 dark:border-neutral-800 hover:bg-slate-50 dark:hover:bg-neutral-850"
+                      : "bg-white dark:bg-[#0c1813] text-slate-700 dark:text-slate-300 border border-slate-200/90 dark:border-neutral-800 hover:bg-slate-50 dark:hover:bg-neutral-800"
                   )}
                 >
                   <span>{cat.label}</span>
@@ -1849,7 +1624,7 @@ export default function StoreManagement() {
                                   <BadgeCheck className="w-2.5 h-2.5 text-emerald-600" />
                                   Grade
                                 </span>
-                                <span className="bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 px-1 py-0.2 rounded font-mono text-[7.5px] font-bold">
+                                <span className="bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 px-1 py-0.5 rounded font-mono text-[7.5px] font-bold">
                                   LOT-A+
                                 </span>
                               </div>
@@ -1976,7 +1751,7 @@ export default function StoreManagement() {
             <button
               type="button"
               onClick={() => setIsSupportOpen(prev => !prev)}
-              className="w-full p-3 flex items-center justify-between cursor-pointer hover:bg-slate-50 dark:hover:bg-neutral-850/50 transition-colors"
+              className="w-full p-3 flex items-center justify-between cursor-pointer hover:bg-slate-50 dark:hover:bg-neutral-800/50 transition-colors"
             >
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-emerald-500" />
@@ -2016,7 +1791,7 @@ export default function StoreManagement() {
                         value={compSubject}
                         onChange={(e) => setCompSubject(e.target.value)}
                         placeholder="e.g. Bulk dispatch request, rate inquiry"
-                        className="w-full bg-slate-50 dark:bg-neutral-850 border border-slate-200 dark:border-neutral-700 rounded-xl px-2.5 py-1.5 text-xs font-medium text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-emerald-500"
+                        className="w-full bg-slate-50 dark:bg-neutral-800 border border-slate-200 dark:border-neutral-700 rounded-xl px-2.5 py-1.5 text-xs font-medium text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-emerald-500"
                       />
                     </div>
 
@@ -2030,7 +1805,7 @@ export default function StoreManagement() {
                         value={compMessage}
                         onChange={(e) => setCompMessage(e.target.value)}
                         placeholder="Write your note or question..."
-                        className="w-full bg-slate-50 dark:bg-neutral-850 border border-slate-200 dark:border-neutral-700 rounded-xl px-2.5 py-1.5 text-xs font-medium text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-emerald-500 leading-relaxed"
+                        className="w-full bg-slate-50 dark:bg-neutral-800 border border-slate-200 dark:border-neutral-700 rounded-xl px-2.5 py-1.5 text-xs font-medium text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-emerald-500 leading-relaxed"
                       />
                     </div>
 
@@ -2112,7 +1887,7 @@ export default function StoreManagement() {
                     </div>
                     <div>
                       <p className="text-[8px] font-black uppercase text-emerald-900/40 leading-none">Supplier Mill</p>
-                      <p className="font-bold text-emerald-650 dark:text-emerald-400 mt-1 uppercase font-mono tracking-tight">{order.supplier}</p>
+                      <p className="font-bold text-emerald-600 dark:text-emerald-400 mt-1 uppercase font-mono tracking-tight">{order.supplier}</p>
                     </div>
                   </div>
 
@@ -2378,7 +2153,7 @@ export default function StoreManagement() {
           </div>
         )}
 
-        {/* Yesterday vs Today Rate Comparison Modal */}
+        {/* Old Rates vs New Rates Comparison Modal */}
         {showRateChartModal && (
           <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
             <motion.div
@@ -2398,28 +2173,28 @@ export default function StoreManagement() {
               <div className="space-y-1 pr-8">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-[9px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
-                    Daily Wholesale Rate Board
+                    Wholesale Rate Board
                   </span>
                   <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
-                    Live Rate Movement
+                    Market Rate Movement
                   </span>
                 </div>
                 <h3 className="font-serif text-xl sm:text-2xl font-normal text-slate-900 dark:text-white tracking-tight">
-                  Daily Product Rate Comparison
+                  Product Rate Comparison
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Yesterday vs Today ex-mill & wholesale market prices per Quintal.
+                  Old Rates vs New Rates ex-mill & wholesale market prices per Quintal.
                 </p>
               </div>
 
               {/* Date Legend Pills */}
               <div className="flex items-center gap-2 text-[11px] font-bold py-1 border-b border-slate-200/80 dark:border-neutral-800">
                 <span className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-neutral-800 text-slate-600 dark:text-slate-300">
-                  Yesterday: {new Date(Date.now() - 86400000).toLocaleDateString('default', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  Old Rates: {new Date(Date.now() - 86400000).toLocaleDateString('default', { month: 'short', day: 'numeric', year: 'numeric' })}
                 </span>
                 <span className="text-slate-400">→</span>
                 <span className="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
-                  Today: {new Date().toLocaleDateString('default', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  New Rates: {new Date().toLocaleDateString('default', { month: 'short', day: 'numeric', year: 'numeric' })}
                 </span>
               </div>
 
@@ -2430,7 +2205,7 @@ export default function StoreManagement() {
                     <Store className="w-8 h-8 text-amber-500/80" />
                     <p className="text-xs font-bold text-slate-800 dark:text-slate-200">No Products in Inventory</p>
                     <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-sm">
-                      There are currently no active products in the inventory to display rate comparisons. Products added by admin in Product Inventory will appear here with daily trends.
+                      There are currently no active products in the inventory to display rate comparisons. Products added by admin in Product Inventory will appear here with rate trends.
                     </p>
                   </div>
                 ) : (
@@ -2452,7 +2227,7 @@ export default function StoreManagement() {
                             <span className="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-white truncate">
                               {product.name}
                             </span>
-                            <span className="text-[9px] font-bold px-2 py-0.2 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
+                            <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
                               {product.category || 'Standard'}
                             </span>
                           </div>
@@ -2463,10 +2238,10 @@ export default function StoreManagement() {
 
                         {/* Right Comparison Grid */}
                         <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4 border-t sm:border-t-0 border-slate-200/60 dark:border-neutral-800/80 pt-2 sm:pt-0 shrink-0">
-                          {/* Yesterday Rate */}
+                          {/* Old Rate */}
                           <div className="text-right">
                             <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
-                              Yesterday
+                              Old Rates
                             </span>
                             <span className="text-xs font-mono font-bold text-slate-600 dark:text-slate-300">
                               ₹ {formatINR(yesterdayRate)} / Qtl
@@ -2476,10 +2251,10 @@ export default function StoreManagement() {
                           {/* Arrow */}
                           <ArrowRight className="w-3.5 h-3.5 text-slate-300 dark:text-neutral-700 shrink-0" />
 
-                          {/* Today Rate */}
+                          {/* New Rate */}
                           <div className="text-right">
                             <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 block">
-                              Today
+                              New Rates
                             </span>
                             <span className="text-xs sm:text-sm font-mono font-black text-slate-900 dark:text-white">
                               ₹ {formatINR(todayRate)} / Qtl

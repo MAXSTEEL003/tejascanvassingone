@@ -1,30 +1,25 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import { 
   ShoppingCart, 
   Package, 
-  Box, 
   Users, 
-  ClipboardList, 
   HelpCircle, 
   LogOut,
   Calendar,
   Warehouse,
   BarChart3,
-  Store,
   CreditCard,
-  CloudUpload,
-  ShieldCheck,
-  Bell,
-  Calculator,
-  FileSpreadsheet,
-  BookOpen,
-  Clock,
-  ChevronLeft,
-  ChevronRight,
-  Download
+  Bell, 
+  Calculator, 
+  FileSpreadsheet, 
+  BookOpen, 
+  Clock, 
+  ChevronLeft, 
+  ChevronRight, 
+  Download 
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -35,7 +30,7 @@ const navItems = [
   { icon: FileSpreadsheet, label: 'Arrival Entry', path: '/arrival-entry', roles: ['admin', 'officer'] },
   { icon: CreditCard, label: 'Payments', path: '/payments', roles: ['admin', 'officer'] },
   { icon: BookOpen, label: 'Ledger', path: '/ledger', roles: ['admin', 'officer'] },
-  { icon: Clock, label: 'Pending Loadings', path: '/pending-loadings', roles: ['admin', 'officer', 'employee'] },
+  { icon: Clock, label: 'Pending Loadings', path: '/pending-loadings', roles: ['admin', 'officer'] },
   { icon: Calculator, label: 'Patti Ledger', path: '/patti', roles: ['admin', 'officer'] },
   { icon: Users, label: 'Users', path: '/users', roles: ['admin', 'officer'] },
   { icon: BarChart3, label: 'Analytics', path: '/analytics', roles: ['admin', 'officer'] },
@@ -51,7 +46,27 @@ interface SidebarProps {
 export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const role = localStorage.getItem('userRole') || 'admin';
+  const [role, setRole] = useState(() => {
+    try {
+      return localStorage.getItem('userRole') || 'admin';
+    } catch {
+      return 'admin';
+    }
+  });
+
+  useEffect(() => {
+    const handleSync = () => {
+      try {
+        setRole(localStorage.getItem('userRole') || 'admin');
+      } catch {}
+    };
+    window.addEventListener('storage', handleSync);
+    window.addEventListener('role-changed', handleSync);
+    return () => {
+      window.removeEventListener('storage', handleSync);
+      window.removeEventListener('role-changed', handleSync);
+    };
+  }, []);
 
   const filteredNavItems = navItems.filter(item => item.roles.includes(role));
 
@@ -101,8 +116,8 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
         </div>
         {!isCollapsed && (
           <div className="whitespace-nowrap transition-all duration-300">
-            <h2 className="text-lg font-bold text-slate-900 dark:text-primary tracking-tight leading-tight">Procurement</h2>
-            <p className="text-[10px] uppercase tracking-widest text-slate-500 dark:text-secondary font-bold">Logistics Mgmt</p>
+            <h2 className="text-base font-bold text-slate-900 dark:text-primary tracking-tight leading-tight">Tejas Canvassing</h2>
+            <p className="text-[10px] uppercase tracking-widest text-slate-500 dark:text-secondary font-bold">MGMT</p>
           </div>
         )}
       </div>

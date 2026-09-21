@@ -6,24 +6,16 @@ import {
   Upload, 
   CheckCircle2, 
   AlertCircle, 
-  FileText, 
   Sparkles, 
   RotateCcw, 
-  Sliders, 
-  ArrowRight, 
   Loader2, 
   Check, 
   Maximize2, 
-  Truck, 
-  Building2, 
-  Hash, 
-  Scale, 
-  ReceiptIndianRupee,
-  Layers,
-  HelpCircle
+  Layers, 
+  HelpCircle 
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { cn, formatINR } from '../lib/utils';
+import { cn } from '../lib/utils';
 
 export interface ParsedManifestData {
   date?: string;
@@ -138,8 +130,8 @@ export default function ManifestCameraScanner({
         stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: { ideal: facing },
-            width: { ideal: 1920 },
-            height: { ideal: 1080 }
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
           },
           audio: false
         });

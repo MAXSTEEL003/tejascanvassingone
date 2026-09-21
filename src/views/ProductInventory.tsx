@@ -44,7 +44,12 @@ export default function ProductInventory() {
   const [loading, setLoading] = useState(true);
   const [editingCell, setEditingCell] = useState<{ id: string, field: string } | null>(null);
   const [editValue, setEditValue] = useState('');
-  const [userRole, setUserRole] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('userRole');
+    }
+    return null;
+  });
 
   // Filter & Modal State
   const [showFilters, setShowFilters] = useState(false);
@@ -1012,8 +1017,8 @@ export default function ProductInventory() {
                 {/* Status Badge */}
                 <span className={cn(
                   "inline-flex items-center px-2.5 py-1 rounded-full text-[9px] font-black border transition-all",
-                  p.status === 'Active' ? "bg-emerald-50 text-emerald-650 border-emerald-100 dark:bg-emerald-950/20 dark:border-emerald-900/30" : 
-                  p.status === 'Restocking' ? "bg-amber-50 text-amber-650 border-amber-100 dark:bg-amber-950/20 dark:border-amber-900/30" :
+                  p.status === 'Active' ? "bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-950/20 dark:border-emerald-900/30" : 
+                  p.status === 'Restocking' ? "bg-amber-50 text-amber-600 border-amber-100 dark:bg-amber-950/20 dark:border-amber-900/30" :
                   "bg-neutral-50 text-neutral-600 border-neutral-200 dark:bg-neutral-800 dark:text-neutral-400 dark:border-neutral-700"
                 )}>
                   {p.status}
@@ -1053,31 +1058,33 @@ export default function ProductInventory() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        {[
-          { label: 'AVERAGE PRICE INDEX', value: `₹ ${formatINR(averagePrice)}`, icon: TrendingUp, delta: '+12% WoW' },
-          { label: 'TOTAL SKU COUNT', value: String(products.length), icon: Package, delta: null },
-          { label: 'REGIONAL HUBS', value: '05', icon: MapPin, delta: null },
-        ].map((stat, i) => (
-          <motion.div 
-            key={i} 
-            initial={{ opacity: 0, y: 20, scale: 0.985 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            whileHover={{ y: -5, transition: { duration: 0.22, ease: "easeOut" } }}
-            transition={{ duration: 0.48, delay: i * 0.08, ease: [0.16, 1, 0.3, 1] }}
-            className="liquid-glass p-8 rounded-3xl flex flex-col justify-between h-[160px] border border-outline-variant/30 shadow-sm hover:border-primary/20 transition-all duration-300 interactive-card"
-          >
-             <div className="flex items-center justify-between">
-              <stat.icon className="w-8 h-8 text-primary p-2 bg-primary/10 rounded-xl" />
-              {stat.delta && <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full">{stat.delta}</span>}
-            </div>
-            <div>
-              <p className="text-[10px] font-black text-secondary uppercase tracking-widest">{stat.label}</p>
-              <h3 className="text-2xl font-black text-on-surface mt-1">{stat.value}</h3>
-            </div>
-          </motion.div>
-        ))}
-      </div>
+      {!isEmployee && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          {[
+            { label: 'AVERAGE PRICE INDEX', value: `₹ ${formatINR(averagePrice)}`, icon: TrendingUp, delta: '+12% WoW' },
+            { label: 'TOTAL SKU COUNT', value: String(products.length), icon: Package, delta: null },
+            { label: 'REGIONAL HUBS', value: '05', icon: MapPin, delta: null },
+          ].map((stat, i) => (
+            <motion.div 
+              key={i} 
+              initial={{ opacity: 0, y: 20, scale: 0.985 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              whileHover={{ y: -5, transition: { duration: 0.22, ease: "easeOut" } }}
+              transition={{ duration: 0.48, delay: i * 0.08, ease: [0.16, 1, 0.3, 1] }}
+              className="liquid-glass p-8 rounded-3xl flex flex-col justify-between h-[160px] border border-outline-variant/30 shadow-sm hover:border-primary/20 transition-all duration-300 interactive-card"
+            >
+               <div className="flex items-center justify-between">
+                <stat.icon className="w-8 h-8 text-primary p-2 bg-primary/10 rounded-xl" />
+                {stat.delta && <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full">{stat.delta}</span>}
+              </div>
+              <div>
+                <p className="text-[10px] font-black text-secondary uppercase tracking-widest">{stat.label}</p>
+                <h3 className="text-2xl font-black text-on-surface mt-1">{stat.value}</h3>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      )}
       </>
       )}
 

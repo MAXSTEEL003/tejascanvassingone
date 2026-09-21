@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { Wheat, Sparkles } from 'lucide-react';
+import { Wheat } from 'lucide-react';
 
 interface StoreLoadingScreenProps {
   minDurationMs?: number;
@@ -147,7 +147,7 @@ export default function StoreLoadingScreen({ minDurationMs = 850 }: StoreLoading
         {/* Calm, Dignified Status (No flashy looping bars or meters) */}
         <div className="pt-2 flex flex-col items-center gap-1.5">
           <div className="flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-500/80 dark:bg-amber-400/80" />
+            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
             <p className="text-xs text-slate-500 dark:text-slate-400 font-medium tracking-wide">
               Opening wholesale rice catalogue...
             </p>

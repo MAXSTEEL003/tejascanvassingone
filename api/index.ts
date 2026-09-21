@@ -95,18 +95,59 @@ Write a polite, precise, and professional response that solves the user's specif
       parts: [{ text: message }]
     });
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.8-flash",
-      contents: contents,
-      config: {
-        systemInstruction: systemInstruction,
-        temperature: 0.15,
+    // Helper for calling Gemini with exponential backoff for rate limits (429 / RESOURCE_EXHAUSTED)
+    const callWithRetry = async (fn: () => Promise<any>, maxRetries = 3) => {
+      let delay = 1200;
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+          return await fn();
+        } catch (err: any) {
+          const isRateLimit = 
+            err?.status === 429 || 
+            err?.code === 429 || 
+            String(err?.message || "").toLowerCase().includes("rate") || 
+            String(err?.message || "").toLowerCase().includes("quota") || 
+            String(err?.message || "").toLowerCase().includes("resource_exhausted");
+          
+          if (isRateLimit && attempt < maxRetries - 1) {
+            console.warn(`[Gemini API] Rate limit hit on /api/chat. Retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})...`);
+            await new Promise((resolve) => setTimeout(resolve, delay));
+            delay *= 2;
+            continue;
+          }
+          throw err;
+        }
       }
-    });
+    };
+
+    const response = await callWithRetry(() =>
+      ai.models.generateContent({
+        model: "gemini-3.8-flash",
+        contents: contents,
+        config: {
+          systemInstruction: systemInstruction,
+          temperature: 0.15,
+        }
+      })
+    );
 
     res.json({ text: response.text });
   } catch (error: any) {
     console.error("Gemini API Error in Express router /api/chat:", error);
+    const isRateLimit = 
+      error?.status === 429 || 
+      error?.code === 429 || 
+      String(error?.message || "").toLowerCase().includes("rate") || 
+      String(error?.message || "").toLowerCase().includes("quota") || 
+      String(error?.message || "").toLowerCase().includes("resource_exhausted");
+    
+    if (isRateLimit) {
+      return res.status(429).json({ 
+        error: "AI request rate limit reached. Please wait a few seconds and try again.",
+        isRateLimit: true
+      });
+    }
+
     res.status(500).json({ error: error.message || "Failed to generate AI insights." });
   }
 });
@@ -260,7 +301,7 @@ function formatPhoneNumber(phone: string) {
   return { e164: `+${digits}`, digits, national: digits };
 }
 
-// REAL DISPATCH ROUTER: WHATSAPP NOTIFICATIONS via AiSensy or Twilio
+// REAL DISPATCH ROUTER: WHATSAPP NOTIFICATIONS via AiSensy or Direct WhatsApp
 app.post("/api/dispatch-whatsapp", async (req, res) => {
   const { to, buyerName, message, contentSid, contentVariables, aisensyApiKey, campaignName, templateParams } = req.body;
 
@@ -388,187 +429,33 @@ app.post("/api/dispatch-whatsapp", async (req, res) => {
     }
   }
 
-  // 2. Fallback to Twilio if AiSensy is not provided
-  const rawSid = req.body.accountSid || process.env.TWILIO_ACCOUNT_SID || "";
-  const rawToken = req.body.authToken || process.env.TWILIO_AUTH_TOKEN || "";
-  const rawPhone = req.body.fromSender || process.env.TWILIO_WHATSAPP_NUMBER || process.env.TWILIO_PHONE_NUMBER || "+14155238886";
+  // 2. Direct 1-Click WhatsApp Launcher (Default when AiSensy is not configured)
+  console.info(`[WhatsApp Dispatcher] AiSensy not configured. Running in direct mode with 1-click WhatsApp launcher.`);
 
-  const accountSid = String(rawSid).trim().replace(/^["']|["']$/g, '');
-  const authToken = String(rawToken).trim().replace(/^["']|["']$/g, '');
-  const twilioPhone = String(rawPhone).trim().replace(/^["']|["']$/g, '');
-
-  if (!accountSid || !authToken) {
-    console.info(`[WhatsApp Dispatcher] Neither AiSensy (AISENSY_API_KEY) nor Twilio configured. Running in simulation / direct mode with 1-click WhatsApp launcher.`);
-
-    const logged = recordDispatch({
-      type: "whatsapp",
-      target: e164,
-      recipientName: buyerName || "Buyer",
-      message: message || `Template: ${contentSid}`,
-      status: "delivered_simulated",
-      details: `AiSensy API Key not configured. Message logged in system audit trail; 1-click direct WhatsApp launcher generated.`,
-      directLink: waDirectUrl,
-    });
-
-    return res.status(200).json({
-      success: true,
-      status: "simulated_success",
-      isConfigured: false,
-      isLiveSent: false,
-      gateway: "direct",
-      formattedPhone: e164,
-      directUrl: waDirectUrl,
-      message: `WhatsApp notification recorded in audit trail. Enter your AiSensy API Key in Settings to dispatch automatically via AiSensy!`,
-      log: logged,
-    });
-  }
-
-  // Determine WhatsApp sender:
-  // In Twilio Sandbox mode, the WhatsApp sender MUST be whatsapp:+14155238886.
-  // Standard trial phone numbers (e.g. +13854832560) are SMS only and will cause Twilio Error 572002 if sent as whatsapp:
-  const requestedSender = req.body.fromSender || process.env.TWILIO_WHATSAPP_NUMBER;
-  let senderNum = requestedSender || twilioPhone || "+14155238886";
-  let cleanSender = senderNum.trim();
-
-  if (!cleanSender.startsWith("whatsapp:")) {
-    if (!requestedSender && !cleanSender.includes("4155238886")) {
-      console.log(`[WhatsApp Dispatcher] Note: '${cleanSender}' is an SMS trial number. Automatically using Twilio WhatsApp Sandbox (+14155238886) to prevent Error 572002.`);
-      cleanSender = "+14155238886";
-    }
-    cleanSender = `whatsapp:${cleanSender}`;
-  }
-
-  const fromWhatsapp = cleanSender;
-  const toWhatsapp = e164.startsWith("whatsapp:") ? e164 : `whatsapp:${e164}`;
-
-  const messagePayload: any = {
-    from: fromWhatsapp,
-    to: toWhatsapp,
-  };
-
-  if (contentSid) {
-    messagePayload.contentSid = contentSid;
-    if (contentVariables) {
-      messagePayload.contentVariables = typeof contentVariables === "string" ? contentVariables : JSON.stringify(contentVariables);
-    }
-  } else {
-    messagePayload.body = message;
-  }
-
-  console.log("[WhatsApp Dispatcher] Sending payload to Twilio:", {
-    accountSidPrefix: `${accountSid.substring(0, 6)}...`,
-    from: messagePayload.from,
-    to: messagePayload.to,
-    body: messagePayload.body,
-    contentSid: messagePayload.contentSid || null,
-    contentVariables: messagePayload.contentVariables || null,
+  const logged = recordDispatch({
+    type: "whatsapp",
+    target: e164,
+    recipientName: buyerName || "Buyer",
+    message: message || `Template: ${contentSid}`,
+    status: "delivered_simulated",
+    details: `Message logged in system audit trail; 1-click direct WhatsApp launcher generated.`,
+    directLink: waDirectUrl,
   });
 
-  let clientAccountSid = accountSid;
-  let clientApiKey = "";
-  let clientSecret = authToken;
-
-  if (accountSid.startsWith("SK")) {
-    clientApiKey = accountSid;
-    clientAccountSid = process.env.TWILIO_ACCOUNT_SID?.startsWith("AC") ? process.env.TWILIO_ACCOUNT_SID : "AC37b605ea2cf1cf2baeb5f7fce3fd6885";
-  }
-
-  try {
-    const twilioModule = await import("twilio");
-    const twilio = twilioModule.default;
-    const client = clientApiKey
-      ? twilio(clientApiKey, clientSecret, { accountSid: clientAccountSid })
-      : twilio(clientAccountSid, clientSecret);
-
-    const response = await client.messages.create(messagePayload);
-
-    console.log("[WhatsApp Dispatcher] Twilio Success Response:", {
-      sid: response.sid,
-      status: response.status,
-      from: response.from,
-      to: response.to,
-      errorCode: response.errorCode,
-      errorMessage: response.errorMessage,
-      dateCreated: response.dateCreated,
-      dateSent: response.dateSent,
-    });
-
-    const logged = recordDispatch({
-      type: "whatsapp",
-      target: e164,
-      recipientName: buyerName || "Buyer",
-      message: messagePayload.body || `Template SID: ${contentSid}`,
-      status: "delivered_real",
-      details: `Successfully dispatched via Twilio WhatsApp Gateway (SID: ${response.sid}, Status: ${response.status}).`,
-      directLink: waDirectUrl,
-    });
-
-    return res.status(200).json({
-      success: true,
-      messageSid: response.sid,
-      status: response.status,
-      from: response.from,
-      to: response.to,
-      formattedPhone: e164,
-      directUrl: waDirectUrl,
-      message: `Successfully transmitted WhatsApp notification to ${e164}.`,
-      log: logged,
-      twilioResponse: {
-        sid: response.sid,
-        status: response.status,
-        dateCreated: response.dateCreated,
-        dateSent: response.dateSent,
-        errorCode: response.errorCode,
-        errorMessage: response.errorMessage,
-        body: response.body,
-        numSegments: response.numSegments,
-      },
-    });
-  } catch (err: any) {
-    const errCode = err?.code || 500;
-    const isAuthError = errCode === 20003 || String(err?.message || "").toLowerCase().includes("authenticate");
-    const isContentSidError = errCode === 21654 || String(err?.message || "").toLowerCase().includes("contentsid");
-
-    console.warn("[WhatsApp Dispatcher]: Twilio dispatch status:", {
-      code: errCode,
-      message: err?.message,
-      isAuthError,
-      isContentSidError
-    });
-
-    let userFacingMsg = err?.message || "Failed to dispatch WhatsApp notification via Twilio.";
-    if (isAuthError) {
-      userFacingMsg = "Twilio Authentication Required (Error 20003): Your Twilio Account SID or Auth Token was rejected by Twilio. Please verify your credentials in console.twilio.com.";
-    } else if (isContentSidError) {
-      userFacingMsg = "24-Hour WhatsApp Session Required (Error 21654): Meta WhatsApp policy requires the recipient phone number to send a message (e.g. 'join <sandbox-code>') to +1 415 523 8886 first to open a 24-hour conversation window. Alternatively, click 'Launch Direct WhatsApp' below to dispatch immediately without sandbox restrictions.";
-    }
-
-    recordDispatch({
-      type: "whatsapp",
-      target: e164,
-      recipientName: buyerName || "Buyer",
-      message: message || `Template: ${contentSid}`,
-      status: "failed",
-      details: `Twilio Notice (${errCode}): ${userFacingMsg}`,
-      directLink: waDirectUrl,
-    });
-
-    return res.status(isAuthError ? 401 : (isContentSidError ? 400 : 500)).json({
-      success: false,
-      error: userFacingMsg,
-      code: err?.code || (isAuthError ? 20003 : (isContentSidError ? 21654 : 500)),
-      moreInfo: err?.moreInfo || "https://www.twilio.com/docs/errors/21654",
-      status: isAuthError ? 401 : (isContentSidError ? 400 : (err?.status || 500)),
-      type: "TwilioRestException",
-      formattedPhone: e164,
-      directUrl: waDirectUrl,
-      isAuthError,
-      isContentSidError,
-    });
-  }
+  return res.status(200).json({
+    success: true,
+    status: "simulated_success",
+    isConfigured: false,
+    isLiveSent: false,
+    gateway: "direct",
+    formattedPhone: e164,
+    directUrl: waDirectUrl,
+    message: `WhatsApp notification recorded in audit trail. Enter your AiSensy API Key in Settings to dispatch automatically via AiSensy!`,
+    log: logged,
+  });
 });
 
-// REAL DISPATCH ROUTER: SMS NOTIFICATIONS via Twilio
+// REAL DISPATCH ROUTER: SMS NOTIFICATIONS
 app.post("/api/dispatch-sms", async (req, res) => {
   const { to, recipientName, message } = req.body;
 
@@ -579,148 +466,26 @@ app.post("/api/dispatch-sms", async (req, res) => {
   const { e164, national } = formatPhoneNumber(String(to));
   const smsDirectUrl = `sms:${e164}?body=${encodeURIComponent(message)}`;
 
-  const rawSid = req.body.accountSid || process.env.TWILIO_ACCOUNT_SID || "";
-  const rawToken = req.body.authToken || process.env.TWILIO_AUTH_TOKEN || "";
-  const rawPhone = req.body.fromSender || process.env.TWILIO_PHONE_NUMBER || process.env.TWILIO_WHATSAPP_NUMBER || "";
-
-  const accountSid = String(rawSid).trim().replace(/^["']|["']$/g, '');
-  const authToken = String(rawToken).trim().replace(/^["']|["']$/g, '');
-  const twilioPhone = String(rawPhone).trim().replace(/^["']|["']$/g, '');
-
-  console.log("[Twilio Environment Check - SMS]", {
-    hasAccountSid: !!accountSid,
-    accountSidPrefix: accountSid ? `${accountSid.substring(0, 6)}...` : "MISSING",
-    hasAuthToken: !!authToken,
-    hasPhoneNumber: !!twilioPhone,
-    phoneNumber: twilioPhone || "MISSING",
-    nodeEnv: process.env.NODE_ENV || "development",
+  const logged = recordDispatch({
+    type: "sms",
+    target: e164,
+    recipientName: recipientName || "Recipient",
+    message,
+    status: "delivered_simulated",
+    details: `Simulated dispatch recorded in backend logs; direct SMS link generated.`,
+    directLink: smsDirectUrl,
   });
 
-  if (!accountSid || !authToken || !twilioPhone) {
-    const missing = [
-      !accountSid && "TWILIO_ACCOUNT_SID",
-      !authToken && "TWILIO_AUTH_TOKEN",
-      !twilioPhone && "TWILIO_PHONE_NUMBER",
-    ].filter(Boolean) as string[];
-
-    console.info(`[SMS Dispatcher] Twilio credentials not configured in environment (${missing.join(", ")}). Running in fallback simulated mode with direct SMS link.`);
-
-    const logged = recordDispatch({
-      type: "sms",
-      target: e164,
-      recipientName: recipientName || "Recipient",
-      message,
-      status: "delivered_simulated",
-      details: `Twilio SMS credentials (${missing.join(", ")}) not set in environment. Simulated dispatch recorded in backend logs; direct SMS link generated.`,
-      directLink: smsDirectUrl,
-    });
-
-    return res.status(200).json({
-      success: true,
-      status: "simulated_success",
-      isConfigured: false,
-      isLiveSent: false,
-      formattedPhone: e164,
-      directUrl: smsDirectUrl,
-      message: `SMS notification recorded. Add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER in environment variables to deliver directly via Twilio.`,
-      missingVariables: missing,
-      log: logged,
-    });
-  }
-
-  const cleanTwilioPhone = twilioPhone.trim().replace("whatsapp:", "");
-
-  const smsPayload = {
-    body: message,
-    from: cleanTwilioPhone,
-    to: e164,
-  };
-
-  console.log("[SMS Dispatcher] Sending payload to Twilio:", {
-    accountSidPrefix: `${accountSid.substring(0, 6)}...`,
-    from: smsPayload.from,
-    to: smsPayload.to,
-    body: smsPayload.body,
+  return res.status(200).json({
+    success: true,
+    status: "simulated_success",
+    isConfigured: false,
+    isLiveSent: false,
+    formattedPhone: e164,
+    directUrl: smsDirectUrl,
+    message: `SMS notification recorded. Click direct SMS link to send immediately.`,
+    log: logged,
   });
-
-  try {
-    const twilioModule = await import("twilio");
-    const twilio = twilioModule.default;
-    const client = twilio(accountSid, authToken);
-
-    const response = await client.messages.create(smsPayload);
-
-    console.log("[SMS Dispatcher] Twilio Success Response:", {
-      sid: response.sid,
-      status: response.status,
-      from: response.from,
-      to: response.to,
-      errorCode: response.errorCode,
-      errorMessage: response.errorMessage,
-      dateCreated: response.dateCreated,
-      dateSent: response.dateSent,
-    });
-
-    const logged = recordDispatch({
-      type: "sms",
-      target: e164,
-      recipientName: recipientName || "Recipient",
-      message,
-      status: "delivered_real",
-      details: `Successfully sent via Twilio SMS Gateway (SID: ${response.sid}, Status: ${response.status}).`,
-      directLink: smsDirectUrl,
-    });
-
-    return res.status(200).json({
-      success: true,
-      messageSid: response.sid,
-      status: response.status,
-      from: response.from,
-      to: response.to,
-      formattedPhone: e164,
-      directUrl: smsDirectUrl,
-      message: `Successfully transmitted SMS notification to ${e164}.`,
-      log: logged,
-      twilioResponse: {
-        sid: response.sid,
-        status: response.status,
-        dateCreated: response.dateCreated,
-        dateSent: response.dateSent,
-        errorCode: response.errorCode,
-        errorMessage: response.errorMessage,
-        body: response.body,
-        numSegments: response.numSegments,
-      },
-    });
-  } catch (err: any) {
-    console.warn("[SMS Dispatcher Warning Details]:", {
-      message: err?.message,
-      code: err?.code,
-      status: err?.status,
-      moreInfo: err?.moreInfo,
-    });
-
-    recordDispatch({
-      type: "sms",
-      target: e164,
-      recipientName: recipientName || "Recipient",
-      message,
-      status: "failed",
-      details: `Twilio SMS Error (${err?.code || 500}): ${err?.message || "Failed to dispatch SMS notification."}`,
-      directLink: smsDirectUrl,
-    });
-
-    return res.status(500).json({
-      success: false,
-      error: err?.message || "Failed to dispatch SMS notification via Twilio.",
-      code: err?.code,
-      moreInfo: err?.moreInfo,
-      status: err?.status || 500,
-      type: "TwilioRestException",
-      formattedPhone: e164,
-      directUrl: smsDirectUrl,
-    });
-  }
 });
 
 // DISPATCH HISTORY & LIVE TEST BENCH ROUTE
@@ -731,22 +496,16 @@ app.get("/api/dispatch-history", (req, res) => {
     process.env.SMTP_USER &&
     process.env.SMTP_PASS
   );
-  const twilioConfigured = !!(
-    process.env.TWILIO_ACCOUNT_SID &&
-    process.env.TWILIO_AUTH_TOKEN
-  );
   const aisensyConfigured = !!process.env.AISENSY_API_KEY;
 
   res.json({
     logs: dispatchHistory,
     configured: {
       smtp: smtpConfigured,
-      twilio: twilioConfigured,
       aisensy: aisensyConfigured,
     },
     aisensyApiKeyPrefix: process.env.AISENSY_API_KEY ? `${process.env.AISENSY_API_KEY.substring(0, 6)}...` : null,
     aisensyCampaignName: process.env.AISENSY_CAMPAIGN_NAME || "order_notification",
-    accountSidPrefix: process.env.TWILIO_ACCOUNT_SID ? `${process.env.TWILIO_ACCOUNT_SID.substring(0, 6)}...` : null,
   });
 });
 
@@ -795,88 +554,6 @@ app.post("/api/update-aisensy-credentials", async (req, res) => {
     apiKeyPrefix: `${cleanApiKey.substring(0, 6)}...`,
     campaignName: cleanCampaign,
   });
-});
-
-// UPDATE TWILIO CREDENTIALS ROUTE
-app.post("/api/update-twilio-credentials", async (req, res) => {
-  const { accountSid, authToken, whatsappNumber } = req.body;
-  if (!accountSid || !authToken) {
-    return res.status(400).json({ error: "accountSid and authToken are required" });
-  }
-
-  const cleanSid = String(accountSid).trim();
-  const cleanToken = String(authToken).trim();
-  const cleanNumber = String(whatsappNumber || "+14155238886").trim();
-
-  // Test authentication with Twilio
-  try {
-    const twilioModule = await import("twilio");
-    const twilio = twilioModule.default;
-    
-    let client: any;
-    let targetAccount = cleanSid;
-
-    if (cleanSid.startsWith("SK")) {
-      targetAccount = process.env.TWILIO_ACCOUNT_SID?.startsWith("AC") ? process.env.TWILIO_ACCOUNT_SID : "AC37b605ea2cf1cf2baeb5f7fce3fd6885";
-      client = twilio(cleanSid, cleanToken, { accountSid: targetAccount });
-    } else {
-      client = twilio(cleanSid, cleanToken);
-    }
-    
-    // Quick test verification call (fetches account info)
-    const accountInfo = await client.api.v2010.accounts(targetAccount).fetch();
-
-    // Update in-memory process.env
-    if (!cleanSid.startsWith("SK")) {
-      process.env.TWILIO_ACCOUNT_SID = cleanSid;
-    }
-    process.env.TWILIO_AUTH_TOKEN = cleanToken;
-    process.env.TWILIO_WHATSAPP_NUMBER = cleanNumber;
-
-    // Update .env file if it exists
-    try {
-      const fs = await import("fs");
-      const path = await import("path");
-      const envPath = path.join(process.cwd(), ".env");
-      let envContent = "";
-      if (fs.existsSync(envPath)) {
-        envContent = fs.readFileSync(envPath, "utf-8");
-      }
-      
-      const updateOrAdd = (key: string, val: string, text: string) => {
-        const regex = new RegExp(`^${key}=.*$`, "m");
-        if (regex.test(text)) {
-          return text.replace(regex, `${key}=${val}`);
-        }
-        return `${text}\n${key}=${val}`;
-      };
-
-      envContent = updateOrAdd("TWILIO_ACCOUNT_SID", cleanSid, envContent);
-      envContent = updateOrAdd("TWILIO_AUTH_TOKEN", cleanToken, envContent);
-      envContent = updateOrAdd("TWILIO_WHATSAPP_NUMBER", cleanNumber, envContent);
-      fs.writeFileSync(envPath, envContent.trim() + "\n", "utf-8");
-    } catch (fsErr) {
-      console.warn("Could not write to .env file:", fsErr);
-    }
-
-    return res.json({
-      success: true,
-      message: `Twilio authenticated successfully! Connected to account: ${accountInfo.friendlyName || cleanSid}`,
-      accountName: accountInfo.friendlyName,
-      status: accountInfo.status,
-    });
-  } catch (err: any) {
-    console.warn("[Twilio Credential Verification]: Auth rejected:", {
-      code: err?.code,
-      message: err?.message
-    });
-    return res.status(401).json({
-      success: false,
-      error: `Twilio verification failed (${err?.code || 401}): ${err?.message || "Invalid Account SID or Auth Token."}`,
-      code: err?.code,
-      moreInfo: err?.moreInfo,
-    });
-  }
 });
 
 // UPDATE & TEST SMTP CREDENTIALS ROUTE
@@ -1039,19 +716,46 @@ Rules:
       }
     };
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.8-flash",
-      contents: {
-        parts: [
-          imagePart,
-          { text: promptText }
-        ]
-      },
-      config: {
-        responseMimeType: "application/json",
-        temperature: 0.1,
+    // Helper for calling Gemini with exponential backoff for rate limits (429 / RESOURCE_EXHAUSTED)
+    const callWithRetry = async (fn: () => Promise<any>, maxRetries = 3) => {
+      let delay = 1500;
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+          return await fn();
+        } catch (err: any) {
+          const isRateLimit = 
+            err?.status === 429 || 
+            err?.code === 429 || 
+            String(err?.message || "").toLowerCase().includes("rate") || 
+            String(err?.message || "").toLowerCase().includes("quota") || 
+            String(err?.message || "").toLowerCase().includes("resource_exhausted");
+          
+          if (isRateLimit && attempt < maxRetries - 1) {
+            console.warn(`[Gemini API] Rate limit hit on /api/scan-manifest. Retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})...`);
+            await new Promise((resolve) => setTimeout(resolve, delay));
+            delay *= 2;
+            continue;
+          }
+          throw err;
+        }
       }
-    });
+    };
+
+    const response = await callWithRetry(() =>
+      ai.models.generateContent({
+        model: "gemini-3.8-flash",
+        contents: {
+          parts: [
+            imagePart,
+            { text: promptText }
+          ]
+        },
+        config: {
+          responseMimeType: "application/json",
+          temperature: 0.1,
+        }
+      })
+    );
 
     const rawOutput = response.text || "{}";
     let parsedData: any = {};
@@ -1083,6 +787,21 @@ Rules:
     });
   } catch (error: any) {
     console.error("Error in /api/scan-manifest:", error);
+    const isRateLimit = 
+      error?.status === 429 || 
+      error?.code === 429 || 
+      String(error?.message || "").toLowerCase().includes("rate") || 
+      String(error?.message || "").toLowerCase().includes("quota") || 
+      String(error?.message || "").toLowerCase().includes("resource_exhausted");
+
+    if (isRateLimit) {
+      return res.status(429).json({
+        success: false,
+        isRateLimit: true,
+        error: "AI optical scanner rate limit reached. Please wait a few seconds and try scanning again.",
+      });
+    }
+
     return res.status(500).json({
       success: false,
       error: error.message || "Failed to scan and parse paper manifest using camera image.",

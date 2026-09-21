@@ -1,16 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Printer, 
-  Download, 
   Copy, 
   CheckCircle2, 
-  Sliders, 
   ExternalLink, 
   X,
-  ClipboardList,
-  Check
+  ClipboardList
 } from 'lucide-react';
-import { motion } from 'motion/react';
 import { cn, formatINR } from '../lib/utils';
 import { useNavigate } from 'react-router-dom';
 import html2canvas from 'html2canvas';
@@ -841,7 +837,8 @@ Generated via GrainMart B2B Depot Terminal.`;
         </div>
 
         {/* The Precise physical matrix form (10 Column Grid) */}
-        <div className={cn("border-t border-l grid grid-cols-10 transition-colors", colors.border, colors.textMain)}>
+        <div className="w-full overflow-x-auto pb-2">
+          <div className={cn("min-w-[620px] border-t border-l grid grid-cols-10 transition-colors", colors.border, colors.textMain)}>
           
           {/* Row 1: MILLERNAME */}
           <LabelCell borderClass={colors.border} bgClass={colors.labelBg} className="col-span-2 h-10">MILLERNAME</LabelCell>
@@ -997,7 +994,7 @@ Generated via GrainMart B2B Depot Terminal.`;
               placeholder="WRITE ARBITRAGE NOTES OR REMARK ENTRY..."
             />
           </div>
-
+        </div>
         </div>
 
         {/* Dynamic Verification Signatures Pad */}

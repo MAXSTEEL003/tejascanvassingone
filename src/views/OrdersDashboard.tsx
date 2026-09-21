@@ -2280,7 +2280,7 @@ export default function OrdersDashboard() {
                 {/* Left Column: Commercial & Priority */}
                 <div className="space-y-6">
                   <div>
-                    <h4 className="text-xs font-black uppercase tracking-wider text-primary mb-4 pb-1 border-b border-neutral-100 dark:border-neutral-850">01. Stakeholders & Urgency</h4>
+                    <h4 className="text-xs font-black uppercase tracking-wider text-primary mb-4 pb-1 border-b border-neutral-100 dark:border-neutral-800">01. Stakeholders & Urgency</h4>
                   </div>
                   
                   <div className="space-y-2">
@@ -2335,7 +2335,7 @@ export default function OrdersDashboard() {
                 {/* Right Column: Specifications & Live Financial Calculation */}
                 <div className="space-y-6">
                   <div>
-                    <h4 className="text-xs font-black uppercase tracking-wider text-primary mb-4 pb-1 border-b border-neutral-100 dark:border-neutral-850">02. Material Specs & Financials</h4>
+                    <h4 className="text-xs font-black uppercase tracking-wider text-primary mb-4 pb-1 border-b border-neutral-100 dark:border-neutral-800">02. Material Specs & Financials</h4>
                   </div>
 
                   <div className="space-y-2">

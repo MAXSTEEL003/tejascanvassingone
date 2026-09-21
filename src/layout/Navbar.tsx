@@ -3,7 +3,6 @@ import {
   Bell, 
   Settings, 
   X, 
-  Trash2, 
   ArrowRight, 
   Moon, 
   Sun, 

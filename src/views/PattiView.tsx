@@ -1244,7 +1244,8 @@ Generated via GrainMart B2B Depot Terminal.`;
         </div>
 
         {/* The Precise physical matrix form */}
-        <div className={cn("border-t border-l grid grid-cols-10 transition-colors", colors.border, colors.textMain)}>
+        <div className="overflow-x-auto pb-2 -mx-2 sm:mx-0 px-2 sm:px-0">
+          <div className={cn("border-t border-l grid grid-cols-10 transition-colors min-w-[720px]", colors.border, colors.textMain)}>
           
           {/* Row 1: MILLERNAME */}
           <LabelCell borderClass={colors.border} bgClass={colors.labelBg} className="col-span-2 h-10">MILLERNAME</LabelCell>
@@ -1401,6 +1402,7 @@ Generated via GrainMart B2B Depot Terminal.`;
             />
           </div>
 
+          </div>
         </div>
 
         {/* Dynamic Verification Signatures Pad */}

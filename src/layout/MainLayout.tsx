@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate, Navigate } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
 import Sidebar from './Sidebar';
 import Navbar from './Navbar';
@@ -179,13 +179,13 @@ function MerchantHeader({ onSearchClick }: { onSearchClick?: () => void }) {
     <>
       {/* Seamless App Bar Header with safe area notch protection */}
       <header className="sticky top-0 z-40 w-full pt-[env(safe-area-inset-top,0px)] bg-[#fafaf9]/95 dark:bg-[#07110c]/95 backdrop-blur-md font-sans border-b border-slate-200/40 dark:border-emerald-950/30">
-        <div className="px-3.5 sm:px-4 h-14 flex justify-between items-center w-full">
-        {/* Brand Identity & Verified Merchant */}
+        <div className="px-3.5 sm:px-5 h-14 flex justify-between items-center w-full max-w-4xl mx-auto">
+        {/* Brand Identity */}
         <div className="flex items-center gap-2.5">
           <div 
             onClick={() => navigate('/store')}
             className="flex items-center gap-2 cursor-pointer select-none group"
-            title="TEJAS CANVASSING STORE"
+            title="TEJAS CANVASSING"
           >
             <div className="w-8 h-8 rounded-full bg-emerald-50 dark:bg-emerald-950/70 flex items-center justify-center text-emerald-800 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/60 shadow-xs group-hover:scale-105 transition-transform shrink-0">
               <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none">
@@ -196,20 +196,15 @@ function MerchantHeader({ onSearchClick }: { onSearchClick?: () => void }) {
               </svg>
             </div>
             <div>
-              <div className="flex items-center gap-1.5">
-                <h1 className="font-sans text-sm font-black tracking-tight text-slate-900 dark:text-white leading-none whitespace-nowrap">
-                  TEJAS CANVASSING
-                </h1>
-                <span className="text-[9px] font-extrabold tracking-wider uppercase px-1.5 py-0.5 rounded-md bg-emerald-600/10 dark:bg-emerald-400/15 text-emerald-800 dark:text-emerald-300 border border-emerald-500/20 font-mono">
-                  Store
-                </span>
-              </div>
+              <h1 className="font-sans text-sm sm:text-base font-black tracking-tight text-slate-900 dark:text-white leading-none whitespace-nowrap">
+                TEJAS CANVASSING
+              </h1>
             </div>
           </div>
         </div>
 
-        {/* Right Tools: Download App, Dark/Light Mode, Logout */}
-        <div className="flex items-center gap-1 sm:gap-1.5">
+        {/* Right Tools: Download App, Dark/Light Mode */}
+        <div className="flex items-center gap-1.5 sm:gap-2">
           {/* Download App / Add to Home Screen Button */}
           <button
             onClick={() => window.dispatchEvent(new Event('open-pwa-install-modal'))}
@@ -223,7 +218,7 @@ function MerchantHeader({ onSearchClick }: { onSearchClick?: () => void }) {
           {/* Light / Dark Mode Toggle Button */}
           <button
             onClick={toggleTheme}
-            className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-neutral-900 dark:hover:bg-neutral-850 text-slate-700 dark:text-slate-200 border border-slate-200/60 dark:border-neutral-800 transition-all active:scale-95 cursor-pointer flex items-center justify-center shadow-xs"
+            className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-neutral-900 dark:hover:bg-neutral-800 text-slate-700 dark:text-slate-200 border border-slate-200/60 dark:border-neutral-800 transition-all active:scale-95 cursor-pointer flex items-center justify-center shadow-xs"
             title={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
             aria-label="Toggle Theme"
           >
@@ -232,41 +227,6 @@ function MerchantHeader({ onSearchClick }: { onSearchClick?: () => void }) {
             ) : (
               <Moon className="w-4 h-4 text-emerald-800" />
             )}
-          </button>
-
-          {/* Bag / Cart Navigation Button */}
-          <button
-            id="merchant-header-bag-btn"
-            onClick={() => navigate('/bag')}
-            className="relative w-8 h-8 rounded-xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/40 transition-all active:scale-95 cursor-pointer flex items-center justify-center shadow-xs"
-            title="Open Procurement Bag"
-            aria-label="Procurement Bag"
-          >
-            <ShoppingBag className="w-4 h-4 text-emerald-700 dark:text-emerald-300" />
-            {cartItems.length > 0 && (
-              <span className="absolute -top-1 -right-1 bg-emerald-600 text-white text-[8px] font-black min-w-3.5 h-3.5 px-0.5 rounded-full flex items-center justify-center shadow-xs">
-                {cartItems.length}
-              </span>
-            )}
-          </button>
-
-          {/* Profile Navigation Button */}
-          <button
-            onClick={() => navigate('/profile')}
-            className="w-8 h-8 rounded-xl bg-emerald-50/80 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/40 transition-all active:scale-95 cursor-pointer flex items-center justify-center shadow-xs"
-            title="Merchant Profile & Settings"
-            aria-label="Merchant Profile"
-          >
-            <User className="w-4 h-4" />
-          </button>
-
-          {/* Logout Button */}
-          <button
-            onClick={handleLogout}
-            className="w-8 h-8 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/30 dark:hover:bg-rose-950/60 text-rose-700 dark:text-rose-400 border border-rose-200/60 dark:border-rose-900/40 transition-all active:scale-95 cursor-pointer flex items-center justify-center shadow-xs"
-            title="Sign out from session"
-          >
-            <LogOut className="w-3.5 h-3.5" />
           </button>
         </div>
         </div>
@@ -460,7 +420,7 @@ function MerchantHeader({ onSearchClick }: { onSearchClick?: () => void }) {
                         <div className="p-3.5 bg-white dark:bg-[#0a1b14] border border-slate-200/80 dark:border-emerald-950/70 rounded-2xl shadow-2xs space-y-1.5">
                           <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
                             <span>Goods & Services Tax (GSTIN)</span>
-                            <span className="px-1.5 py-0.2 rounded bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-mono text-[9px]">
+                            <span className="px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-mono text-[9px]">
                               Active
                             </span>
                           </div>
@@ -868,7 +828,7 @@ function MerchantHeader({ onSearchClick }: { onSearchClick?: () => void }) {
                                     {loc.name}
                                   </span>
                                   <span className={cn(
-                                    "text-[8.5px] font-bold px-1.5 py-0.2 rounded-full uppercase",
+                                    "text-[8.5px] font-bold px-1.5 py-0.5 rounded-full uppercase",
                                     loc.type === 'Godown'
                                       ? "bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300"
                                       : "bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300"
@@ -876,7 +836,7 @@ function MerchantHeader({ onSearchClick }: { onSearchClick?: () => void }) {
                                     {loc.type}
                                   </span>
                                   {loc.isDefault && (
-                                    <span className="text-[8px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950 px-1.5 py-0.2 rounded-full border border-emerald-500/30">
+                                    <span className="text-[8px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950 px-1.5 py-0.5 rounded-full border border-emerald-500/30">
                                       Default Billing Unit
                                     </span>
                                   )}
@@ -921,7 +881,7 @@ function MerchantHeader({ onSearchClick }: { onSearchClick?: () => void }) {
                             {loc.phone && (
                               <a
                                 href={`tel:${loc.phone}`}
-                                className="inline-flex items-center gap-1 text-[9.5px] font-mono font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-neutral-850 px-2 py-0.5 rounded-lg border border-slate-200/60 dark:border-neutral-750 hover:text-emerald-600"
+                                className="inline-flex items-center gap-1 text-[9.5px] font-mono font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-neutral-800 px-2 py-0.5 rounded-lg border border-slate-200/60 dark:border-neutral-700 hover:text-emerald-600"
                               >
                                 <Phone className="w-2.5 h-2.5" />
                                 <span>{loc.phone}</span>
@@ -1197,7 +1157,7 @@ function EmployeeHeader() {
         </div>
         <div className="min-w-0">
           <div className="flex items-center gap-1.5">
-            <span className="text-[8px] font-black uppercase tracking-wider text-amber-800 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.2 rounded font-mono">
+            <span className="text-[8px] font-black uppercase tracking-wider text-amber-800 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded font-mono">
               Field Operations
             </span>
           </div>
@@ -1246,8 +1206,6 @@ function EmployeeBottomBar() {
 
   const tabs = [
     { label: 'Inventory', path: '/inventory', icon: Package },
-    { label: 'Arrivals', path: '/arrival-entry', icon: Warehouse },
-    { label: 'Pending', path: '/pending-loadings', icon: Clock },
     { label: 'Schedule', path: '/schedule', icon: Calendar },
   ];
 
@@ -1278,19 +1236,21 @@ function EmployeeBottomBar() {
 
 function MainLayoutContent({ onSearchClick }: { onSearchClick: () => void }) {
   const location = useLocation();
-  const [role, setRole] = useState(() => {
+  const [role, setRole] = useState<'admin' | 'employee' | 'merchant' | string>(() => {
     try {
-      return localStorage.getItem('userRole') || 'admin';
+      return localStorage.getItem('userRole') || 'merchant';
     } catch {
-      return 'admin';
+      return 'merchant';
     }
   });
 
   useEffect(() => {
     const handleRoleSync = () => {
       try {
-        setRole(localStorage.getItem('userRole') || 'admin');
-      } catch {}
+        setRole(localStorage.getItem('userRole') || 'merchant');
+      } catch {
+        setRole('merchant');
+      }
     };
     window.addEventListener('storage', handleRoleSync);
     window.addEventListener('role-changed', handleRoleSync);
@@ -1328,13 +1288,19 @@ function MainLayoutContent({ onSearchClick }: { onSearchClick: () => void }) {
   };
 
   // Strict role-based layout enforcement:
-  // 1. Employee role: strictly renders Employee portal (Inventory, Arrivals, Pending, Schedule)
+  // 1. Employee role: strictly renders Employee portal (Inventory, Schedule)
   if (role === 'employee') {
+    // Confine employee strictly to inventory and schedule
+    const employeeAllowedPaths = ['/inventory', '/schedule', '/tasks'];
+    if (!employeeAllowedPaths.includes(location.pathname)) {
+      return <Navigate to="/inventory" replace />;
+    }
+
     return (
-      <div className="min-h-dvh bg-[#fafaf9] dark:bg-[#07110c] sm:bg-slate-100/70 sm:dark:bg-[#030906] flex justify-center text-slate-900 dark:text-slate-100 font-sans antialiased">
-        <div className="w-full max-w-none sm:max-w-md md:max-w-lg min-h-dvh bg-[#fafaf9] dark:bg-[#07110c] sm:shadow-2xl relative flex flex-col border-none sm:border-x border-slate-200/60 dark:border-emerald-950/40">
+      <div className="w-full min-h-dvh bg-[#fafaf9] dark:bg-[#07110c] flex flex-col items-center text-slate-900 dark:text-slate-100 font-sans antialiased">
+        <div className="w-full max-w-4xl min-h-dvh bg-[#fafaf9] dark:bg-[#07110c] relative flex flex-col">
           <EmployeeHeader />
-          <main className="flex-1 w-full relative pb-20 p-2 sm:p-3">
+          <main className="flex-1 w-full relative pb-20 p-3 sm:p-4">
             <AnimatePresence mode="wait" initial={false}>
               <motion.div
                 key={location.pathname}
@@ -1360,8 +1326,8 @@ function MainLayoutContent({ onSearchClick }: { onSearchClick: () => void }) {
   // 2. Merchant role: strictly renders Merchant portal (Store, My Orders, Brokerage, Bag, Profile)
   if (role === 'merchant') {
     return (
-      <div className="min-h-dvh bg-[#fafaf9] dark:bg-[#07110c] sm:bg-slate-100/70 sm:dark:bg-[#030906] flex justify-center text-slate-900 dark:text-slate-100 font-sans antialiased">
-        <div className="w-full max-w-none sm:max-w-md md:max-w-lg min-h-dvh bg-[#fafaf9] dark:bg-[#07110c] sm:shadow-2xl relative flex flex-col border-none sm:border-x border-slate-200/60 dark:border-emerald-950/40">
+      <div className="w-full min-h-dvh bg-[#fafaf9] dark:bg-[#07110c] flex flex-col items-center text-slate-900 dark:text-slate-100 font-sans antialiased">
+        <div className="w-full max-w-4xl min-h-dvh bg-[#fafaf9] dark:bg-[#07110c] relative flex flex-col">
           <MerchantHeader onSearchClick={onSearchClick} />
           <main className="flex-1 w-full relative pb-20">
             <AnimatePresence mode="wait" initial={false}>
@@ -1386,7 +1352,7 @@ function MainLayoutContent({ onSearchClick }: { onSearchClick: () => void }) {
     );
   }
 
-  // 3. Admin role (default): strictly renders Executive Admin Portal (Sidebar + Navbar)
+  // 3. Admin portal (Sidebar + Navbar) as standard executive console
   // Admin NEVER sees MerchantHeader, MerchantBottomBar, EmployeeHeader, or any Bag/Store UI
 
   return (

@@ -105,8 +105,8 @@
 
 @layer base {
   :root {
-    --font-serif: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
-    --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+    --font-serif: 'Instrument Serif', Georgia, 'Times New Roman', serif;
+    --font-sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     --gold: #C9A158;
     --gold-light: #E8C97A;
     --gold-dark: #9A7A3E;
@@ -273,8 +273,18 @@
   scrollbar-width: none !important;
 }
 
+html, body, #root {
+  background-color: #fafaf9;
+  min-height: 100dvh;
+  width: 100%;
+}
+
+html.dark, html.dark body, html.dark #root {
+  background-color: #07110c !important;
+}
+
 body {
-  @apply bg-background font-sans text-on-background antialiased transition-colors duration-500 overflow-x-hidden;
+  @apply font-sans antialiased;
   -webkit-tap-highlight-color: transparent;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;

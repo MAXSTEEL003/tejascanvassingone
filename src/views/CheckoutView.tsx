@@ -373,8 +373,8 @@ export default function CheckoutView() {
             <CheckCircle2 className="w-10 h-10 animate-bounce" />
           </div>
           <div className="space-y-2">
-            <h1 className="text-2xl font-black tracking-tight text-emerald-955 dark:text-emerald-50">Order Grouped & Placed!</h1>
-            <p className="text-emerald-900/60 dark:text-emerald-250/50 font-medium text-xs">
+            <h1 className="text-2xl font-black tracking-tight text-emerald-950 dark:text-emerald-50">Order Grouped & Placed!</h1>
+            <p className="text-emerald-900/60 dark:text-emerald-300/60 font-medium text-xs">
               Your consolidated purchase order (PO) is being dispatched automatically.
             </p>
           </div>
@@ -419,7 +419,7 @@ export default function CheckoutView() {
                   </div>
                   <div>
                     <p className="text-[10px] font-black uppercase tracking-widest text-orange-700">WhatsApp Confirmation to Buyer</p>
-                    <p className="text-xs font-semibold text-emerald-955 dark:text-emerald-100 mt-0.5">
+                    <p className="text-xs font-semibold text-emerald-950 dark:text-emerald-100 mt-0.5">
                       Registration confirmation transmitted to:
                     </p>
                     <p className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 font-mono select-all">+91 {buyerProfile.phone}</p>
@@ -482,7 +482,7 @@ export default function CheckoutView() {
         </button>
         <div>
           <h1 className="text-3xl font-black tracking-tight">{bulkData?.bulkOrder ? 'Consolidated Procurement' : 'Finalize Procurement'}</h1>
-          <p className="text-emerald-900/60 dark:text-emerald-250/50 text-sm font-medium">{bulkData?.bulkOrder ? 'Reviewing batch shipment requirements.' : 'Review your items and select delivery terms.'}</p>
+          <p className="text-emerald-900/60 dark:text-emerald-300/60 text-sm font-medium">{bulkData?.bulkOrder ? 'Reviewing batch shipment requirements.' : 'Review your items and select delivery terms.'}</p>
         </div>
       </header>
 
@@ -504,17 +504,17 @@ export default function CheckoutView() {
                           <Layers className="w-6 h-6 text-emerald-600" />
                        </div>
                        <div>
-                          <p className="text-sm font-black text-emerald-955 dark:text-emerald-100">Consolidated Batch Request</p>
-                          <p className="text-xs text-emerald-900/60 dark:text-emerald-250/50">Merging {bulkData.count} individual procurement intents into a single shipment line.</p>
+                          <p className="text-sm font-black text-emerald-950 dark:text-emerald-100">Consolidated Batch Request</p>
+                          <p className="text-xs text-emerald-900/60 dark:text-emerald-300/60">Merging {bulkData.count} individual procurement intents into a single shipment line.</p>
                        </div>
                     </div>
                     <div className="flex justify-between items-center py-4 border-t border-emerald-500/10">
-                       <span className="text-[10px] font-black uppercase tracking-widest opacity-45 text-emerald-900/50 dark:text-emerald-350/50">Cumulative Volume</span>
-                       <span className="text-sm font-black text-emerald-955 dark:text-emerald-50">{bulkData.totalQty?.toFixed(2)} QTLS</span>
+                       <span className="text-[10px] font-black uppercase tracking-widest opacity-45 text-emerald-900/50 dark:text-emerald-300/60">Cumulative Volume</span>
+                       <span className="text-sm font-black text-emerald-950 dark:text-emerald-50">{bulkData.totalQty?.toFixed(2)} QTLS</span>
                     </div>
                  </div>
               ) : items.length === 0 ? (
-                <p className="p-8 text-center text-emerald-900/60 dark:text-emerald-250/50 text-sm italic">No items selected for procurement.</p>
+                <p className="p-8 text-center text-emerald-900/60 dark:text-emerald-300/60 text-sm italic">No items selected for procurement.</p>
               ) : (
                 items.map((item) => (
                   <div key={item.id} className="flex gap-6 items-center">
@@ -527,7 +527,7 @@ export default function CheckoutView() {
                         <Building className="w-3 h-3" />
                         {sanitizeSupplierName(item.supplier, 'Direct Mill')}
                       </p>
-                      <p className="text-xs text-emerald-900/60 dark:text-emerald-250/50 font-medium">{item.qty} QTLS × ₹{formatINR(item.price)}</p>
+                      <p className="text-xs text-emerald-900/60 dark:text-emerald-300/60 font-medium">{item.qty} QTLS × ₹{formatINR(item.price)}</p>
                     </div>
                     <div className="text-right">
                       <p className="font-black text-emerald-950 dark:text-emerald-50">₹{formatINR(item.price * item.qty)}</p>
@@ -547,10 +547,10 @@ export default function CheckoutView() {
               </h3>
               <div className="p-4 bg-emerald-500/5 border border-emerald-500/20 rounded-xl relative">
                 <CheckCircle2 className="absolute top-4 right-4 w-5 h-5 text-emerald-600" />
-                <p className="font-bold text-sm text-emerald-955 dark:text-emerald-100">
+                <p className="font-bold text-sm text-emerald-950 dark:text-emerald-100">
                   {localStorage.getItem('userStoreName') || localStorage.getItem('userName') || 'Merchant Store'}
                 </p>
-                <p className="text-xs text-emerald-900/60 dark:text-emerald-250/50 mt-1 leading-relaxed">
+                <p className="text-xs text-emerald-900/60 dark:text-emerald-300/60 mt-1 leading-relaxed">
                   {localStorage.getItem('userAddress') || 'No. 15, APMC Yard, Yeshwanthpur, Bangalore, Karnataka - 560022'}
                 </p>
               </div>
@@ -564,19 +564,19 @@ export default function CheckoutView() {
         {/* Order Summary Sidebar */}
         <div className="col-span-12 lg:col-span-4">
           <div className="bg-white dark:bg-[#051310] border border-emerald-900/10 dark:border-emerald-950/40 p-8 rounded-3xl space-y-8 sticky top-24 shadow-sm">
-            <h3 className="text-xl font-black text-emerald-955 dark:text-emerald-50">Order Summary</h3>
+            <h3 className="text-xl font-black text-emerald-950 dark:text-emerald-50">Order Summary</h3>
             
             <div className="space-y-4">
               <div className="flex justify-between items-center text-sm">
-                <span className="text-emerald-900/60 dark:text-emerald-250/50 font-medium uppercase tracking-wider text-[10px]">Net Value</span>
+                <span className="text-emerald-900/60 dark:text-emerald-300/60 font-medium uppercase tracking-wider text-[10px]">Net Value</span>
                 <span className="font-bold">₹{formatINR(total)}</span>
               </div>
               <div className="flex justify-between items-center text-sm">
-                <span className="text-emerald-900/60 dark:text-emerald-250/50 font-medium uppercase tracking-wider text-[10px]">Logistics Fee</span>
+                <span className="text-emerald-900/60 dark:text-emerald-300/60 font-medium uppercase tracking-wider text-[10px]">Logistics Fee</span>
                 <span className="font-bold">₹{formatINR(shipping)}</span>
               </div>
               <div className="flex justify-between items-center text-sm">
-                <span className="text-emerald-900/60 dark:text-emerald-250/50 font-medium uppercase tracking-wider text-[10px]">IGST / Taxes</span>
+                <span className="text-emerald-900/60 dark:text-emerald-300/60 font-medium uppercase tracking-wider text-[10px]">IGST / Taxes</span>
                 <span className="font-bold">₹{formatINR(tax)}</span>
               </div>
               <div className="h-px bg-emerald-900/10 dark:bg-emerald-950/40 my-4" />
@@ -588,7 +588,7 @@ export default function CheckoutView() {
 
             <div className="bg-emerald-500/5 p-3.5 rounded-xl flex items-start gap-2.5 border border-emerald-500/20">
                <ShieldCheck className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
-               <p className="text-[10px] text-emerald-900/60 dark:text-emerald-250/50 font-medium leading-relaxed">
+               <p className="text-[10px] text-emerald-900/60 dark:text-emerald-300/60 font-medium leading-relaxed">
                   Direct Mill Trade PO. Payment is settled on delivery invoice as per standard APMC terms.
                </p>
             </div>

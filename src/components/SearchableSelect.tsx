@@ -118,7 +118,7 @@ export default function SearchableSelect({
           const exactMatch = normalizedOptions.find(opt => String(opt?.label || '').toLowerCase() === (search || '').toLowerCase());
           if (exactMatch) {
             handleSelect(exactMatch);
-          } else {
+          } else if (allowCustom) {
             onChange(search);
             setIsOpen(false);
           }

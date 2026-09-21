@@ -93,7 +93,7 @@ export default function RoleSwitcher({ className }: { className?: string }) {
     {
       id: 'employee',
       label: 'Employee (Warehouse)',
-      sub: 'Inventory & Pending Loadings (No Store)',
+      sub: 'Inventory & Work Schedule (No Store)',
       icon: Warehouse,
       color: 'text-blue-700 dark:text-blue-400',
       bgColor: 'bg-blue-500/10'
@@ -108,7 +108,7 @@ export default function RoleSwitcher({ className }: { className?: string }) {
         type="button"
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
-          "inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer border shadow-sm",
+          "inline-flex items-center gap-2 px-3 py-2 min-h-[44px] rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer border shadow-sm",
           role === 'merchant'
             ? "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500/25 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100/50"
             : role === 'employee'
@@ -137,7 +137,7 @@ export default function RoleSwitcher({ className }: { className?: string }) {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 6, scale: 0.96 }}
               transition={{ duration: 0.15 }}
-              className="absolute right-0 mt-2 w-72 rounded-2xl bg-white dark:bg-[#151310] border border-amber-900/15 dark:border-amber-950/40 shadow-2xl z-50 p-2 text-stone-900 dark:text-stone-100"
+              className="absolute right-0 mt-2 w-[min(18rem,calc(100vw-2rem))] rounded-2xl bg-white dark:bg-[#151310] border border-amber-900/15 dark:border-amber-950/40 shadow-2xl z-50 p-2 text-stone-900 dark:text-stone-100"
             >
               <div className="px-3 py-2 border-b border-stone-100 dark:border-stone-800">
                 <p className="text-[10px] font-black uppercase tracking-widest text-stone-400 dark:text-stone-500">

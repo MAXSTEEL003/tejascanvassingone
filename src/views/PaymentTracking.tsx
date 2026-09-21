@@ -1145,7 +1145,7 @@ export default function PaymentTracking() {
         <div className="flex gap-3">
           <button 
             onClick={exportCurrentPipeline}
-            className="flex items-center gap-2 px-5 py-3 bg-white hover:bg-neutral-50 dark:bg-neutral-900 dark:hover:bg-neutral-850 border border-neutral-200 dark:border-neutral-800 text-neutral-800 dark:text-white rounded-2xl shadow-sm transition-all text-xs font-black uppercase tracking-widest hover:scale-[1.01]"
+            className="flex items-center gap-2 px-5 py-3 bg-white hover:bg-neutral-50 dark:bg-neutral-900 dark:hover:bg-neutral-800 border border-neutral-200 dark:border-neutral-800 text-neutral-800 dark:text-white rounded-2xl shadow-sm transition-all text-xs font-black uppercase tracking-widest hover:scale-[1.01]"
           >
             <Download className="w-4 h-4" />
             Export CSV Audit
@@ -1410,7 +1410,7 @@ export default function PaymentTracking() {
                         "px-3 py-1.5 font-black uppercase tracking-wider rounded-lg transition-all flex items-center gap-1.5 cursor-pointer",
                         statusFilter === st 
                           ? "bg-white dark:bg-neutral-900 text-primary shadow-sm" 
-                          : "text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-850"
+                          : "text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
                       )}
                     >
                       {st === 'lifted' && <Truck className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0" />}
@@ -1429,7 +1429,7 @@ export default function PaymentTracking() {
                 <span>Showing consolidated arrived shipments from the <strong>Arrival Entries Spreadsheet</strong> and <strong>Placed Orders</strong>, ready for payment clearance and collection.</span>
               </p>
             </div>
-            <span className="font-extrabold text-neutral-800 dark:text-neutral-100 whitespace-nowrap shrink-0 text-[10px] uppercase tracking-widest bg-neutral-100 dark:bg-neutral-850 px-2 py-0.5 rounded-lg ml-4">
+            <span className="font-extrabold text-neutral-800 dark:text-neutral-100 whitespace-nowrap shrink-0 text-[10px] uppercase tracking-widest bg-neutral-100 dark:bg-neutral-800 px-2 py-0.5 rounded-lg ml-4">
               {filteredTxns.length} Listed
             </span>
           </div>
@@ -1474,7 +1474,7 @@ export default function PaymentTracking() {
           ) : (
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-neutral-50 dark:bg-neutral-950 text-[10px] font-black text-neutral-400 dark:text-neutral-500 uppercase tracking-widest border-b border-neutral-200 dark:border-neutral-850">
+                <tr className="bg-neutral-50 dark:bg-neutral-950 text-[10px] font-black text-neutral-400 dark:text-neutral-500 uppercase tracking-widest border-b border-neutral-200 dark:border-neutral-800">
                   <th className="p-4 pl-6">Arrival Date</th>
                   <th className="p-4">Bill No</th>
                   <th className="p-4">Entity Log (Buyer & Supplier Source)</th>
@@ -1483,7 +1483,7 @@ export default function PaymentTracking() {
                   <th className="p-4 pr-6 text-right">Audit Options</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-neutral-150 dark:divide-neutral-800/60">
+              <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800/60">
                 {filteredTxns.map((txn, index) => (
                   <PaymentRow 
                     key={`${txn.id}-${index}`}
@@ -1525,7 +1525,7 @@ export default function PaymentTracking() {
                   </div>
                   <button 
                     onClick={() => setShowPaymentModal(false)} 
-                    className="p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-850 rounded-full transition-colors"
+                    className="p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-full transition-colors"
                   >
                      <X className="w-5 h-5 text-neutral-400" />
                   </button>
@@ -1556,7 +1556,7 @@ export default function PaymentTracking() {
                       <span className="text-rose-500 font-extrabold font-mono">{selectedTxn.daysOutstanding} Days Pending</span>
                     </div>
                     {selectedTxn.isArrival && (
-                      <div className="flex justify-between items-center border-t border-neutral-200 dark:border-neutral-850 pt-2 mt-2">
+                      <div className="flex justify-between items-center border-t border-neutral-200 dark:border-neutral-800 pt-2 mt-2">
                         <span className="font-bold text-neutral-500 uppercase tracking-wider text-[9px]">Total Cargo Weight:</span>
                         <span className="font-black text-primary font-mono">{selectedTxn.qty} QTLS</span>
                       </div>
@@ -1568,7 +1568,7 @@ export default function PaymentTracking() {
                      {/* Segmented Payment instrument Selector */}
                      <div className="space-y-1.5">
                         <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 px-1">Instrument Route</label>
-                        <div className="flex gap-1.5 p-1 bg-neutral-150 dark:bg-neutral-950 rounded-2xl border border-neutral-200 dark:border-neutral-850">
+                        <div className="flex gap-1.5 p-1 bg-neutral-100 dark:bg-neutral-950 rounded-2xl border border-neutral-200 dark:border-neutral-800">
                            {['RTGS', 'NEFT', 'Cheque', 'Cash'].map(m => (
                               <button 
                                  key={m} 
@@ -1577,7 +1577,7 @@ export default function PaymentTracking() {
                                  className={cn(
                                     "flex-1 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all",
                                     paymentData.method === m 
-                                      ? "bg-white dark:bg-neutral-850 text-primary shadow-sm" 
+                                      ? "bg-white dark:bg-neutral-800 text-primary shadow-sm" 
                                       : "text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200"
                                  )}
                               >
@@ -1635,7 +1635,7 @@ export default function PaymentTracking() {
                         </div>
 
                         {/* Cash Discount Percentage & Calculated Discount Amount */}
-                        <div className="space-y-2.5 p-3.5 bg-blue-50/40 dark:bg-neutral-950/40 border border-blue-500/10 dark:border-neutral-850 rounded-2xl">
+                        <div className="space-y-2.5 p-3.5 bg-blue-50/40 dark:bg-neutral-950/40 border border-blue-500/10 dark:border-neutral-800 rounded-2xl">
                            <div className="flex justify-between items-center">
                               <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500">
                                  Cash Discount (CC Column)
@@ -1697,7 +1697,7 @@ export default function PaymentTracking() {
                                           amount: String(newNetAmt)
                                        });
                                     }}
-                                    className="w-full bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-850 rounded-xl px-2.5 py-1.5 text-[11px] font-mono font-black outline-none focus:ring-1 focus:ring-blue-500/20 text-neutral-800 dark:text-neutral-200"
+                                    className="w-full bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-xl px-2.5 py-1.5 text-[11px] font-mono font-black outline-none focus:ring-1 focus:ring-blue-500/20 text-neutral-800 dark:text-neutral-200"
                                  />
                               </div>
                               <div className="space-y-1">
@@ -1718,7 +1718,7 @@ export default function PaymentTracking() {
                                           amount: String(newNetAmt)
                                        });
                                     }}
-                                    className="w-full bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-850 rounded-xl px-2.5 py-1.5 text-[11px] font-mono font-black outline-none focus:ring-1 focus:ring-blue-500/20 text-right text-neutral-800 dark:text-neutral-200"
+                                    className="w-full bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-xl px-2.5 py-1.5 text-[11px] font-mono font-black outline-none focus:ring-1 focus:ring-blue-500/20 text-right text-neutral-800 dark:text-neutral-200"
                                  />
                               </div>
                            </div>

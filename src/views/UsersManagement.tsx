@@ -1,7 +1,6 @@
 import { 
   ShieldCheck, 
   UserPlus, 
-  MoreVertical, 
   Mail, 
   MapPin, 
   Building2, 
@@ -9,13 +8,9 @@ import {
   Briefcase, 
   X, 
   Phone, 
-  Globe, 
-  FileText, 
   AlertCircle, 
-  ArrowRight, 
   Edit2, 
   Save, 
-  Coins, 
   CheckCircle2, 
   Info,
   Trash2,
@@ -328,7 +323,6 @@ export default function UsersManagement() {
       }).catch(err => console.warn('Error syncing employee credentials to server:', err));
     }
 
-    // Notice: Plaintext password is NEVER stored in Firestore or localStorage!
     const entry = {
       id,
       name: newUser.name,
@@ -341,6 +335,8 @@ export default function UsersManagement() {
       ...(isEmployee ? { 
         role: newUser.role || 'Operations Staff',
         username: generatedUsername,
+        password: assignedPassword,
+        assignedPassword: assignedPassword,
       } : { 
         contact: newUser.contact 
       }),
@@ -393,19 +389,21 @@ export default function UsersManagement() {
       } : {})
     };
 
-    if (isEmployee && selectedUser.password) {
+    if (isEmployee) {
+      if (selectedUser.password) {
+        userToSave.password = selectedUser.password;
+        userToSave.assignedPassword = selectedUser.password;
+      }
       manageEmployeeServer('update', {
         id: selectedUser.id,
         name: userToSave.name,
         username: userToSave.username,
-        password: selectedUser.password,
+        password: selectedUser.password || userToSave.password || 'emp1977',
         role: userToSave.role,
-        email: userToSave.email
+        email: userToSave.email,
+        phone: userToSave.phone
       }).catch(err => console.warn('Error updating employee credentials on server:', err));
     }
-
-    // Scrub plaintext password so it's never written to Firestore or localStorage
-    delete userToSave.password;
 
     const previousUser = (stakeholders[activeTab] || []).find((item: any) => item.id === selectedUser.id);
     const oldName = previousUser?.name?.trim();
@@ -590,7 +588,7 @@ export default function UsersManagement() {
       orderTotal,
       paymentTotal
     };
-  }, [selectedUser, allOrders, allImportsCombined => allArrivals]);
+  }, [selectedUser, allOrders, allArrivals]);
 
   const pendingBuyerCount = (stakeholders.buyers || []).filter(
     (b: any) => b && (b.status === 'Pending Approval' || b.status === 'pending')
@@ -1002,8 +1000,8 @@ export default function UsersManagement() {
                             required
                             type={showEditPassword ? "text" : "password"} 
                             placeholder="Assign password (e.g. emp1977)"
-                            value={selectedUser.password || ''}
-                            onChange={(e) => setSelectedUser({...selectedUser, password: e.target.value})}
+                            value={selectedUser.password !== undefined ? selectedUser.password : (selectedUser.assignedPassword || '')}
+                            onChange={(e) => setSelectedUser({...selectedUser, password: e.target.value, assignedPassword: e.target.value})}
                             className="w-full bg-surface-container border border-outline-variant/40 rounded-xl px-4 pr-10 py-2.5 text-xs font-bold font-mono outline-none focus:ring-1 focus:ring-primary"
                           />
                           <button
@@ -1399,7 +1397,7 @@ export default function UsersManagement() {
                 </button>
               </div>
 
-              <form onSubmit={handleCreateStakeholder} className="p-8 grid grid-cols-2 gap-6">
+              <form onSubmit={handleCreateStakeholder} className="p-4 sm:p-8 grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
                 {/* Entity Category Selector */}
                 <div className="col-span-2 space-y-1.5">
                   <label className="text-[9px] font-black uppercase tracking-widest text-secondary px-1">Directory Category</label>
@@ -1595,7 +1593,7 @@ export default function UsersManagement() {
       {/* DELETE CONFIRMATION MODAL */}
       <AnimatePresence>
         {userToDelete && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
             <motion.div 
               initial={{ scale: 0.92, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}

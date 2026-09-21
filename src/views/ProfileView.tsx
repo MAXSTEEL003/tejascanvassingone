@@ -2,8 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Building2, MapPin, ShieldCheck, Phone, Check, Copy,
-  CheckCircle2, Plus, Trash2, LogOut, Lock, Edit3, Save, 
-  Warehouse, Store, ExternalLink, Activity
+  CheckCircle2, Plus, Trash2, LogOut, Edit3, Save
 } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 import { auth } from '../lib/firebase';
@@ -109,7 +108,7 @@ export default function ProfileView() {
         
         <div className="flex items-start justify-between gap-3 relative z-10">
           <div className="flex items-center gap-3.5 min-w-0 flex-1">
-            <div className="w-13 h-13 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-tr from-[#0e3c2b] to-[#1a6649] text-white flex items-center justify-center font-black text-lg shadow-md ring-2 ring-emerald-500/20 shrink-0">
+            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-tr from-[#0e3c2b] to-[#1a6649] text-white flex items-center justify-center font-black text-lg shadow-md ring-2 ring-emerald-500/20 shrink-0">
               {profName.trim().split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase() || 'VK'}
             </div>
             <div className="min-w-0 flex-1">
@@ -449,7 +448,7 @@ export default function ProfileView() {
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="font-black text-slate-900 dark:text-white text-xs">{loc.name}</span>
-                    <span className="px-1.5 py-0.2 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-[10px] font-bold">
+                    <span className="px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-[10px] font-bold">
                       {loc.type}
                     </span>
                   </div>

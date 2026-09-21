@@ -285,14 +285,14 @@ export default function CommandPalette({ isOpen, setIsOpen }: CommandPaletteProp
           />
 
           {/* Palette container */}
-          <div className="fixed inset-0 z-[10000] flex items-start justify-center pt-24 px-4 overflow-y-auto pointer-events-none">
+          <div className="fixed inset-0 z-[10000] flex items-start justify-center pt-8 sm:pt-20 px-3 sm:px-4 overflow-y-auto pointer-events-none">
             <motion.div
               initial={{ opacity: 0, scale: 0.96, y: -20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.96, y: -20 }}
               transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
               ref={containerRef}
-              className="w-full max-w-2xl bg-white dark:bg-neutral-900/95 border border-neutral-200 dark:border-neutral-800 rounded-3xl shadow-2xl shadow-black/40 overflow-hidden flex flex-col pointer-events-auto"
+              className="w-full max-w-2xl bg-white dark:bg-neutral-900/95 border border-neutral-200 dark:border-neutral-800 rounded-3xl shadow-2xl shadow-black/40 overflow-hidden flex flex-col pointer-events-auto max-h-[85vh]"
               onKeyDown={handleKeyDown}
             >
               {/* Search Bar Input Header */}
@@ -340,7 +340,7 @@ export default function CommandPalette({ isOpen, setIsOpen }: CommandPaletteProp
                       <div key={catName} className="space-y-1">
                         {/* Section Category Title */}
                         <div className="flex items-center justify-between px-3 py-1.5">
-                          <span className="text-[10px] font-black text-primary/8 pointer-events-none tracking-widest uppercase dark:text-primary/70">
+                          <span className="text-[10px] font-black text-emerald-700 dark:text-emerald-400 pointer-events-none tracking-widest uppercase">
                             {catName}
                           </span>
                           <span className="text-[8px] text-neutral-400 dark:text-neutral-500 font-mono">
@@ -413,15 +413,15 @@ export default function CommandPalette({ isOpen, setIsOpen }: CommandPaletteProp
               </div>
 
               {/* Custom Command Bar Footer Guide */}
-              <div className="bg-neutral-50 dark:bg-neutral-900 border-t border-neutral-100 dark:border-neutral-850 p-3 shrink-0 flex items-center justify-between text-[10px] text-neutral-400 dark:text-neutral-500 select-none">
-                <div className="flex items-center gap-4">
+              <div className="bg-neutral-50 dark:bg-neutral-900 border-t border-neutral-100 dark:border-neutral-800 p-3 shrink-0 flex items-center justify-between text-[10px] text-neutral-400 dark:text-neutral-500 select-none">
+                <div className="hidden sm:flex items-center gap-4">
                   <span className="flex items-center gap-1 font-medium select-none">
-                    <kbd className="bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-720 rounded px-1.5 py-0.5 font-mono shadow-sm">▲</kbd>
-                    <kbd className="bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-720 rounded px-1.5 py-0.5 font-mono shadow-sm">▼</kbd>
+                    <kbd className="bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded px-1.5 py-0.5 font-mono shadow-xs">▲</kbd>
+                    <kbd className="bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded px-1.5 py-0.5 font-mono shadow-xs">▼</kbd>
                     Navigate
                   </span>
                   <span className="flex items-center gap-1 font-medium select-none">
-                    <kbd className="bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-720 rounded px-1.5 py-0.5 font-mono shadow-sm">Enter</kbd>
+                    <kbd className="bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded px-1.5 py-0.5 font-mono shadow-xs">Enter</kbd>
                     Open Page
                   </span>
                 </div>

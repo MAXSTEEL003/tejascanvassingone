@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { ArrowDown, CheckCircle2, ChevronRight, Sparkles, ExternalLink } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Sparkles } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import RiceBrandsFlow from './RiceBrandsFlow';
 
@@ -113,6 +113,8 @@ export default function AboutScrollExperience() {
   const navigate = useNavigate();
 
   const [scrollProgress, setScrollProgress] = useState(0);
+  const scrollProgressRef = useRef(0);
+  scrollProgressRef.current = scrollProgress;
   const [selectedVariety, setSelectedVariety] = useState<VarietyItem>(VARIETIES[0]);
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' ? window.innerWidth < 768 : false);
 
@@ -137,6 +139,7 @@ export default function AboutScrollExperience() {
             const raw = -rect.top / totalScrollable;
             const clamped = Math.min(Math.max(raw, 0), 1);
             setScrollProgress(clamped);
+            scrollProgressRef.current = clamped;
           }
           ticking = false;
         });
@@ -145,8 +148,14 @@ export default function AboutScrollExperience() {
     };
 
     window.addEventListener('scroll', handleScroll, { passive: true });
+    document.addEventListener('scroll', handleScroll, { passive: true });
+    window.addEventListener('resize', handleScroll, { passive: true });
     handleScroll();
-    return () => window.removeEventListener('scroll', handleScroll);
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      document.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('resize', handleScroll);
+    };
   }, []);
 
   // Jump to specific scene in scroll journey
@@ -176,42 +185,43 @@ export default function AboutScrollExperience() {
     if (!ctx) return;
 
     let animId: number;
-    let width = (canvas.width = canvas.offsetWidth);
-    let height = (canvas.height = canvas.offsetHeight);
+    let width = (canvas.width = canvas.offsetWidth || window.innerWidth);
+    let height = (canvas.height = canvas.offsetHeight || window.innerHeight);
 
     const handleResize = () => {
       if (!canvas) return;
-      width = canvas.width = canvas.offsetWidth;
-      height = canvas.height = canvas.offsetHeight;
+      width = canvas.width = canvas.offsetWidth || window.innerWidth;
+      height = canvas.height = canvas.offsetHeight || window.innerHeight;
     };
     window.addEventListener('resize', handleResize);
 
-    // Grain particles definition
-    const grainCount = 140;
+    // Optimized grain particles definition for fluid mobile performance
+    const isSmallScreen = window.innerWidth < 768;
+    const grainCount = isSmallScreen ? 45 : 110;
     const grains = Array.from({ length: grainCount }, () => ({
       x: Math.random() * width,
       y: Math.random() * height * 1.5 - height * 0.5,
-      speedY: 2.2 + Math.random() * 4.2,
-      speedX: (Math.random() - 0.5) * 1.2,
-      length: 14 + Math.random() * 12,
-      width: 4 + Math.random() * 3,
+      speedY: 2.5 + Math.random() * 3.8,
+      speedX: (Math.random() - 0.5) * 1.0,
+      length: isSmallScreen ? (10 + Math.random() * 8) : (14 + Math.random() * 10),
+      width: isSmallScreen ? (3 + Math.random() * 2) : (4 + Math.random() * 2.5),
       angle: Math.random() * Math.PI * 2,
       rotSpeed: (Math.random() - 0.5) * 0.08,
-      alpha: 0.35 + Math.random() * 0.65,
-      hueOffset: Math.random() * 8
+      alpha: 0.4 + Math.random() * 0.6,
     }));
 
     const render = () => {
       ctx.clearRect(0, 0, width, height);
 
+      const prog = scrollProgressRef.current;
       // Render actively during Scene 4 (Cascade) and Scene 5 (Bag Pouring)
-      if (scrollProgress >= 0.65 && scrollProgress <= 1.0) {
+      if (prog >= 0.64 && prog <= 1.0) {
         const streamIntensity = Math.min(
-          Math.max((scrollProgress - 0.65) / 0.12, 0),
+          Math.max((prog - 0.64) / 0.10, 0),
           1.0
         );
 
-        // Target columns for brands across the screen width (5 flagship brands)
+        // Target columns for brands across the screen width
         const brandLanes = [
           width * 0.12,
           width * 0.31,
@@ -219,11 +229,11 @@ export default function AboutScrollExperience() {
           width * 0.69,
           width * 0.88
         ];
-        const isPouringIntoBrands = scrollProgress >= 0.81;
+        const isPouringIntoBrands = prog >= 0.81;
         const brandTargetY = height * 0.48;
 
         grains.forEach((grain, idx) => {
-          grain.y += grain.speedY * (1 + (scrollProgress - 0.65) * 2.2);
+          grain.y += grain.speedY * (1 + (prog - 0.64) * 2.0);
           grain.x += grain.speedX;
           grain.angle += grain.rotSpeed;
 
@@ -232,10 +242,9 @@ export default function AboutScrollExperience() {
             const laneIndex = idx % brandLanes.length;
             const targetX = brandLanes[laneIndex];
             const diffX = targetX - grain.x;
-            grain.x += diffX * 0.045;
+            grain.x += diffX * 0.04;
 
-            // Soft damping near target lane
-            if (grain.y > brandTargetY - 80) {
+            if (grain.y > brandTargetY - 70) {
               grain.speedX *= 0.85;
             }
           }
@@ -243,10 +252,10 @@ export default function AboutScrollExperience() {
           // Loop particles when they fall off screen or when they reach the brand showcase
           const hasReachedBrand = isPouringIntoBrands && grain.y > brandTargetY + 30;
           if (grain.y > height + 20 || hasReachedBrand) {
-            grain.y = isPouringIntoBrands ? -20 - Math.random() * 50 : -20;
+            grain.y = isPouringIntoBrands ? -20 - Math.random() * 40 : -20;
             const laneIndex = idx % brandLanes.length;
             grain.x = isPouringIntoBrands
-              ? brandLanes[laneIndex] + (Math.random() - 0.5) * (width * 0.18)
+              ? brandLanes[laneIndex] + (Math.random() - 0.5) * (width * 0.16)
               : Math.random() * width;
           }
 
@@ -254,30 +263,11 @@ export default function AboutScrollExperience() {
           ctx.translate(grain.x, grain.y);
           ctx.rotate(grain.angle);
 
-          // Subtle shadow under each grain
-          ctx.fillStyle = `rgba(0, 0, 0, ${0.09 * grain.alpha * streamIntensity})`;
-          ctx.beginPath();
-          ctx.ellipse(1, 2, grain.length * 0.5, grain.width * 0.5, 0, 0, Math.PI * 2);
-          ctx.fill();
-
-          // Polished rice grain body
-          const grad = ctx.createLinearGradient(-grain.length * 0.5, 0, grain.length * 0.5, 0);
-          grad.addColorStop(0, `rgba(255, 252, 245, ${grain.alpha * streamIntensity})`);
-          grad.addColorStop(0.5, `rgba(248, 238, 218, ${grain.alpha * streamIntensity})`);
-          grad.addColorStop(1, `rgba(255, 255, 252, ${grain.alpha * streamIntensity})`);
-
-          ctx.fillStyle = grad;
+          // Grain body
+          ctx.fillStyle = `rgba(252, 246, 235, ${grain.alpha * streamIntensity})`;
           ctx.beginPath();
           ctx.ellipse(0, 0, grain.length * 0.5, grain.width * 0.5, 0, 0, Math.PI * 2);
           ctx.fill();
-
-          // Translucent sheen line
-          ctx.strokeStyle = `rgba(255, 255, 255, ${0.85 * grain.alpha * streamIntensity})`;
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.moveTo(-grain.length * 0.3, -grain.width * 0.2);
-          ctx.lineTo(grain.length * 0.3, -grain.width * 0.2);
-          ctx.stroke();
 
           ctx.restore();
         });
@@ -292,23 +282,26 @@ export default function AboutScrollExperience() {
       window.removeEventListener('resize', handleResize);
       cancelAnimationFrame(animId);
     };
-  }, [scrollProgress]);
+  }, []);
 
   // Interpolation helper for opacities and scales across phases
   const getSceneAlpha = (enterStart: number, enterEnd: number, exitStart: number, exitEnd: number) => {
-    if (scrollProgress < enterStart || scrollProgress > exitEnd) return 0;
+    if (scrollProgress <= enterStart) return enterStart === 0 ? 1 : 0;
+    if (scrollProgress >= exitEnd) return exitEnd === 1 ? 1 : 0;
     if (scrollProgress >= enterEnd && scrollProgress <= exitStart) return 1;
     if (scrollProgress < enterEnd) {
+      if (enterEnd === enterStart) return 1;
       return (scrollProgress - enterStart) / (enterEnd - enterStart);
     }
+    if (exitEnd === exitStart) return 0;
     return (exitEnd - scrollProgress) / (exitEnd - exitStart);
   };
 
-  const scene1Alpha = getSceneAlpha(0.00, 0.00, 0.16, 0.22);
-  const scene2Alpha = getSceneAlpha(0.18, 0.23, 0.42, 0.46);
-  const scene3Alpha = getSceneAlpha(0.44, 0.48, 0.62, 0.66);
-  const scene4Alpha = getSceneAlpha(0.67, 0.71, 0.80, 0.84);
-  const scene5Alpha = getSceneAlpha(0.81, 0.85, 1.00, 1.00);
+  const scene1Alpha = getSceneAlpha(0.00, 0.00, 0.15, 0.20);
+  const scene2Alpha = getSceneAlpha(0.18, 0.23, 0.38, 0.43);
+  const scene3Alpha = getSceneAlpha(0.40, 0.45, 0.60, 0.65);
+  const scene4Alpha = getSceneAlpha(0.62, 0.67, 0.79, 0.83);
+  const scene5Alpha = getSceneAlpha(0.80, 0.85, 1.00, 1.00);
 
   // Dynamic values
   const fieldScale = 1 + scrollProgress * 0.35;
@@ -319,15 +312,19 @@ export default function AboutScrollExperience() {
       ref={containerRef}
       id="grain-journey"
       className="relative w-full"
-      style={{ height: '520vh' }}
+      style={{ height: '420vh' }}
     >
       {/* Pinned Sticky Stage */}
-      <div className="sticky top-0 h-screen w-full overflow-hidden bg-[#0D1F15] select-none">
+      <div className="sticky top-0 h-screen h-[100dvh] w-full overflow-hidden bg-[#0D1F15] select-none">
 
         {/* ── SCENE 1: FROM THE FIELD ── */}
         <div
-          className="absolute inset-0 transition-opacity duration-300 pointer-events-none"
-          style={{ opacity: scene1Alpha }}
+          className="absolute inset-0 transition-opacity duration-200"
+          style={{
+            opacity: scene1Alpha,
+            display: scene1Alpha <= 0.01 ? 'none' : 'block',
+            pointerEvents: scene1Alpha > 0.4 ? 'auto' : 'none',
+          }}
         >
           {/* High-res Sunset Golden Paddy Field Background with Deep Contrast Grading */}
           <div
@@ -390,9 +387,10 @@ export default function AboutScrollExperience() {
 
         {/* ── SCENE 2: SELECTED WITH CARE & ORBITAL VARIETY CAROUSEL ── */}
         <div
-          className="absolute inset-0 transition-opacity duration-300"
+          className="absolute inset-0 transition-opacity duration-200"
           style={{
             opacity: scene2Alpha,
+            display: scene2Alpha <= 0.01 ? 'none' : 'block',
             pointerEvents: scene2Alpha > 0.3 ? 'auto' : 'none',
           }}
         >
@@ -406,30 +404,23 @@ export default function AboutScrollExperience() {
           />
           <div className="absolute inset-0 bg-gradient-to-r from-[#0A160F]/95 via-[#0D1F15]/85 to-[#0A160F]/95" />
 
-          <div className="relative z-10 h-full max-w-7xl mx-auto px-4 sm:px-8 flex flex-col lg:flex-row items-center justify-between gap-4 sm:gap-8 py-8 sm:py-12 lg:py-16">
-            {/* Left Content: Typography from video */}
-            <div className="w-full lg:w-5/12 text-left pt-2 sm:pt-6 lg:pt-0">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full mb-2 sm:mb-4 border border-amber-400/30 bg-amber-400/10 backdrop-blur-md">
-                <Sparkles size={12} className="text-amber-400" />
-                <span className="text-[10px] uppercase tracking-[0.2em] text-amber-300 font-semibold">
-                  02 / Hand Inspection
-                </span>
-              </div>
-
+          <div className="relative z-10 h-full max-w-7xl mx-auto px-4 sm:px-8 flex flex-col lg:flex-row items-center justify-between gap-4 sm:gap-8 lg:gap-12 pt-16 sm:pt-20 lg:py-16">
+            {/* Left Content: Typography + Grain Spec Card (positioned a little below) */}
+            <div className="w-full lg:w-5/12 text-left pt-6 sm:pt-10 lg:pt-8 shrink-0">
               <h2
                 style={{ fontFamily: 'var(--font-serif)' }}
-                className="text-white text-2xl sm:text-4xl lg:text-6xl font-normal tracking-tight leading-tight mb-2 sm:mb-4"
+                className="text-white text-2xl sm:text-4xl lg:text-6xl font-normal tracking-tight leading-tight mb-1.5 sm:mb-3.5"
               >
                 SELECTED WITH CARE
               </h2>
 
-              <p className="text-white/80 text-xs sm:text-sm md:text-base font-light leading-relaxed mb-3 sm:mb-6 line-clamp-2 sm:line-clamp-none">
+              <p className="text-white/80 text-xs sm:text-sm md:text-base font-light leading-relaxed mb-2.5 sm:mb-5 line-clamp-2 sm:line-clamp-none">
                 Harvested at peak maturity from verified fertile riverbeds. Every panicle is hand-checked for kernel density, natural translucency, and optimal moisture content before entering Sortex canvassing.
               </p>
 
               {/* Unified Single Display: Compact Grain Inspection & Spec Card (Small, fitted for mobile UI) */}
-              <div className="p-2.5 sm:p-3.5 rounded-xl sm:rounded-2xl bg-[#081810]/90 sm:bg-white/10 backdrop-blur-xl border border-amber-400/40 text-white max-w-md shadow-2xl">
-                <div className="flex items-center justify-between gap-2 mb-2 pb-1.5 border-b border-white/15">
+              <div className="p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-[#081810]/90 sm:bg-white/10 backdrop-blur-xl border border-amber-400/40 text-white max-w-md shadow-2xl">
+                <div className="flex items-center justify-between gap-2 mb-1.5 sm:mb-2 pb-1.5 border-b border-white/15">
                   <div className="flex items-center gap-1.5 min-w-0">
                     <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
                     <span className="text-[8.5px] sm:text-[9.5px] uppercase tracking-wider text-amber-300 font-mono font-bold shrink-0">
@@ -470,18 +461,18 @@ export default function AboutScrollExperience() {
               </div>
             </div>
 
-            {/* Right: 3D Orbital Carousel with varieties from the video */}
-            <div className="w-full lg:w-7/12 flex items-center justify-center relative min-h-[280px] sm:min-h-[420px]">
+            {/* Right: 3D Orbital Model (Placed higher as requested) */}
+            <div className="w-full lg:w-7/12 flex-1 lg:flex-initial flex items-center justify-center relative min-h-[260px] sm:min-h-[400px] -mt-5 sm:-mt-8 lg:-mt-12 pb-2 sm:pb-0">
               {/* Tilted Orbit Ring Canvas/CSS */}
               <div
-                className="relative w-[270px] sm:w-[380px] md:w-[460px] h-[250px] sm:h-[380px] md:h-[460px] flex items-center justify-center mt-2 sm:mt-4"
+                className="relative w-[280px] sm:w-[390px] md:w-[470px] h-[220px] sm:h-[340px] md:h-[430px] flex items-center justify-center"
                 style={{
                   perspective: '1000px',
                 }}
               >
                 {/* 3D Tilted Elliptical Ring Outline */}
                 <div
-                  className="absolute inset-0 rounded-full border border-amber-400/30 shadow-[0_0_35px_rgba(251,191,36,0.15)]"
+                  className="absolute inset-0 rounded-full border border-amber-400/35 shadow-[0_0_40px_rgba(251,191,36,0.18)]"
                   style={{
                     transform: `rotateX(66deg) rotateZ(${orbitRotation}deg)`,
                     transformStyle: 'preserve-3d',
@@ -603,10 +594,10 @@ export default function AboutScrollExperience() {
 
         {/* ── SCENE 3: MACRO GRAIN & TECHNICAL INSPECTION CALLOUTS ── */}
         <div
-          className="absolute inset-0 transition-opacity duration-300"
+          className="absolute inset-0 transition-opacity duration-200"
           style={{
             opacity: scene3Alpha,
-            display: scrollProgress >= 0.665 || scene3Alpha <= 0.01 ? 'none' : 'block',
+            display: scene3Alpha <= 0.01 ? 'none' : 'block',
             pointerEvents: scene3Alpha > 0.3 ? 'auto' : 'none',
           }}
         >
@@ -623,23 +614,20 @@ export default function AboutScrollExperience() {
           <div className="absolute inset-0 bg-gradient-to-b from-[#F7F2E7]/88 via-[#FAF6EE]/78 to-[#EFE6D8]/90 backdrop-blur-[1px]" />
           <div className="absolute inset-0 bg-radial-at-c from-amber-200/20 via-transparent to-stone-900/15" />
 
-          <div className="relative z-10 h-full max-w-6xl mx-auto px-4 sm:px-8 flex flex-col items-center justify-center">
+          <div className="relative z-10 h-full max-w-6xl mx-auto px-4 sm:px-8 flex flex-col items-center justify-center pt-16 sm:pt-0">
             
             {/* Top Scene Marker */}
-            <div className="text-center mb-6">
-              <span className="text-[10px] uppercase tracking-[0.25em] font-bold text-amber-800 font-mono">
-                03 / Precision Laboratory Examination
-              </span>
+            <div className="text-center mb-4 sm:mb-6">
               <h2
                 style={{ fontFamily: 'var(--font-serif)' }}
-                className="text-stone-900 text-2xl sm:text-4xl font-normal mt-1"
+                className="text-stone-900 text-xl xs:text-2xl sm:text-4xl font-normal mt-0.5 sm:mt-1"
               >
                 Anatomy of Pure Perfection
               </h2>
             </div>
 
             {/* Macro Grain Canvas & Pointers Wrapper */}
-            <div className="relative w-full max-w-[680px] h-[340px] sm:h-[420px] flex items-center justify-center">
+            <div className="relative w-full max-w-[680px] h-[320px] sm:h-[420px] flex items-center justify-center">
 
               {/* Central Photorealistic Macro Rice Grain */}
               <div className="relative flex items-center justify-center">
@@ -654,7 +642,7 @@ export default function AboutScrollExperience() {
                 {/* The Macro Grain (Translucent PBR styling) */}
                 <svg
                   viewBox="0 0 100 240"
-                  className="w-24 sm:w-32 md:w-36 h-auto drop-shadow-2xl filter"
+                  className="w-20 xs:w-24 sm:w-32 md:w-36 h-auto drop-shadow-2xl filter"
                 >
                   <defs>
                     <linearGradient id="macroGrainTranslucent" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -716,20 +704,20 @@ export default function AboutScrollExperience() {
 
               {/* ── CALLOUT 1: LONG GRAIN (Top Left) ── */}
               <div
-                className="absolute top-2 left-2 sm:left-6 md:left-10 max-w-[210px] text-left transition-all duration-300"
+                className="absolute top-1 left-1 sm:top-2 sm:left-6 md:left-10 max-w-[145px] xs:max-w-[175px] sm:max-w-[210px] text-left transition-all duration-300"
                 style={{
                   transform: `translateY(${(1 - scene3Alpha) * 15}px)`,
                 }}
               >
-                <div className="flex items-center gap-1.5 mb-1">
-                  <div className="w-2 h-2 rounded-full bg-amber-500" />
-                  <span className="text-xs sm:text-sm font-extrabold uppercase tracking-wider text-stone-900">
+                <div className="flex items-center gap-1 sm:gap-1.5 mb-1">
+                  <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-amber-500" />
+                  <span className="text-[10px] xs:text-xs sm:text-sm font-extrabold uppercase tracking-wider text-stone-900">
                     LONG GRAIN
                   </span>
                 </div>
-                <div className="p-2.5 rounded-xl bg-white/90 backdrop-blur-md border border-stone-200/80 shadow-md text-[11px] text-stone-600 space-y-0.5">
-                  <div className="font-semibold text-stone-800">8.35 mm Length</div>
-                  <div className="text-[10px] text-stone-500">2.2x Post-Cook Expansion</div>
+                <div className="p-2 sm:p-2.5 rounded-xl bg-white/90 backdrop-blur-md border border-stone-200/80 shadow-md text-[10px] sm:text-[11px] text-stone-600 space-y-0.5">
+                  <div className="font-semibold text-stone-800 leading-tight">8.35 mm Length</div>
+                  <div className="text-[9px] sm:text-[10px] text-stone-500 leading-tight">2.2x Cook Expansion</div>
                 </div>
                 {/* SVG Pointer Line to Grain Apex */}
                 <svg className="hidden sm:block absolute top-6 -right-24 w-28 h-16 pointer-events-none">
@@ -746,20 +734,20 @@ export default function AboutScrollExperience() {
 
               {/* ── CALLOUT 2: QUALITY GRADE (Bottom Left) ── */}
               <div
-                className="absolute bottom-2 left-2 sm:left-6 md:left-10 max-w-[210px] text-left transition-all duration-300"
+                className="absolute bottom-1 left-1 sm:bottom-2 sm:left-6 md:left-10 max-w-[145px] xs:max-w-[175px] sm:max-w-[210px] text-left transition-all duration-300"
                 style={{
                   transform: `translateY(${(1 - scene3Alpha) * -15}px)`,
                 }}
               >
-                <div className="flex items-center gap-1.5 mb-1">
-                  <div className="w-2 h-2 rounded-full bg-emerald-600" />
-                  <span className="text-xs sm:text-sm font-extrabold uppercase tracking-wider text-stone-900">
+                <div className="flex items-center gap-1 sm:gap-1.5 mb-1">
+                  <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-emerald-600" />
+                  <span className="text-[10px] xs:text-xs sm:text-sm font-extrabold uppercase tracking-wider text-stone-900">
                     QUALITY GRADE
                   </span>
                 </div>
-                <div className="p-2.5 rounded-xl bg-white/90 backdrop-blur-md border border-stone-200/80 shadow-md text-[11px] text-stone-600 space-y-0.5">
-                  <div className="font-semibold text-stone-800">100% Sortex Cleaned</div>
-                  <div className="text-[10px] text-stone-500">Zero Chalkiness & Stones</div>
+                <div className="p-2 sm:p-2.5 rounded-xl bg-white/90 backdrop-blur-md border border-stone-200/80 shadow-md text-[10px] sm:text-[11px] text-stone-600 space-y-0.5">
+                  <div className="font-semibold text-stone-800 leading-tight">100% Sortex Cleaned</div>
+                  <div className="text-[9px] sm:text-[10px] text-stone-500 leading-tight">Zero Chalkiness</div>
                 </div>
                 {/* SVG Pointer Line to Grain Body */}
                 <svg className="hidden sm:block absolute bottom-6 -right-24 w-28 h-16 pointer-events-none">
@@ -776,20 +764,20 @@ export default function AboutScrollExperience() {
 
               {/* ── CALLOUT 3: PREMIUM GRADE (Bottom Right) ── */}
               <div
-                className="absolute bottom-2 right-2 sm:right-6 md:right-10 max-w-[210px] text-right transition-all duration-300"
+                className="absolute bottom-1 right-1 sm:bottom-2 sm:right-6 md:right-10 max-w-[145px] xs:max-w-[175px] sm:max-w-[210px] text-right transition-all duration-300"
                 style={{
                   transform: `translateY(${(1 - scene3Alpha) * -15}px)`,
                 }}
               >
-                <div className="flex items-center justify-end gap-1.5 mb-1">
-                  <span className="text-xs sm:text-sm font-extrabold uppercase tracking-wider text-stone-900">
+                <div className="flex items-center justify-end gap-1 sm:gap-1.5 mb-1">
+                  <span className="text-[10px] xs:text-xs sm:text-sm font-extrabold uppercase tracking-wider text-stone-900">
                     PREMIUM GRADE
                   </span>
-                  <div className="w-2 h-2 rounded-full bg-amber-600" />
+                  <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-amber-600" />
                 </div>
-                <div className="p-2.5 rounded-xl bg-white/90 backdrop-blur-md border border-stone-200/80 shadow-md text-[11px] text-stone-600 space-y-0.5">
-                  <div className="font-semibold text-stone-800">11.5% Moisture</div>
-                  <div className="text-[10px] text-stone-500">Double Silky Polish</div>
+                <div className="p-2 sm:p-2.5 rounded-xl bg-white/90 backdrop-blur-md border border-stone-200/80 shadow-md text-[10px] sm:text-[11px] text-stone-600 space-y-0.5">
+                  <div className="font-semibold text-stone-800 leading-tight">11.5% Moisture</div>
+                  <div className="text-[9px] sm:text-[10px] text-stone-500 leading-tight">Double Silky Polish</div>
                 </div>
                 {/* SVG Pointer Line to Translucent Body */}
                 <svg className="hidden sm:block absolute bottom-6 -left-24 w-28 h-16 pointer-events-none">
@@ -810,11 +798,10 @@ export default function AboutScrollExperience() {
 
         {/* ── SCENE 4: CASCADE OF FALLING GRAINS ── */}
         <div
-          className="absolute inset-0 transition-all duration-300 pointer-events-none"
+          className="absolute inset-0 pointer-events-none transition-opacity duration-200"
           style={{
             opacity: scene4Alpha,
-            display: scrollProgress < 0.66 || scrollProgress > 0.85 || scene4Alpha <= 0.01 ? 'none' : 'block',
-            transform: `translateY(${scene4Alpha < 1 && scrollProgress > 0.76 ? (1 - scene4Alpha) * -35 : 0}px)`,
+            display: scene4Alpha <= 0.01 ? 'none' : 'block',
           }}
         >
           {/* Solid Opaque Base to guarantee Scene 3 elements never bleed through */}
@@ -833,13 +820,7 @@ export default function AboutScrollExperience() {
           <div className="absolute inset-0 bg-gradient-to-b from-[#F7F2E7]/82 via-[#FAF6EE]/72 to-[#EFE6D8]/88" />
           <div className="absolute inset-0 bg-radial-at-c from-amber-100/25 via-transparent to-stone-900/10" />
           
-          <div className="relative z-10 h-full flex flex-col items-center justify-start pt-14 sm:pt-16 text-center px-4">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/90 border border-amber-500/30 shadow-xs backdrop-blur-md mb-2">
-              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-              <span className="text-[10px] uppercase tracking-[0.25em] font-bold text-amber-900 font-mono">
-                04 / The Cascade
-              </span>
-            </div>
+          <div className="relative z-10 h-full flex flex-col items-center justify-start pt-24 sm:pt-28 text-center px-4">
             <h2
               style={{ fontFamily: 'var(--font-serif)' }}
               className="text-stone-900 text-3xl sm:text-5xl font-normal mt-1 max-w-xl drop-shadow-xs tracking-tight"
@@ -891,46 +872,15 @@ export default function AboutScrollExperience() {
               }}
             />
 
-            {/* Polished Grain Tabletop Surface with Dappled Soft Shadows */}
-            <div
-              className="absolute bottom-0 left-0 right-0 h-44 sm:h-52 z-10 border-t border-amber-200/40"
-              style={{
-                background: 'linear-gradient(to bottom, #E8DFD0 0%, #DCD0BD 60%, #CCBEA7 100%)',
-                boxShadow: 'inset 0 10px 25px rgba(0,0,0,0.04)',
-              }}
-            >
-              {/* Dappled Leaf Shadows cast across the grain table */}
-              <div
-                className="absolute inset-0 opacity-20 pointer-events-none mix-blend-multiply"
-                style={{
-                  background: 'radial-gradient(ellipse 60% 40% at 20% 50%, rgba(60,40,20,0.6) 0%, transparent 60%), radial-gradient(ellipse 50% 30% at 85% 70%, rgba(60,40,20,0.5) 0%, transparent 60%)',
-                  filter: 'blur(12px)',
-                }}
-              />
-            </div>
+
           </div>
 
-          <div className="relative z-20 h-full max-w-5xl mx-auto px-3 sm:px-4 flex flex-col items-center justify-start sm:justify-center py-4 sm:py-8 overflow-y-auto no-scrollbar">
+          <div className="relative z-20 h-full max-w-5xl mx-auto px-3 sm:px-4 flex flex-col items-center justify-center pt-16 sm:pt-20 pb-4 sm:pb-6 overflow-y-auto no-scrollbar">
             
             {/* The Authentic Rice Brands Flow Showcase with Grains Pouring Directly Into Iconic Brands */}
             <RiceBrandsFlow
               onViewVarieties={scrollToProducts}
             />
-
-            {/* Secondary Scroll Down Indicator */}
-            <div className="mt-4 relative z-30">
-              <button
-                type="button"
-                onClick={() => {
-                  const whyUs = document.getElementById('why-us');
-                  if (whyUs) whyUs.scrollIntoView({ behavior: 'smooth' });
-                }}
-                className="text-[11px] text-stone-700 hover:text-stone-950 font-semibold flex items-center gap-1.5 cursor-pointer transition-colors bg-white/60 hover:bg-white/90 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-stone-300 shadow-2xs"
-              >
-                <span>Or scroll down to wholesale history & APMC desk</span>
-                <ArrowDown size={12} />
-              </button>
-            </div>
 
           </div>
         </div>
@@ -953,18 +903,12 @@ export default function AboutScrollExperience() {
 
             return (
               <button
-                key={step.label}
+                key={i}
+                type="button"
                 onClick={() => jumpToScene(step.progress)}
-                className="group flex items-center gap-2 cursor-pointer"
-                title={step.label}
+                className="p-1 cursor-pointer"
+                aria-label={`Jump to stage ${i + 1}`}
               >
-                <span
-                  className={`text-[10px] font-mono tracking-wider transition-all opacity-0 group-hover:opacity-100 ${
-                    scrollProgress > 0.45 && scrollProgress < 0.85 ? 'text-stone-700' : 'text-white/80'
-                  }`}
-                >
-                  {step.label}
-                </span>
                 <div
                   className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${
                     isActive

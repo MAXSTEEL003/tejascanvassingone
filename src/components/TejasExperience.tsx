@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import { RICE_VARIETIES, RiceVariety } from '../types/variety';
 import { 
@@ -6,16 +6,12 @@ import {
   Pause, 
   RotateCcw, 
   ArrowRight, 
-  Sparkles, 
   Volume2, 
   VolumeX, 
-  ChevronRight, 
   ShoppingBag, 
   ArrowLeft, 
   Maximize2, 
-  Minimize2,
-  Sliders,
-  Check
+  Minimize2
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -612,13 +608,23 @@ export default function TejasExperience({ onExploreStore, onBack }: TejasExperie
     return () => {
       cancelAnimationFrame(animationFrameId);
       window.removeEventListener('resize', handleResize);
+      scene.traverse((obj: any) => {
+        if (obj.geometry) {
+          obj.geometry.dispose();
+        }
+        if (obj.material) {
+          if (Array.isArray(obj.material)) {
+            obj.material.forEach((m: any) => {
+              if (m.map) m.map.dispose();
+              m.dispose();
+            });
+          } else {
+            if (obj.material.map) obj.material.map.dispose();
+            obj.material.dispose();
+          }
+        }
+      });
       renderer.dispose();
-      groundGeo.dispose();
-      bladeGeo.dispose();
-      palmGeo.dispose();
-      heroGrainGeo.dispose();
-      streamGrainGeo.dispose();
-      pedestalGeo.dispose();
     };
   }, []);
 

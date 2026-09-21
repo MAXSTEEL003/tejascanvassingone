@@ -19,8 +19,11 @@ function resolveDistPath(): string {
   const cwd = process.cwd();
   const candidates = [
     path.join(cwd, "dist"),
+    path.join(cwd, "build"),
     path.resolve(cwd, "..", "dist"),
+    path.resolve(cwd, "..", "build"),
     path.join("/app/applet", "dist"),
+    path.join("/app/applet", "build"),
   ];
 
   for (const dir of candidates) {
@@ -84,30 +87,45 @@ async function startServer() {
     setupStaticServing();
   }
 
-  // Cloud Run & Container Port Binding:
-  // 1. In Google Cloud Run deployment, Cloud Run injects process.env.PORT (typically 8080) and requires traffic on it.
-  // 2. In AI Studio development sandbox, an internal Nginx proxy routes traffic to port 3000.
-  // Listening on both (with graceful EADDRINUSE handling) ensures instant health check success in all environments.
-  const activeServers: any[] = [];
-  const portsToListen: number[] = [];
+  // Port Binding Strategy:
+  // - In Cloud Run production deployment (where K_SERVICE or NODE_ENV=production is set),
+  //   Cloud Run routes external ingress and container health checks to process.env.PORT (defaults to 8080).
+  // - In AI Studio development sandbox, an internal Nginx reverse proxy routes traffic to port 3000.
+  // We determine the primary port dynamically, and also bind secondary ports (with graceful EADDRINUSE handling)
+  // so the service responds seamlessly in Cloud Run, AI Studio preview, and container deployments.
+  const isCloudRun = !!(process.env.K_SERVICE || process.env.K_REVISION);
+  const configuredPort = process.env.PORT ? parseInt(process.env.PORT, 10) : null;
 
-  const envPort = process.env.PORT ? parseInt(process.env.PORT, 10) : null;
-  if (envPort && !isNaN(envPort)) {
-    portsToListen.push(envPort);
-  }
+  // Primary port determination:
+  // In production / Cloud Run: prefer process.env.PORT (8080), fallback to 8080 or 3000
+  // In development: prefer 3000 (as required by AI Studio dev proxy)
+  const primaryPort = (isProduction || isCloudRun)
+    ? (configuredPort || 8080)
+    : 3000;
+
+  const portsToListen: number[] = [primaryPort];
+
+  // Also listen on 3000 if primary is different (e.g., in Cloud Run production where primary is 8080)
   if (!portsToListen.includes(3000)) {
     portsToListen.push(3000);
   }
 
+  // If in production and PORT was not 8080, also listen on 8080
+  if ((isProduction || isCloudRun) && configuredPort && configuredPort !== 8080 && !portsToListen.includes(8080)) {
+    portsToListen.push(8080);
+  }
+
+  const activeServers: any[] = [];
+
   for (const port of portsToListen) {
     try {
       const s = app.listen(port, "0.0.0.0", () => {
-        console.log(`Server successfully running and listening on http://0.0.0.0:${port}`);
+        console.log(`Server successfully listening on http://0.0.0.0:${port}`);
       });
 
       s.on("error", (err: any) => {
         if (err.code === "EADDRINUSE") {
-          console.warn(`Port ${port} is in use (e.g. dev server or internal proxy), skipping.`);
+          console.warn(`Port ${port} is in use, skipping.`);
         } else {
           console.error(`Listen error on port ${port}:`, err);
         }
@@ -115,7 +133,7 @@ async function startServer() {
 
       activeServers.push(s);
     } catch (bindErr: any) {
-      console.warn(`Failed to bind on port ${port}:`, bindErr.message);
+      console.warn(`Failed to bind on port ${port}:`, bindErr);
     }
   }
 

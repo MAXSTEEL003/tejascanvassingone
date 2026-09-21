@@ -397,7 +397,7 @@ export default function BrokerageView() {
                   className="bg-white dark:bg-[#061510] border border-slate-200/80 dark:border-neutral-800 rounded-2xl p-3.5 sm:p-4 shadow-2xs hover:border-emerald-500/30 transition-all flex flex-col justify-between space-y-2.5 sm:space-y-3"
                 >
                   {/* Top Bar: Bill & Formula */}
-                  <div className="flex items-center justify-between gap-2 border-b border-slate-100 dark:border-neutral-850 pb-2.5">
+                  <div className="flex items-center justify-between gap-2 border-b border-slate-100 dark:border-neutral-800 pb-2.5">
                     <div className="flex items-center gap-1.5 min-w-0">
                       <span className="font-mono bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 px-2 py-0.5 rounded-md text-xs font-black shrink-0">
                         {line.billNo}
@@ -432,7 +432,7 @@ export default function BrokerageView() {
                   </div>
 
                   {/* Bottom: Clear Amount to Pay */}
-                  <div className="pt-2.5 border-t border-slate-100 dark:border-neutral-850 flex items-center justify-between">
+                  <div className="pt-2.5 border-t border-slate-100 dark:border-neutral-800 flex items-center justify-between">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
                       Amount to Pay
                     </span>

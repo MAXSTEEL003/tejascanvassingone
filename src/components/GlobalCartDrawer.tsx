@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   ShoppingBag, Trash2, ArrowRight, X, Building, MapPin, 
   CheckCircle2, Loader2, ShieldCheck, Warehouse, Check, Store,
-  MessageSquare, Mail, Plus, Truck, ChevronDown, Sparkles, ChevronRight
+  MessageSquare, Mail, Plus, Truck, ChevronRight
 } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { cn, formatINR } from '../lib/utils';
@@ -442,7 +442,7 @@ export default function GlobalCartDrawer() {
                               )}
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-1.5 flex-wrap">
-                                  <span className="text-[7.5px] font-black text-emerald-800 dark:text-emerald-300 bg-emerald-500/10 px-1.5 py-0.2 rounded font-mono uppercase">
+                                  <span className="text-[7.5px] font-black text-emerald-800 dark:text-emerald-300 bg-emerald-500/10 px-1.5 py-0.5 rounded font-mono uppercase">
                                     {item.product.category}
                                   </span>
                                   <span className="text-[8px] font-semibold text-emerald-900/60 dark:text-emerald-300/50 font-mono truncate">
@@ -554,7 +554,7 @@ export default function GlobalCartDrawer() {
                                       <span className="text-[9.5px] font-black uppercase text-slate-900 dark:text-white truncate">
                                         {activeLoc?.name || 'Select Destination'}
                                       </span>
-                                      <span className="text-[7px] font-black uppercase px-1 py-0.2 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-mono">
+                                      <span className="text-[7px] font-black uppercase px-1 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-mono">
                                         {activeLoc?.type}
                                       </span>
                                     </div>
@@ -786,7 +786,7 @@ export default function GlobalCartDrawer() {
                                     Direct Mill ➔ {(deliveryLocations.find(l => l.id === selectedLocationId) || deliveryLocations[0])?.name || 'Main Shop'}
                                   </span>
                                 </div>
-                                <span className="text-[7.5px] font-mono uppercase px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-extrabold shrink-0">
+                                <span className="text-[7.5px] font-mono uppercase px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-extrabold shrink-0">
                                   {(deliveryLocations.find(l => l.id === selectedLocationId) || deliveryLocations[0])?.type || 'Shop'}
                                 </span>
                               </div>
@@ -895,7 +895,7 @@ export default function GlobalCartDrawer() {
               </div>
 
               <div>
-                <h2 className="text-lg font-black tracking-tight text-emerald-955 dark:text-emerald-50">
+                <h2 className="text-lg font-black tracking-tight text-emerald-950 dark:text-emerald-50">
                   Split Orders Placed Successfully!
                 </h2>
                 <p className="text-[11px] text-emerald-900/60 dark:text-emerald-300/60 mt-0.5">

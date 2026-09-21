@@ -5,23 +5,11 @@ import {
   ChevronRight, 
   Plus, 
   Search, 
-  Filter, 
-  Clock, 
   CheckCircle2, 
-  AlertCircle, 
   User, 
-  Tag, 
   X, 
-  Building2, 
-  Truck, 
   Bell, 
-  CalendarDays, 
-  CalendarRange, 
-  ListTodo, 
-  CheckSquare, 
-  MoreVertical, 
   Trash2, 
-  Edit3, 
   Check,
   MapPin,
   Sparkles
@@ -198,11 +186,29 @@ const defaultSeedSchedules: ScheduleItem[] = [
 ];
 
 export default function TasksManagement() {
-  const role = localStorage.getItem('userRole') || 'admin';
+  const role = typeof window !== 'undefined' ? (localStorage.getItem('userRole') || 'admin') : 'admin';
   const isEmployee = role === 'employee';
 
+  const currentUserName = typeof window !== 'undefined' ? (localStorage.getItem('userName') || '') : '';
+  const currentUserId = typeof window !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
+
+  // Resolve active employee name (e.g. Vikram Singh, Ananya Sharma, etc.)
+  const activeEmployeeName = (() => {
+    if (!currentUserName && !currentUserId) return 'Vikram Singh';
+    const found = employeeList.find(e => 
+      e.toLowerCase() === currentUserName.toLowerCase() || 
+      currentUserName.toLowerCase().includes(e.toLowerCase())
+    );
+    if (found) return found;
+    if (currentUserId === 'EMP-01' || currentUserId === 'emp-01') return 'Vikram Singh';
+    if (currentUserId === 'EMP-02' || currentUserId === 'emp-02') return 'Ananya Sharma';
+    if (currentUserId === 'EMP-03' || currentUserId === 'emp-03') return 'Sarah Joseph';
+    if (currentUserName && currentUserName !== 'Operations Staff') return currentUserName;
+    return 'Vikram Singh';
+  })();
+
   const [schedules, setSchedules] = useState<ScheduleItem[]>(() => {
-    const local = localStorage.getItem('schedule_events');
+    const local = typeof window !== 'undefined' ? localStorage.getItem('schedule_events') : null;
     if (local) {
       try {
         const parsed = JSON.parse(local);
@@ -215,11 +221,11 @@ export default function TasksManagement() {
   });
 
   // Date Navigation State
-  const [currentDate, setCurrentDate] = useState<Date>(new Date(2026, 6, 28)); // July 28, 2026
+  const [currentDate, setCurrentDate] = useState<Date>(() => new Date());
   const [viewMode, setViewMode] = useState<'month' | 'week' | 'day' | 'agenda'>('month');
   
   // Filters
-  const [selectedAssignee, setSelectedAssignee] = useState<string>(isEmployee ? 'Vikram Singh' : 'all');
+  const [selectedAssignee, setSelectedAssignee] = useState<string>(isEmployee ? activeEmployeeName : 'all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
@@ -233,9 +239,9 @@ export default function TasksManagement() {
   const [newEvent, setNewEvent] = useState<Partial<ScheduleItem>>({
     title: '',
     category: 'Work Task',
-    date: '2026-07-28',
+    date: new Date().toISOString().slice(0, 10),
     time: '10:00 AM',
-    assignee: isEmployee ? 'Vikram Singh' : employeeList[0],
+    assignee: isEmployee ? activeEmployeeName : employeeList[0],
     priority: 'Medium',
     status: 'Pending',
     description: '',
@@ -265,12 +271,32 @@ export default function TasksManagement() {
     return `${year}-${month}-${day}`;
   };
 
-  const todayStr = '2026-07-28';
+  const todayStr = formatYMD(new Date());
+
+  // Helper to check if a schedule item is assigned to current employee
+  const isAssignedToMe = (itemAssignee: string) => {
+    if (!isEmployee) return true;
+    const myName = activeEmployeeName.toLowerCase().trim();
+    const target = (itemAssignee || '').toLowerCase().trim();
+    if (!target) return false;
+    return target === myName || 
+           target.includes(myName) || 
+           myName.includes(target) ||
+           target === 'operations staff' || 
+           target === 'all staff' || 
+           target === 'all' ||
+           target === 'everyone';
+  };
 
   // Filter schedules
   const filteredSchedules = schedules.filter(item => {
-    // Assignee filter
-    if (selectedAssignee !== 'all' && item.assignee !== selectedAssignee) return false;
+    // For employee: strictly ONLY show what they are assigned
+    if (isEmployee) {
+      if (!isAssignedToMe(item.assignee)) return false;
+    } else {
+      // Admin: respect selectedAssignee filter (all or specific staff)
+      if (selectedAssignee !== 'all' && item.assignee !== selectedAssignee) return false;
+    }
     // Category filter
     if (selectedCategory !== 'all' && item.category !== selectedCategory) return false;
     // Search query
@@ -314,7 +340,7 @@ export default function TasksManagement() {
   };
 
   const handleToday = () => {
-    setCurrentDate(new Date(2026, 6, 28));
+    setCurrentDate(new Date());
   };
 
   const handleSaveNewEvent = (e: React.FormEvent) => {
@@ -327,7 +353,7 @@ export default function TasksManagement() {
       category: (newEvent.category as any) || 'Work Task',
       date: newEvent.date || todayStr,
       time: newEvent.time || '10:00 AM',
-      assignee: newEvent.assignee || employeeList[0],
+      assignee: isEmployee ? activeEmployeeName : (newEvent.assignee || employeeList[0]),
       priority: (newEvent.priority as any) || 'Medium',
       status: (newEvent.status as any) || 'Pending',
       description: newEvent.description || '',
@@ -341,7 +367,7 @@ export default function TasksManagement() {
       category: 'Work Task',
       date: todayStr,
       time: '10:00 AM',
-      assignee: isEmployee ? 'Vikram Singh' : employeeList[0],
+      assignee: isEmployee ? activeEmployeeName : employeeList[0],
       priority: 'Medium',
       status: 'Pending',
       description: '',
@@ -490,7 +516,7 @@ export default function TasksManagement() {
               </h3>
               <p className="text-[11px] sm:text-xs text-neutral-600 dark:text-neutral-400">
                 {isEmployee 
-                  ? `Hi ${selectedAssignee !== 'all' ? selectedAssignee : 'Team'}, here are your urgent tasks queued for today.` 
+                  ? `Hi ${activeEmployeeName}, here are your assigned tasks and messages queued for today.` 
                   : `Showing active tasks and reminders queued for today across team members.`}
               </p>
             </div>
@@ -498,7 +524,14 @@ export default function TasksManagement() {
 
           <button
             onClick={() => {
-              setNewEvent({ title: '', category: 'Reminder', date: todayStr, assignee: selectedAssignee !== 'all' ? selectedAssignee : employeeList[0], priority: 'High', status: 'Pending' });
+              setNewEvent({ 
+                title: '', 
+                category: 'Reminder', 
+                date: todayStr, 
+                assignee: isEmployee ? activeEmployeeName : (selectedAssignee !== 'all' ? selectedAssignee : employeeList[0]), 
+                priority: 'High', 
+                status: 'Pending' 
+              });
               setIsAddModalOpen(true);
             }}
             className="self-start sm:self-auto text-xs font-black text-primary hover:underline flex items-center gap-1 bg-white dark:bg-neutral-900 px-3 py-1.5 rounded-xl border border-primary/20 shadow-sm shrink-0"
@@ -568,7 +601,7 @@ export default function TasksManagement() {
                         <span className="truncate">{item.assignee}</span>
                       </span>
                       <span className={cn(
-                        "font-black uppercase tracking-widest text-[8px] px-1.5 py-0.2 rounded shrink-0",
+                        "font-black uppercase tracking-widest text-[8px] px-1.5 py-0.5 rounded shrink-0",
                         item.priority === 'High' ? 'text-rose-600 bg-rose-500/10' : item.priority === 'Medium' ? 'text-amber-600 bg-amber-500/10' : 'text-emerald-600 bg-emerald-500/10'
                       )}>
                         {item.priority}
@@ -638,17 +671,24 @@ export default function TasksManagement() {
         {/* Filters */}
         <div className="grid grid-cols-1 sm:flex sm:flex-wrap items-center gap-2.5 w-full lg:w-auto">
           {/* Employee Filter */}
-          <div className="w-full sm:w-44">
-            <SearchableSelect
-              options={[
-                { value: 'all', label: '👥 All Staff Members' },
-                ...employeeList.map(emp => ({ value: emp, label: `👤 ${emp}` }))
-              ]}
-              value={selectedAssignee}
-              onChange={(val) => setSelectedAssignee(val || 'all')}
-              placeholder="Filter Employee"
-            />
-          </div>
+          {!isEmployee ? (
+            <div className="w-full sm:w-44">
+              <SearchableSelect
+                options={[
+                  { value: 'all', label: '👥 All Staff Members' },
+                  ...employeeList.map(emp => ({ value: emp, label: `👤 ${emp}` }))
+                ]}
+                value={selectedAssignee}
+                onChange={(val) => setSelectedAssignee(val || 'all')}
+                placeholder="Filter Employee"
+              />
+            </div>
+          ) : (
+            <div className="w-full sm:w-auto px-3.5 py-2 rounded-2xl bg-primary/10 border border-primary/20 text-xs font-bold text-primary flex items-center gap-2">
+              <User className="w-3.5 h-3.5 shrink-0" />
+              <span>Assigned to: <strong className="font-black">{activeEmployeeName}</strong></span>
+            </div>
+          )}
 
           {/* Category Filter */}
           <div className="w-full sm:w-40">
@@ -1113,14 +1153,24 @@ export default function TasksManagement() {
                     />
                   </div>
 
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-secondary">Assignee (Employee)</label>
-                    <SearchableSelect
-                      options={employeeList}
-                      value={newEvent.assignee || employeeList[0]}
-                      onChange={(val) => setNewEvent({...newEvent, assignee: val})}
-                    />
-                  </div>
+                  {!isEmployee ? (
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-secondary">Assignee (Employee)</label>
+                      <SearchableSelect
+                        options={employeeList}
+                        value={newEvent.assignee || employeeList[0]}
+                        onChange={(val) => setNewEvent({...newEvent, assignee: val})}
+                      />
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-secondary">Assignee</label>
+                      <div className="w-full bg-surface-container-low border border-outline-variant/60 rounded-2xl px-4 py-2.5 text-xs font-bold text-on-surface flex items-center gap-2">
+                        <User className="w-3.5 h-3.5 text-primary" />
+                        <span>{activeEmployeeName} (Assigned to You)</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -1239,9 +1289,14 @@ export default function TasksManagement() {
                 <div className="p-4 rounded-2xl bg-surface-container-low border border-outline-variant/40 space-y-2 text-xs">
                   <div className="flex justify-between items-center">
                     <span className="text-secondary font-bold">Assignee:</span>
-                    <span className="font-black text-on-surface flex items-center gap-1">
+                    <span className="font-black text-on-surface flex items-center gap-1.5">
                       <User className="w-3.5 h-3.5 text-primary" />
                       {selectedEvent.assignee}
+                      {isEmployee && (
+                        <span className="text-[9px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-bold">
+                          Assigned to You
+                        </span>
+                      )}
                     </span>
                   </div>
 
@@ -1275,7 +1330,7 @@ export default function TasksManagement() {
 
                 {selectedEvent.description && (
                   <div className="space-y-1">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-secondary">Description / Notes</label>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-secondary">Assigned Messages & Instructions</label>
                     <p className="p-3 rounded-2xl bg-surface-container-lowest border border-outline-variant/30 text-xs font-medium text-on-surface leading-relaxed">
                       {selectedEvent.description}
                     </p>

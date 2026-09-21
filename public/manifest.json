@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "Tejas Canvassing Store",
-  "short_name": "Tejas Canvassing Store",
-  "description": "Tejas Canvassing B2B wholesale rice procurement & store operations platform",
+  "name": "Tejas Canvassing",
+  "short_name": "Tejas Canvassing",
+  "description": "Tejas Canvassing B2B wholesale rice procurement & operations platform",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
