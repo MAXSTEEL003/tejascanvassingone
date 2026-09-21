@@ -5,7 +5,6 @@ import {
   X, 
   Trash2, 
   ArrowRight, 
-  ShoppingBasket, 
   Moon, 
   Sun, 
   Menu,
@@ -19,7 +18,6 @@ import {
   Download,
   Sparkles
 } from 'lucide-react';
-import { useCart } from '../context/CartContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -34,7 +32,6 @@ export default function Navbar({
   isSidebarCollapsed?: boolean;
   onToggleSidebar?: () => void;
 }) {
-  const { items, total, isOpen, setIsOpen, removeItem } = useCart();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -275,21 +272,6 @@ export default function Navbar({
             title={isDark ? "Switch to Light Mode" : "Switch to Night Mode"}
           >
             {isDark ? <Sun className="w-5 h-5 text-primary" /> : <Moon className="w-5 h-5" />}
-          </button>
-
-          {/* Bag Navigation Button */}
-          <button
-            onClick={() => navigate('/bag')}
-            className="relative p-2 text-secondary hover:bg-surface-container rounded-lg transition-colors cursor-pointer"
-            title="Open Bag"
-            aria-label="Open Bag"
-          >
-            <ShoppingBasket className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-            {items.length > 0 && (
-              <span className="absolute top-1 right-1 min-w-4 h-4 px-1 bg-emerald-600 text-white text-[9px] font-black rounded-full flex items-center justify-center shadow-xs">
-                {items.length}
-              </span>
-            )}
           </button>
 
           {/* Notifications Dropdown Button */}

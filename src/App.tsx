@@ -183,6 +183,36 @@ function StaffOnlyRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+// Strict route guard for Merchant-only pages (Store, Bag, Cart, Checkout, Brokerage, Profile).
+// Admin and Employee must NEVER have access to Bag or merchant views.
+function MerchantOnlyRoute({ children }: { children: React.ReactNode }) {
+  const [role, setRole] = useState(() => getVerifiedUserRole());
+
+  useEffect(() => {
+    const handleSync = () => {
+      setRole(getVerifiedUserRole());
+    };
+    window.addEventListener('storage', handleSync);
+    window.addEventListener('role-changed', handleSync);
+    return () => {
+      window.removeEventListener('storage', handleSync);
+      window.removeEventListener('role-changed', handleSync);
+    };
+  }, []);
+
+  // Admin and Employee must NEVER be routed to bag or merchant store
+  if (role === 'admin' || (typeof window !== 'undefined' && localStorage.getItem('userRole') === 'admin')) {
+    return <Navigate to="/admin" replace />;
+  }
+  if (role === 'employee' || (typeof window !== 'undefined' && localStorage.getItem('userRole') === 'employee')) {
+    return <Navigate to="/inventory" replace />;
+  }
+  if (role !== 'merchant' && (typeof window !== 'undefined' && localStorage.getItem('userRole') !== 'merchant')) {
+    return <Navigate to="/login" replace />;
+  }
+  return <>{children}</>;
+}
+
 // Dedicated route component for /admintejas1679: if not authenticated as admin, renders the Admin LoginView
 function AdminSecretRoute() {
   const [role, setRole] = useState(() => {
@@ -369,22 +399,22 @@ export default function App() {
             <Route element={<PrivateRoute><MainLayout /></PrivateRoute>}>
               <Route path="/admin" element={<AdminOnlyRoute><OrdersDashboard /></AdminOnlyRoute>} />
               <Route path="/admintejas1679" element={<AdminSecretRoute />} />
-              <Route path="/store" element={<StoreManagement />} />
-              <Route path="/shop" element={<StoreManagement />} />
-              <Route path="/bag" element={<BagView />} />
-              <Route path="/cart" element={<Navigate to="/bag" replace />} />
-              <Route path="/profile" element={<ProfileView />} />
+              <Route path="/store" element={<MerchantOnlyRoute><StoreManagement /></MerchantOnlyRoute>} />
+              <Route path="/shop" element={<MerchantOnlyRoute><StoreManagement /></MerchantOnlyRoute>} />
+              <Route path="/bag" element={<MerchantOnlyRoute><BagView /></MerchantOnlyRoute>} />
+              <Route path="/cart" element={<MerchantOnlyRoute><Navigate to="/bag" replace /></MerchantOnlyRoute>} />
+              <Route path="/profile" element={<MerchantOnlyRoute><ProfileView /></MerchantOnlyRoute>} />
               <Route path="/dashboard" element={<AdminOnlyRoute><OrdersDashboard /></AdminOnlyRoute>} />
               <Route path="/inventory" element={<StaffOnlyRoute><ProductInventory /></StaffOnlyRoute>} />
               <Route path="/placed-orders" element={<PlacedOrders />} />
-              <Route path="/my-orders" element={<PlacedOrders forceMerchantView={true} />} />
-              <Route path="/brokerage" element={<BrokerageView />} />
+              <Route path="/my-orders" element={<MerchantOnlyRoute><PlacedOrders forceMerchantView={true} /></MerchantOnlyRoute>} />
+              <Route path="/brokerage" element={<MerchantOnlyRoute><BrokerageView /></MerchantOnlyRoute>} />
               <Route path="/order/:id" element={<OrderDetails />} />
               <Route path="/users" element={<AdminOnlyRoute><UsersManagement /></AdminOnlyRoute>} />
               <Route path="/analytics" element={<AdminOnlyRoute><AnalyticsDashboard /></AdminOnlyRoute>} />
               <Route path="/tasks" element={<StaffOnlyRoute><TasksManagement /></StaffOnlyRoute>} />
               <Route path="/schedule" element={<StaffOnlyRoute><TasksManagement /></StaffOnlyRoute>} />
-              <Route path="/checkout" element={<CheckoutView />} />
+              <Route path="/checkout" element={<MerchantOnlyRoute><CheckoutView /></MerchantOnlyRoute>} />
               <Route path="/payments" element={<AdminOnlyRoute><PaymentTracking /></AdminOnlyRoute>} />
               <Route path="/settings" element={<AdminOnlyRoute><NotificationSettings /></AdminOnlyRoute>} />
               <Route path="/patti" element={<AdminOnlyRoute><PattiView /></AdminOnlyRoute>} />

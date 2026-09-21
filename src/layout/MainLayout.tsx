@@ -1327,30 +1327,38 @@ function MainLayoutContent({ onSearchClick }: { onSearchClick: () => void }) {
     } catch {}
   };
 
-  const isAdminRoute = [
-    '/admin',
-    '/admintejas1679',
-    '/dashboard',
-    '/users',
-    '/analytics',
-    '/payments',
-    '/settings',
-    '/patti',
-    '/ledger'
-  ].some(r => location.pathname.startsWith(r));
+  // Strict role-based layout enforcement:
+  // 1. Employee role: strictly renders Employee portal (Inventory, Arrivals, Pending, Schedule)
+  if (role === 'employee') {
+    return (
+      <div className="min-h-dvh bg-[#fafaf9] dark:bg-[#07110c] sm:bg-slate-100/70 sm:dark:bg-[#030906] flex justify-center text-slate-900 dark:text-slate-100 font-sans antialiased">
+        <div className="w-full max-w-none sm:max-w-md md:max-w-lg min-h-dvh bg-[#fafaf9] dark:bg-[#07110c] sm:shadow-2xl relative flex flex-col border-none sm:border-x border-slate-200/60 dark:border-emerald-950/40">
+          <EmployeeHeader />
+          <main className="flex-1 w-full relative pb-20 p-2 sm:p-3">
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={location.pathname}
+                initial={{ opacity: 0, scale: 0.99, y: 4 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 1.01, y: -4 }}
+                transition={{ 
+                  duration: 0.28, 
+                  ease: [0.22, 1, 0.36, 1] 
+                }}
+                className="w-full h-full"
+              >
+                <Outlet />
+              </motion.div>
+            </AnimatePresence>
+          </main>
+          <EmployeeBottomBar />
+        </div>
+      </div>
+    );
+  }
 
-  const isMerchantRoute = [
-    '/store',
-    '/shop',
-    '/my-orders',
-    '/brokerage',
-    '/checkout',
-    '/bag',
-    '/cart',
-    '/profile'
-  ].some(r => location.pathname.startsWith(r)) || (role === 'merchant' && location.pathname.startsWith('/placed-orders'));
-
-  if ((role === 'merchant' || isMerchantRoute) && !isAdminRoute) {
+  // 2. Merchant role: strictly renders Merchant portal (Store, My Orders, Brokerage, Bag, Profile)
+  if (role === 'merchant') {
     return (
       <div className="min-h-dvh bg-[#fafaf9] dark:bg-[#07110c] sm:bg-slate-100/70 sm:dark:bg-[#030906] flex justify-center text-slate-900 dark:text-slate-100 font-sans antialiased">
         <div className="w-full max-w-none sm:max-w-md md:max-w-lg min-h-dvh bg-[#fafaf9] dark:bg-[#07110c] sm:shadow-2xl relative flex flex-col border-none sm:border-x border-slate-200/60 dark:border-emerald-950/40">
@@ -1378,33 +1386,8 @@ function MainLayoutContent({ onSearchClick }: { onSearchClick: () => void }) {
     );
   }
 
-  if (role === 'employee' && !isAdminRoute) {
-    return (
-      <div className="min-h-dvh bg-[#fafaf9] dark:bg-[#07110c] sm:bg-slate-100/70 sm:dark:bg-[#030906] flex justify-center text-slate-900 dark:text-slate-100 font-sans antialiased">
-        <div className="w-full max-w-none sm:max-w-md md:max-w-lg min-h-dvh bg-[#fafaf9] dark:bg-[#07110c] sm:shadow-2xl relative flex flex-col border-none sm:border-x border-slate-200/60 dark:border-emerald-950/40">
-          <EmployeeHeader />
-          <main className="flex-1 w-full relative pb-20 p-2 sm:p-3">
-            <AnimatePresence mode="wait" initial={false}>
-              <motion.div
-                key={location.pathname}
-                initial={{ opacity: 0, scale: 0.99, y: 4 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 1.01, y: -4 }}
-                transition={{ 
-                  duration: 0.28, 
-                  ease: [0.22, 1, 0.36, 1] 
-                }}
-                className="w-full h-full"
-              >
-                <Outlet />
-              </motion.div>
-            </AnimatePresence>
-          </main>
-          <EmployeeBottomBar />
-        </div>
-      </div>
-    );
-  }
+  // 3. Admin role (default): strictly renders Executive Admin Portal (Sidebar + Navbar)
+  // Admin NEVER sees MerchantHeader, MerchantBottomBar, EmployeeHeader, or any Bag/Store UI
 
   return (
     <div 
