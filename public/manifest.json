@@ -1,0 +1,61 @@
+{
+  "id": "/",
+  "name": "Tejas Canvassing Store",
+  "short_name": "Tejas Canvassing Store",
+  "description": "Tejas Canvassing B2B wholesale rice procurement & store operations platform",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#fafaf9",
+  "theme_color": "#07110c",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "640x640",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Admin Console",
+      "short_name": "Admin",
+      "description": "Executive Procurement & Brokerage Desk",
+      "url": "/admin",
+      "icons": [{ "src": "/pwa-192x192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Wholesale Store",
+      "short_name": "Store",
+      "description": "Browse Live Rice Lots & Catalog",
+      "url": "/store",
+      "icons": [{ "src": "/pwa-192x192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Placed Orders",
+      "short_name": "Orders",
+      "description": "Track Purchase Orders & Indents",
+      "url": "/placed-orders",
+      "icons": [{ "src": "/pwa-192x192.png", "sizes": "192x192" }]
+    }
+  ]
+}

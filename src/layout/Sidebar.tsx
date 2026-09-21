@@ -1,0 +1,178 @@
+import React from 'react';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
+import { signOut } from 'firebase/auth';
+import { auth } from '../lib/firebase';
+import { 
+  ShoppingCart, 
+  Package, 
+  Box, 
+  Users, 
+  ClipboardList, 
+  HelpCircle, 
+  LogOut,
+  Calendar,
+  Warehouse,
+  BarChart3,
+  Store,
+  CreditCard,
+  CloudUpload,
+  ShieldCheck,
+  Bell,
+  Calculator,
+  FileSpreadsheet,
+  BookOpen,
+  Clock,
+  ChevronLeft,
+  ChevronRight,
+  Download
+} from 'lucide-react';
+import { cn } from '../lib/utils';
+
+const navItems = [
+  { icon: ShoppingCart, label: 'Dashboard', path: '/admin', roles: ['admin', 'officer'] },
+  { icon: Package, label: 'Placed Orders', path: '/placed-orders', roles: ['admin', 'officer'] },
+  { icon: Warehouse, label: 'Inventory', path: '/inventory', roles: ['admin', 'officer', 'employee'] },
+  { icon: FileSpreadsheet, label: 'Arrival Entry', path: '/arrival-entry', roles: ['admin', 'officer'] },
+  { icon: CreditCard, label: 'Payments', path: '/payments', roles: ['admin', 'officer'] },
+  { icon: BookOpen, label: 'Ledger', path: '/ledger', roles: ['admin', 'officer'] },
+  { icon: Clock, label: 'Pending Loadings', path: '/pending-loadings', roles: ['admin', 'officer', 'employee'] },
+  { icon: Calculator, label: 'Patti Ledger', path: '/patti', roles: ['admin', 'officer'] },
+  { icon: Users, label: 'Users', path: '/users', roles: ['admin', 'officer'] },
+  { icon: BarChart3, label: 'Analytics', path: '/analytics', roles: ['admin', 'officer'] },
+  { icon: Calendar, label: 'Schedule', path: '/schedule', roles: ['admin', 'officer', 'employee'] },
+  { icon: Bell, label: 'Settings', path: '/settings', roles: ['admin', 'officer'] },
+];
+
+interface SidebarProps {
+  isCollapsed: boolean;
+  setIsCollapsed: (collapsed: boolean) => void;
+}
+
+export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const role = localStorage.getItem('userRole') || 'admin';
+
+  const filteredNavItems = navItems.filter(item => item.roles.includes(role));
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      localStorage.removeItem('userRole');
+      navigate('/about');
+    } catch (err) {
+      console.error('Logout error:', err);
+      // Fallback redirection
+      localStorage.removeItem('userRole');
+      navigate('/about');
+    }
+  };
+
+  return (
+    <aside className={cn(
+      "border-r border-slate-200/80 dark:border-white/10 bg-white/75 dark:bg-[#07130d]/80 backdrop-blur-2xl shadow-[4px_0_24px_rgba(0,0,0,0.02)] flex flex-col h-full py-4 fixed left-0 top-0 bottom-0 transition-all duration-300 admin-font font-sf",
+      "z-50 md:translate-x-0",
+      "max-md:z-[60] max-md:w-64",
+      isCollapsed ? "max-md:-translate-x-full w-20" : "max-md:translate-x-0 w-64"
+    )}>
+      {/* Floating Collapse Toggle */}
+      <button
+        onClick={() => setIsCollapsed(!isCollapsed)}
+        className="absolute top-6 -right-3 w-6 h-6 rounded-full bg-white dark:bg-surface-container-high border border-slate-200 dark:border-outline-variant shadow-md hidden md:flex items-center justify-center text-slate-500 hover:text-amber-600 dark:text-secondary dark:hover:text-primary transition-all hover:scale-110 z-50 cursor-pointer"
+        title={isCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+      >
+        {isCollapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}
+      </button>
+
+      <div 
+        className={cn(
+          "mb-8 flex items-center gap-3 transition-all duration-300 cursor-pointer overflow-hidden",
+          isCollapsed ? "px-5 justify-center" : "px-6"
+        )} 
+        onClick={() => {
+          const r = localStorage.getItem('userRole');
+          if (r === 'merchant') navigate('/store');
+          else if (r === 'employee') navigate('/inventory');
+          else navigate('/admin');
+        }}
+      >
+        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#f2ca50] to-[#d4af37] flex items-center justify-center text-[#3c2f00] font-bold shrink-0 shadow-[0_0_12px_rgba(242,202,80,0.25)]">
+          <Warehouse className="w-6 h-6" />
+        </div>
+        {!isCollapsed && (
+          <div className="whitespace-nowrap transition-all duration-300">
+            <h2 className="text-lg font-bold text-slate-900 dark:text-primary tracking-tight leading-tight">Procurement</h2>
+            <p className="text-[10px] uppercase tracking-widest text-slate-500 dark:text-secondary font-bold">Logistics Mgmt</p>
+          </div>
+        )}
+      </div>
+
+      <nav className="flex-1 space-y-1 px-3 overflow-y-auto">
+        {filteredNavItems.map((item) => {
+          const isItemActive = (path: string, active: boolean) => {
+            if (active) return true;
+            if (path === '/admin' && (location.pathname === '/dashboard' || location.pathname === '/admintejas1679')) return true;
+            return false;
+          };
+
+          return (
+            <NavLink
+              key={item.path}
+              to={item.path}
+              title={isCollapsed ? item.label : undefined}
+              className={({ isActive }) => cn(
+                "flex items-center rounded-xl transition-all duration-200 relative group overflow-hidden text-xs font-semibold",
+                isCollapsed ? "justify-center px-0 py-3" : "gap-3 px-3.5 py-2.5",
+                isItemActive(item.path, isActive)
+                  ? "bg-amber-500/15 text-amber-900 dark:text-amber-400 font-bold border border-amber-500/20 shadow-2xs nav-active-glow" 
+                  : "text-slate-600 dark:text-secondary hover:bg-slate-100/80 dark:hover:bg-white/[0.05] hover:text-slate-900 dark:hover:text-on-surface"
+              )}
+            >
+              <item.icon className={cn(
+                "w-5 h-5 transition-transform duration-300 shrink-0",
+                "group-hover:scale-110 group-active:scale-95"
+              )} />
+              {!isCollapsed && <span className="text-sm tracking-tight whitespace-nowrap">{item.label}</span>}
+            </NavLink>
+          );
+        })}
+      </nav>
+
+      <div className="px-3 mt-auto pt-4 border-t border-outline-variant space-y-1">
+        <button
+          onClick={() => window.dispatchEvent(new Event('open-pwa-install-modal'))}
+          title={isCollapsed ? "Download App" : undefined}
+          className={cn(
+            "w-full flex items-center text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-xl transition-all cursor-pointer font-bold",
+            isCollapsed ? "justify-center px-0 py-3" : "gap-3 px-3.5 py-2.5"
+          )}
+        >
+          <Download className="w-5 h-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+          {!isCollapsed && <span className="text-xs font-bold whitespace-nowrap">Download App</span>}
+        </button>
+
+        <button 
+          title={isCollapsed ? "Support" : undefined}
+          className={cn(
+            "w-full flex items-center text-secondary hover:bg-surface-container rounded-lg transition-all cursor-pointer",
+            isCollapsed ? "justify-center px-0 py-3" : "gap-3 px-4 py-3"
+          )}
+        >
+          <HelpCircle className="w-5 h-5 shrink-0" />
+          {!isCollapsed && <span className="text-sm font-medium whitespace-nowrap">Support</span>}
+        </button>
+        <button 
+          onClick={handleLogout}
+          title={isCollapsed ? "Logout" : undefined}
+          className={cn(
+            "w-full flex items-center text-secondary hover:bg-surface-container hover:text-rose-600 rounded-lg transition-all",
+            isCollapsed ? "justify-center px-0 py-3" : "gap-3 px-4 py-3"
+          )}
+        >
+          <LogOut className="w-5 h-5 shrink-0" />
+          {!isCollapsed && <span className="text-sm font-medium whitespace-nowrap">Logout</span>}
+        </button>
+      </div>
+    </aside>
+  );
+}
