@@ -901,8 +901,40 @@ export default function AboutView() {
 
               <div>
                 <h5 className="text-white mb-3 uppercase tracking-widest text-[9.5px] font-semibold">Access</h5>
-                <ul className="space-y-1.5 text-xs text-gray-400">
-                  <li><button onClick={() => navigate('/login')} className="hover:text-white text-amber-300 text-left cursor-pointer font-bold">Log In</button></li>
+                <ul className="space-y-2 text-xs text-gray-400">
+                  <li>
+                    <button 
+                      onClick={() => navigate('/login')} 
+                      className="hover:text-white text-amber-300 text-left cursor-pointer font-bold transition-colors block"
+                    >
+                      Buyer / Merchant Log In
+                    </button>
+                  </li>
+                  <li>
+                    <button 
+                      onClick={() => navigate('/signup')} 
+                      className="hover:text-white text-gray-300 text-left cursor-pointer transition-colors block"
+                    >
+                      Register Wholesale Buyer
+                    </button>
+                  </li>
+                  <li>
+                    <button 
+                      onClick={() => navigate('/employee-login')} 
+                      className="hover:text-white text-emerald-400 font-semibold text-left cursor-pointer transition-colors flex items-center gap-1.5"
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                      Employee & Operations Desk
+                    </button>
+                  </li>
+                  <li>
+                    <button 
+                      onClick={() => navigate('/admintejas1679')} 
+                      className="hover:text-white text-gray-400 text-left cursor-pointer transition-colors block text-[11px]"
+                    >
+                      Executive Admin Portal
+                    </button>
+                  </li>
                 </ul>
               </div>
 

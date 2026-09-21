@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   ShoppingBag, Trash2, ArrowRight, MapPin, CheckCircle2, 
-  Loader2, Store, Warehouse, Plus, Truck, Share2, Copy, Check, X
+  Loader2, Store, Warehouse, Plus, Truck, Share2, Copy, Check, X,
+  ChevronLeft, AlertCircle, ShieldCheck
 } from 'lucide-react';
 import { useCart, CartItem } from '../context/CartContext';
 import { cn, formatINR } from '../lib/utils';
@@ -29,7 +30,7 @@ export default function BagView() {
   const [deliveryLocations, setDeliveryLocations] = useState<DeliveryLocation[]>(() => getDeliveryLocations());
   const [globalLocationId, setGlobalLocationId] = useState<string>(() => getSelectedDeliveryLocationId());
 
-  // Add location form modal
+  // Add location modal
   const [isAddLocOpen, setIsAddLocOpen] = useState(false);
   const [addLocTargetItemId, setAddLocTargetItemId] = useState<string | null>(null);
   const [newLocName, setNewLocName] = useState('');
@@ -59,14 +60,20 @@ export default function BagView() {
   // Helper to get location for an item
   const getItemLocation = (item: CartItem): DeliveryLocation => {
     const locId = item.deliveryLocationId || globalLocationId;
-    return deliveryLocations.find(l => l.id === locId) || deliveryLocations[0];
+    return deliveryLocations.find(l => l.id === locId) || deliveryLocations[0] || {
+      id: 'default-shop',
+      name: 'Main Shop',
+      type: 'Shop',
+      address: 'APMC Yard, Bangalore',
+      isDefault: true
+    };
   };
 
-  // Totals
+  // Totals: Rate is strictly per Qty
   const totalQty = items.reduce((sum, item) => sum + item.qty, 0);
   const totalAmount = items.reduce((sum, item) => sum + (item.price * item.qty), 0);
 
-  // When user changes location for a single item
+  // Change location for single item
   const handleItemLocationChange = (itemId: string, locationId: string) => {
     if (locationId === '__add_new__') {
       setAddLocTargetItemId(itemId);
@@ -82,7 +89,7 @@ export default function BagView() {
     });
   };
 
-  // When user sets a global location for all items
+  // Change global location for all items
   const handleGlobalLocationChange = (locationId: string) => {
     if (locationId === '__add_new__') {
       setAddLocTargetItemId(null);
@@ -112,7 +119,8 @@ export default function BagView() {
       phone: newLocPhone.trim() || undefined,
     });
 
-    setDeliveryLocations(getDeliveryLocations());
+    const updated = getDeliveryLocations();
+    setDeliveryLocations(updated);
 
     if (addLocTargetItemId) {
       updateItemLocation(addLocTargetItemId, created.id, {
@@ -137,7 +145,7 @@ export default function BagView() {
     setAddLocTargetItemId(null);
   };
 
-  // Place order
+  // Place order: Strictly NO payment method asked!
   const handlePlaceOrder = async () => {
     if (items.length === 0) return;
     setIsPlacingOrder(true);
@@ -162,7 +170,8 @@ export default function BagView() {
           variety: item.variety || 'Rice',
           supplier: item.supplier || 'DIRECT MILL',
           qty: item.qty,
-          rate: item.price,
+          rate: item.price, // Rate is per Qty
+          rateUnit: 'Qty',
           total: item.price * item.qty,
           weight: item.weight || '26kg',
           status: 'Order Placed',
@@ -174,11 +183,12 @@ export default function BagView() {
           deliveryLocationName: itemLoc?.name,
           deliveryLocationType: itemLoc?.type,
           loadingDays,
+          paymentMethod: 'Pay on Delivery / Mill Settlement',
           createdAt: timestamp,
         };
       });
 
-      // Local storage
+      // Save to local storage
       try {
         const existingRaw = localStorage.getItem('placed_orders');
         const existing = existingRaw ? JSON.parse(existingRaw) : [];
@@ -211,19 +221,20 @@ export default function BagView() {
     const batchId = orderSuccess[0]?.orderBatchId;
     let msg = `*ORDER CONFIRMATION: ${batchId}*\n`;
     msg += `Buyer: ${buyerName}\n`;
-    msg += `Loading: ${loadingDays} Days\n\n`;
-    msg += `*ITEMS & DELIVERY SITES:*\n`;
+    msg += `Loading Time: ${loadingDays} Days\n`;
+    msg += `Payment: Pay on Delivery (No Advance)\n\n`;
+    msg += `*ITEMS:*\n`;
 
     orderSuccess.forEach((o, i) => {
       msg += `${i + 1}. ${o.productName}\n`;
       msg += `   Qty: ${o.qty} | Rate: ₹${o.rate} / Qty\n`;
-      msg += `   Total: ₹${o.total.toLocaleString('en-IN')}\n`;
+      msg += `   Total: ₹${formatINR(o.total)}\n`;
       msg += `   Deliver to: ${o.destination}\n\n`;
     });
 
     const grand = orderSuccess.reduce((sum, o) => sum + Number(o.total || 0), 0);
     const totalQ = orderSuccess.reduce((sum, o) => sum + Number(o.qty || 0), 0);
-    msg += `*Total Qty:* ${totalQ} | *Total Amount:* ₹${grand.toLocaleString('en-IN')}`;
+    msg += `*Total Qty:* ${totalQ} Qty\n*Total Amount:* ₹${formatINR(grand)}`;
 
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
   };
@@ -233,7 +244,7 @@ export default function BagView() {
     const batchId = orderSuccess[0]?.orderBatchId;
     let text = `ORDER: ${batchId}\nBuyer: ${buyerName}\nLoading: ${loadingDays} Days\n\n`;
     orderSuccess.forEach(o => {
-      text += `• ${o.productName} - ${o.qty} Qty @ ₹${o.rate}/Qty = ₹${o.total} -> ${o.destination}\n`;
+      text += `• ${o.productName} - ${o.qty} Qty @ ₹${o.rate}/Qty = ₹${formatINR(o.total)} -> ${o.destination}\n`;
     });
     navigator.clipboard.writeText(text);
     setCopiedSummary(true);
@@ -249,41 +260,41 @@ export default function BagView() {
     const successTotalQty = orderSuccess.reduce((sum, o) => sum + Number(o.qty || 0), 0);
 
     return (
-      <div className="p-3 max-w-md mx-auto pb-28 text-center space-y-4 animate-fadeIn font-sans">
-        <div className="w-14 h-14 bg-emerald-100 dark:bg-emerald-950 rounded-full flex items-center justify-center mx-auto text-emerald-600 dark:text-emerald-400 mt-4 shadow-sm">
-          <CheckCircle2 className="w-8 h-8 stroke-[2.2]" />
+      <div className="p-3 max-w-sm sm:max-w-md mx-auto pb-28 text-center space-y-4 font-sans animate-fadeIn">
+        <div className="w-12 h-12 bg-emerald-100 dark:bg-emerald-950 rounded-full flex items-center justify-center mx-auto text-emerald-600 dark:text-emerald-400 mt-3 shadow-xs">
+          <CheckCircle2 className="w-7 h-7 stroke-[2.2]" />
         </div>
 
         <div>
-          <h2 className="text-xl font-black text-slate-900 dark:text-white">
+          <h2 className="text-lg font-black text-slate-900 dark:text-white">
             Order Placed Successfully!
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Order Ref: <strong className="text-emerald-700 dark:text-emerald-400 font-mono">{successBatchId}</strong>
+            Order ID: <strong className="text-emerald-700 dark:text-emerald-400 font-mono">{successBatchId}</strong>
           </p>
         </div>
 
-        {/* Itemized Order List */}
-        <div className="bg-white dark:bg-[#0c1f17] border border-slate-200 dark:border-emerald-950 rounded-xl p-3 text-left space-y-2.5 shadow-xs text-xs">
+        {/* Order Details Card */}
+        <div className="bg-white dark:bg-[#0c1f17] border border-slate-200 dark:border-emerald-950 rounded-2xl p-3 text-left space-y-2.5 shadow-xs text-xs">
           <div className="flex justify-between items-center pb-2 border-b border-slate-100 dark:border-emerald-950/50">
-            <span className="font-bold text-slate-500">Items Ordered ({orderSuccess.length})</span>
-            <span className="font-mono font-bold text-slate-900 dark:text-white">
-              Total: ₹{formatINR(successTotalVal)}
+            <span className="font-bold text-slate-500">Items ({orderSuccess.length})</span>
+            <span className="font-mono font-black text-emerald-700 dark:text-emerald-400 text-sm">
+              ₹{formatINR(successTotalVal)}
             </span>
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-2 max-h-60 overflow-y-auto pr-0.5">
             {orderSuccess.map((ord) => (
-              <div key={ord.id} className="p-2 rounded-lg bg-slate-50 dark:bg-emerald-950/30 border border-slate-100 dark:border-emerald-950/40 space-y-1">
+              <div key={ord.id} className="p-2 rounded-xl bg-slate-50 dark:bg-emerald-950/30 border border-slate-100 dark:border-emerald-950/40 space-y-1">
                 <div className="flex justify-between items-start font-bold">
-                  <span className="text-slate-900 dark:text-white">{ord.productName}</span>
+                  <span className="text-slate-900 dark:text-white text-xs">{ord.productName}</span>
                   <span className="font-mono text-emerald-700 dark:text-emerald-300">₹{formatINR(ord.total)}</span>
                 </div>
                 <div className="flex justify-between text-[11px] text-slate-500 dark:text-slate-400">
-                  <span>Qty: {ord.qty}</span>
-                  <span>Rate: ₹{formatINR(ord.rate)} / Qty</span>
+                  <span>Qty: <strong>{ord.qty}</strong></span>
+                  <span>Rate: <strong>₹{formatINR(ord.rate)} / Qty</strong></span>
                 </div>
-                <div className="text-[11px] text-emerald-700 dark:text-emerald-300 flex items-center gap-1 pt-0.5">
+                <div className="text-[10.5px] text-emerald-700 dark:text-emerald-300 flex items-center gap-1 pt-0.5">
                   <MapPin className="w-3 h-3 shrink-0" />
                   <span className="truncate">Deliver to: {ord.destination}</span>
                 </div>
@@ -291,25 +302,30 @@ export default function BagView() {
             ))}
           </div>
 
-          <div className="pt-2 border-t border-slate-100 dark:border-emerald-950/50 flex justify-between text-[11px] font-bold">
+          <div className="pt-2 border-t border-slate-100 dark:border-emerald-950/50 flex justify-between text-xs font-bold">
             <span>Total Qty:</span>
-            <span className="font-mono text-slate-900 dark:text-white">{successTotalQty}</span>
+            <span className="font-mono text-slate-900 dark:text-white">{successTotalQty} Qty</span>
           </div>
 
-          {/* WhatsApp & Copy buttons */}
-          <div className="flex gap-2 pt-2">
+          <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-500/20 flex items-center gap-2 text-[11px] text-emerald-800 dark:text-emerald-300">
+            <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>No advance payment needed. Pay on delivery directly to mill.</span>
+          </div>
+
+          {/* Share & Copy */}
+          <div className="flex gap-2 pt-1">
             <button
               type="button"
               onClick={handleShareWhatsApp}
-              className="flex-1 py-2 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+              className="flex-1 py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-xs transition-all"
             >
               <Share2 className="w-3.5 h-3.5" />
-              <span>Share WhatsApp</span>
+              <span>Share on WhatsApp</span>
             </button>
             <button
               type="button"
               onClick={handleCopySummary}
-              className="py-2 px-3 rounded-lg border border-slate-200 dark:border-neutral-700 text-slate-700 dark:text-slate-200 text-xs font-bold flex items-center justify-center gap-1 cursor-pointer"
+              className="py-2.5 px-3 rounded-xl border border-slate-200 dark:border-neutral-700 text-slate-700 dark:text-slate-200 text-xs font-bold flex items-center justify-center gap-1 cursor-pointer hover:bg-slate-50 dark:hover:bg-neutral-800"
             >
               {copiedSummary ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
               <span>{copiedSummary ? 'Copied' : 'Copy'}</span>
@@ -317,7 +333,7 @@ export default function BagView() {
           </div>
         </div>
 
-        {/* Action Buttons */}
+        {/* Navigation Buttons */}
         <div className="flex flex-col gap-2">
           <button
             type="button"
@@ -333,9 +349,9 @@ export default function BagView() {
               setOrderSuccess(null);
               navigate('/store');
             }}
-            className="w-full py-2.5 rounded-xl bg-slate-100 dark:bg-neutral-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200 font-bold text-xs cursor-pointer"
+            className="w-full py-2.5 rounded-xl bg-slate-100 dark:bg-neutral-800 hover:bg-slate-200 dark:hover:bg-neutral-700 text-slate-700 dark:text-slate-200 font-bold text-xs cursor-pointer"
           >
-            Back to Store
+            Back to Rice Store
           </button>
         </div>
       </div>
@@ -347,20 +363,20 @@ export default function BagView() {
   // ----------------------------------------------------
   if (items.length === 0) {
     return (
-      <div className="p-4 max-w-sm mx-auto pb-28 text-center space-y-4 animate-fadeIn font-sans">
-        <div className="w-14 h-14 bg-slate-100 dark:bg-neutral-900 rounded-2xl flex items-center justify-center mx-auto text-slate-400 mt-12">
-          <ShoppingBag className="w-7 h-7" />
+      <div className="p-4 max-w-sm mx-auto pb-28 text-center space-y-4 font-sans animate-fadeIn">
+        <div className="w-12 h-12 bg-slate-100 dark:bg-neutral-900 rounded-2xl flex items-center justify-center mx-auto text-slate-400 mt-12">
+          <ShoppingBag className="w-6 h-6" />
         </div>
         <div>
           <h2 className="text-base font-black text-slate-900 dark:text-white">Your Bag is Empty</h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Browse our rice catalog to add items to your bag.
+            Choose rice varieties from the store to place your wholesale order.
           </p>
         </div>
         <button
           type="button"
           onClick={() => navigate('/store')}
-          className="inline-flex items-center gap-2 py-2.5 px-5 rounded-xl bg-[#143e2e] hover:bg-[#0f3225] text-white font-bold text-xs shadow-xs cursor-pointer"
+          className="inline-flex items-center gap-2 py-2.5 px-5 rounded-xl bg-[#143e2e] hover:bg-[#0f3225] text-white font-bold text-xs shadow-xs cursor-pointer transition-all active:scale-95"
         >
           <span>Browse Rice Store</span>
           <ArrowRight className="w-4 h-4" />
@@ -370,37 +386,47 @@ export default function BagView() {
   }
 
   // ----------------------------------------------------
-  // RENDER: ACTIVE MOBILE-OPTIMIZED BAG
+  // RENDER: MOBILE-OPTIMIZED BAG (COMPACT & SIMPLE)
   // ----------------------------------------------------
   return (
-    <div className="p-3 max-w-md mx-auto space-y-3 pb-32 font-sans text-slate-900 dark:text-slate-100 animate-fadeIn">
+    <div className="p-3 max-w-md mx-auto space-y-2.5 pb-28 font-sans text-slate-900 dark:text-slate-100 animate-fadeIn">
       {/* Top Header */}
-      <div className="flex items-center justify-between pb-1">
+      <div className="flex items-center justify-between pb-1 border-b border-slate-100 dark:border-neutral-800">
         <div className="flex items-center gap-2">
-          <h1 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
-            My Bag
-          </h1>
-          <span className="px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-bold text-xs">
-            {items.length} {items.length === 1 ? 'item' : 'items'}
-          </span>
+          <button
+            type="button"
+            onClick={() => navigate('/store')}
+            className="p-1.5 -ml-1 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
+            title="Back to Store"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          <div>
+            <h1 className="text-base font-black text-slate-900 dark:text-white leading-none">
+              My Bag
+            </h1>
+            <span className="text-[11px] text-slate-500 dark:text-slate-400">
+              {items.length} {items.length === 1 ? 'item' : 'items'} • {totalQty} Qty
+            </span>
+          </div>
         </div>
 
         <button
           type="button"
           onClick={clearCart}
-          className="text-xs text-rose-600 hover:text-rose-700 font-bold flex items-center gap-1 cursor-pointer"
+          className="text-xs text-rose-600 hover:text-rose-700 font-bold flex items-center gap-1 cursor-pointer py-1 px-2 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30"
         >
           <Trash2 className="w-3.5 h-3.5" />
           <span>Clear</span>
         </button>
       </div>
 
-      {/* Global Deliver All To Section */}
-      <div className="bg-emerald-50/70 dark:bg-[#0c1f17] border border-emerald-500/20 dark:border-emerald-900/50 rounded-xl p-2.5 text-xs space-y-1.5 shadow-2xs">
+      {/* Global Delivery Address: Simple Words & Dropdown */}
+      <div className="bg-emerald-50/80 dark:bg-[#0c1f17] border border-emerald-500/25 dark:border-emerald-900/50 rounded-xl p-2.5 space-y-1.5 shadow-2xs">
         <div className="flex items-center justify-between">
-          <span className="font-bold text-emerald-950 dark:text-emerald-200 flex items-center gap-1">
+          <span className="text-xs font-bold text-emerald-950 dark:text-emerald-200 flex items-center gap-1.5">
             <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-            <span>Deliver all items to:</span>
+            <span>Deliver to:</span>
           </span>
           <button
             type="button"
@@ -408,13 +434,14 @@ export default function BagView() {
               setAddLocTargetItemId(null);
               setIsAddLocOpen(true);
             }}
-            className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 hover:underline cursor-pointer flex items-center gap-0.5"
+            className="text-xs font-bold text-emerald-700 dark:text-emerald-400 hover:underline cursor-pointer flex items-center gap-0.5"
           >
             <Plus className="w-3 h-3" />
-            <span>New Address</span>
+            <span>Add Address</span>
           </button>
         </div>
 
+        {/* Clean Dropdown */}
         <select
           value={globalLocationId}
           onChange={(e) => handleGlobalLocationChange(e.target.value)}
@@ -422,45 +449,40 @@ export default function BagView() {
         >
           {deliveryLocations.map((loc) => (
             <option key={loc.id} value={loc.id}>
-              {loc.type === 'Shop' ? '🏪' : '🏭'} {loc.name} ({loc.type}) - {loc.address.slice(0, 30)}...
+              {loc.type === 'Shop' ? '🏪 Shop' : '🏭 Godown'}: {loc.name} ({loc.address.slice(0, 32)}...)
             </option>
           ))}
-          <option value="__add_new__">+ Add new delivery address...</option>
+          <option value="__add_new__">+ Add New Delivery Address...</option>
         </select>
       </div>
 
-      {/* Product Items List */}
-      <div className="space-y-2.5">
-        {items.map((item, idx) => {
+      {/* Items List (Compact Mobile View) */}
+      <div className="space-y-2">
+        {items.map((item) => {
           const itLoc = getItemLocation(item);
 
           return (
             <div 
               key={item.id}
-              className="bg-white dark:bg-[#0a1b14] border border-slate-200/90 dark:border-emerald-950/60 rounded-xl p-3 shadow-2xs space-y-2 text-xs"
+              className="bg-white dark:bg-[#0a1b14] border border-slate-200/90 dark:border-emerald-950/60 rounded-xl p-2.5 shadow-2xs space-y-2 text-xs"
             >
               {/* Product Header */}
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded bg-slate-100 dark:bg-neutral-800 text-slate-500">
-                      #{idx + 1}
-                    </span>
-                    <h3 className="font-bold text-slate-900 dark:text-white leading-snug">
-                      {item.name}
-                    </h3>
-                  </div>
-
-                  <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 flex-wrap">
+                  <h3 className="font-bold text-slate-900 dark:text-white text-xs leading-snug">
+                    {item.name}
+                  </h3>
+                  <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 flex-wrap">
                     <span>{item.variety || 'Rice'}</span>
                     <span>•</span>
-                    <span className="text-emerald-700 dark:text-emerald-400 font-semibold truncate max-w-[130px]">
+                    <span className="text-emerald-700 dark:text-emerald-400 font-semibold truncate max-w-[140px]">
                       {item.supplier || 'DIRECT MILL'}
                     </span>
                     <span>•</span>
-                    <strong className="text-slate-800 dark:text-slate-200 font-mono">
+                    {/* Explicitly state Rate is per Qty */}
+                    <span className="text-slate-800 dark:text-slate-200 font-bold">
                       Rate: ₹{formatINR(item.price)} / Qty
-                    </strong>
+                    </span>
                   </div>
                 </div>
 
@@ -474,37 +496,32 @@ export default function BagView() {
                 </button>
               </div>
 
-              {/* Delivery Site Selector for this product */}
-              <div className="bg-slate-50 dark:bg-neutral-900/60 p-2 rounded-lg border border-slate-100 dark:border-neutral-800 space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-                  Delivery Site for this product:
-                </label>
+              {/* Per-Item Deliver To Dropdown (Simple words) */}
+              <div className="bg-slate-50 dark:bg-neutral-900/60 p-1.5 rounded-lg border border-slate-100 dark:border-neutral-800 flex items-center justify-between gap-2">
+                <span className="text-[10px] font-bold text-slate-500 shrink-0">Deliver to:</span>
                 <select
                   value={itLoc.id}
                   onChange={(e) => handleItemLocationChange(item.id, e.target.value)}
-                  className="w-full p-1.5 rounded-md bg-white dark:bg-neutral-800 border border-slate-200 dark:border-neutral-700 text-xs font-bold text-slate-800 dark:text-slate-200 outline-none cursor-pointer"
+                  className="flex-1 p-1 rounded bg-white dark:bg-neutral-800 border border-slate-200 dark:border-neutral-700 text-[11px] font-bold text-slate-800 dark:text-slate-200 outline-none cursor-pointer truncate"
                 >
                   {deliveryLocations.map((loc) => (
                     <option key={loc.id} value={loc.id}>
-                      {loc.type === 'Shop' ? '🏪' : '🏭'} {loc.name} ({loc.type})
+                      {loc.type === 'Shop' ? '🏪 Shop' : '🏭 Godown'}: {loc.name}
                     </option>
                   ))}
-                  <option value="__add_new__">+ Add new delivery address...</option>
+                  <option value="__add_new__">+ Add New Address...</option>
                 </select>
-                <p className="text-[10px] text-slate-400 truncate px-0.5">
-                  📍 {itLoc.address}
-                </p>
               </div>
 
-              {/* Quantity Stepper & Subtotal */}
+              {/* Quantity Stepper & Item Total */}
               <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-neutral-800">
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1">
                   <span className="text-[11px] font-bold text-slate-500">Qty:</span>
-                  <div className="flex items-center bg-slate-100 dark:bg-neutral-800 rounded-lg border border-slate-200 dark:border-neutral-700">
+                  <div className="flex items-center bg-slate-100 dark:bg-neutral-800 rounded-lg border border-slate-200 dark:border-neutral-700 h-7">
                     <button
                       type="button"
-                      onClick={() => updateQty(item.id, Math.max(1, item.qty - 10))}
-                      className="w-6 h-6 flex items-center justify-center text-slate-700 dark:text-slate-200 font-black cursor-pointer hover:bg-slate-200"
+                      onClick={() => updateQty(item.id, Math.max(1, item.qty - (item.qty > 10 ? 5 : 1)))}
+                      className="w-6 h-full flex items-center justify-center text-slate-700 dark:text-slate-200 font-black cursor-pointer hover:bg-slate-200 dark:hover:bg-neutral-700 select-none"
                     >
                       -
                     </button>
@@ -516,20 +533,20 @@ export default function BagView() {
                         const val = parseInt(e.target.value) || 0;
                         updateQty(item.id, Math.max(0, val));
                       }}
-                      className="w-10 text-center font-mono font-bold text-xs bg-transparent border-0 outline-none text-slate-900 dark:text-white"
+                      className="w-11 text-center font-mono font-bold text-xs bg-transparent border-0 outline-none text-slate-900 dark:text-white"
                     />
                     <button
                       type="button"
-                      onClick={() => updateQty(item.id, item.qty + 10)}
-                      className="w-6 h-6 flex items-center justify-center text-slate-700 dark:text-slate-200 font-black cursor-pointer hover:bg-slate-200"
+                      onClick={() => updateQty(item.id, item.qty + (item.qty >= 10 ? 5 : 1))}
+                      className="w-6 h-full flex items-center justify-center text-slate-700 dark:text-slate-200 font-black cursor-pointer hover:bg-slate-200 dark:hover:bg-neutral-700 select-none"
                     >
                       +
                     </button>
                   </div>
 
-                  {/* Quick preset chips */}
+                  {/* Quick Add Chips */}
                   <div className="flex items-center gap-1 ml-0.5">
-                    {[+25, +50].map((inc) => (
+                    {[+10, +25].map((inc) => (
                       <button
                         key={inc}
                         type="button"
@@ -543,7 +560,7 @@ export default function BagView() {
                 </div>
 
                 <div className="text-right">
-                  <span className="text-[10px] text-slate-400 block">Subtotal</span>
+                  <span className="text-[10px] text-slate-400 block">Total</span>
                   <span className="font-mono font-bold text-xs text-slate-900 dark:text-white">
                     ₹{formatINR(item.price * item.qty)}
                   </span>
@@ -554,59 +571,68 @@ export default function BagView() {
         })}
       </div>
 
-      {/* Loading Days Selector */}
-      <div className="bg-white dark:bg-[#0a1b14] border border-slate-200/90 dark:border-emerald-950/60 rounded-xl p-3 shadow-2xs space-y-1.5 text-xs">
+      {/* Loading Days: Simple Tap Pills (No hard-to-use slider) */}
+      <div className="bg-white dark:bg-[#0a1b14] border border-slate-200/90 dark:border-emerald-950/60 rounded-xl p-2.5 shadow-2xs space-y-1.5 text-xs">
         <div className="flex items-center justify-between">
-          <span className="font-bold flex items-center gap-1.5 text-slate-800 dark:text-slate-200">
+          <span className="font-bold flex items-center gap-1 text-slate-800 dark:text-slate-200">
             <Truck className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Dispatch Loading Time:</span>
+            <span>Loading Time:</span>
           </span>
           <span className="font-mono font-bold text-emerald-700 dark:text-emerald-400">
             {loadingDays} Days
           </span>
         </div>
-        <input
-          type="range"
-          min="1"
-          max="10"
-          value={loadingDays}
-          onChange={(e) => setLoadingDays(Number(e.target.value))}
-          className="w-full accent-[#143e2e] cursor-pointer"
-        />
-        <div className="flex justify-between text-[9px] text-slate-400">
-          <span>1 Day</span>
-          <span>5 Days</span>
-          <span>10 Days</span>
+        <div className="grid grid-cols-4 gap-1.5 pt-0.5">
+          {[2, 3, 5, 7].map((days) => (
+            <button
+              key={days}
+              type="button"
+              onClick={() => setLoadingDays(days)}
+              className={cn(
+                "py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer text-center",
+                loadingDays === days
+                  ? "bg-emerald-700 text-white shadow-xs"
+                  : "bg-slate-100 dark:bg-neutral-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200"
+              )}
+            >
+              {days} Days
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Total Amount & Place Order Button */}
-      <div className="bg-white dark:bg-[#0a1b14] border border-slate-200/90 dark:border-emerald-950/60 rounded-xl p-3.5 shadow-2xs space-y-3">
+      {/* Reassurance Banner: Explicitly NO payment method needed */}
+      <div className="bg-emerald-500/10 border border-emerald-500/25 rounded-xl p-2.5 flex items-center gap-2 text-xs">
+        <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+        <div className="text-[11px] text-emerald-900 dark:text-emerald-200 font-medium">
+          <strong className="block font-bold">No Payment Required at Order Time</strong>
+          Payment is handled directly on delivery invoice terms with the mill.
+        </div>
+      </div>
+
+      {/* Order Summary & One-Tap Place Order Button */}
+      <div className="bg-white dark:bg-[#0a1b14] border border-slate-200/90 dark:border-emerald-950/60 rounded-xl p-3 shadow-2xs space-y-2.5">
         <div className="flex justify-between items-baseline">
           <div>
-            <span className="text-xs font-bold text-slate-500 block">Total Qty</span>
+            <span className="text-[11px] font-bold text-slate-500 block">Total Quantity</span>
             <span className="text-xs font-mono font-bold text-slate-800 dark:text-slate-200">
               {totalQty} Qty
             </span>
           </div>
           <div className="text-right">
-            <span className="text-xs font-bold text-slate-500 block">Total Amount</span>
-            <span className="text-lg font-mono font-black text-emerald-700 dark:text-emerald-400">
+            <span className="text-[11px] font-bold text-slate-500 block">Total Amount</span>
+            <span className="text-base font-mono font-black text-emerald-700 dark:text-emerald-400">
               ₹{formatINR(totalAmount)}
             </span>
           </div>
         </div>
 
-        <p className="text-[10px] text-slate-400 text-center">
-          No advance payment required. Direct mill delivery settlement.
-        </p>
-
-        {/* Big Place Order Button (No payment method needed) */}
+        {/* Place Order Directly (No payment method popup or gateway) */}
         <button
           type="button"
           disabled={isPlacingOrder}
           onClick={handlePlaceOrder}
-          className="w-full py-3.5 rounded-xl bg-[#143e2e] hover:bg-[#0f3225] disabled:opacity-50 text-white font-black text-xs uppercase tracking-wider shadow-sm flex items-center justify-center gap-2 cursor-pointer transition-all"
+          className="w-full py-3 rounded-xl bg-[#143e2e] hover:bg-[#0f3225] disabled:opacity-50 text-white font-black text-xs uppercase tracking-wider shadow-sm flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-98"
         >
           {isPlacingOrder ? (
             <>
@@ -615,19 +641,19 @@ export default function BagView() {
             </>
           ) : (
             <>
-              <span>Place Order Directly</span>
+              <span>Place Order ({totalQty} Qty)</span>
               <ArrowRight className="w-4 h-4" />
             </>
           )}
         </button>
       </div>
 
-      {/* Modal: Add Delivery Address */}
+      {/* Modal: Add Delivery Address (Simple Words) */}
       {isAddLocOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 animate-fadeIn font-sans">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 font-sans animate-fadeIn">
           <div className="bg-white dark:bg-[#0c1f17] border border-slate-200 dark:border-emerald-950 rounded-2xl p-4 max-w-sm w-full shadow-xl space-y-3 text-xs">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-emerald-950/40">
-              <h3 className="font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+              <h3 className="font-black text-slate-900 dark:text-white flex items-center gap-1.5 text-sm">
                 <MapPin className="w-4 h-4 text-emerald-600" />
                 <span>Add Delivery Address</span>
               </h3>
@@ -643,11 +669,11 @@ export default function BagView() {
             <form onSubmit={handleCreateLocation} className="space-y-2.5">
               <div>
                 <label className="font-bold text-slate-700 dark:text-slate-300 block mb-0.5">
-                  Address / Site Name
+                  Address Name
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. Yeshwanthpur Shop or Godown #3"
+                  placeholder="e.g. My Main Shop or Godown #1"
                   value={newLocName}
                   onChange={(e) => setNewLocName(e.target.value)}
                   className="w-full p-2 rounded-lg bg-slate-50 dark:bg-neutral-900 border border-slate-200 dark:border-neutral-700 text-slate-900 dark:text-white text-xs outline-none focus:border-emerald-500"
@@ -691,10 +717,10 @@ export default function BagView() {
 
               <div>
                 <label className="font-bold text-slate-700 dark:text-slate-300 block mb-0.5">
-                  Complete Address
+                  Full Address
                 </label>
                 <textarea
-                  placeholder="Plot/Shop No, APMC Yard or Road, City, Pincode"
+                  placeholder="Plot/Shop No, APMC Yard, City"
                   value={newLocAddress}
                   onChange={(e) => setNewLocAddress(e.target.value)}
                   rows={2}
@@ -705,7 +731,7 @@ export default function BagView() {
 
               <div>
                 <label className="font-bold text-slate-700 dark:text-slate-300 block mb-0.5">
-                  Phone Number (Optional)
+                  Contact Phone (Optional)
                 </label>
                 <input
                   type="tel"
@@ -719,14 +745,14 @@ export default function BagView() {
               <div className="flex gap-2 pt-1">
                 <button
                   type="submit"
-                  className="flex-1 py-2 bg-[#143e2e] text-white rounded-lg font-bold text-xs cursor-pointer"
+                  className="flex-1 py-2.5 bg-[#143e2e] text-white rounded-xl font-bold text-xs cursor-pointer hover:bg-[#0f3225]"
                 >
                   Save Address
                 </button>
                 <button
                   type="button"
                   onClick={() => setIsAddLocOpen(false)}
-                  className="py-2 px-3 bg-slate-100 dark:bg-neutral-800 text-slate-600 dark:text-slate-300 rounded-lg font-bold text-xs cursor-pointer"
+                  className="py-2.5 px-3 bg-slate-100 dark:bg-neutral-800 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-xs cursor-pointer"
                 >
                   Cancel
                 </button>

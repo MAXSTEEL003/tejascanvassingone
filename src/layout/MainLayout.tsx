@@ -1467,11 +1467,11 @@ export default function MainLayout() {
   }, []);
 
   return (
-    <CartProvider>
+    <>
       <MainLayoutContent onSearchClick={() => setIsCommandPaletteOpen(true)} />
       <CommandPalette isOpen={isCommandPaletteOpen} setIsOpen={setIsCommandPaletteOpen} />
       <PwaInstallModal isOpen={isPwaModalOpen} onClose={() => setIsPwaModalOpen(false)} />
-    </CartProvider>
+    </>
   );
 }
 

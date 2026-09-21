@@ -290,13 +290,39 @@ export default function LoginView({ defaultTab = 'signin', secretRole }: LoginVi
         email: emailVal,
         gstin: gstinVal,
         address: 'APMC Yard, Yeshwanthpur, Bangalore, Karnataka - 560022',
-        status: 'Active',
+        status: 'Pending Approval',
         credit: '₹ 50.0 Lakh',
         profileLocked: false,
         createdAt: new Date().toISOString()
       };
 
+      // Ensure new buyer registration is immediately visible in Users Management for Admin approval
+      try {
+        const existingStakeholdersStr = localStorage.getItem('stakeholders_v2');
+        let parsedStakeholders = existingStakeholdersStr 
+          ? JSON.parse(existingStakeholdersStr) 
+          : { buyers: [], suppliers: [], employees: [] };
+        if (!Array.isArray(parsedStakeholders.buyers)) parsedStakeholders.buyers = [];
+        // Prepend new buyer so they appear right at the top
+        parsedStakeholders.buyers = [
+          newStakeholder, 
+          ...parsedStakeholders.buyers.filter((b: any) => b.id !== userUid && b.email?.toLowerCase() !== emailVal.toLowerCase())
+        ];
+        localStorage.setItem('stakeholders_v2', JSON.stringify(parsedStakeholders));
+
+        // Save in dedicated buyer_registration_requests collection
+        const existingReqs = JSON.parse(localStorage.getItem('buyer_registration_requests') || '[]');
+        const updatedReqs = [newStakeholder, ...existingReqs.filter((r: any) => r.id !== userUid)];
+        localStorage.setItem('buyer_registration_requests', JSON.stringify(updatedReqs));
+
+        window.dispatchEvent(new Event('storage'));
+        window.dispatchEvent(new CustomEvent('stakeholders-updated', { detail: { category: 'buyers', user: newStakeholder } }));
+      } catch (saveErr) {
+        console.warn('Error storing buyer registration in local storage:', saveErr);
+      }
+
       await setCollectionDoc('stakeholders', userUid, newStakeholder).catch(() => {});
+      await setCollectionDoc('buyer_registration_requests', userUid, newStakeholder).catch(() => {});
 
       localStorage.setItem('userRole', 'merchant');
       localStorage.setItem('userEmail', emailVal);
@@ -304,11 +330,12 @@ export default function LoginView({ defaultTab = 'signin', secretRole }: LoginVi
       localStorage.setItem('userPhone', phone);
       localStorage.setItem('userGstin', gstinVal);
       localStorage.setItem('userId', userUid);
+      localStorage.setItem('buyerStatus', 'Pending Approval');
       localStorage.setItem('tejas_intro_viewed', 'true');
 
       window.dispatchEvent(new Event('role-changed'));
 
-      setSuccessMsg(`Merchant account registered for ${name}!`);
+      setSuccessMsg(`Merchant registration received for ${name}! Account is awaiting verification.`);
       const target = redirectTarget || '/store';
       setTimeout(() => {
         navigate(target, { replace: true });
@@ -415,20 +442,38 @@ export default function LoginView({ defaultTab = 'signin', secretRole }: LoginVi
         localStorage.setItem('tejas_intro_viewed', 'true');
 
         if (roleToSign === 'admin') {
+          localStorage.setItem('userRole', 'admin');
+          localStorage.setItem('userName', 'Tejas Adinarayan (Admin HQ)');
+          localStorage.setItem('userEmail', 'tejasadinarayan@riceaggregator.com');
+          localStorage.setItem('userId', 'admin-tejas-01');
+          window.dispatchEvent(new Event('role-changed'));
+          window.dispatchEvent(new Event('storage'));
+
           setSuccessMsg('Admin authentication successful! Launching Executive Console...');
-          const target = redirectTarget || (location.pathname.startsWith('/admin') ? location.pathname : '/admin');
+          const target = (redirectTarget && !redirectTarget.includes('admintejas1679') && redirectTarget.startsWith('/')) 
+            ? redirectTarget 
+            : '/admin';
           setTimeout(() => {
             setLoading(false);
             navigate(target, { replace: true });
-          }, 500);
+          }, 400);
         } else {
+          localStorage.setItem('userRole', 'employee');
+          localStorage.setItem('userName', result.user.name || 'Operations Staff');
+          localStorage.setItem('userEmail', result.user.email || 'employee@riceaggregator.com');
+          localStorage.setItem('userId', result.user.sub || 'emp-01');
+          window.dispatchEvent(new Event('role-changed'));
+          window.dispatchEvent(new Event('storage'));
+
           const empName = result.user.name || 'Operations Staff';
           setSuccessMsg(`Welcome, ${empName}! Launching Operations Terminal...`);
-          const target = redirectTarget || '/inventory';
+          const target = (redirectTarget && !redirectTarget.includes('employee1977') && redirectTarget.startsWith('/'))
+            ? redirectTarget
+            : '/inventory';
           setTimeout(() => {
             setLoading(false);
             navigate(target, { replace: true });
-          }, 500);
+          }, 400);
         }
       } else {
         setLoading(false);

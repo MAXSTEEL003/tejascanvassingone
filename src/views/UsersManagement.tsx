@@ -95,21 +95,33 @@ export default function UsersManagement() {
     category: 'buyers' as Category
   });
 
-  // Load registered profiles from Firestore stakeholders
+  // Buyer filter: 'all' | 'pending' | 'active'
+  const [buyerFilter, setBuyerFilter] = useState<'all' | 'pending' | 'active'>('all');
+  const [actionSuccessMsg, setActionSuccessMsg] = useState<string | null>(null);
+
+  // Load registered profiles from Firestore stakeholders and local registration requests
   const syncRegisteredCloudStakeholders = async () => {
     try {
       const rawDeleted = localStorage.getItem('deleted_stakeholder_ids');
       const deletedIds: string[] = rawDeleted ? JSON.parse(rawDeleted) : [];
       const deletedSet = new Set(deletedIds.map(id => String(id).trim().toLowerCase().replace(/^#/, '')));
 
+      // Also read local buyer registration requests
+      const localBuyerRequests = JSON.parse(localStorage.getItem('buyer_registration_requests') || '[]');
+
       const cloudStakeholders = await getCollectionDocs('stakeholders').catch(() => []);
-      if (cloudStakeholders && cloudStakeholders.length > 0) {
+      const cloudBuyerRequests = await getCollectionDocs('buyer_registration_requests').catch(() => []);
+
+      const combinedStakeholders = [...cloudStakeholders, ...cloudBuyerRequests, ...localBuyerRequests];
+
+      if (combinedStakeholders.length > 0) {
         setStakeholders((prev: any) => {
           const buyers = [...(prev.buyers || [])];
           const suppliers = [...(prev.suppliers || [])];
           const employees = [...(prev.employees || [])];
 
-          cloudStakeholders.forEach((cs: any) => {
+          combinedStakeholders.forEach((cs: any) => {
+            if (!cs || !cs.id) return;
             const normId = String(cs.id || '').trim().toLowerCase().replace(/^#/, '');
             const normName = String(cs.name || '').toUpperCase();
             if (deletedSet.has(normId) || normId === 'sup-01' || normId === 'buy-01' || normName.includes('ANNAPURNA') || normName.includes('VK FOODS') || normName.includes('V.K FOODS') || normName.includes('V.K. FOODS')) {
@@ -118,21 +130,21 @@ export default function UsersManagement() {
 
             const type = cs.type || 'buyers';
             if (type === 'buyers') {
-              const idx = buyers.findIndex((b: any) => b.id === cs.id || b.email?.toLowerCase() === cs.email?.toLowerCase());
+              const idx = buyers.findIndex((b: any) => b.id === cs.id || (cs.email && b.email?.toLowerCase() === cs.email?.toLowerCase()));
               if (idx !== -1) {
                 buyers[idx] = { ...buyers[idx], ...cs };
               } else {
-                buyers.push({ ...cs, id: cs.id || `CLD-BUY-${Date.now()}` });
+                buyers.unshift({ ...cs, id: cs.id || `BUY-${Date.now()}` });
               }
             } else if (type === 'suppliers') {
-              const idx = suppliers.findIndex((s: any) => s.id === cs.id || s.email?.toLowerCase() === cs.email?.toLowerCase());
+              const idx = suppliers.findIndex((s: any) => s.id === cs.id || (cs.email && s.email?.toLowerCase() === cs.email?.toLowerCase()));
               if (idx !== -1) {
                 suppliers[idx] = { ...suppliers[idx], ...cs };
               } else {
                 suppliers.push({ ...cs, id: cs.id || `CLD-SUP-${Date.now()}` });
               }
             } else if (type === 'employees') {
-              const idx = employees.findIndex((e: any) => e.id === cs.id || e.email?.toLowerCase() === cs.email?.toLowerCase());
+              const idx = employees.findIndex((e: any) => e.id === cs.id || (cs.email && e.email?.toLowerCase() === cs.email?.toLowerCase()));
               if (idx !== -1) {
                 employees[idx] = { ...employees[idx], ...cs };
               } else {
@@ -147,6 +159,80 @@ export default function UsersManagement() {
     } catch (err) {
       console.warn('Error loading stakeholders collection:', err);
     }
+  };
+
+  const handleApproveBuyer = (buyer: any) => {
+    if (!buyer) return;
+    const updatedBuyers = (stakeholders.buyers || []).map((b: any) => {
+      if (b.id === buyer.id) {
+        return { 
+          ...b, 
+          status: 'Active', 
+          credit: b.credit || '₹ 50.0 Lakh',
+          approvedAt: new Date().toISOString() 
+        };
+      }
+      return b;
+    });
+
+    const updatedStakeholders = { ...stakeholders, buyers: updatedBuyers };
+    setStakeholders(updatedStakeholders);
+    localStorage.setItem('stakeholders_v2', JSON.stringify(updatedStakeholders));
+
+    // Update in buyer_registration_requests
+    try {
+      const localReqs = JSON.parse(localStorage.getItem('buyer_registration_requests') || '[]');
+      const updatedReqs = localReqs.map((r: any) => r.id === buyer.id ? { ...r, status: 'Active' } : r);
+      localStorage.setItem('buyer_registration_requests', JSON.stringify(updatedReqs));
+    } catch {}
+
+    // Cloud sync
+    setCollectionDoc('stakeholders', buyer.id, { 
+      ...buyer, 
+      status: 'Active', 
+      credit: buyer.credit || '₹ 50.0 Lakh',
+      approvedAt: new Date().toISOString(), 
+      type: 'buyers' 
+    }).catch(() => {});
+    setCollectionDoc('buyer_registration_requests', buyer.id, { 
+      ...buyer, 
+      status: 'Active', 
+      approvedAt: new Date().toISOString() 
+    }).catch(() => {});
+
+    if (selectedUser && selectedUser.id === buyer.id) {
+      setSelectedUser({ ...selectedUser, status: 'Active', credit: selectedUser.credit || '₹ 50.0 Lakh' });
+    }
+
+    setActionSuccessMsg(`Approved buyer ${buyer.name}! Account is now Active.`);
+    setTimeout(() => setActionSuccessMsg(null), 4000);
+
+    window.dispatchEvent(new Event('storage'));
+    window.dispatchEvent(new CustomEvent('stakeholders-updated', { detail: { category: 'buyers', user: { ...buyer, status: 'Active' } } }));
+  };
+
+  const handleRejectBuyer = (buyerId: string) => {
+    const updatedBuyers = (stakeholders.buyers || []).filter((b: any) => b.id !== buyerId);
+    const updatedStakeholders = { ...stakeholders, buyers: updatedBuyers };
+    setStakeholders(updatedStakeholders);
+    localStorage.setItem('stakeholders_v2', JSON.stringify(updatedStakeholders));
+
+    try {
+      const localReqs = JSON.parse(localStorage.getItem('buyer_registration_requests') || '[]');
+      const updatedReqs = localReqs.filter((r: any) => r.id !== buyerId);
+      localStorage.setItem('buyer_registration_requests', JSON.stringify(updatedReqs));
+    } catch {}
+
+    deleteCollectionDoc('buyer_registration_requests', buyerId).catch(() => {});
+
+    if (selectedUser && selectedUser.id === buyerId) {
+      setSelectedUser(null);
+    }
+
+    setActionSuccessMsg(`Buyer registration request rejected.`);
+    setTimeout(() => setActionSuccessMsg(null), 3000);
+
+    window.dispatchEvent(new Event('storage'));
   };
 
   useEffect(() => {
@@ -506,14 +592,43 @@ export default function UsersManagement() {
     };
   }, [selectedUser, allOrders, allImportsCombined => allArrivals]);
 
+  const pendingBuyerCount = (stakeholders.buyers || []).filter(
+    (b: any) => b && (b.status === 'Pending Approval' || b.status === 'pending')
+  ).length;
+
   const tabs = [
-    { id: 'buyers', label: 'Buyers', icon: UserCircle },
+    { 
+      id: 'buyers', 
+      label: 'Buyers', 
+      icon: UserCircle,
+      badge: pendingBuyerCount > 0 ? `${pendingBuyerCount} Pending` : null
+    },
     { id: 'suppliers', label: 'Suppliers', icon: Building2 },
     { id: 'employees', label: 'Employees', icon: Briefcase },
   ];
 
+  const filteredItems = (stakeholders[activeTab] || []).filter((item: any) => {
+    if (!item) return false;
+    if (activeTab !== 'buyers') return true;
+    if (buyerFilter === 'pending') {
+      return item.status === 'Pending Approval' || item.status === 'pending';
+    }
+    if (buyerFilter === 'active') {
+      return item.status !== 'Pending Approval' && item.status !== 'pending';
+    }
+    return true;
+  });
+
   return (
-    <div className="p-4 md:p-8 space-y-8 max-w-7xl mx-auto select-none">
+    <div className="p-4 md:p-8 space-y-6 max-w-7xl mx-auto select-none">
+      {/* Toast Alert */}
+      {actionSuccessMsg && (
+        <div className="p-3.5 bg-emerald-500/15 border border-emerald-500/30 text-emerald-800 dark:text-emerald-300 rounded-2xl flex items-center gap-2 text-xs font-bold shadow-sm">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span>{actionSuccessMsg}</span>
+        </div>
+      )}
+
       {/* Top Header Card */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
@@ -552,10 +667,103 @@ export default function UsersManagement() {
             )}
           >
             <tab.icon className="w-4 h-3.5" />
-            {tab.label}
+            <span>{tab.label}</span>
+            {tab.badge && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-stone-950 animate-pulse">
+                {tab.badge}
+              </span>
+            )}
           </button>
         ))}
       </div>
+
+      {/* Pending Buyer Alert Banner */}
+      {activeTab === 'buyers' && pendingBuyerCount > 0 && (
+        <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-3">
+            <span className="p-2.5 bg-amber-500/20 text-amber-700 dark:text-amber-300 rounded-xl">
+              <AlertCircle className="w-5 h-5 text-amber-600 animate-pulse" />
+            </span>
+            <div>
+              <p className="text-xs font-black uppercase text-amber-900 dark:text-amber-200">
+                {pendingBuyerCount} New Buyer Registration Request{pendingBuyerCount > 1 ? 's' : ''} Awaiting Review
+              </p>
+              <p className="text-[11px] text-amber-700/80 dark:text-amber-400">
+                Buyers who registered online need admin verification before order dispatches can proceed.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setBuyerFilter('pending')}
+              className={cn(
+                "px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer",
+                buyerFilter === 'pending'
+                  ? "bg-amber-600 text-white shadow-xs"
+                  : "bg-amber-500/20 text-amber-900 dark:text-amber-200 hover:bg-amber-500/30"
+              )}
+            >
+              Filter Pending ({pendingBuyerCount})
+            </button>
+            {buyerFilter === 'pending' && (
+              <button
+                onClick={() => setBuyerFilter('all')}
+                className="text-xs text-amber-800 dark:text-amber-300 underline font-bold cursor-pointer"
+              >
+                Show All
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Sub-Filters for Wholesale Buyers */}
+      {activeTab === 'buyers' && (
+        <div className="flex items-center gap-2 pt-1">
+          <button
+            type="button"
+            onClick={() => setBuyerFilter('all')}
+            className={cn(
+              "px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer",
+              buyerFilter === 'all'
+                ? "bg-primary text-white shadow-xs"
+                : "bg-surface-container text-secondary hover:text-on-surface"
+            )}
+          >
+            All Buyers ({(stakeholders.buyers || []).length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setBuyerFilter('pending')}
+            className={cn(
+              "px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer",
+              buyerFilter === 'pending'
+                ? "bg-amber-600 text-white shadow-xs"
+                : "bg-surface-container text-secondary hover:text-on-surface",
+              pendingBuyerCount > 0 && buyerFilter !== 'pending' && "text-amber-700 bg-amber-500/10 border border-amber-500/30"
+            )}
+          >
+            <span>Pending Approval</span>
+            {pendingBuyerCount > 0 && (
+              <span className="w-4 h-4 rounded-full bg-amber-500 text-stone-950 text-[10px] font-black flex items-center justify-center">
+                {pendingBuyerCount}
+              </span>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => setBuyerFilter('active')}
+            className={cn(
+              "px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer",
+              buyerFilter === 'active'
+                ? "bg-emerald-700 text-white shadow-xs"
+                : "bg-surface-container text-secondary hover:text-on-surface"
+            )}
+          >
+            Active & Approved ({(stakeholders.buyers || []).filter((b: any) => b.status !== 'Pending Approval' && b.status !== 'pending').length})
+          </button>
+        </div>
+      )}
 
       <div className="grid grid-cols-12 gap-8">
         {/* Main Stakeholder Table */}
@@ -571,12 +779,12 @@ export default function UsersManagement() {
                     <th className="p-5">Name / Legal Entity</th>
                     <th className="p-5">{activeTab === 'employees' ? 'Role & Assigned Login' : 'GSTIN & Address'}</th>
                     <th className="p-5">Communication Info</th>
-                    {activeTab === 'buyers' && <th className="p-5">Credit Appraisal</th>}
+                    {activeTab === 'buyers' && <th className="p-5">Status & Credit</th>}
                     <th className="p-5"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-outline-variant/10">
-                  {stakeholders[activeTab]?.map((item: any) => (
+                  {filteredItems.map((item: any) => (
                     <tr 
                       key={item.id} 
                       onClick={() => {
@@ -585,17 +793,38 @@ export default function UsersManagement() {
                       }}
                       className={cn(
                         "interactive-tr group cursor-pointer",
-                        selectedUser?.id === item.id ? "bg-primary/[0.04] border-l-4 border-l-primary" : ""
+                        selectedUser?.id === item.id ? "bg-primary/[0.04] border-l-4 border-l-primary" : "",
+                        (item.status === 'Pending Approval' || item.status === 'pending') && "bg-amber-500/[0.03]"
                       )}
                     >
                       <td className="p-5">
                         <div className="flex items-center gap-4">
-                          <div className="w-10 h-10 rounded-xl bg-primary/5 text-primary flex items-center justify-center font-black text-xs border border-primary/10 group-hover:scale-105 transition-transform">
+                          <div className={cn(
+                            "w-10 h-10 rounded-xl flex items-center justify-center font-black text-xs border group-hover:scale-105 transition-transform",
+                            (item.status === 'Pending Approval' || item.status === 'pending')
+                              ? "bg-amber-500/10 text-amber-700 border-amber-500/20"
+                              : "bg-primary/5 text-primary border-primary/10"
+                          )}>
                             {item.name.replace(/[^\w\s]/g, '').split(' ').filter(Boolean).map((n: string) => n[0]).join('').substring(0, 2).toUpperCase() || 'SH'}
                           </div>
                           <div>
                             <p className="font-extrabold text-sm text-on-surface leading-tight uppercase">{item.name}</p>
                             <p className="text-[10px] text-secondary/60 font-bold tracking-wider mt-0.5 font-mono">{item.id}</p>
+                            {activeTab === 'buyers' && (
+                              <div className="mt-1">
+                                {item.status === 'Pending Approval' || item.status === 'pending' ? (
+                                  <span className="inline-flex items-center gap-1 text-[9px] font-bold text-amber-800 dark:text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full">
+                                    <AlertCircle className="w-2.5 h-2.5 text-amber-600 animate-pulse" />
+                                    Awaiting Approval
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-800 dark:text-emerald-300 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                                    <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" />
+                                    Active
+                                  </span>
+                                )}
+                              </div>
+                            )}
                           </div>
                         </div>
                       </td>
@@ -641,12 +870,30 @@ export default function UsersManagement() {
 
                       {activeTab === 'buyers' && (
                         <td className="p-5">
-                          <span className="text-xs font-black text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20 px-2.5 py-1 rounded-full">{item.credit || '₹ 50.0 L'}</span>
+                          <div className="space-y-1">
+                            <span className="text-xs font-black text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20 px-2.5 py-1 rounded-full block text-center">
+                              {item.credit || '₹ 50.0 L'}
+                            </span>
+                          </div>
                         </td>
                       )}
 
                       <td className="p-5 text-right">
                         <div className="flex items-center justify-end gap-1.5">
+                          {activeTab === 'buyers' && (item.status === 'Pending Approval' || item.status === 'pending') && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleApproveBuyer(item);
+                              }}
+                              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1 shadow-xs transition-all cursor-pointer"
+                              title="Approve Buyer Registration"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              Approve
+                            </button>
+                          )}
                           <button 
                             onClick={(e) => {
                               e.stopPropagation();
@@ -676,7 +923,7 @@ export default function UsersManagement() {
               </table>
             </div>
             <div className="p-4 bg-surface-container-low/30 border-t border-outline-variant/10 text-[11px] font-bold text-secondary text-center">
-              Total {activeTab.toUpperCase()} listed: {stakeholders[activeTab]?.length || 0}
+              Total {activeTab.toUpperCase()} listed: {filteredItems.length}
             </div>
           </div>
         </div>
@@ -891,6 +1138,36 @@ export default function UsersManagement() {
               ) : (
                 // CONCISE DIRECT LIVE INSIGHT DRAWDOWN VIEW
                 <div className="p-6 space-y-6 overflow-y-auto">
+                  {/* Pending Approval Action Card for Buyers */}
+                  {activeTab === 'buyers' && (selectedUser.status === 'Pending Approval' || selectedUser.status === 'pending') && (
+                    <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 animate-pulse" />
+                        <span className="text-xs font-black uppercase tracking-wide">New Buyer Registration - Action Needed</span>
+                      </div>
+                      <p className="text-[11px] text-amber-800/90 dark:text-amber-300 leading-relaxed">
+                        This wholesale buyer registered through the portal. Approve this account to activate their default credit line (₹ 50.0 Lakh) and allow immediate trading.
+                      </p>
+                      <div className="flex items-center gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => handleApproveBuyer(selectedUser)}
+                          className="flex-1 py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
+                        >
+                          <CheckCircle2 className="w-4 h-4" />
+                          Approve Account
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleRejectBuyer(selectedUser.id)}
+                          className="py-2.5 px-3 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Stakeholder Details Capsule */}
                   <div className="space-y-3 pb-5 border-b border-outline-variant/30">
                     <div className="flex justify-between items-start gap-2">

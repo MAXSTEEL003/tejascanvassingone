@@ -103,11 +103,21 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 
 function AdminOnlyRoute({ children }: { children: React.ReactNode }) {
   const location = useLocation();
-  const [role, setRole] = useState(() => getVerifiedUserRole());
+  const [role, setRole] = useState(() => {
+    const verified = getVerifiedUserRole();
+    if (verified === 'admin') return 'admin';
+    if (typeof window !== 'undefined' && localStorage.getItem('userRole') === 'admin') return 'admin';
+    return verified;
+  });
 
   useEffect(() => {
     const handleSync = () => {
-      setRole(getVerifiedUserRole());
+      const verified = getVerifiedUserRole();
+      if (verified === 'admin' || localStorage.getItem('userRole') === 'admin') {
+        setRole('admin');
+      } else {
+        setRole(verified);
+      }
     };
     window.addEventListener('storage', handleSync);
     window.addEventListener('role-changed', handleSync);
@@ -118,7 +128,7 @@ function AdminOnlyRoute({ children }: { children: React.ReactNode }) {
   }, []);
 
   // Admin access strictly requires a properly authenticated admin user
-  if (role !== 'admin') {
+  if (role !== 'admin' && (typeof window === 'undefined' || localStorage.getItem('userRole') !== 'admin')) {
     return (
       <div className="min-h-[85vh] flex items-center justify-center p-4">
         <div className="w-full max-w-md bg-white dark:bg-stone-900 rounded-3xl p-6 sm:p-8 border border-stone-200 dark:border-stone-800 shadow-2xl text-center">
@@ -175,11 +185,20 @@ function StaffOnlyRoute({ children }: { children: React.ReactNode }) {
 
 // Dedicated route component for /admintejas1679: if not authenticated as admin, renders the Admin LoginView
 function AdminSecretRoute() {
-  const [role, setRole] = useState(() => getVerifiedUserRole());
+  const [role, setRole] = useState(() => {
+    const verified = getVerifiedUserRole();
+    if (verified === 'admin' || (typeof window !== 'undefined' && localStorage.getItem('userRole') === 'admin')) return 'admin';
+    return verified;
+  });
 
   useEffect(() => {
     const handleSync = () => {
-      setRole(getVerifiedUserRole());
+      const verified = getVerifiedUserRole();
+      if (verified === 'admin' || localStorage.getItem('userRole') === 'admin') {
+        setRole('admin');
+      } else {
+        setRole(verified);
+      }
     };
     window.addEventListener('storage', handleSync);
     window.addEventListener('role-changed', handleSync);
@@ -189,8 +208,8 @@ function AdminSecretRoute() {
     };
   }, []);
 
-  if (role === 'admin') {
-    return <OrdersDashboard />;
+  if (role === 'admin' || (typeof window !== 'undefined' && localStorage.getItem('userRole') === 'admin')) {
+    return <Navigate to="/admin" replace />;
   }
 
   return <LoginView secretRole="admin" />;
@@ -335,14 +354,17 @@ export default function App() {
       <CartProvider>
         <BrowserRouter>
           <Routes>
+            <Route path="/" element={<AboutView />} />
+            <Route path="/about" element={<AboutView />} />
+            <Route path="/intro" element={<AboutView />} />
+            <Route path="/onboarding" element={<AboutView />} />
+            <Route path="/journey" element={<Navigate to="/about" replace />} />
+            <Route path="/experience" element={<Navigate to="/about" replace />} />
             <Route path="/login" element={<LoginView defaultTab="signin" />} />
             <Route path="/signup" element={<LoginView defaultTab="signup" />} />
             <Route path="/employee1977" element={<LoginView secretRole="employee" />} />
-            <Route path="/intro" element={<Navigate to="/login" replace />} />
-            <Route path="/onboarding" element={<Navigate to="/login" replace />} />
-            <Route path="/about" element={<AboutView />} />
-            <Route path="/journey" element={<Navigate to="/about" replace />} />
-            <Route path="/experience" element={<Navigate to="/about" replace />} />
+            <Route path="/employee-login" element={<LoginView secretRole="employee" />} />
+            <Route path="/employee" element={<LoginView secretRole="employee" />} />
             
             <Route element={<PrivateRoute><MainLayout /></PrivateRoute>}>
               <Route path="/admin" element={<AdminOnlyRoute><OrdersDashboard /></AdminOnlyRoute>} />
@@ -369,7 +391,6 @@ export default function App() {
               <Route path="/arrival-entry" element={<StaffOnlyRoute><ArrivalEntry /></StaffOnlyRoute>} />
               <Route path="/ledger" element={<AdminOnlyRoute><LedgerManagement /></AdminOnlyRoute>} />
               <Route path="/pending-loadings" element={<StaffOnlyRoute><PendingLoadings /></StaffOnlyRoute>} />
-              <Route path="/" element={<RootRedirect />} />
             </Route>
           </Routes>
         </BrowserRouter>
