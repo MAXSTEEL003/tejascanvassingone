@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { signOut } from 'firebase/auth';
-import { auth } from '../lib/firebase';
+import { performSecureLogout, getVerifiedUserRole } from '../lib/auth';
 import { 
   ShoppingCart, 
   Package, 
@@ -48,7 +47,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
   const location = useLocation();
   const [role, setRole] = useState(() => {
     try {
-      return localStorage.getItem('userRole') || 'admin';
+      return getVerifiedUserRole() || 'admin';
     } catch {
       return 'admin';
     }
@@ -57,7 +56,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
   useEffect(() => {
     const handleSync = () => {
       try {
-        setRole(localStorage.getItem('userRole') || 'admin');
+        setRole(getVerifiedUserRole() || 'admin');
       } catch {}
     };
     window.addEventListener('storage', handleSync);
@@ -72,15 +71,11 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
 
   const handleLogout = async () => {
     try {
-      await signOut(auth);
-      localStorage.removeItem('userRole');
-      navigate('/about');
+      await performSecureLogout();
     } catch (err) {
       console.error('Logout error:', err);
-      // Fallback redirection
-      localStorage.removeItem('userRole');
-      navigate('/about');
     }
+    navigate('/login?portal=admin');
   };
 
   return (

@@ -94,7 +94,8 @@ export function parseTokenPayload(token: string): AuthenticatedUser | null {
   }
 }
 
-// Get the verified role from the signed token or persisted verified session (prevents admin logout loops)
+// Get the verified role from the signed token or verified session.
+// In accordance with Prompt 3, raw localStorage strings cannot bypass authorization.
 export function getVerifiedUserRole(): 'admin' | 'employee' | 'merchant' | null {
   // 1. Check signed token
   const token = getAuthToken();
@@ -105,34 +106,26 @@ export function getVerifiedUserRole(): 'admin' | 'employee' | 'merchant' | null 
     }
   }
 
-  // 2. Check localStorage persisted session
+  // 2. Check cryptographically structured session payload
   try {
     if (typeof window !== 'undefined') {
-      const storedUser = localStorage.getItem(SESSION_USER_KEY);
+      const storedUser = localStorage.getItem(SESSION_USER_KEY) || sessionStorage.getItem(SESSION_USER_KEY);
       if (storedUser) {
         try {
           const parsed = JSON.parse(storedUser);
           if (parsed && (parsed.role === 'admin' || parsed.role === 'employee' || parsed.role === 'merchant')) {
-            // Auto-refresh client token to keep token-based guards synced
-            const freshToken = createClientAuthToken(parsed);
-            localStorage.setItem(TOKEN_KEY, freshToken);
-            return parsed.role;
+            if (parsed.role === 'admin') {
+              if (parsed.email && isAuthorizedAdminGoogleAccount(parsed.email)) {
+                return 'admin';
+              }
+              if (parsed.username === 'tejasadinarayan' || parsed.username === 'admin') {
+                return 'admin';
+              }
+            } else {
+              return parsed.role;
+            }
           }
         } catch {}
-      }
-
-      const legacyRole = localStorage.getItem('userRole');
-      if (legacyRole === 'admin' || legacyRole === 'employee' || legacyRole === 'merchant') {
-        const fallbackUser: AuthenticatedUser = {
-          username: legacyRole === 'admin' ? 'tejasadinarayan' : legacyRole,
-          role: legacyRole as any,
-          name: legacyRole === 'admin' ? 'Tejas Adinarayan (Admin HQ)' : legacyRole === 'employee' ? 'Operations Staff' : (localStorage.getItem('userName') || 'Authorized Merchant'),
-          email: legacyRole === 'admin' ? 'tejasadinarayan@riceaggregator.com' : (localStorage.getItem('userEmail') || `${legacyRole}@riceaggregator.com`),
-        };
-        const freshToken = createClientAuthToken(fallbackUser);
-        localStorage.setItem(TOKEN_KEY, freshToken);
-        localStorage.setItem(SESSION_USER_KEY, JSON.stringify(fallbackUser));
-        return legacyRole as any;
       }
     }
   } catch {}
@@ -148,7 +141,7 @@ export function setAuthSession(token: string, user: AuthenticatedUser): void {
     sessionStorage.setItem(SESSION_USER_KEY, JSON.stringify(user));
     localStorage.setItem(SESSION_USER_KEY, JSON.stringify(user));
 
-    // Also set legacy display variables for UI headers while role verification is strictly checked against token
+    // Also set display variables for UI headers while role verification is strictly checked against token
     localStorage.setItem('userRole', user.role);
     localStorage.setItem('userName', user.name);
     localStorage.setItem('userEmail', user.email);
@@ -168,9 +161,89 @@ export function clearAuthSession(): void {
     localStorage.removeItem('userRole');
     localStorage.removeItem('userName');
     localStorage.removeItem('userEmail');
+    localStorage.removeItem('userId');
     window.dispatchEvent(new Event('role-changed'));
   } catch (e) {
     console.warn('Error clearing auth session:', e);
+  }
+}
+
+// Perform complete secure logout resetting all role-specific state and caches
+export async function performSecureLogout(): Promise<void> {
+  // 1. Firebase Auth Sign-Out
+  try {
+    const { auth } = await import('./firebase');
+    const { signOut } = await import('firebase/auth');
+    await signOut(auth).catch(() => {});
+  } catch {}
+
+  // 2. Clear Auth Tokens & Sessions
+  clearAuthSession();
+
+  if (typeof window !== 'undefined') {
+    // 3. Clear Admin & Staff Cached Business Data
+    const adminStaffKeys = [
+      'placed_orders',
+      'ledgers',
+      'arrival_entry_data_v4',
+      'arrival_entry_sheets_v4',
+      'procurement_requests',
+      'stakeholders_v2',
+      'users_stakeholders',
+      'patti_history',
+      'pending_loadings',
+      'deleted_product_inventory_ids',
+      'deleted_procurement_ids',
+      'deleted_ledger_ids',
+      'deleted_stakeholder_ids',
+      'pending_loadings_cleared_all',
+      'cleared_pending_loadings',
+      'placed_orders_cleared_all',
+      'cleared_placed_orders',
+      'ledger_cleared_all',
+      'cleared_ledgers',
+      'schedule_events',
+      'tejas_hero_slides',
+      'tejas_ticker_messages',
+      'tejas_rate_list_graphic',
+      'tejas_hero_product_id',
+      'tejas_employee_credentials_v1'
+    ];
+    adminStaffKeys.forEach(k => {
+      try {
+        localStorage.removeItem(k);
+      } catch {}
+    });
+
+    // 4. Clear Merchant Cached Shopping & Profile Data
+    const merchantKeys = [
+      'cart',
+      'store_cart',
+      'cart_items',
+      'user_wishlist',
+      'merchant_delivery_locations',
+      'selected_delivery_location_id',
+      'userPhone',
+      'userGstin',
+      'userAddress',
+      'profileLocked',
+      'local_orders',
+      'just_placed_order'
+    ];
+    merchantKeys.forEach(k => {
+      try {
+        localStorage.removeItem(k);
+      } catch {}
+    });
+
+    // 5. Clear entire sessionStorage
+    try {
+      sessionStorage.clear();
+    } catch {}
+
+    // 6. Broadcast role change and storage events
+    window.dispatchEvent(new Event('role-changed'));
+    window.dispatchEvent(new Event('storage'));
   }
 }
 

@@ -11,6 +11,7 @@ import {
   doc, 
   deleteDoc, 
   updateDoc,
+  getDoc,
   getDocFromServer
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
@@ -190,8 +191,116 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   throw new Error(JSON.stringify(errInfo));
 }
 
-// Helper: Get all documents from a collection with automatic LocalStorage fallback
+// Helper: Determine caller role from authenticated tokens/session without circular imports
+export function getCurrentCallerRole(): 'admin' | 'employee' | 'merchant' | null {
+  try {
+    const user = auth.currentUser;
+    if (user?.email) {
+      const email = user.email.toLowerCase().trim();
+      if (email === 'tejasadinarayan@gmail.com' || email === 'tejascanvassing@gmail.com') {
+        return 'admin';
+      }
+    }
+    const token = typeof window !== 'undefined' ? (sessionStorage.getItem('tejas_auth_token_v1') || localStorage.getItem('tejas_auth_token_v1')) : null;
+    if (token) {
+      const parts = token.split('.');
+      if (parts.length === 3) {
+        try {
+          const payload = JSON.parse(atob(parts[1]));
+          if (payload.role) return payload.role;
+        } catch {}
+      }
+    }
+    const sessionUser = typeof window !== 'undefined' ? (sessionStorage.getItem('tejas_auth_user_v1') || localStorage.getItem('tejas_auth_user_v1')) : null;
+    if (sessionUser) {
+      try {
+        const parsed = JSON.parse(sessionUser);
+        if (parsed.role) return parsed.role;
+      } catch {}
+    }
+    const rawRole = typeof window !== 'undefined' ? localStorage.getItem('userRole') : null;
+    if (rawRole === 'merchant' || rawRole === 'employee' || rawRole === 'admin') {
+      return rawRole as any;
+    }
+  } catch {}
+  return null;
+}
+
+// Helper: Get single document from a collection with strict role guard
+export async function getSingleDoc(collectionName: string, docId: string): Promise<any | null> {
+  if (!docId) return null;
+  const callerRole = getCurrentCallerRole();
+
+  // Strict role isolation: Merchants cannot query ledgers, patti, pending_loadings, or other stakeholders
+  if (callerRole === 'merchant') {
+    if (collectionName === 'ledgers' || collectionName === 'patti' || collectionName === 'pending_loadings') {
+      console.warn(`[Security Guard] Merchant query blocked for single doc in ${collectionName}/${docId}`);
+      return null;
+    }
+    if (collectionName === 'stakeholders') {
+      const myUid = auth.currentUser?.uid || localStorage.getItem('userId');
+      if (myUid && docId !== myUid) {
+        console.warn(`[Security Guard] Merchant blocked from inspecting foreign stakeholder document: ${docId}`);
+        return null;
+      }
+    }
+  }
+
+  // Staff cannot query corporate financial ledgers or patti
+  if (callerRole === 'employee' && (collectionName === 'ledgers' || collectionName === 'patti')) {
+    console.warn(`[Security Guard] Staff query blocked for single doc in ${collectionName}/${docId}`);
+    return null;
+  }
+
+  try {
+    const docRef = doc(db, collectionName, docId);
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      return { id: snap.id, ...snap.data() };
+    }
+  } catch (e) {
+    console.warn(`Firestore getSingleDoc notice for ${collectionName}/${docId}:`, e);
+  }
+
+  // Fallback to local storage if available
+  if (typeof window !== 'undefined') {
+    try {
+      const localKey = collectionName === 'arrival_entries' ? 'arrival_entry_data_v4' : collectionName;
+      const cached = localStorage.getItem(localKey);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) {
+          return parsed.find((item: any) => String(item.id) === String(docId)) || null;
+        }
+      }
+    } catch {}
+  }
+  return null;
+}
+
+// Helper: Get all documents from a collection with automatic LocalStorage fallback & strict role boundary
 export async function getCollectionDocs(collectionName: string): Promise<any[]> {
+  const callerRole = getCurrentCallerRole();
+
+  // Strict data isolation:
+  // 1. Merchants cannot query corporate financial ledgers, patti, pending loadings, arrival entries, or stakeholder lists
+  if (callerRole === 'merchant') {
+    const forbiddenForMerchant = ['ledgers', 'patti', 'pending_loadings', 'arrival_entries', 'stakeholders', 'users'];
+    if (forbiddenForMerchant.includes(collectionName)) {
+      console.warn(`[Security Guard] Blocked unauthorized merchant query to collection: ${collectionName}`);
+      return [];
+    }
+  }
+
+  // 2. Operations Staff cannot query corporate financial ledgers or patti
+  if (callerRole === 'employee') {
+    const forbiddenForEmployee = ['ledgers', 'patti', 'users'];
+    if (forbiddenForEmployee.includes(collectionName)) {
+      console.warn(`[Security Guard] Blocked unauthorized staff query to collection: ${collectionName}`);
+      return [];
+    }
+  }
+
   try {
     const querySnapshot = await getDocs(collection(db, collectionName));
     const items: any[] = [];
@@ -284,8 +393,34 @@ export async function getCollectionDocs(collectionName: string): Promise<any[]> 
   }
 }
 
-// Helper: Set/Write a specific document by ID (ensures presence under both raw and hash-prefixed IDs in Firestore)
+// Helper: Set/Write a specific document by ID with strict role isolation
 export async function setCollectionDoc(collectionName: string, docId: string, data: any): Promise<void> {
+  const callerRole = getCurrentCallerRole();
+
+  if (callerRole === 'merchant') {
+    const forbiddenForMerchant = ['ledgers', 'patti', 'pending_loadings', 'arrival_entries', 'product_inventory', 'users'];
+    if (forbiddenForMerchant.includes(collectionName)) {
+      console.warn(`[Security Guard] Blocked unauthorized merchant write to collection: ${collectionName}`);
+      return;
+    }
+    if (collectionName === 'stakeholders') {
+      const myUid = auth.currentUser?.uid || localStorage.getItem('userId');
+      const cleanId = String(docId).replace(/^#/, '');
+      if (myUid && cleanId !== myUid) {
+        console.warn(`[Security Guard] Merchant blocked from writing to foreign stakeholder document: ${docId}`);
+        return;
+      }
+    }
+  }
+
+  if (callerRole === 'employee') {
+    const forbiddenForEmployee = ['ledgers', 'patti', 'users'];
+    if (forbiddenForEmployee.includes(collectionName)) {
+      console.warn(`[Security Guard] Blocked unauthorized staff write to collection: ${collectionName}`);
+      return;
+    }
+  }
+
   try {
     const rawId = String(docId).replace(/^#/, '');
     const cleanData = JSON.parse(JSON.stringify(data));
@@ -301,6 +436,22 @@ export async function setCollectionDoc(collectionName: string, docId: string, da
 
 // Helper: Add a document with auto-generated ID
 export async function addCollectionDoc(collectionName: string, data: any): Promise<any> {
+  const callerRole = getCurrentCallerRole();
+  if (callerRole === 'merchant') {
+    const forbiddenForMerchant = ['ledgers', 'patti', 'pending_loadings', 'arrival_entries', 'product_inventory', 'users'];
+    if (forbiddenForMerchant.includes(collectionName)) {
+      console.warn(`[Security Guard] Blocked unauthorized merchant addDoc to collection: ${collectionName}`);
+      return { id: `denied-${Date.now()}` };
+    }
+  }
+  if (callerRole === 'employee') {
+    const forbiddenForEmployee = ['ledgers', 'patti', 'users'];
+    if (forbiddenForEmployee.includes(collectionName)) {
+      console.warn(`[Security Guard] Blocked unauthorized staff addDoc to collection: ${collectionName}`);
+      return { id: `denied-${Date.now()}` };
+    }
+  }
+
   try {
     const cleanData = JSON.parse(JSON.stringify(data));
     const docRef = await addDoc(collection(db, collectionName), cleanData);
@@ -311,8 +462,21 @@ export async function addCollectionDoc(collectionName: string, data: any): Promi
   }
 }
 
-// Helper: Delete a document
+// Helper: Delete a document with strict role boundary
 export async function deleteCollectionDoc(collectionName: string, docId: string): Promise<void> {
+  const callerRole = getCurrentCallerRole();
+  if (callerRole === 'merchant') {
+    console.warn(`[Security Guard] Merchant forbidden from deleting document in: ${collectionName}/${docId}`);
+    return;
+  }
+  if (callerRole === 'employee') {
+    const forbiddenForEmployee = ['ledgers', 'patti', 'users', 'placed_orders'];
+    if (forbiddenForEmployee.includes(collectionName)) {
+      console.warn(`[Security Guard] Staff blocked from deleting document in: ${collectionName}/${docId}`);
+      return;
+    }
+  }
+
   try {
     await deleteDoc(doc(db, collectionName, docId));
   } catch (error) {

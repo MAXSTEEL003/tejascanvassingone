@@ -25,6 +25,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, formatINR } from '../lib/utils';
 import { getCollectionDocs } from '../lib/firebase';
+import { getVerifiedUserRole } from '../lib/auth';
 
 interface CommandPaletteProps {
   isOpen: boolean;
@@ -50,41 +51,71 @@ export default function CommandPalette({ isOpen, setIsOpen }: CommandPaletteProp
   const [placedOrders, setPlacedOrders] = useState<any[]>([]);
   const [arrivals, setArrivals] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [role, setRole] = useState<'admin' | 'employee' | 'merchant' | string>(() => getVerifiedUserRole() || 'merchant');
+
+  useEffect(() => {
+    const handleSyncRole = () => setRole(getVerifiedUserRole() || 'merchant');
+    window.addEventListener('storage', handleSyncRole);
+    window.addEventListener('role-changed', handleSyncRole);
+    return () => {
+      window.removeEventListener('storage', handleSyncRole);
+      window.removeEventListener('role-changed', handleSyncRole);
+    };
+  }, []);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Load all indexable data
+  // Load indexable data strictly partitioned by authenticated role
   const loadIndexableData = async () => {
     setIsLoading(true);
     try {
-      // 1. Load Products strictly from Firestore
+      // 1. Load Products for all roles
       const prdDocs = await getCollectionDocs('product_inventory').catch(() => []);
       const validPrds = (prdDocs || []).filter((p: any) => p && p.id && !String(p.id).startsWith('prod-'));
       setProducts(validPrds);
 
-      // 2. Load Procurement Orders (Customer/Requests)
-      const cloudReqs = await getCollectionDocs('procurement_requests');
-      const localReqs = JSON.parse(localStorage.getItem('procurement_requests') || '[]');
-      const combinedReqs = [...cloudReqs, ...localReqs]
-        .filter((o: any) => o && o.id && !String(o.id).startsWith('#ORD-99') && !String(o.id).startsWith('TC-0000'));
-      const uniqueReqs = Array.from(new Map(combinedReqs.map(item => [item.id, item])).values());
-      setProcurementOrders(uniqueReqs);
+      if (role === 'merchant') {
+        // Merchant strictly queries their own orders only; never corporate contracts or arrivals
+        const currentUid = localStorage.getItem('userId') || '';
+        const currentName = (localStorage.getItem('userName') || '').trim().toLowerCase();
+        const cloudReqs = await getCollectionDocs('procurement_requests').catch(() => []);
+        const localReqs = JSON.parse(localStorage.getItem('procurement_requests') || '[]');
+        const myOrders = [...cloudReqs, ...localReqs].filter((o: any) => {
+          if (!o || !o.id) return false;
+          const bName = String(o.buyer || '').trim().toLowerCase();
+          const bId = String(o.buyerId || o.userId || '').trim();
+          return (currentUid && bId === currentUid) || (currentName && bName.includes(currentName));
+        });
+        const uniqueOrders = Array.from(new Map(myOrders.map(item => [item.id, item])).values());
+        setProcurementOrders(uniqueOrders);
+        setPlacedOrders([]);
+        setArrivals([]);
+      } else if (role === 'employee') {
+        // Operations staff indexes products and arrival sheets; never corporate financial ledgers or placed orders
+        const localArrivals = JSON.parse(localStorage.getItem('arrival_entry_data_v4') || '[]');
+        setArrivals(localArrivals.filter((r: any) => r && (r.billNo || r.millerName || r.partyName)));
+        setProcurementOrders([]);
+        setPlacedOrders([]);
+      } else {
+        // Admin indexes full operational and corporate datasets
+        const cloudReqs = await getCollectionDocs('procurement_requests').catch(() => []);
+        const localReqs = JSON.parse(localStorage.getItem('procurement_requests') || '[]');
+        const combinedReqs = [...cloudReqs, ...localReqs]
+          .filter((o: any) => o && o.id && !String(o.id).startsWith('#ORD-99') && !String(o.id).startsWith('TC-0000'));
+        setProcurementOrders(Array.from(new Map(combinedReqs.map(item => [item.id, item])).values()));
 
-      // 3. Load Placed Orders (Corporate / Contracts)
-      const cloudPlaced = await getCollectionDocs('placed_orders');
-      const localPlaced = JSON.parse(localStorage.getItem('placed_orders') || '[]');
-      const combinedPlaced = [...cloudPlaced, ...localPlaced]
-        .filter((o: any) => o && o.id && o.id !== 'ORD-TC-1024' && !String(o.id).startsWith('#ORD-99') && !String(o.id).startsWith('TC-0000'));
-      const uniquePlaced = Array.from(new Map(combinedPlaced.map(item => [item.id, item])).values());
-      setPlacedOrders(uniquePlaced);
+        const cloudPlaced = await getCollectionDocs('placed_orders').catch(() => []);
+        const localPlaced = JSON.parse(localStorage.getItem('placed_orders') || '[]');
+        const combinedPlaced = [...cloudPlaced, ...localPlaced]
+          .filter((o: any) => o && o.id && o.id !== 'ORD-TC-1024' && !String(o.id).startsWith('#ORD-99') && !String(o.id).startsWith('TC-0000'));
+        setPlacedOrders(Array.from(new Map(combinedPlaced.map(item => [item.id, item])).values()));
 
-      // 4. Load Inventory Arrivals (Excel-style ledger entries)
-      const localArrivals = JSON.parse(localStorage.getItem('arrival_entry_data_v4') || '[]');
-      setArrivals(localArrivals.filter((r: any) => r && (r.billNo || r.millerName || r.partyName)));
-
+        const localArrivals = JSON.parse(localStorage.getItem('arrival_entry_data_v4') || '[]');
+        setArrivals(localArrivals.filter((r: any) => r && (r.billNo || r.millerName || r.partyName)));
+      }
     } catch (e) {
-      console.error('Command Palette indexing failed. Proceeding with local cache.', e);
+      console.error('Command Palette indexing failed. Proceeding with role cache.', e);
     } finally {
       setIsLoading(false);
     }
@@ -118,52 +149,75 @@ export default function CommandPalette({ isOpen, setIsOpen }: CommandPaletteProp
     }
   }, [isOpen]);
 
-  // Pre-compiled list of direct navigation links
-  const navigationShortcuts: CommandItem[] = [
-    { id: 'nav-dashboard', category: 'Pages', title: 'Sales Order Dashboard', subtitle: 'Pipeline requests, order placement & custom approvals', path: '/dashboard', icon: ShoppingCart },
-    { id: 'nav-placed-orders', category: 'Pages', title: 'Placed Contracts & Shipments', subtitle: 'Logistics tracking, supplier maps and PO dispatches', path: '/placed-orders', icon: Package },
-    { id: 'nav-inventory', category: 'Pages', title: 'Catalog & Inventory stock', subtitle: 'Modify grain products, prices, and replenishment flags', path: '/inventory', icon: Warehouse },
-    { id: 'nav-arrival-entry', category: 'Pages', title: 'Live Arrival Records Spreadsheet', subtitle: 'Excel ledger grid for incoming mill billing accounts', path: '/arrival-entry', icon: FileSpreadsheet },
-    { id: 'nav-payments', category: 'Pages', title: 'Aging & Overdue Payments', subtitle: 'Receive overdue billing trackers and automated alerts', path: '/payments', icon: CreditCard },
-    { id: 'nav-ledger', category: 'Pages', title: 'Accounts Ledger', subtitle: 'Reconciliation tables, party transactions, and statements', path: '/ledger', icon: BookOpen },
-    { id: 'nav-patti', category: 'Pages', title: 'Commercial Patti Calculation Ledger', subtitle: 'Run market fees, purchase weights and billing formulas', path: '/patti', icon: Calculator },
-    { id: 'nav-users', category: 'Pages', title: 'Customer & Partner Directory', subtitle: 'Contact records for buyers, millers, employees and agents', path: '/users', icon: Users },
-    { id: 'nav-analytics', category: 'Pages', title: 'Analytics Insights', subtitle: 'Data visualizations of sales distribution and price trackers', path: '/analytics', icon: BarChart3 },
-    { id: 'nav-schedule', category: 'Pages', title: 'Work Schedule & Reminders', subtitle: 'Google Calendar style work schedule, reminders & staff tasks', path: '/schedule', icon: Calendar },
-    { id: 'nav-settings', category: 'Pages', title: 'App Settings & Alerts', subtitle: 'Manage low-stock levels, text alerts, and notification lists', path: '/settings', icon: Bell }
-  ];
+  // Pre-compiled list of direct navigation links strictly partitioned by role
+  const navigationShortcuts: CommandItem[] = useMemo(() => {
+    if (role === 'merchant') {
+      return [
+        { id: 'nav-store', category: 'Pages', title: 'Product Catalog & Store', subtitle: 'Browse available rice varieties, bags, and live mill pricing', path: '/store', icon: ShoppingCart },
+        { id: 'nav-my-orders', category: 'Pages', title: 'My Procurement Orders', subtitle: 'Track your placed orders, invoices, and dispatch delivery status', path: '/my-orders', icon: Package },
+        { id: 'nav-bag', category: 'Pages', title: 'Shopping Bag', subtitle: 'Review selected grains, destination facilities, and checkout', path: '/bag', icon: ShoppingCart },
+        { id: 'nav-brokerage', category: 'Pages', title: 'Brokerage Statements', subtitle: 'View commission breakdowns and transaction receipts', path: '/brokerage', icon: Calculator },
+        { id: 'nav-profile', category: 'Pages', title: 'Commercial Profile & KYC', subtitle: 'Manage company billing coordinates and delivery facilities', path: '/profile', icon: Users }
+      ];
+    }
+
+    if (role === 'employee') {
+      return [
+        { id: 'nav-inventory', category: 'Pages', title: 'Catalog & Inventory Stock', subtitle: 'Inspect grain products, stock replenishment, and arrival specs', path: '/inventory', icon: Warehouse },
+        { id: 'nav-schedule', category: 'Pages', title: 'Operations Schedule & Tasks', subtitle: 'Field assignments, dispatch reminders, and daily duties', path: '/schedule', icon: Calendar },
+        { id: 'nav-arrival-entry', category: 'Pages', title: 'Live Arrival Records Spreadsheet', subtitle: 'Log incoming mill trucks and warehouse weighbridge sheets', path: '/arrival-entry', icon: FileSpreadsheet }
+      ];
+    }
+
+    // Default: Executive Admin Portal shortcuts
+    return [
+      { id: 'nav-dashboard', category: 'Pages', title: 'Sales Order Dashboard', subtitle: 'Pipeline requests, order placement & custom approvals', path: '/dashboard', icon: ShoppingCart },
+      { id: 'nav-placed-orders', category: 'Pages', title: 'Placed Contracts & Shipments', subtitle: 'Logistics tracking, supplier maps and PO dispatches', path: '/placed-orders', icon: Package },
+      { id: 'nav-inventory', category: 'Pages', title: 'Catalog & Inventory stock', subtitle: 'Modify grain products, prices, and replenishment flags', path: '/inventory', icon: Warehouse },
+      { id: 'nav-arrival-entry', category: 'Pages', title: 'Live Arrival Records Spreadsheet', subtitle: 'Excel ledger grid for incoming mill billing accounts', path: '/arrival-entry', icon: FileSpreadsheet },
+      { id: 'nav-payments', category: 'Pages', title: 'Aging & Overdue Payments', subtitle: 'Receive overdue billing trackers and automated alerts', path: '/payments', icon: CreditCard },
+      { id: 'nav-ledger', category: 'Pages', title: 'Accounts Ledger', subtitle: 'Reconciliation tables, party transactions, and statements', path: '/ledger', icon: BookOpen },
+      { id: 'nav-patti', category: 'Pages', title: 'Commercial Patti Calculation Ledger', subtitle: 'Run market fees, purchase weights and billing formulas', path: '/patti', icon: Calculator },
+      { id: 'nav-users', category: 'Pages', title: 'Customer & Partner Directory', subtitle: 'Contact records for buyers, millers, employees and agents', path: '/users', icon: Users },
+      { id: 'nav-analytics', category: 'Pages', title: 'Analytics Insights', subtitle: 'Data visualizations of sales distribution and price trackers', path: '/analytics', icon: BarChart3 },
+      { id: 'nav-schedule', category: 'Pages', title: 'Work Schedule & Reminders', subtitle: 'Google Calendar style work schedule, reminders & staff tasks', path: '/schedule', icon: Calendar },
+      { id: 'nav-settings', category: 'Pages', title: 'App Settings & Alerts', subtitle: 'Manage low-stock levels, text alerts, and notification lists', path: '/settings', icon: Bell }
+    ];
+  }, [role]);
 
   // Compile other types of content into searchable command items
   const indexedItems = useMemo(() => {
     const list: CommandItem[] = [...navigationShortcuts];
 
-    // Map Customer/Procurement Orders (Dashboard)
+    // Map Customer/Procurement Orders
     procurementOrders.forEach(o => {
       list.push({
         id: `po-${o.id}`,
         category: 'Customer Orders',
-        title: `${o.id} • ${o.buyer || 'Unknown Buyer'}`,
+        title: `${o.id} • ${o.buyer || 'Your Order'}`,
         subtitle: `Request for ${o.qty || 0} QTLs of ${o.product || 'Grain'} • Status: ${o.status || 'Pending'}`,
-        path: '/dashboard', // Navigates to dashboard, can be highlighted
+        path: role === 'merchant' ? '/my-orders' : '/dashboard',
         icon: FileText,
         metadata: { id: o.id, ...o }
       });
     });
 
-    // Map Placed Orders / Contracts
-    placedOrders.forEach(po => {
-      const displayTotal = po.total || (po.netAmt ? `₹ ${formatINR(po.netAmt)}` : '');
-      const locStr = (po.origin && po.destination) ? ` • ${po.origin} ➔ ${po.destination}` : '';
-      list.push({
-        id: `contract-${po.id}`,
-        category: 'Placed Orders',
-        title: `Contract ID: ${po.id}`,
-        subtitle: `Grain: ${po.items || 'Rice Brand'} • Vol Total: ${displayTotal}${locStr} • ${po.status || 'Active'}`,
-        path: po.id && !po.id.startsWith('TC-0') ? `/order/${po.id}` : '/placed-orders',
-        icon: Package,
-        metadata: { id: po.id, ...po }
+    // Map Placed Orders / Contracts (Admin only)
+    if (role === 'admin') {
+      placedOrders.forEach(po => {
+        const displayTotal = po.total || (po.netAmt ? `₹ ${formatINR(po.netAmt)}` : '');
+        const locStr = (po.origin && po.destination) ? ` • ${po.origin} ➔ ${po.destination}` : '';
+        list.push({
+          id: `contract-${po.id}`,
+          category: 'Placed Orders',
+          title: `Contract ID: ${po.id}`,
+          subtitle: `Grain: ${po.items || 'Rice Brand'} • Vol Total: ${displayTotal}${locStr} • ${po.status || 'Active'}`,
+          path: po.id && !po.id.startsWith('TC-0') ? `/order/${po.id}` : '/placed-orders',
+          icon: Package,
+          metadata: { id: po.id, ...po }
+        });
       });
-    });
+    }
 
     // Map Catalog Products
     products.forEach(p => {
@@ -172,28 +226,30 @@ export default function CommandPalette({ isOpen, setIsOpen }: CommandPaletteProp
         category: 'Products',
         title: `${p.name} (${p.id})`,
         subtitle: `Brand: ${p.brand || 'Unbranded'} • Base Price: ₹ ${formatINR(p.price || 0)}/QTL • Status: ${p.status || 'Active'}`,
-        path: '/inventory',
+        path: role === 'merchant' ? '/store' : '/inventory',
         icon: Archive,
         metadata: { id: p.id, ...p }
       });
     });
 
-    // Map Live Ledger Arrivals
-    arrivals.forEach((arr, idx) => {
-      const desc = `${arr.qty ? arr.qty + ' QTLS' : ''} • Bill #${arr.billNo || 'N/A'} • Supplier: ${arr.millerName || 'Unassigned'}`;
-      list.push({
-        id: `arrival-row-${idx}`,
-        category: 'Inventory Arrivals',
-        title: `${arr.partyName || 'Unknown Buyer'} • Bill Ref: ${arr.billNo || '#' + idx}`,
-        subtitle: desc + ` • Pending: ${arr.noOfDays ? arr.noOfDays + ' Days' : 'Not Settled'}`,
-        path: '/arrival-entry',
-        icon: FileSpreadsheet,
-        metadata: { ...arr }
+    // Map Live Ledger Arrivals (Staff and Admin only)
+    if (role !== 'merchant') {
+      arrivals.forEach((arr, idx) => {
+        const desc = `${arr.qty ? arr.qty + ' QTLS' : ''} • Bill #${arr.billNo || 'N/A'} • Supplier: ${arr.millerName || 'Unassigned'}`;
+        list.push({
+          id: `arrival-row-${idx}`,
+          category: 'Inventory Arrivals',
+          title: `${arr.partyName || 'Unknown Buyer'} • Bill Ref: ${arr.billNo || '#' + idx}`,
+          subtitle: desc + ` • Pending: ${arr.noOfDays ? arr.noOfDays + ' Days' : 'Not Settled'}`,
+          path: '/arrival-entry',
+          icon: FileSpreadsheet,
+          metadata: { ...arr }
+        });
       });
-    });
+    }
 
     return list;
-  }, [products, procurementOrders, placedOrders, arrivals]);
+  }, [role, navigationShortcuts, products, procurementOrders, placedOrders, arrivals]);
 
   // Filter based on search input
   const filteredItems = useMemo(() => {

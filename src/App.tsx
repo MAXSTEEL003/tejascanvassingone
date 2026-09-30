@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { getVerifiedUserRole } from './lib/auth';
+import { AdminRoute, StaffRoute, MerchantRoute } from './components/RouteGuards';
 import { CartProvider } from './context/CartContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
@@ -54,25 +55,12 @@ function setStorageItem(key: string, value: string): void {
 // Dedicated route component for Admin Portal:
 // If unauthenticated as admin, renders the clean bookmark-friendly Admin LoginView.
 // If authenticated as admin, renders MainLayout with OrdersDashboard.
+// If authenticated as employee or merchant, immediately redirects to their respective portals.
 function AdminPortalRoute() {
-  const [isAdmin, setIsAdmin] = useState(() => {
-    try {
-      const verified = getVerifiedUserRole();
-      return verified === 'admin' || (typeof window !== 'undefined' && localStorage.getItem('userRole') === 'admin');
-    } catch {
-      return false;
-    }
-  });
+  const [role, setRole] = useState<'admin' | 'employee' | 'merchant' | null>(() => getVerifiedUserRole());
 
   useEffect(() => {
-    const handleSync = () => {
-      try {
-        const verified = getVerifiedUserRole();
-        setIsAdmin(verified === 'admin' || localStorage.getItem('userRole') === 'admin');
-      } catch {
-        setIsAdmin(false);
-      }
-    };
+    const handleSync = () => setRole(getVerifiedUserRole());
     window.addEventListener('storage', handleSync);
     window.addEventListener('role-changed', handleSync);
     return () => {
@@ -81,8 +69,16 @@ function AdminPortalRoute() {
     };
   }, []);
 
-  if (isAdmin) {
+  if (role === 'admin') {
     return <MainLayout />;
+  }
+
+  if (role === 'employee') {
+    return <Navigate to="/inventory" replace />;
+  }
+
+  if (role === 'merchant') {
+    return <Navigate to="/store" replace />;
   }
 
   return <LoginView secretRole="admin" />;
@@ -227,29 +223,53 @@ export default function App() {
               <Route path="/dashboard" element={<OrdersDashboard />} />
             </Route>
 
-            <Route element={<MainLayout />}>
-              <Route path="/store" element={<StoreManagement />} />
-              <Route path="/shop" element={<StoreManagement />} />
-              <Route path="/bag" element={<BagView />} />
-              <Route path="/cart" element={<Navigate to="/bag" replace />} />
-              <Route path="/profile" element={<ProfileView />} />
-              <Route path="/inventory" element={<ProductInventory />} />
-              <Route path="/placed-orders" element={<PlacedOrders />} />
-              <Route path="/my-orders" element={<PlacedOrders forceMerchantView={true} />} />
-              <Route path="/brokerage" element={<BrokerageView />} />
-              <Route path="/order/:id" element={<OrderDetails />} />
-              <Route path="/users" element={<UsersManagement />} />
-              <Route path="/analytics" element={<AnalyticsDashboard />} />
-              <Route path="/tasks" element={<TasksManagement />} />
-              <Route path="/schedule" element={<TasksManagement />} />
-              <Route path="/checkout" element={<CheckoutView />} />
-              <Route path="/payments" element={<PaymentTracking />} />
-              <Route path="/settings" element={<NotificationSettings />} />
-              <Route path="/patti" element={<PattiView />} />
-              <Route path="/arrival-entry" element={<ArrivalEntry />} />
-              <Route path="/ledger" element={<LedgerManagement />} />
-              <Route path="/pending-loadings" element={<PendingLoadings />} />
+            {/* Admin-Only Secure Routes */}
+            <Route element={<AdminRoute />}>
+              <Route element={<MainLayout />}>
+                <Route path="/placed-orders" element={<PlacedOrders />} />
+                <Route path="/order/:id" element={<OrderDetails />} />
+                <Route path="/users" element={<UsersManagement />} />
+                <Route path="/analytics" element={<AnalyticsDashboard />} />
+                <Route path="/payments" element={<PaymentTracking />} />
+                <Route path="/settings" element={<NotificationSettings />} />
+                <Route path="/patti" element={<PattiView />} />
+                <Route path="/ledger" element={<LedgerManagement />} />
+                <Route path="/pending-loadings" element={<PendingLoadings />} />
+              </Route>
             </Route>
+
+            {/* Operations Staff Routes (Staff + Admin supervisor) */}
+            <Route element={<StaffRoute />}>
+              <Route element={<MainLayout />}>
+                <Route path="/inventory" element={<ProductInventory />} />
+                <Route path="/tasks" element={<TasksManagement />} />
+                <Route path="/schedule" element={<TasksManagement />} />
+                <Route path="/arrival-entry" element={<ArrivalEntry />} />
+              </Route>
+            </Route>
+
+            {/* Merchant Public Catalog (Merchant + Unauthenticated Public, Admin/Staff redirected) */}
+            <Route element={<MerchantRoute allowPublic={true} />}>
+              <Route element={<MainLayout />}>
+                <Route path="/store" element={<StoreManagement />} />
+                <Route path="/shop" element={<StoreManagement />} />
+              </Route>
+            </Route>
+
+            {/* Merchant-Only Authenticated Routes (Requires Merchant Login) */}
+            <Route element={<MerchantRoute allowPublic={false} />}>
+              <Route element={<MainLayout />}>
+                <Route path="/bag" element={<BagView />} />
+                <Route path="/cart" element={<Navigate to="/bag" replace />} />
+                <Route path="/profile" element={<ProfileView />} />
+                <Route path="/my-orders" element={<PlacedOrders forceMerchantView={true} />} />
+                <Route path="/brokerage" element={<BrokerageView />} />
+                <Route path="/checkout" element={<CheckoutView />} />
+              </Route>
+            </Route>
+
+            {/* Global Fallback */}
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </BrowserRouter>
       </CartProvider>

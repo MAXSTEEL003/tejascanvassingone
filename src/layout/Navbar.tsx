@@ -15,12 +15,14 @@ import {
   User,
   Sliders,
   Download,
-  Sparkles
+  Sparkles,
+  LogOut
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { useNavigate, useLocation } from 'react-router-dom';
 import React, { useEffect, useState, useRef } from 'react';
+import { getVerifiedUserRole, performSecureLogout } from '../lib/auth';
 
 export default function Navbar({ 
   onSearchClick, 
@@ -98,7 +100,7 @@ export default function Navbar({
 
   const [role, setRole] = useState(() => {
     try {
-      return localStorage.getItem('userRole') || 'admin';
+      return getVerifiedUserRole() || 'admin';
     } catch {
       return 'admin';
     }
@@ -106,7 +108,7 @@ export default function Navbar({
 
   const [userName, setUserName] = useState(() => {
     try {
-      const r = localStorage.getItem('userRole') || 'admin';
+      const r = getVerifiedUserRole() || 'admin';
       const stored = localStorage.getItem('userName');
       if (stored && (stored.includes('V.K') || stored.includes('VK FOODS'))) {
         return r === 'admin' ? 'Tejas Canvassing' : r === 'merchant' ? 'Wholesale Merchant' : 'Procurement Staff';
@@ -120,7 +122,7 @@ export default function Navbar({
   useEffect(() => {
     const handleSync = () => {
       try {
-        const r = localStorage.getItem('userRole') || 'admin';
+        const r = getVerifiedUserRole() || 'admin';
         setRole(r);
         const stored = localStorage.getItem('userName');
         if (stored && (stored.includes('V.K') || stored.includes('VK FOODS'))) {
@@ -473,7 +475,7 @@ export default function Navbar({
                     </button>
                   </div>
 
-                  <div className="p-2.5 bg-surface-container border-t border-outline-variant/50">
+                  <div className="p-2.5 bg-surface-container border-t border-outline-variant/50 space-y-1.5">
                     <button
                       onClick={() => {
                         setIsSettingsMenuOpen(false);
@@ -483,6 +485,17 @@ export default function Navbar({
                     >
                       Open Full Settings
                       <ExternalLink className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={async () => {
+                        setIsSettingsMenuOpen(false);
+                        await performSecureLogout();
+                        navigate('/login?portal=admin');
+                      }}
+                      className="w-full py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer border border-rose-500/20"
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
+                      Sign Out
                     </button>
                   </div>
                 </motion.div>

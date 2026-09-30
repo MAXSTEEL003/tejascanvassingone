@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 import { auth } from '../lib/firebase';
+import { performSecureLogout } from '../lib/auth';
 import { cn } from '../lib/utils';
 import { 
   getDeliveryLocations, 
@@ -85,19 +86,11 @@ export default function ProfileView() {
 
   const handleSignOut = async () => {
     try {
-      await signOut(auth);
+      await performSecureLogout();
     } catch (err) {
       console.warn('Sign out warning:', err);
     }
-    localStorage.removeItem('userRole');
-    localStorage.removeItem('userName');
-    localStorage.removeItem('userPhone');
-    localStorage.removeItem('userGstin');
-    localStorage.removeItem('userAddress');
-    sessionStorage.clear();
-    window.dispatchEvent(new Event('role-changed'));
-    window.dispatchEvent(new Event('storage'));
-    navigate('/login', { replace: true });
+    navigate('/login?portal=merchant', { replace: true });
   };
 
   return (

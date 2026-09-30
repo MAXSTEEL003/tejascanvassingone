@@ -7,7 +7,8 @@ import { CartProvider, useCart } from '../context/CartContext';
 import { motion, AnimatePresence } from 'motion/react';
 import CommandPalette from '../components/CommandPalette';
 import GlobalCartDrawer from '../components/GlobalCartDrawer';
-import { auth, setCollectionDoc, getCollectionDocs } from '../lib/firebase';
+import { auth, setCollectionDoc, getCollectionDocs, getSingleDoc } from '../lib/firebase';
+import { getVerifiedUserRole, performSecureLogout } from '../lib/auth';
 import { cn } from '../lib/utils';
 import { Store, Package, LogOut, Percent, User, Building, Phone, X, Check, Sun, Moon, Search, Plus, Trash2, Warehouse, MapPin, ShoppingBasket, ShoppingBag, Building2, ShieldCheck, Edit3, Lock, Unlock, Settings, CheckCircle2, Copy, Calendar, Clock, Download } from 'lucide-react';
 import { getDeliveryLocations, saveDeliveryLocations, addDeliveryLocation, removeDeliveryLocation, DeliveryLocation } from '../utils/deliveryLocations';
@@ -97,34 +98,28 @@ function MerchantHeader({ onSearchClick }: { onSearchClick?: () => void }) {
   useEffect(() => {
     async function fetchUserProfile() {
       try {
-        const userEmail = currentUser?.email || localStorage.getItem('userEmail') || '';
-        const currentUid = currentUser?.uid || auth.currentUser?.uid || '';
-        if (!userEmail && !currentUid) return;
+        const currentUid = currentUser?.uid || auth.currentUser?.uid || localStorage.getItem('userId') || '';
+        if (!currentUid) return;
 
-        const docs = await getCollectionDocs('stakeholders').catch(() => []);
-        if (docs && docs.length > 0) {
-          const found = docs.find((d: any) => 
-            (currentUid && d.id === currentUid) ||
-            (userEmail && d.email?.toLowerCase() === userEmail.toLowerCase())
-          );
-          if (found) {
-            const cleanName = (found.name && !found.name.includes('V.K') && !found.name.includes('VK FOODS')) ? found.name : 'Authorized Merchant';
-            localStorage.setItem('userName', cleanName);
-            localStorage.setItem('userPhone', found.phone || '9342380981');
-            localStorage.setItem('userGstin', found.gstin || '29AAGCV7712M1ZP');
-            localStorage.setItem('userAddress', found.address || 'No. 15, APMC Yard, Yeshwanthpur, Bangalore, Karnataka - 560022');
-            localStorage.setItem('profileLocked', found.profileLocked ? 'true' : 'false');
-            
-            setProfName(cleanName);
-            setProfPhone(found.phone || '9342380981');
-            setProfGstin(found.gstin || '29AAGCV7712M1ZP');
-            setProfAddress(found.address || 'No. 15, APMC Yard, Yeshwanthpur, Bangalore, Karnataka - 560022');
-            setIsProfileLocked(!!found.profileLocked);
-            
-            // Dispatch synchronization signals
-            window.dispatchEvent(new Event('storage'));
-            window.dispatchEvent(new Event('profile-updated'));
-          }
+        // Securely query solely the current merchant's own profile record
+        const found = await getSingleDoc('stakeholders', currentUid).catch(() => null);
+        if (found) {
+          const cleanName = (found.name && !found.name.includes('V.K') && !found.name.includes('VK FOODS')) ? found.name : 'Authorized Merchant';
+          localStorage.setItem('userName', cleanName);
+          localStorage.setItem('userPhone', found.phone || '9342380981');
+          localStorage.setItem('userGstin', found.gstin || '29AAGCV7712M1ZP');
+          localStorage.setItem('userAddress', found.address || 'No. 15, APMC Yard, Yeshwanthpur, Bangalore, Karnataka - 560022');
+          localStorage.setItem('profileLocked', found.profileLocked ? 'true' : 'false');
+          
+          setProfName(cleanName);
+          setProfPhone(found.phone || '9342380981');
+          setProfGstin(found.gstin || '29AAGCV7712M1ZP');
+          setProfAddress(found.address || 'No. 15, APMC Yard, Yeshwanthpur, Bangalore, Karnataka - 560022');
+          setIsProfileLocked(!!found.profileLocked);
+          
+          // Dispatch synchronization signals
+          window.dispatchEvent(new Event('storage'));
+          window.dispatchEvent(new Event('profile-updated'));
         }
       } catch (err) {
         console.warn('Silent error retrieving user profile in header:', err);
@@ -150,19 +145,11 @@ function MerchantHeader({ onSearchClick }: { onSearchClick?: () => void }) {
 
   const handleLogout = async () => {
     try {
-      await signOut(auth);
-      localStorage.removeItem('userRole');
-      localStorage.removeItem('userName');
-      window.dispatchEvent(new Event('role-changed'));
-      window.dispatchEvent(new Event('storage'));
-      navigate('/login');
+      await performSecureLogout();
     } catch (err) {
-      localStorage.removeItem('userRole');
-      localStorage.removeItem('userName');
-      window.dispatchEvent(new Event('role-changed'));
-      window.dispatchEvent(new Event('storage'));
-      navigate('/login');
+      console.warn('Logout error:', err);
     }
+    navigate('/login?portal=merchant');
   };
 
   // Listen for custom open-profile-drawer events and route to /profile
@@ -1136,16 +1123,11 @@ function EmployeeHeader() {
 
   const handleLogout = async () => {
     try {
-      await signOut(auth);
-      localStorage.removeItem('userRole');
-      localStorage.removeItem('userName');
-      window.dispatchEvent(new Event('role-changed'));
-      window.dispatchEvent(new Event('storage'));
-      navigate('/login');
+      await performSecureLogout();
     } catch (err) {
-      localStorage.removeItem('userRole');
-      navigate('/login');
+      console.warn('Logout error:', err);
     }
+    navigate('/login?portal=employee');
   };
 
   return (
@@ -1238,7 +1220,7 @@ function MainLayoutContent({ onSearchClick }: { onSearchClick: () => void }) {
   const location = useLocation();
   const [role, setRole] = useState<'admin' | 'employee' | 'merchant' | string>(() => {
     try {
-      return localStorage.getItem('userRole') || 'merchant';
+      return getVerifiedUserRole() || 'merchant';
     } catch {
       return 'merchant';
     }
@@ -1247,7 +1229,7 @@ function MainLayoutContent({ onSearchClick }: { onSearchClick: () => void }) {
   useEffect(() => {
     const handleRoleSync = () => {
       try {
-        setRole(localStorage.getItem('userRole') || 'merchant');
+        setRole(getVerifiedUserRole() || 'merchant');
       } catch {
         setRole('merchant');
       }
@@ -1288,10 +1270,9 @@ function MainLayoutContent({ onSearchClick }: { onSearchClick: () => void }) {
   };
 
   // Strict role-based layout enforcement:
-  // 1. Employee role: strictly renders Employee portal (Inventory, Schedule)
+  // 1. Employee role: strictly renders Employee portal (Inventory, Schedule, Tasks, Arrival Entry)
   if (role === 'employee') {
-    // Confine employee strictly to inventory and schedule
-    const employeeAllowedPaths = ['/inventory', '/schedule', '/tasks'];
+    const employeeAllowedPaths = ['/inventory', '/schedule', '/tasks', '/arrival-entry'];
     if (!employeeAllowedPaths.includes(location.pathname)) {
       return <Navigate to="/inventory" replace />;
     }
@@ -1325,6 +1306,11 @@ function MainLayoutContent({ onSearchClick }: { onSearchClick: () => void }) {
 
   // 2. Merchant role: strictly renders Merchant portal (Store, My Orders, Brokerage, Bag, Profile)
   if (role === 'merchant') {
+    const merchantAllowedPaths = ['/store', '/shop', '/bag', '/cart', '/checkout', '/my-orders', '/brokerage', '/profile'];
+    if (!merchantAllowedPaths.includes(location.pathname)) {
+      return <Navigate to="/store" replace />;
+    }
+
     return (
       <div className="w-full min-h-dvh bg-[#fafaf9] dark:bg-[#07110c] flex flex-col items-center text-slate-900 dark:text-slate-100 font-sans antialiased">
         <div className="w-full max-w-4xl min-h-dvh bg-[#fafaf9] dark:bg-[#07110c] relative flex flex-col">
@@ -1354,6 +1340,10 @@ function MainLayoutContent({ onSearchClick }: { onSearchClick: () => void }) {
 
   // 3. Admin portal (Sidebar + Navbar) as standard executive console
   // Admin NEVER sees MerchantHeader, MerchantBottomBar, EmployeeHeader, or any Bag/Store UI
+  const adminForbiddenPaths = ['/store', '/shop', '/bag', '/cart', '/checkout', '/my-orders', '/brokerage'];
+  if (role === 'admin' && adminForbiddenPaths.includes(location.pathname)) {
+    return <Navigate to="/admin" replace />;
+  }
 
   return (
     <div 
