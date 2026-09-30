@@ -515,9 +515,7 @@ export default function AboutScrollExperience() {
                       )}
                     </svg>
                   </div>
-                  <div className="mt-2 px-2.5 py-0.5 rounded-full bg-black/60 border border-amber-400/30 backdrop-blur-md">
-                    <span className="text-[8.5px] font-bold text-amber-300 tracking-wide whitespace-nowrap">{selectedVariety.badge}</span>
-                  </div>
+
                 </div>
 
                 {/* ── Variety Pills ──
