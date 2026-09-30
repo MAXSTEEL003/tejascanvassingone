@@ -494,13 +494,7 @@ export default function LedgerManagement() {
       window.dispatchEvent(new CustomEvent('ledger-updated', { detail: { clearedAll: true } }));
 
       // 6. Delete all ledger documents from Firestore asynchronously
-      const deletePromises: Promise<any>[] = [];
-      Array.from(idsToDelete).forEach(id => {
-        const raw = String(id).replace(/^#/, '');
-        deletePromises.push(deleteCollectionDoc('ledgers', id));
-        deletePromises.push(deleteCollectionDoc('ledgers', raw));
-        deletePromises.push(deleteCollectionDoc('ledgers', `#${raw}`));
-      });
+      const deletePromises = Array.from(idsToDelete).map(id => deleteCollectionDoc('ledgers', id));
       await Promise.allSettled(deletePromises);
     } catch (err) {
       console.error("Failed to delete whole ledger:", err);

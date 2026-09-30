@@ -510,9 +510,7 @@ export default function UsersManagement() {
       const rawId = String(userId).replace(/^#/, '');
       await Promise.allSettled([
         deleteCollectionDoc('stakeholders', rawId),
-        deleteCollectionDoc('stakeholders', `#${rawId}`),
-        deleteCollectionDoc('stakeholders_v2', rawId),
-        deleteCollectionDoc('stakeholders_v2', `#${rawId}`)
+        deleteCollectionDoc('stakeholders_v2', rawId)
       ]);
     } catch (err) {
       console.warn("Error deleting stakeholder from Firestore:", err);

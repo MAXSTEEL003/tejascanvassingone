@@ -160,7 +160,7 @@ export default function CheckoutView() {
       });
       const nextNum = maxIdx + 1;
       const oniId = `ONI-${String(nextNum).padStart(4, '0')}`;
-      const finalOrderId = bulkData?.bulkOrder ? `TC-${Math.floor(1000 + Math.random() * 9000)}` : `#${oniId}`;
+      const finalOrderId = bulkData?.bulkOrder ? `TC-${Math.floor(1000 + Math.random() * 9000)}` : oniId;
       setCreatedOrderRef(finalOrderId);
       
       const buyerText = bulkData?.bulkOrder 

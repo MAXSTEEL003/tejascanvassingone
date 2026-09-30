@@ -5,7 +5,7 @@ import { AreaChart, Area, XAxis, ResponsiveContainer, Tooltip, CartesianGrid } f
 import { cn, formatINR, getRegisteredSuppliers, getPrimaryRegisteredSupplier, sanitizeSupplierName } from '../lib/utils';
 import { useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
-import { getCollectionDocs, syncCollection, setCollectionDoc, createLedgerEntriesForOrder, db } from '../lib/firebase';
+import { getCollectionDocs, syncCollection, setCollectionDoc, deleteCollectionDoc, createLedgerEntriesForOrder, db } from '../lib/firebase';
 import { doc, deleteDoc, collection, getDocs, onSnapshot } from 'firebase/firestore';
 import SearchableSelect from '../components/SearchableSelect';
 import { generateSupplierPOEmailHtml, generateBuyerConfirmationEmailHtml } from '../utils/poEmailTemplate';
@@ -902,24 +902,7 @@ export default function OrdersDashboard() {
     }
 
     try {
-      const snap = await getDocs(collection(db, 'procurement_requests')).catch(() => null);
-      if (snap) {
-        const promises: Promise<void>[] = [];
-        snap.forEach(docSnap => {
-          const data = docSnap.data();
-          const docNorm = String(docSnap.id || '').trim().toLowerCase().replace(/^#/, '');
-          const dataNorm = String(data?.id || '').trim().toLowerCase().replace(/^#/, '');
-          if (docNorm === normKey || dataNorm === normKey) {
-            promises.push(deleteDoc(doc(db, 'procurement_requests', docSnap.id)).catch(() => {}));
-          }
-        });
-        const raw = String(id).trim().replace(/^#/, '');
-        const hashed = `#${raw}`;
-        promises.push(deleteDoc(doc(db, 'procurement_requests', id)).catch(() => {}));
-        promises.push(deleteDoc(doc(db, 'procurement_requests', raw)).catch(() => {}));
-        promises.push(deleteDoc(doc(db, 'procurement_requests', hashed)).catch(() => {}));
-        await Promise.all(promises);
-      }
+      await deleteCollectionDoc('procurement_requests', id);
     } catch (err) {
       console.error("Failed to delete order from Firestore:", err);
     }
@@ -949,19 +932,9 @@ export default function OrdersDashboard() {
     }
 
     try {
-      const snap = await getDocs(collection(db, 'procurement_requests')).catch(() => null);
-      if (snap) {
-        const promises: Promise<void>[] = [];
-        snap.forEach(docSnap => {
-          const data = docSnap.data();
-          const docNorm = String(docSnap.id || '').trim().toLowerCase().replace(/^#/, '');
-          const dataNorm = String(data?.id || '').trim().toLowerCase().replace(/^#/, '');
-          if (selectedNormSet.has(docNorm) || selectedNormSet.has(dataNorm)) {
-            promises.push(deleteDoc(doc(db, 'procurement_requests', docSnap.id)).catch(() => {}));
-          }
-        });
-        await Promise.all(promises);
-      }
+      await Promise.allSettled(
+        selectedOrders.map(id => deleteCollectionDoc('procurement_requests', id))
+      );
     } catch (err) {
       console.error("Failed to delete selected orders from Firestore:", err);
     }
@@ -982,14 +955,9 @@ export default function OrdersDashboard() {
     localStorage.setItem('cleared_procurement_requests', 'true');
 
     try {
-      const snap = await getDocs(collection(db, 'procurement_requests')).catch(() => null);
-      if (snap) {
-        const promises: Promise<void>[] = [];
-        snap.forEach(docSnap => {
-          promises.push(deleteDoc(doc(db, 'procurement_requests', docSnap.id)).catch(() => {}));
-        });
-        await Promise.all(promises);
-      }
+      await Promise.allSettled(
+        allIds.map(id => deleteCollectionDoc('procurement_requests', id))
+      );
     } catch (err) {
       console.error("Failed to clear all orders from Firestore:", err);
     }
@@ -1114,7 +1082,7 @@ export default function OrdersDashboard() {
   };
 
   const handleReorderArchivedItem = async (archivedItem: any) => {
-    const newOrderId = `#ORD-${Math.floor(1000 + Math.random() * 9000)}`;
+    const newOrderId = `ORD-${Math.floor(1000 + Math.random() * 9000)}`;
     const now = new Date();
     const dateStr = `${now.getDate().toString().padStart(2, '0')}-${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][now.getMonth()]}-${now.getFullYear()}`;
     
@@ -1130,7 +1098,7 @@ export default function OrdersDashboard() {
     const updated = [clonedOrder, ...currentOrders];
     setCurrentOrders(updated);
     localStorage.setItem('procurement_requests', JSON.stringify(updated));
-    await setCollectionDoc('procurement_requests', newOrderId.replace(/^#/, ''), clonedOrder).catch(() => {});
+    await setCollectionDoc('procurement_requests', newOrderId, clonedOrder).catch(() => {});
     
     setArchivedFeedback(`Cloned order ${archivedItem.id} into active intent ${newOrderId}!`);
     setTimeout(() => setArchivedFeedback(null), 4000);
@@ -1439,20 +1407,9 @@ export default function OrdersDashboard() {
         try {
           addDeletedProcurementIds(selectedOrders);
 
-          const snap = await getDocs(collection(db, 'procurement_requests')).catch(() => null);
-          if (snap) {
-            const selectedNormSet = new Set(selectedOrders.map(s => String(s).trim().toLowerCase().replace(/^#/, '')));
-            const promises: Promise<void>[] = [];
-            snap.forEach(docSnap => {
-              const data = docSnap.data();
-              const docNorm = String(docSnap.id || '').trim().toLowerCase().replace(/^#/, '');
-              const dataNorm = String(data?.id || '').trim().toLowerCase().replace(/^#/, '');
-              if (selectedNormSet.has(docNorm) || selectedNormSet.has(dataNorm)) {
-                promises.push(deleteDoc(doc(db, 'procurement_requests', docSnap.id)).catch(() => {}));
-              }
-            });
-            await Promise.all(promises);
-          }
+          await Promise.allSettled(
+            selectedOrders.map(id => deleteCollectionDoc('procurement_requests', id))
+          );
         } catch (err) {
           console.error('Failed to delete approved requests from Firestore:', err);
         }
@@ -1483,7 +1440,7 @@ export default function OrdersDashboard() {
     const initials = newOrder.buyer.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
     
     const orderToAdd = {
-      id: `#${maId}`,
+      id: maId,
       date: (() => {
         const d = new Date();
         const day = d.getDate();

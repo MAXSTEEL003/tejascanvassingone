@@ -256,12 +256,8 @@ export default function ProductInventory() {
       window.dispatchEvent(new Event('storage'));
       window.dispatchEvent(new CustomEvent('inventory-updated', { detail: { deletedId: targetId, name: targetName } }));
 
-      // 7. Delete from Firestore asynchronously
-      await Promise.allSettled([
-        deleteDoc(doc(db, 'product_inventory', targetId)),
-        deleteDoc(doc(db, 'product_inventory', rawNorm)),
-        deleteDoc(doc(db, 'product_inventory', `#${rawNorm}`))
-      ]);
+      // 7. Delete from Firestore asynchronously with hardened multi-key cleanup
+      await deleteCollectionDoc('product_inventory', targetId);
     } catch (err) {
       console.error("Failed to delete product from database:", err);
     } finally {
@@ -382,7 +378,10 @@ export default function ProductInventory() {
             if (changed) {
               try {
                 localStorage.setItem('product_inventory', JSON.stringify(updated));
-                syncCollection('product_inventory', updated).catch(() => {});
+                const changedProds = updated.filter(p => p && p.supplier === primarySup);
+                for (const cp of changedProds) {
+                  setCollectionDoc('product_inventory', cp.id, cp).catch(() => {});
+                }
               } catch (e) {}
             }
             return updated;
@@ -459,9 +458,12 @@ export default function ProductInventory() {
     window.dispatchEvent(new CustomEvent('inventory-updated', { detail: { updatedProduct: editingCell } }));
 
     try {
-      await syncCollection('product_inventory', updated);
+      const editedItem = updated.find(p => p?.id === editingCell.id);
+      if (editedItem) {
+        await setCollectionDoc('product_inventory', editedItem.id, editedItem);
+      }
     } catch (err) {
-      console.error("Failed to sync inventory to database:", err);
+      console.error("Failed to sync edited product to database:", err);
     }
   };
 
@@ -552,7 +554,6 @@ export default function ProductInventory() {
 
     try {
       await setCollectionDoc('product_inventory', product.id, product);
-      await syncCollection('product_inventory', updated);
     } catch (err) {
       console.error("Failed to Sync Added Product:", err);
     }
@@ -586,7 +587,6 @@ export default function ProductInventory() {
 
     try {
       await setCollectionDoc('product_inventory', updatedProd.id, updatedProd);
-      await syncCollection('product_inventory', updated);
     } catch (err) {
       console.error("Failed to Sync Updated Product:", err);
     }

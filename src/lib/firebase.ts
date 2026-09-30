@@ -253,10 +253,14 @@ export async function getSingleDoc(collectionName: string, docId: string): Promi
   }
 
   try {
-    const docRef = doc(db, collectionName, docId);
-    const snap = await getDoc(docRef);
+    const rawId = String(docId).trim().replace(/^#/, '');
+    const docRef = doc(db, collectionName, rawId);
+    let snap = await getDoc(docRef);
+    if (!snap.exists()) {
+      snap = await getDoc(doc(db, collectionName, `#${rawId}`));
+    }
     if (snap.exists()) {
-      return { id: snap.id, ...snap.data() };
+      return { id: rawId, ...snap.data() };
     }
   } catch (e) {
     console.warn(`Firestore getSingleDoc notice for ${collectionName}/${docId}:`, e);
@@ -270,7 +274,8 @@ export async function getSingleDoc(collectionName: string, docId: string): Promi
       if (cached) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed)) {
-          return parsed.find((item: any) => String(item.id) === String(docId)) || null;
+          const rawId = String(docId).trim().replace(/^#/, '');
+          return parsed.find((item: any) => String(item.id || '').replace(/^#/, '') === rawId) || null;
         }
       }
     } catch {}
@@ -303,10 +308,25 @@ export async function getCollectionDocs(collectionName: string): Promise<any[]> 
 
   try {
     const querySnapshot = await getDocs(collection(db, collectionName));
-    const items: any[] = [];
-    querySnapshot.forEach((doc) => {
-      items.push({ id: doc.id, ...doc.data() });
+    const itemsMap = new Map<string, any>();
+    
+    querySnapshot.forEach((docSnap) => {
+      const docData = docSnap.data();
+      const rawId = docSnap.id.replace(/^#/, '');
+      const canonicalKey = rawId.toLowerCase();
+
+      const item = { id: rawId, ...docData };
+      if (item.id && typeof item.id === 'string') {
+        item.id = item.id.replace(/^#/, '');
+      }
+
+      // If already encountered, prefer un-prefixed canonical ID over '#'-prefixed
+      if (!itemsMap.has(canonicalKey) || !docSnap.id.startsWith('#')) {
+        itemsMap.set(canonicalKey, item);
+      }
     });
+
+    const items = Array.from(itemsMap.values());
 
     if (collectionName === 'procurement_requests') {
       try {
@@ -422,15 +442,20 @@ export async function setCollectionDoc(collectionName: string, docId: string, da
   }
 
   try {
-    const rawId = String(docId).replace(/^#/, '');
+    const rawId = String(docId).trim().replace(/^#/, '');
     const cleanData = JSON.parse(JSON.stringify(data));
+    if (cleanData && typeof cleanData === 'object' && cleanData.id) {
+      cleanData.id = String(cleanData.id).trim().replace(/^#/, '');
+    }
     
-    await Promise.all([
-      setDoc(doc(db, collectionName, rawId), cleanData, { merge: true }),
-      setDoc(doc(db, collectionName, `#${rawId}`), cleanData, { merge: true })
-    ]);
+    // Write ONLY canonical rawId (Do NOT write duplicate '#id' document!)
+    await setDoc(doc(db, collectionName, rawId), cleanData, { merge: true });
+
+    // Clean up any legacy duplicate '#rawId' document in Firestore
+    deleteDoc(doc(db, collectionName, `#${rawId}`)).catch(() => {});
   } catch (error) {
     console.warn(`Firestore setDoc warning for ${collectionName}/${docId}:`, error);
+    throw error;
   }
 }
 
@@ -462,7 +487,7 @@ export async function addCollectionDoc(collectionName: string, data: any): Promi
   }
 }
 
-// Helper: Delete a document with strict role boundary
+// Helper: Delete a document with strict role boundary and deterministic multi-key cleanup
 export async function deleteCollectionDoc(collectionName: string, docId: string): Promise<void> {
   const callerRole = getCurrentCallerRole();
   if (callerRole === 'merchant') {
@@ -477,10 +502,22 @@ export async function deleteCollectionDoc(collectionName: string, docId: string)
     }
   }
 
+  const rawId = String(docId).trim().replace(/^#/, '');
+  const hashedId = `#${rawId}`;
+  const targets = Array.from(new Set([docId, rawId, hashedId].filter(Boolean)));
+
   try {
-    await deleteDoc(doc(db, collectionName, docId));
+    const results = await Promise.allSettled(
+      targets.map(id => deleteDoc(doc(db, collectionName, id)))
+    );
+    const failure = results.find(r => r.status === 'rejected');
+    if (failure && failure.status === 'rejected') {
+      console.error(`Firestore deleteCollectionDoc failure for ${collectionName}/${docId}:`, failure.reason);
+      throw failure.reason;
+    }
   } catch (error) {
     console.warn(`Firestore deleteCollectionDoc notice for ${collectionName}/${docId}:`, error);
+    throw error;
   }
 }
 
@@ -550,9 +587,14 @@ export async function syncCollection(collectionName: string, localData: any[]): 
 
     const promises = meaningfulItems.map(async (item, idx) => {
       try {
-        const docId = item.id || `row-${idx}`;
+        const rawId = item.id ? String(item.id).trim().replace(/^#/, '') : `row-${idx}`;
         const cleanItem = JSON.parse(JSON.stringify(item));
-        await setDoc(doc(db, collectionName, docId), cleanItem, { merge: true });
+        if (cleanItem && typeof cleanItem === 'object' && cleanItem.id) {
+          cleanItem.id = String(cleanItem.id).trim().replace(/^#/, '');
+        }
+        await setDoc(doc(db, collectionName, rawId), cleanItem, { merge: true });
+        // Clean up legacy duplicate hash document if present
+        deleteDoc(doc(db, collectionName, `#${rawId}`)).catch(() => {});
       } catch (e) {
         console.warn(`Failed to sync item ${item?.id || idx} in ${collectionName}:`, e);
       }
