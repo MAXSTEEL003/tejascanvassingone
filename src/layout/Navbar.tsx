@@ -133,9 +133,9 @@ export default function Navbar({
     };
   }, []);
 
-  const roleLabel = role === 'admin' ? 'Global Procurement' : role === 'officer' ? 'Operations Officer' : role === 'employee' ? 'Warehouse Staff' : 'Merchant Buyer';
-  const showSearch = role === 'admin' || role === 'officer';
-  const isAdminSide = role === 'admin' || role === 'officer' || role === 'employee' || [
+  const roleLabel = role === 'admin' ? 'Global Procurement' : role === 'employee' ? 'Warehouse Staff' : 'Merchant Buyer';
+  const showSearch = role === 'admin';
+  const isAdminSide = role === 'admin' || role === 'employee' || [
     '/admin', '/dashboard', '/payments', '/inventory', '/arrival-entry', 
     '/patti', '/ledger', '/placed-orders', '/pending-loadings', 
     '/users', '/analytics', '/schedule', '/settings'

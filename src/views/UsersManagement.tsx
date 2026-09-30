@@ -116,6 +116,7 @@ export default function UsersManagement() {
 
           combinedStakeholders.forEach((cs: any) => {
             if (!cs || !cs.id) return;
+            const normId = String(cs.id || '').trim().toLowerCase().replace(/^#/, '');
             if (deletedSet.has(normId) || normId === 'sup-01' || normId === 'buy-01') {
               return; // Skip deleted stakeholder
             }
