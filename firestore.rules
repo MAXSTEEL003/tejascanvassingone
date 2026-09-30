@@ -2,81 +2,128 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Helper function to check if user is signed in
+    // Core helper: Check if client is authenticated via Firebase Auth
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    // Helper to check user id match
+    // Role helper: Check if authenticated user is the Administrator
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.email in [
+          'tejasadinarayan@gmail.com', 
+          'tejascanvassing@gmail.com', 
+          'tejasadinarayan@riceaggregator.com', 
+          'admin@riceaggregator.com'
+        ] ||
+        request.auth.token.role == 'admin' ||
+        request.auth.token.admin == true
+      );
+    }
+
+    // Role helper: Check if authenticated user is Staff or Administrator
+    function isStaff() {
+      return isAuthenticated() && (
+        isAdmin() ||
+        request.auth.token.email in [
+          'employee@riceaggregator.com', 
+          'employee1@riceaggregator.com', 
+          'sortex@riceaggregator.com', 
+          'tejas@riceaggregator.com', 
+          'operations@riceaggregator.com', 
+          'staff@riceaggregator.com'
+        ] ||
+        request.auth.token.role == 'employee' ||
+        request.auth.token.role == 'staff'
+      );
+    }
+
+    // Ownership helper: Check if document ID matches the caller's Firebase Auth UID
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
-    // Connectivity test path for health checks
-    match /test/{docId} {
-      allow read: if true;
-      allow write: if isAuthenticated();
+    // Order ownership helper: Check if order document belongs to the authenticated buyer
+    function isOrderOwner(data) {
+      return isAuthenticated() && (
+        (data.buyerId != null && data.buyerId == request.auth.uid) ||
+        (data.userId != null && data.userId == request.auth.uid) ||
+        (data.buyerEmail != null && request.auth.token.email != null && data.buyerEmail == request.auth.token.email) ||
+        (data.email != null && request.auth.token.email != null && data.email == request.auth.token.email)
+      );
     }
 
-    // Product Inventory: readable by all clients for store display; modifications restricted to authenticated staff
+    // Connectivity test path for health checks (Admin only)
+    match /test/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Product Inventory: Public catalog read for store browsing; modifications restricted to Admin / Staff
     match /product_inventory/{productId} {
       allow read: if true;
-      allow write: if isAuthenticated();
+      allow write: if isAdmin() || isStaff();
     }
 
-    // Store Configuration (Hero slides, rate list graphic, tickers)
+    // Store Configuration: Public store branding/tickers read; modifications restricted to Admin / Staff
     match /store_config/{configId} {
       allow read: if true;
-      allow write: if isAuthenticated();
+      allow write: if isAdmin() || isStaff();
     }
 
-    // Merchant Support Requests & Complaints
+    // Merchant Support Requests & Inquiries
     match /complaints/{complaintId} {
       allow create: if request.resource.data.merchantName is string &&
                        request.resource.data.message is string;
-      allow read, update, delete: if isAuthenticated();
+      allow read, update, delete: if isAdmin() || isStaff();
     }
 
-    // Placed Orders & Contract Batches
+    // Placed Trade Orders & Contract Batches: Restricted to Admin/Staff or the ordering Buyer
     match /placed_orders/{orderId} {
-      allow read: if true;
-      allow create: if request.resource.data.buyer is string;
-      allow update, delete: if isAuthenticated();
+      allow read: if isAdmin() || isStaff() || isOrderOwner(resource.data);
+      allow create: if isAuthenticated() && (isAdmin() || isStaff() || isOrderOwner(request.resource.data));
+      allow update, delete: if isAdmin() || isStaff();
     }
 
-    // Procurement Requests (Indent Demands)
+    // Individual Sub-Orders from Store Bag View
+    match /orders/{orderId} {
+      allow read: if isAdmin() || isStaff() || isOrderOwner(resource.data);
+      allow create: if isAuthenticated() && (isAdmin() || isStaff() || isOrderOwner(request.resource.data));
+      allow update, delete: if isAdmin() || isStaff();
+    }
+
+    // Procurement Requests (Indent Demands): Restricted to Admin/Staff or the requesting Buyer
     match /procurement_requests/{requestId} {
-      allow read: if true;
-      allow create: if request.resource.data.buyer is string;
-      allow update, delete: if isAuthenticated();
+      allow read: if isAdmin() || isStaff() || isOrderOwner(resource.data);
+      allow create: if isAuthenticated() && (isAdmin() || isStaff() || isOrderOwner(request.resource.data));
+      allow update, delete: if isAdmin() || isStaff();
     }
 
-    // Warehouse Pending Loadings & Mill Dispatches
+    // Warehouse Pending Loadings & Mill Dispatches: Strictly restricted to Admin & Staff
     match /pending_loadings/{loadingId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isAdmin() || isStaff();
     }
 
-    // Commodity Arrival Entries
+    // Commodity Arrival Entries (Physical Weighbridge Logs): Strictly restricted to Admin & Staff
     match /arrival_entries/{entryId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isAdmin() || isStaff();
     }
 
-    // Financial Ledgers & Commission Records (Protected)
+    // Financial Ledgers & Commission Records: Strictly restricted to Admin & Staff
     match /ledgers/{ledgerId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isAdmin() || isStaff();
     }
 
-    // Patti Settlement Vouchers (Protected)
+    // Patti Settlement Vouchers: Strictly restricted to Admin & Staff
     match /patti/{pattiId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isAdmin() || isStaff();
     }
 
-    // Mandi Stakeholders & Merchant Directories
+    // Mandi Stakeholders & Merchant Directories: Restricted to Admin, Staff, or profile owner
     match /stakeholders/{userId} {
-      allow read: if true;
-      allow create: if request.resource.data.name is string;
-      allow update: if isAuthenticated() || isOwner(userId);
-      allow delete: if isAuthenticated();
+      allow read: if isAdmin() || isStaff() || isOwner(userId);
+      allow create: if isAuthenticated() && (isAdmin() || isStaff() || isOwner(userId));
+      allow update: if isAdmin() || isStaff() || isOwner(userId);
+      allow delete: if isAdmin();
     }
 
     // Deny all other unmatched paths by default
@@ -85,5 +132,3 @@ service cloud.firestore {
     }
   }
 }
-
-

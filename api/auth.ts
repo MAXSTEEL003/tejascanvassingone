@@ -42,7 +42,6 @@ interface EmployeeCredential {
   email: string;
   role: string;
   phone?: string;
-  plainPassword?: string;
   passwordHash: string;
   salt: string;
   updatedAt: string;
@@ -65,7 +64,10 @@ function ensureDataDir() {
 function savePersistedEmployees() {
   try {
     ensureDataDir();
-    const list = Array.from(employeeStore.values());
+    const list = Array.from(employeeStore.values()).map(e => {
+      const { plainPassword, ...sanitized } = e as any;
+      return sanitized;
+    });
     fs.writeFileSync(EMP_CREDS_FILE, JSON.stringify(list, null, 2), "utf-8");
   } catch (e) {
     console.warn("Could not save persisted employee credentials to disk:", e);
@@ -78,9 +80,10 @@ function loadPersistedEmployees() {
     if (fs.existsSync(EMP_CREDS_FILE)) {
       const data = JSON.parse(fs.readFileSync(EMP_CREDS_FILE, "utf-8"));
       if (Array.isArray(data)) {
-        data.forEach((c: EmployeeCredential) => {
+        data.forEach((c: any) => {
           if (c && c.username) {
-            employeeStore.set(c.username.toLowerCase(), c);
+            const { plainPassword, ...sanitized } = c;
+            employeeStore.set(c.username.toLowerCase(), sanitized);
           }
         });
       }
@@ -90,7 +93,7 @@ function loadPersistedEmployees() {
   }
 }
 
-// Pre-seed default employee accounts with hashed passwords
+// Pre-seed default employee accounts with hashed passwords (never store plaintext)
 function seedDefaultEmployees() {
   const defaults = [
     { id: "EMP-01", name: "Operations Employee", username: "employee", pass: "adinarayan1977", role: "Operations Staff", email: "employee@riceaggregator.com" },
@@ -106,7 +109,6 @@ function seedDefaultEmployees() {
       username: d.username.toLowerCase(),
       email: d.email,
       role: d.role,
-      plainPassword: d.pass,
       passwordHash: hash,
       salt: salt,
       updatedAt: new Date().toISOString()
@@ -190,29 +192,19 @@ authRouter.post("/login", (req, res) => {
 
     const lowerUser = cleanUser.toLowerCase();
 
-    // Valid admin identifiers and passwords
+    // Valid admin identifiers
     const validAdminUsers = [
+      DEFAULT_ADMIN_USER,
       "tejasadinarayan",
       "admin",
-      "tejas",
       "admintejas",
       "admintejas1679",
       "owner",
       "adinarayan",
-      "tejas@example.com",
       "tejasadinarayan@gmail.com"
     ];
     const isAdminUser = validAdminUsers.includes(lowerUser);
-    const isAdminPass = (
-      cleanPass === DEFAULT_ADMIN_PASS || 
-      cleanPass === "adinarayan1977" || 
-      cleanPass === "tejas1679" || 
-      cleanPass === "admin1977" || 
-      cleanPass === "wholesale2026" || 
-      cleanPass === "tejas" || 
-      cleanPass === "admin" ||
-      verifyPassword(cleanPass, adminPasswordRecord.hash, adminPasswordRecord.salt)
-    );
+    const isAdminPass = verifyPassword(cleanPass, adminPasswordRecord.hash, adminPasswordRecord.salt);
 
     // Check Admin Authentication
     if (roleHint === "admin" || isAdminUser) {
@@ -262,26 +254,19 @@ authRouter.post("/login", (req, res) => {
         }
       }
 
-      const isEmpPass = (
-        cleanPass === DEFAULT_ADMIN_PASS || 
-        cleanPass === "employee1977" || 
-        cleanPass === "sortex2026" || 
-        cleanPass === "emp1977" || 
-        cleanPass === "wholesale2026" || 
-        cleanPass === "adinarayan1977"
+      const isRecordPass = Boolean(
+        empRecord &&
+        empRecord.passwordHash &&
+        empRecord.salt &&
+        verifyPassword(cleanPass, empRecord.passwordHash, empRecord.salt)
       );
 
-      const isRecordPass = empRecord && (
-        (empRecord.plainPassword && empRecord.plainPassword === cleanPass) ||
-        (empRecord.passwordHash && empRecord.salt && verifyPassword(cleanPass, empRecord.passwordHash, empRecord.salt))
-      );
-
-      if (isRecordPass || isEmpPass) {
-        const displayName = empRecord?.name || `${cleanUser.toUpperCase()} (Operations Staff)`;
-        const displayEmail = empRecord?.email || `${(empRecord?.username || lowerUser)}@riceaggregator.com`;
+      if (isRecordPass && empRecord) {
+        const displayName = empRecord.name || `${cleanUser.toUpperCase()} (Operations Staff)`;
+        const displayEmail = empRecord.email || `${(empRecord.username || lowerUser)}@riceaggregator.com`;
         const token = createSignedToken({
-          sub: empRecord?.id || `emp-${empRecord?.username || lowerUser}`,
-          username: empRecord?.username || lowerUser,
+          sub: empRecord.id || `emp-${empRecord.username || lowerUser}`,
+          username: empRecord.username || lowerUser,
           role: "employee",
           email: displayEmail,
           name: displayName,
@@ -292,7 +277,7 @@ authRouter.post("/login", (req, res) => {
           token,
           user: {
             role: "employee",
-            username: empRecord?.username || lowerUser,
+            username: empRecord.username || lowerUser,
             name: displayName,
             email: displayEmail,
           }
@@ -386,6 +371,13 @@ authRouter.post("/verify-action", (req, res) => {
   if (token) {
     const payload = verifySignedToken(token);
     if (payload && payload.role === "admin") {
+      // If a confirmation password was also provided, verify it too
+      if (password) {
+        const clean = String(password).trim();
+        if (!verifyPassword(clean, adminPasswordRecord.hash, adminPasswordRecord.salt)) {
+          return res.status(401).json({ authorized: false, error: "Incorrect admin confirmation password." });
+        }
+      }
       return res.json({ authorized: true, action: action || "generic" });
     }
   }
@@ -393,7 +385,7 @@ authRouter.post("/verify-action", (req, res) => {
   // Option B: Password-based verification
   if (password) {
     const clean = String(password).trim();
-    if (verifyPassword(clean, adminPasswordRecord.hash, adminPasswordRecord.salt) || clean === "tejas" || clean === DEFAULT_ADMIN_PASS) {
+    if (verifyPassword(clean, adminPasswordRecord.hash, adminPasswordRecord.salt)) {
       return res.json({ authorized: true, action: action || "generic" });
     }
   }
@@ -409,12 +401,8 @@ authRouter.post("/manage-employee", (req, res) => {
     : null;
 
   const payload = token ? verifySignedToken(token) : null;
-  const isAuthorizedAdmin = (
-    (payload && payload.role === "admin") ||
-    req.headers["x-admin-role"] === "admin" ||
-    req.headers["x-auth-role"] === "admin" ||
-    (typeof authHeader === "string" && (authHeader.toLowerCase().includes("admin") || authHeader.includes("adinarayan")))
-  );
+  // Strictly enforce cryptographic admin role verification. No bypass headers allowed.
+  const isAuthorizedAdmin = Boolean(payload && payload.role === "admin");
 
   if (!isAuthorizedAdmin) {
     return res.status(403).json({ success: false, error: "Only Admin can manage employee credentials." });
@@ -445,7 +433,6 @@ authRouter.post("/manage-employee", (req, res) => {
     email: employee.email || `${lowerUser}@riceaggregator.com`,
     role: employee.role || "Operations Staff",
     phone: employee.phone || "",
-    plainPassword: pass,
     passwordHash: hash,
     salt: salt,
     updatedAt: new Date().toISOString()

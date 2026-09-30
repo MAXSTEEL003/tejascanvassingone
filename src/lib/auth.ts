@@ -241,8 +241,8 @@ export async function loginWithServer(
           const phMatch = digitsInput.length >= 7 && pDigits.includes(digitsInput);
 
           if (uMatch || eMatch || iMatch || nMatch || phMatch) {
-            const expectedPass = String(c.password || c.assignedPassword || 'emp1977').trim();
-            if (expectedPass === cleanPass || cleanPass === 'adinarayan1977' || cleanPass === 'employee1977') {
+            const expectedPass = String(c.password || c.assignedPassword || '').trim();
+            if (expectedPass && expectedPass === cleanPass) {
               return {
                 sub: c.id || `emp-${c.username || lowerInput}`,
                 username: c.username || lowerInput,
@@ -270,8 +270,8 @@ export async function loginWithServer(
           const phMatch = digitsInput.length >= 7 && pDigits.includes(digitsInput);
 
           if (uMatch || eMatch || iMatch || nMatch || phMatch) {
-            const expectedPass = String(emp.password || emp.assignedPassword || 'emp1977').trim();
-            if (expectedPass === cleanPass || cleanPass === 'adinarayan1977' || cleanPass === 'employee1977') {
+            const expectedPass = String(emp.password || emp.assignedPassword || '').trim();
+            if (expectedPass && expectedPass === cleanPass) {
               return {
                 sub: emp.id || `emp-${emp.username || lowerInput}`,
                 username: emp.username || lowerInput,
@@ -316,36 +316,14 @@ export async function loginWithServer(
       return { success: true, token: data.token, user: data.user };
     }
 
-    // If server returned error, check if this is an employee with assigned credentials
-    const matchedEmployee = checkAssignedEmployeeLocal();
-    if (matchedEmployee) {
-      const token = createClientAuthToken(matchedEmployee);
-      setAuthSession(token, matchedEmployee);
-      return { success: true, token, user: matchedEmployee };
-    }
-
     if (data && data.error && res.status !== 502 && res.status !== 503 && res.status !== 404) {
-      if (roleHint === 'admin') {
-        const isAdminPass = ['adinarayan1977', 'tejas1679', 'admin1977', 'wholesale2026', 'tejas', 'admin'].includes(cleanPass);
-        if (isAdminPass) {
-          const adminUser: AuthenticatedUser = {
-            username: cleanUser || 'tejasadinarayan',
-            role: 'admin',
-            name: 'Tejas Adinarayan (Admin HQ)',
-            email: 'tejasadinarayan@riceaggregator.com',
-          };
-          const token = createClientAuthToken(adminUser);
-          setAuthSession(token, adminUser);
-          return { success: true, token, user: adminUser };
-        }
-      }
       return { success: false, error: data.error };
     }
   } catch (err: any) {
     console.warn('Network error reaching /api/auth/login, using client fallback:', err);
   }
 
-  // Check local assigned employee credentials on network hiccup or offline
+  // Check local assigned employee credentials only on network hiccup or offline
   const matchedEmpOffline = checkAssignedEmployeeLocal();
   if (matchedEmpOffline) {
     const token = createClientAuthToken(matchedEmpOffline);
@@ -353,37 +331,13 @@ export async function loginWithServer(
     return { success: true, token, user: matchedEmpOffline };
   }
 
-  // Graceful fallback when server route is restarting or unreachable
+  // Graceful response when server route is unreachable (network error)
   if (roleHint === 'admin') {
-    const isAdminPass = ['adinarayan1977', 'tejas1679', 'admin1977', 'wholesale2026', 'tejas', 'admin'].includes(cleanPass);
-    if (isAdminPass) {
-      const adminUser: AuthenticatedUser = {
-        username: cleanUser || 'tejasadinarayan',
-        role: 'admin',
-        name: 'Tejas Adinarayan (Admin HQ)',
-        email: 'tejasadinarayan@riceaggregator.com',
-      };
-      const token = createClientAuthToken(adminUser);
-      setAuthSession(token, adminUser);
-      return { success: true, token, user: adminUser };
-    }
-    return { success: false, error: 'Invalid Admin Password. Access Denied.' };
+    return { success: false, error: 'Cannot reach authentication server. Please check your network connection.' };
   }
 
   if (roleHint === 'employee') {
-    const isEmpPass = ['employee1977', 'adinarayan1977', 'sortex2026', 'emp1977', 'wholesale2026'].includes(cleanPass);
-    if (isEmpPass) {
-      const empUser: AuthenticatedUser = {
-        username: cleanUser || 'employee',
-        role: 'employee',
-        name: `${cleanUser.toUpperCase() || 'OPERATIONS'} (Staff)`,
-        email: `${cleanUser.toLowerCase() || 'employee'}@riceaggregator.com`,
-      };
-      const token = createClientAuthToken(empUser);
-      setAuthSession(token, empUser);
-      return { success: true, token, user: empUser };
-    }
-    return { success: false, error: 'Invalid Employee credentials. Please check assigned username & password.' };
+    return { success: false, error: 'Invalid Employee credentials or cannot reach authentication server.' };
   }
 
   // Merchant fallback - accept phone/email/username registration without crashing
@@ -487,7 +441,6 @@ export async function manageEmployeeServer(action: 'create' | 'update' | 'delete
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-admin-role': 'admin',
         ...(token ? { 'Authorization': `Bearer ${token}` } : {})
       },
       body: JSON.stringify({ action, employee }),

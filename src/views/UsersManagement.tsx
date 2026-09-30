@@ -350,8 +350,9 @@ export default function UsersManagement() {
     setStakeholders(updated);
     localStorage.setItem('stakeholders_v2', JSON.stringify(updated));
 
-    // Sync sanitized stakeholder profile to Firestore cloud storage
-    setCollectionDoc('stakeholders', entry.id, { ...entry, type: newUser.category }).catch(err => {
+    // Sync sanitized stakeholder profile to Firestore cloud storage (never store plain passwords in cloud)
+    const { password: _p, assignedPassword: _ap, ...cloudStakeholder } = entry as any;
+    setCollectionDoc('stakeholders', entry.id, { ...cloudStakeholder, type: newUser.category }).catch(err => {
       console.error("Error creating stakeholder in cloud:", err);
     });
 
@@ -424,8 +425,9 @@ export default function UsersManagement() {
     setSelectedUser(userToSave);
     localStorage.setItem('stakeholders_v2', JSON.stringify(updatedStakeholders));
 
-    // Sync to Firestore cloud storage
-    setCollectionDoc('stakeholders', userToSave.id, { ...userToSave, type: activeTab }).catch(err => {
+    // Sync to Firestore cloud storage (never store plain passwords in cloud)
+    const { password: _p, assignedPassword: _ap, ...cloudUserToSave } = userToSave as any;
+    setCollectionDoc('stakeholders', userToSave.id, { ...cloudUserToSave, type: activeTab }).catch(err => {
       console.error("Error updating stakeholder in cloud:", err);
     });
 
