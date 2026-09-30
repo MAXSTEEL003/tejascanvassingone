@@ -19,6 +19,8 @@ import {
   detectColumnMapping, 
   validateImportDataset, 
   executeChunkedBatchImport,
+  parseDate,
+  formatDateToDisplayLong,
   DetectedColumn, 
   ImportValidationSummary,
   ImportProgress
@@ -129,9 +131,20 @@ export default function ExcelImportModal({
   const handleUpdateMapping = (colIndex: number, fieldId: string | null) => {
     const updated = detectedColumns.map(c => {
       if (c.index === colIndex) {
+        let newType = c.detectedType;
+        if (fieldId === 'date' || fieldId === 'chqDt') {
+          newType = 'Date';
+        } else if (fieldId) {
+          const colDef = TARGET_COLUMNS.find(t => t.id === fieldId);
+          if (colDef?.type === 'number') newType = 'Number';
+          else if (colDef?.type === 'select') newType = 'Select';
+          else if (colDef?.type === 'calc') newType = 'Calc';
+          else newType = 'Text';
+        }
         return {
           ...c,
           mappedFieldId: fieldId,
+          detectedType: newType,
           ignored: fieldId === null,
           warning: undefined
         };
@@ -168,7 +181,7 @@ export default function ExcelImportModal({
       successful: 0,
       rejected: 0,
       currentBatch: 0,
-      totalBatches: Math.ceil(rawMatrix.length / 350),
+      totalBatches: Math.ceil(rawMatrix.length / 150),
       percent: 0,
       status: 'importing',
       errors: []
@@ -183,22 +196,8 @@ export default function ExcelImportModal({
         (p) => setProgress(p)
       );
 
-      // Prepare UI rows for local state update
-      const activeMappings = detectedColumns.filter(c => c.mappedFieldId && !c.ignored);
-      const importedLocalRows = rawMatrix.map((r, rIdx) => {
-        const rowObj: any = {
-          id: `row-${currentSheetId}-${Date.now()}-${rIdx}`,
-          sheetId: currentSheetId,
-          sheetName: currentSheetName,
-          lastUpdated: Date.now()
-        };
-        activeMappings.forEach(c => {
-          rowObj[c.mappedFieldId!] = r[c.index];
-        });
-        return rowObj;
-      }).filter(r => !!(r.partyName || r.millerName || r.billNo || r.qty || r.amount || r.netAmt));
-
-      onImportComplete(importedLocalRows, importMode);
+      // Pass the fully normalized, payment-derived, and oldest-to-newest sorted records directly to onImportComplete
+      onImportComplete(result.structuredEntries, importMode);
       setStep('completed');
     } catch (err: any) {
       setProgress(prev => ({
@@ -319,6 +318,7 @@ export default function ExcelImportModal({
                     <tr>
                       <th className="py-2.5 px-3 font-black text-secondary uppercase text-[10px] w-12 text-center">Col</th>
                       <th className="py-2.5 px-3 font-black text-secondary uppercase text-[10px]">Excel Header</th>
+                      <th className="py-2.5 px-3 font-black text-secondary uppercase text-[10px] w-28 text-center">Detected Type</th>
                       <th className="py-2.5 px-3 font-black text-secondary uppercase text-[10px]">Sample Values</th>
                       <th className="py-2.5 px-3 font-black text-secondary uppercase text-[10px]">Mapped Ledger Field</th>
                       <th className="py-2.5 px-3 font-black text-secondary uppercase text-[10px] text-right">Actions</th>
@@ -348,8 +348,34 @@ export default function ExcelImportModal({
                               </span>
                             )}
                           </td>
-                          <td className="py-2.5 px-3 text-secondary font-mono text-[11px] truncate max-w-[180px]">
-                            {col.sampleValues.join(', ') || '(empty)'}
+                          <td className="py-2.5 px-3 text-center">
+                            {col.detectedType === 'Date' ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30">
+                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                                Date
+                              </span>
+                            ) : col.detectedType === 'Number' ? (
+                              <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                                Number
+                              </span>
+                            ) : col.detectedType === 'Select' ? (
+                              <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30">
+                                Select
+                              </span>
+                            ) : col.detectedType === 'Calc' ? (
+                              <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                                Formula
+                              </span>
+                            ) : (
+                              <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-secondary/10 text-secondary border border-outline-variant/30">
+                                Text
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-3 text-secondary font-mono text-[11px] truncate max-w-[260px]">
+                            {col.detectedType === 'Date'
+                              ? (col.sampleValues.map(v => `${v} → ${formatDateToDisplayLong(v)}`).join(', ') || '(empty)')
+                              : (col.sampleValues.join(', ') || '(empty)')}
                           </td>
                           <td className="py-2.5 px-3">
                             <select

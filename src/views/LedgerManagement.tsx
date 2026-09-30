@@ -1,1342 +1,969 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { NavLink } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { 
-  BookOpen, 
   Search, 
   Filter, 
-  ArrowUpRight, 
-  ArrowDownLeft, 
-  TrendingUp, 
-  TrendingDown, 
-  CheckCircle, 
+  Calendar, 
+  FileText, 
+  CheckCircle2, 
   Clock, 
-  Briefcase,
-  FileText,
-  RefreshCw,
-  Copy,
-  Check,
-  X,
-  ChevronDown,
-  Truck,
-  Trash2,
-  KeyRound,
-  ShieldAlert,
-  Eye,
-  EyeOff,
-  AlertTriangle
+  AlertTriangle, 
+  Building2, 
+  User, 
+  Tag, 
+  RefreshCw, 
+  X, 
+  ChevronRight,
+  Package,
+  Layers,
+  ArrowRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, formatINR } from '../lib/utils';
-import { getCollectionDocs, syncCollection, deleteCollectionDoc } from '../lib/firebase';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
-
-interface LedgerEntry {
-  id: string;
-  purchaseOrderNo: string;
-  date: string;
-  partyName: string;
-  partyType: 'Supplier' | 'Buyer'; // 'Supplier' = Miller, 'Buyer' = Shop
-  qty: number;
-  rate?: number;
-  amount: number;
-  status: 'Placed' | 'Arrived';
-  originalPartyName?: string;
-  isLifted?: boolean;
-  billNo?: string;
-  notes?: string;
-}
-
-const parseLedgerDate = (obj: any): number => {
-  if (!obj) return 0;
-  if (typeof obj.purchaseOrderSentAt === 'number') return obj.purchaseOrderSentAt;
-  if (typeof obj.createdAt === 'number') return obj.createdAt;
-  
-  const raw = obj.purchaseOrderSentAt || obj.createdAt || obj.date;
-  if (!raw) return 0;
-  if (typeof raw === 'number') return raw;
-
-  const str = String(raw).trim();
-  if (!str) return 0;
-
-  // Check YYYY-MM-DD
-  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
-    const [y, m, d] = str.split('-').map(Number);
-    const date = new Date(y, m - 1, d);
-    return isNaN(date.getTime()) ? 0 : date.getTime();
-  }
-
-  // Check DD/MM/YYYY or DD-MM-YYYY
-  const dmyMatch = str.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
-  if (dmyMatch) {
-    const [_, d, m, y] = dmyMatch.map(Number);
-    const date = new Date(y, m - 1, d);
-    return isNaN(date.getTime()) ? 0 : date.getTime();
-  }
-
-  // Check DD-Mon-YYYY (e.g. 10-Jun-2026 or 10-JUN-2026)
-  const monMatch = str.match(/^(\d{1,2})[/-]([A-Za-z]+)[/-](\d{4})$/);
-  if (monMatch) {
-    const d = Number(monMatch[1]);
-    const y = Number(monMatch[3]);
-    const mStr = monMatch[2].toLowerCase();
-    const months = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
-    const mIdx = months.findIndex(m => mStr.startsWith(m));
-    if (mIdx !== -1) {
-      const date = new Date(y, mIdx, d);
-      return isNaN(date.getTime()) ? 0 : date.getTime();
-    }
-  }
-
-  const date = new Date(str);
-  return isNaN(date.getTime()) ? 0 : date.getTime();
-};
-
-const formatDateToDDMMYYYY = (val: any): string => {
-  if (!val) return '';
-  const str = String(val).trim();
-  if (!str) return '';
-
-  const dmyMatch = str.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
-  if (dmyMatch) {
-    const [_, d, m, y] = dmyMatch.map(Number);
-    const monthNames = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-    ];
-    return `${String(d).padStart(2, '0')}-${monthNames[m - 1]}-${y}`;
-  }
-
-  const date = parseLedgerDate({ date: val });
-  if (date > 0) {
-    const d = new Date(date);
-    const day = String(d.getDate()).padStart(2, '0');
-    const monthNames = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-    ];
-    const m = monthNames[d.getMonth()];
-    const yyyy = d.getFullYear();
-    return `${day}-${m}-${yyyy}`;
-  }
-  return str;
-};
-
-const seedLedgers: LedgerEntry[] = [
-  {
-    id: 'LED-001',
-    purchaseOrderNo: 'BATCH-TC-9104',
-    date: '10/06/2026',
-    partyName: 'Amritsar Grain Export Ltd.',
-    partyType: 'Supplier',
-    qty: 300.00,
-    amount: 1260000,
-    status: 'Arrived'
-  },
-  {
-    id: 'LED-002',
-    purchaseOrderNo: 'BATCH-TC-9104',
-    date: '10/06/2026',
-    partyName: 'Rice House Ind.',
-    partyType: 'Buyer',
-    qty: 300.00,
-    amount: 1260000,
-    status: 'Arrived'
-  },
-  {
-    id: 'LED-003',
-    purchaseOrderNo: 'BATCH-TC-8842',
-    date: '11/06/2026',
-    partyName: 'Ludhiana Rice Millers',
-    partyType: 'Supplier',
-    qty: 150.00,
-    amount: 630000,
-    status: 'Placed'
-  },
-  {
-    id: 'LED-004',
-    purchaseOrderNo: 'BATCH-TC-8842',
-    date: '11/06/2026',
-    partyName: 'Select Mart Corp.',
-    partyType: 'Buyer',
-    qty: 150.00,
-    amount: 630000,
-    status: 'Placed'
-  },
-  {
-    id: 'LED-005',
-    purchaseOrderNo: 'BATCH-TC-4217',
-    date: '12/06/2026',
-    partyName: 'Khanna Commercial Bulk Suppliers',
-    partyType: 'Supplier',
-    qty: 480.00,
-    amount: 2016000,
-    status: 'Arrived'
-  },
-  {
-    id: 'LED-006',
-    purchaseOrderNo: 'BATCH-TC-4217',
-    date: '12/06/2026',
-    partyName: 'Blue Fields Logistics',
-    partyType: 'Buyer',
-    qty: 480.00,
-    amount: 2016000,
-    status: 'Arrived'
-  }
-];
+import { 
+  OperationalPO, 
+  fetchOperationalOrders, 
+  formatQtl, 
+  formatDifference 
+} from '../utils/orderOperations';
 
 export default function LedgerManagement() {
-  const [ledgers, setLedgers] = useState<LedgerEntry[]>([]);
-  const [activeTab, setActiveTab] = useState<'all' | 'suppliers' | 'buyers'>('all');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'Placed' | 'Arrived'>('all');
-  const [selectedSupplierFilter, setSelectedSupplierFilter] = useState<string>('all');
-  const [modalSupplierFilter, setModalSupplierFilter] = useState<string>('all');
-  const [isLoading, setIsLoading] = useState(false);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [selectedParty, setSelectedParty] = useState<{ name: string; type: 'Supplier' | 'Buyer' } | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [orders, setOrders] = useState<OperationalPO[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  // Whole ledger deletion state
-  const [isDeleteAllModalOpen, setIsDeleteAllModalOpen] = useState(false);
-  const [deletePassword, setDeletePassword] = useState('');
-  const [passwordError, setPasswordError] = useState<string | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [deleteSuccessToast, setDeleteSuccessToast] = useState<string | null>(null);
+  // Filters State
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [dateRange, setDateRange] = useState<'all' | 'today' | 'yesterday' | 'week' | 'month' | 'custom'>('all');
+  const [customDate, setCustomDate] = useState<string>('');
+  const [selectedBuyer, setSelectedBuyer] = useState<string>(() => searchParams.get('buyer') || 'all');
+  const [selectedSupplier, setSelectedSupplier] = useState<string>('all');
+  const [selectedBrand, setSelectedBrand] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'arrived' | 'pending'>('all');
 
-  // Helper to check if a specific ID was previously marked deleted
-  const getDeletedLedgerIds = (): Set<string> => {
-    try {
-      const raw = localStorage.getItem('deleted_ledger_ids');
-      if (!raw) return new Set();
-      const arr = JSON.parse(raw);
-      if (Array.isArray(arr)) {
-        return new Set(arr.map((id: string) => String(id).trim().toLowerCase().replace(/^#/, '')));
-      }
-    } catch (e) {}
-    return new Set();
-  };
+  // Modal States
+  const [selectedBuyerForModal, setSelectedBuyerForModal] = useState<string | null>(null);
+  const [selectedPoForModal, setSelectedPoForModal] = useState<OperationalPO | null>(null);
 
-  const isDeletedEntry = (id: string, po?: string, partyName?: string, partyType?: string) => {
-    if (!id) return false;
-    const deletedSet = getDeletedLedgerIds();
-    const normId = String(id).trim().toLowerCase().replace(/^#/, '');
-    if (deletedSet.has(normId)) return true;
-    if (po && partyName && partyType) {
-      const composite = `${String(po).trim().toLowerCase()}_${String(partyName).trim().toLowerCase()}_${String(partyType).toLowerCase()}`;
-      if (deletedSet.has(composite)) return true;
+  // Synchronize URL param for buyer if set externally
+  useEffect(() => {
+    const b = searchParams.get('buyer');
+    if (b) {
+      setSelectedBuyer(b);
     }
-    return false;
-  };
+  }, [searchParams]);
 
-  // Reset modal supplier filter when selected party changes
-  useEffect(() => {
-    setModalSupplierFilter('all');
-  }, [selectedParty]);
-
-  // Reset main supplier filter when active tab changes
-  useEffect(() => {
-    setSelectedSupplierFilter('all');
-  }, [activeTab]);
-
-  // Dynamic selection list of all suppliers in the ledger for filtering
-  const uniqueSuppliers = React.useMemo(() => {
-    const set = new Set<string>();
-    ledgers.forEach(l => {
-      if (l.partyType === 'Supplier') {
-        set.add(l.partyName);
-      }
-    });
-    return Array.from(set).sort();
-  }, [ledgers]);
-
-  const drillDownData = React.useMemo(() => {
-    if (!selectedParty) return null;
-    const name = selectedParty.name;
-    const type = selectedParty.type;
-
-    // 1. Get all ledger entries where this party is involved
-    const partyEntries = ledgers.filter(l => l.partyName === name && l.partyType === type);
-
-    // 2. Discover counterpart information for each PO
-    const counterparts = new Map<string, { arrivedQty: number; pendingQty: number; entries: any[] }>();
-
-    partyEntries.forEach(entry => {
-      // Find the opposite entry in the ledger with the same PO
-      const opposite = ledgers.find(l => l.purchaseOrderNo === entry.purchaseOrderNo && l.partyType !== type);
-      const counterpartName = opposite ? opposite.partyName : (type === 'Supplier' ? 'Unknown Buyer' : 'Unknown Supplier');
-
-      const existing = counterparts.get(counterpartName) || { arrivedQty: 0, pendingQty: 0, entries: [] };
-      
-      const qty = Number(entry.qty) || 0;
-      if (entry.status === 'Arrived') {
-        existing.arrivedQty += qty;
-      } else {
-        existing.pendingQty += qty;
-      }
-
-      existing.entries.push({
-        id: entry.id,
-        date: entry.date,
-        po: entry.purchaseOrderNo,
-        qty: entry.qty,
-        rate: entry.rate || (entry.qty > 0 ? Math.round(entry.amount / entry.qty) : 0),
-        amount: entry.amount,
-        status: entry.status,
-      });
-
-      counterparts.set(counterpartName, existing);
-    });
-
-    const counterpartList = Array.from(counterparts.entries()).map(([cpName, info]) => ({
-      name: cpName,
-      arrivedQty: info.arrivedQty,
-      pendingQty: info.pendingQty,
-      entries: info.entries.sort((a, b) => parseLedgerDate(b) - parseLedgerDate(a))
-    }));
-
-    // Overall stats for this party
-    const totalArrived = partyEntries.filter(e => e.status === 'Arrived').reduce((sum, e) => sum + (Number(e.qty) || 0), 0);
-    const totalPending = partyEntries.filter(e => e.status === 'Placed').reduce((sum, e) => sum + (Number(e.qty) || 0), 0);
-
-    return {
-      name,
-      type,
-      totalArrived,
-      totalPending,
-      counterparts: counterpartList,
-      history: partyEntries.sort((a, b) => parseLedgerDate(b) - parseLedgerDate(a))
-    };
-  }, [selectedParty, ledgers]);
-
-  const fetchLedgers = async () => {
+  // Load orders on mount
+  const loadOrdersData = async () => {
     setIsLoading(true);
     try {
-      const isClearedAll = localStorage.getItem('ledger_cleared_all') === 'true';
-
-      // Fetch from Firestore
-      const dbLedgers = await getCollectionDocs('ledgers');
-      
-      // Ensure we match localstorage fallback as well
-      const localLedgers = JSON.parse(localStorage.getItem('ledgers') || '[]');
-      
-      const mergedMap = new Map<string, LedgerEntry>();
-      
-      // Load seed data first ONLY IF whole ledger was NOT cleared
-      if (!isClearedAll) {
-        seedLedgers.forEach(l => {
-          if (!isDeletedEntry(l.id, l.purchaseOrderNo, l.partyName, l.partyType)) {
-            mergedMap.set(l.id, l);
-          }
-        });
-      }
-      
-      // Overwrite with localstorage
-      localLedgers.forEach((l: any) => {
-        if (l && l.id && !isDeletedEntry(l.id, l.purchaseOrderNo, l.partyName, l.partyType)) {
-          mergedMap.set(l.id, l);
-        }
-      });
-      
-      // Overwrite with db ledgers
-      dbLedgers.forEach((l: any) => {
-        if (l && l.id && !isDeletedEntry(l.id, l.purchaseOrderNo, l.partyName, l.partyType)) {
-          mergedMap.set(l.id, l);
-        }
-      });
-
-      // Load placed_orders map to check for lifted/redirected loads
-      const savedOrders = JSON.parse(localStorage.getItem('placed_orders') || '[]');
-      const poMap = new Map<string, any>();
-      savedOrders.forEach((o: any) => {
-        if (o && o.id) poMap.set(String(o.id).trim().toUpperCase().replace(/^#/, ''), o);
-      });
-
-      // Deduplicate entries by composite key (PO + partyName + partyType + qty + amount + status)
-      const dedupMap = new Map<string, LedgerEntry>();
-      mergedMap.forEach(l => {
-        if (!l || !l.partyName) return;
-        if (isDeletedEntry(l.id, l.purchaseOrderNo, l.partyName, l.partyType)) return;
-        
-        const po = (l.purchaseOrderNo || '').trim().toUpperCase().replace(/^#/, '');
-        const matchingOrder = poMap.get(po);
-
-        if (l.partyType === 'Buyer' && matchingOrder) {
-          const isLifted = !!(matchingOrder.liftingRecords?.length > 0 || matchingOrder.currentShop || matchingOrder.redirectedShop);
-          const redirectedShop = matchingOrder.currentShop || matchingOrder.redirectedShop || matchingOrder.liftingRecords?.[0]?.shopName;
-          
-          if (isLifted && redirectedShop) {
-            l.originalPartyName = l.originalPartyName || l.partyName;
-            l.partyName = redirectedShop;
-            l.isLifted = true;
-            if (matchingOrder.actualSupplierBillNo) l.billNo = matchingOrder.actualSupplierBillNo;
-            l.notes = `LIFTED TO ${redirectedShop} (EX: ${l.originalPartyName})`;
-          }
-        }
-
-        const name = (l.partyName || '').trim().toLowerCase();
-        const type = l.partyType;
-        const qty = (Number(l.qty) || 0).toFixed(2);
-        const amt = (Number(l.amount) || 0).toFixed(2);
-        const status = l.status || '';
-
-        const dupKey = `${po}_${name}_${type}_${qty}_${amt}_${status}`;
-        if (!dedupMap.has(dupKey)) {
-          dedupMap.set(dupKey, l);
-        }
-      });
-
-      const sorted = Array.from(dedupMap.values()).sort((a, b) => {
-        const timeA = parseLedgerDate(a);
-        const timeB = parseLedgerDate(b);
-        if (timeA !== timeB) return timeB - timeA;
-        return String(b.id || '').localeCompare(String(a.id || ''));
-      });
-
-      setLedgers(sorted);
-      
-      // Sync back to localstorage for fallback consistency
-      localStorage.setItem('ledgers', JSON.stringify(sorted));
-    } catch (err) {
-      console.error("Failed to load ledgers:", err);
-      const isClearedAll = localStorage.getItem('ledger_cleared_all') === 'true';
-      if (isClearedAll) {
-        setLedgers([]);
-        localStorage.setItem('ledgers', '[]');
-      } else {
-        const localLedgers = JSON.parse(localStorage.getItem('ledgers') || '[]');
-        if (localLedgers.length === 0) {
-          const dedupSeed = new Map<string, LedgerEntry>();
-          seedLedgers.forEach(l => {
-            if (isDeletedEntry(l.id, l.purchaseOrderNo, l.partyName, l.partyType)) return;
-            const dupKey = `${(l.purchaseOrderNo||'').trim().toUpperCase()}_${(l.partyName||'').trim().toLowerCase()}_${l.partyType}_${(Number(l.qty)||0).toFixed(2)}_${(Number(l.amount)||0).toFixed(2)}_${l.status||''}`;
-            if (!dedupSeed.has(dupKey)) dedupSeed.set(dupKey, l);
-          });
-          const sortedSeeds = Array.from(dedupSeed.values()).sort((a, b) => {
-            const timeA = parseLedgerDate(a);
-            const timeB = parseLedgerDate(b);
-            if (timeA !== timeB) return timeB - timeA;
-            return String(b.id || '').localeCompare(String(a.id || ''));
-          });
-          setLedgers(sortedSeeds);
-          localStorage.setItem('ledgers', JSON.stringify(sortedSeeds));
-        } else {
-          const dedupLocal = new Map<string, LedgerEntry>();
-          localLedgers.forEach((l: any) => {
-            if (!l || !l.partyName) return;
-            if (isDeletedEntry(l.id, l.purchaseOrderNo, l.partyName, l.partyType)) return;
-            const dupKey = `${(l.purchaseOrderNo||'').trim().toUpperCase()}_${(l.partyName||'').trim().toLowerCase()}_${l.partyType}_${(Number(l.qty)||0).toFixed(2)}_${(Number(l.amount)||0).toFixed(2)}_${l.status||''}`;
-            if (!dedupLocal.has(dupKey)) dedupLocal.set(dupKey, l);
-          });
-          const sortedLocal = Array.from(dedupLocal.values()).sort((a: any, b: any) => {
-            const timeA = parseLedgerDate(a);
-            const timeB = parseLedgerDate(b);
-            if (timeA !== timeB) return timeB - timeA;
-            return String(b.id || '').localeCompare(String(a.id || ''));
-          });
-          setLedgers(sortedLocal);
-        }
-      }
+      const data = await fetchOperationalOrders();
+      setOrders(data);
+    } catch (e) {
+      console.error('Failed to load operational ledger orders:', e);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleDeleteWholeLedger = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-
-    if (deletePassword.trim() !== 'tejas') {
-      setPasswordError("Incorrect authorization password. Please enter 'tejas' to confirm deletion.");
-      return;
-    }
-
-    setIsDeleting(true);
-    setPasswordError(null);
-
-    try {
-      // Collect all IDs to wipe from Firestore
-      const idsToDelete = new Set<string>();
-      ledgers.forEach(l => {
-        if (l.id) idsToDelete.add(l.id);
-      });
-      seedLedgers.forEach(s => {
-        if (s.id) idsToDelete.add(s.id);
-      });
-
-      // 1. Mark entire ledger as permanently cleared
-      localStorage.setItem('ledger_cleared_all', 'true');
-      localStorage.setItem('ledgers', '[]');
-
-      // 2. Also register all existing IDs in deleted_ledger_ids for persistent blocking
-      const rawDel = localStorage.getItem('deleted_ledger_ids') || '[]';
-      let delArr: string[] = [];
-      try { delArr = JSON.parse(rawDel); } catch (e) { delArr = []; }
-      Array.from(idsToDelete).forEach(id => {
-        const raw = String(id).replace(/^#/, '');
-        [id, raw, `#${raw}`, id.toLowerCase(), raw.toLowerCase()].forEach(v => {
-          if (v && !delArr.includes(v)) delArr.push(v);
-        });
-      });
-      localStorage.setItem('deleted_ledger_ids', JSON.stringify(delArr));
-
-      // 3. Reset component state
-      setLedgers([]);
-      setSelectedParty(null);
-      setIsDeleteAllModalOpen(false);
-      setDeletePassword('');
-      setShowPassword(false);
-
-      // 4. Show success confirmation toast
-      setDeleteSuccessToast("Whole commercial ledger data has been permanently deleted.");
-      setTimeout(() => setDeleteSuccessToast(null), 5000);
-
-      // 5. Broadcast storage events
-      window.dispatchEvent(new Event('storage'));
-      window.dispatchEvent(new CustomEvent('ledger-updated', { detail: { clearedAll: true } }));
-
-      // 6. Delete all ledger documents from Firestore asynchronously
-      const deletePromises = Array.from(idsToDelete).map(id => deleteCollectionDoc('ledgers', id));
-      await Promise.allSettled(deletePromises);
-    } catch (err) {
-      console.error("Failed to delete whole ledger:", err);
-      setPasswordError("An unexpected error occurred while clearing ledger data. Please try again.");
-    } finally {
-      setIsDeleting(false);
-    }
-  };
-
   useEffect(() => {
-    fetchLedgers();
-    window.addEventListener('storage', fetchLedgers);
-    return () => window.removeEventListener('storage', fetchLedgers);
+    loadOrdersData();
   }, []);
 
-  const handleCopy = (po: string) => {
-    navigator.clipboard.writeText(po);
-    setCopiedId(po);
-    setTimeout(() => setCopiedId(null), 2000);
-  };
+  // Unique Lists for Dropdown Filters
+  const uniqueBuyers = useMemo(() => {
+    const set = new Set<string>();
+    orders.forEach(o => { if (o.buyer) set.add(o.buyer); });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [orders]);
 
-  // Pre-build supplier PO map for O(1) lookup
-  const poSupplierMap = useMemo(() => {
-    const map = new Map<string, string>();
-    ledgers.forEach(l => {
-      if (l.partyType === 'Supplier' && l.purchaseOrderNo) {
-        map.set(l.purchaseOrderNo, l.partyName);
-      }
-    });
-    return map;
-  }, [ledgers]);
+  const uniqueSuppliers = useMemo(() => {
+    const set = new Set<string>();
+    orders.forEach(o => { if (o.supplier) set.add(o.supplier); });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [orders]);
 
-  // Memoized Filtered Ledgers
-  const filteredLedgers = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
+  const uniqueBrands = useMemo(() => {
+    const set = new Set<string>();
+    orders.forEach(o => { if (o.brand) set.add(o.brand); });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [orders]);
 
-    return ledgers.filter(entry => {
-      // Tab Filter
-      if (activeTab === 'suppliers' && entry.partyType !== 'Supplier') return false;
-      if (activeTab === 'buyers' && entry.partyType !== 'Buyer') return false;
+  // Date boundary helpers for Date Filter
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const yesterdayStart = todayStart - 86400000;
+  const weekStart = todayStart - 7 * 86400000;
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
 
-      // Status Filter
-      if (statusFilter !== 'all' && entry.status !== statusFilter) return false;
+  // Filtered Orders (runs 100% locally in-memory with zero Firestore reads)
+  const filteredOrders = useMemo(() => {
+    return orders.filter(po => {
+      // 1. Search Query (across PO number, Buyer, Supplier/Miller, Brand, Bill number)
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const poNoMatch = po.poNumber.toLowerCase().includes(q);
+        const buyerMatch = po.buyer.toLowerCase().includes(q);
+        const supMatch = po.supplier.toLowerCase().includes(q);
+        const brandMatch = po.brand.toLowerCase().includes(q);
+        const billMatch = po.billNo ? po.billNo.toLowerCase().includes(q) : false;
 
-      // Supplier Filter
-      if (selectedSupplierFilter !== 'all') {
-        if (entry.partyType === 'Supplier') {
-          if (entry.partyName !== selectedSupplierFilter) return false;
-        } else {
-          const entrySupplier = poSupplierMap.get(entry.purchaseOrderNo);
-          if (entrySupplier !== selectedSupplierFilter) return false;
+        if (!poNoMatch && !buyerMatch && !supMatch && !brandMatch && !billMatch) {
+          return false;
         }
       }
 
-      // Search query
-      if (q !== '') {
-        const matchPo = entry.purchaseOrderNo.toLowerCase().includes(q);
-        const matchName = entry.partyName.toLowerCase().includes(q);
-        const matchType = entry.partyType.toLowerCase().includes(q);
-        return matchPo || matchName || matchType;
+      // 2. Buyer Filter
+      if (selectedBuyer !== 'all' && po.buyer.toLowerCase() !== selectedBuyer.toLowerCase()) {
+        return false;
+      }
+
+      // 3. Supplier Filter
+      if (selectedSupplier !== 'all' && po.supplier.toLowerCase() !== selectedSupplier.toLowerCase()) {
+        return false;
+      }
+
+      // 4. Brand Filter
+      if (selectedBrand !== 'all' && po.brand.toLowerCase() !== selectedBrand.toLowerCase()) {
+        return false;
+      }
+
+      // 5. Status / Pending Filter
+      if (statusFilter === 'arrived' && po.status !== 'Arrived') {
+        return false;
+      }
+      if (statusFilter === 'pending' && po.status !== 'Pending Loading' && po.status !== 'Partial Arrival') {
+        return false;
+      }
+
+      // 6. Date Filter
+      if (dateRange === 'today') {
+        if (po.dateTimestamp < todayStart) return false;
+      } else if (dateRange === 'yesterday') {
+        if (po.dateTimestamp < yesterdayStart || po.dateTimestamp >= todayStart) return false;
+      } else if (dateRange === 'week') {
+        if (po.dateTimestamp < weekStart) return false;
+      } else if (dateRange === 'month') {
+        if (po.dateTimestamp < monthStart) return false;
+      } else if (dateRange === 'custom' && customDate) {
+        // match YYYY-MM-DD
+        const targetDate = new Date(customDate);
+        if (!isNaN(targetDate.getTime())) {
+          const targetStart = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate()).getTime();
+          const targetEnd = targetStart + 86400000;
+          if (po.dateTimestamp < targetStart || po.dateTimestamp >= targetEnd) return false;
+        }
       }
 
       return true;
-    }).sort((a, b) => {
-      const timeA = parseLedgerDate(a);
-      const timeB = parseLedgerDate(b);
-      if (timeA !== timeB) return timeB - timeA;
-      return String(b.id || '').localeCompare(String(a.id || ''));
     });
-  }, [ledgers, activeTab, statusFilter, selectedSupplierFilter, searchQuery, poSupplierMap]);
+  }, [
+    orders, 
+    searchQuery, 
+    selectedBuyer, 
+    selectedSupplier, 
+    selectedBrand, 
+    statusFilter, 
+    dateRange, 
+    customDate,
+    todayStart,
+    yesterdayStart,
+    weekStart,
+    monthStart
+  ]);
 
-  // Memoized Stats & Chart Data
-  const { totalSupplierVolume, totalSupplierAmount, totalBuyerVolume, totalBuyerAmount, chartData } = useMemo(() => {
-    let supVol = 0;
-    let supAmt = 0;
-    let buyVol = 0;
-    let buyAmt = 0;
+  // Daily Order Visual Grouping (Section 2)
+  const groupedOrders = useMemo(() => {
+    const groups: { [dateKey: string]: { dateKey: string; timestamp: number; items: OperationalPO[] } } = {};
 
-    ledgers.forEach(e => {
-      if (e.partyType === 'Supplier') {
-        supVol += Number(e.qty) || 0;
-        supAmt += Number(e.amount) || 0;
-      } else {
-        buyVol += Number(e.qty) || 0;
-        buyAmt += Number(e.amount) || 0;
+    filteredOrders.forEach(po => {
+      const key = po.dateGroupKey || po.date;
+      if (!groups[key]) {
+        groups[key] = {
+          dateKey: key,
+          timestamp: po.dateTimestamp,
+          items: []
+        };
       }
+      groups[key].items.push(po);
     });
 
-    const chartMap = new Map<string, { name: string; SupplierVal: number; BuyerVal: number }>();
-    ledgers.slice(0, 8).forEach(e => {
-      const existing = chartMap.get(e.purchaseOrderNo) || { name: e.purchaseOrderNo.replace('BATCH-', ''), SupplierVal: 0, BuyerVal: 0 };
-      if (e.partyType === 'Supplier') {
-        existing.SupplierVal += e.amount;
-      } else {
-        existing.BuyerVal += e.amount;
+    // Sort groups chronologically (newest date first)
+    return Object.values(groups).sort((a, b) => b.timestamp - a.timestamp);
+  }, [filteredOrders]);
+
+  // Operational Summary Metrics (Section 9)
+  const summary = useMemo(() => {
+    let totalPoQtl = 0;
+    let totalArrivalQtl = 0;
+    let pendingLoadingsCount = 0;
+    let pendingQtl = 0;
+
+    filteredOrders.forEach(po => {
+      totalPoQtl += po.poQtl;
+      totalArrivalQtl += po.arrivalQtl;
+      if (po.status === 'Pending Loading' || po.status === 'Partial Arrival') {
+        pendingLoadingsCount += 1;
+        pendingQtl += Math.max(0, po.poQtl - po.arrivalQtl);
       }
-      chartMap.set(e.purchaseOrderNo, existing);
     });
 
     return {
-      totalSupplierVolume: supVol,
-      totalSupplierAmount: supAmt,
-      totalBuyerVolume: buyVol,
-      totalBuyerAmount: buyAmt,
-      chartData: Array.from(chartMap.values())
+      totalOrders: filteredOrders.length,
+      totalPoQtl,
+      totalArrivalQtl,
+      pendingLoadings: pendingLoadingsCount,
+      pendingQtl
     };
-  }, [ledgers]);
+  }, [filteredOrders]);
+
+  // Active filter count
+  const activeFiltersCount = useMemo(() => {
+    let count = 0;
+    if (searchQuery.trim()) count++;
+    if (dateRange !== 'all') count++;
+    if (selectedBuyer !== 'all') count++;
+    if (selectedSupplier !== 'all') count++;
+    if (selectedBrand !== 'all') count++;
+    if (statusFilter !== 'all') count++;
+    return count;
+  }, [searchQuery, dateRange, selectedBuyer, selectedSupplier, selectedBrand, statusFilter]);
+
+  const handleClearFilters = () => {
+    setSearchQuery('');
+    setDateRange('all');
+    setCustomDate('');
+    setSelectedBuyer('all');
+    setSelectedSupplier('all');
+    setSelectedBrand('all');
+    setStatusFilter('all');
+    if (searchParams.get('buyer')) {
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete('buyer');
+      setSearchParams(nextParams);
+    }
+  };
+
+  // Buyer Mini Profile Data (Section 7)
+  const buyerProfileData = useMemo(() => {
+    if (!selectedBuyerForModal) return null;
+    const buyerName = selectedBuyerForModal;
+    const buyerOrders = orders.filter(o => o.buyer.toLowerCase() === buyerName.toLowerCase());
+
+    let totalPo = 0;
+    let totalArrived = 0;
+    let pending = 0;
+    const suppliersSet = new Set<string>();
+
+    buyerOrders.forEach(o => {
+      totalPo += o.poQtl;
+      totalArrived += o.arrivalQtl;
+      pending += Math.max(0, o.poQtl - o.arrivalQtl);
+      if (o.supplier) suppliersSet.add(o.supplier);
+    });
+
+    const recentOrders = [...buyerOrders]
+      .sort((a, b) => b.dateTimestamp - a.dateTimestamp)
+      .slice(0, 8);
+
+    return {
+      name: buyerName,
+      totalOrders: buyerOrders.length,
+      totalPoQtl: totalPo,
+      totalArrivalQtl: totalArrived,
+      pendingQtl: pending,
+      suppliers: Array.from(suppliersSet),
+      recentOrders
+    };
+  }, [selectedBuyerForModal, orders]);
 
   return (
-    <div className="p-8 space-y-8 max-w-7xl mx-auto pb-32">
-      {/* Title */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-        <div>
-          <h1 className="text-3xl font-black tracking-tight flex items-center gap-3">
-            <BookOpen className="w-8 h-8 text-primary" />
-            Commercial Ledger
-          </h1>
-          <p className="text-secondary text-sm font-medium mt-1">
-            Real-time balance book recording all incoming commodity volume and financial settlements across suppliers (Millers) and shops (Buyers).
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <button 
-            type="button"
-            onClick={() => {
-              setIsDeleteAllModalOpen(true);
-              setDeletePassword('');
-              setPasswordError(null);
-              setShowPassword(false);
-            }}
-            className="flex items-center gap-2 px-4 py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 rounded-xl text-xs font-black transition-all border border-red-500/25 shadow-sm hover:border-red-500/40 cursor-pointer"
-            title="Delete Whole Commercial Ledger"
-          >
-            <Trash2 className="w-3.5 h-3.5 text-red-500" />
-            <span>Delete Whole Ledger</span>
-          </button>
-          <NavLink
-            to="/pending-loadings"
-            className="flex items-center gap-2 px-5 py-2.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-xl text-xs font-black transition-all border border-amber-500/30 shadow-sm"
-          >
-            <Clock className="w-3.5 h-3.5" />
-            Pending Loadings
-          </NavLink>
-          <button 
-            onClick={fetchLedgers}
-            disabled={isLoading}
-            className="flex items-center gap-2 px-5 py-2.5 bg-surface-container hover:bg-surface-container-high rounded-xl text-xs font-bold transition-all border border-outline-variant/30"
-          >
-            <RefreshCw className={cn("w-3.5 h-3.5", isLoading && "animate-spin")} />
-            Sync Book
-          </button>
+    <div className="flex-1 flex flex-col min-h-screen bg-[#fafaf9] dark:bg-[#07110c] text-slate-900 dark:text-slate-100 font-sans antialiased">
+      
+      {/* 1. Header Workspace Bar */}
+      <div className="bg-white/80 dark:bg-[#0a1610]/80 backdrop-blur-md border-b border-slate-200/80 dark:border-white/10 px-4 md:px-8 py-4 shrink-0 sticky top-0 z-20 transition-colors">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center font-black">
+                <FileText className="w-5 h-5" />
+              </div>
+              <div>
+                <h1 className="text-xl font-black tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
+                  Purchase Order Ledger
+                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-neutral-800 text-slate-600 dark:text-slate-400 border border-slate-200/60 dark:border-white/10">
+                    Operational View
+                  </span>
+                </h1>
+                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
+                  Chronological Daily Ledger • One Row Per Purchase Order
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2.5 self-end md:self-auto">
+            <button
+              onClick={loadOrdersData}
+              disabled={isLoading}
+              className="px-3.5 py-2 rounded-xl bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 text-xs font-bold text-slate-700 dark:text-slate-200 hover:border-amber-500/40 hover:text-amber-600 transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs disabled:opacity-50"
+              title="Refresh ledger data"
+            >
+              <RefreshCw className={cn("w-3.5 h-3.5", isLoading && "animate-spin text-amber-500")} />
+              <span>Refresh</span>
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Grid Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        {/* Miller overall QTLS */}
-        <motion.div 
-          initial={{ opacity: 0, y: 20, scale: 0.985 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          whileHover={{ y: -5, transition: { duration: 0.22, ease: "easeOut" } }}
-          transition={{ duration: 0.48, ease: [0.16, 1, 0.3, 1] }}
-          className="liquid-glass p-6 rounded-3xl premium-border flex flex-col justify-between interactive-card"
-        >
-          <div className="flex justify-between items-start">
-            <div>
-              <span className="text-[10px] font-black uppercase tracking-widest text-secondary block">Miller Volume (Suppliers)</span>
-              <span className="text-2xl font-black tracking-tight mt-1 block">{(totalSupplierVolume ?? 0).toFixed(2)} QTLS</span>
-            </div>
-            <div className="p-2.5 bg-primary/10 text-primary rounded-xl">
-              <TrendingUp className="w-5 h-5" />
-            </div>
-          </div>
-          <span className="text-[11px] text-emerald-600 mt-4 flex items-center gap-1 font-semibold">
-            <ArrowUpRight className="w-3 h-3" /> Aggregated inbound grain weight
-          </span>
-        </motion.div>
+      {/* Main Content Area */}
+      <div className="flex-1 p-4 md:p-8 space-y-6 max-w-7xl w-full mx-auto">
 
-        {/* Miller overall Amount */}
-        <motion.div 
-          initial={{ opacity: 0, y: 20, scale: 0.985 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          whileHover={{ y: -5, transition: { duration: 0.22, ease: "easeOut" } }}
-          transition={{ duration: 0.48, delay: 0.06, ease: [0.16, 1, 0.3, 1] }}
-          className="liquid-glass p-6 rounded-3xl premium-border flex flex-col justify-between interactive-card"
-        >
-          <div className="flex justify-between items-start">
-            <div>
-              <span className="text-[10px] font-black uppercase tracking-widest text-secondary block">Miller Accounts Liability</span>
-              <span className="text-2xl font-black tracking-tight mt-1 text-primary block">₹ {formatINR(totalSupplierAmount)}</span>
+        {/* 2. Top Operational Summary Cards (Section 9) */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          <div className="p-4 rounded-2xl bg-white dark:bg-[#0a1610] border border-slate-200/80 dark:border-white/10 shadow-2xs space-y-1">
+            <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
+              Total Orders
+            </span>
+            <div className="flex items-baseline justify-between">
+              <span className="text-2xl font-black text-slate-900 dark:text-white font-mono">
+                {summary.totalOrders.toLocaleString()}
+              </span>
+              <Package className="w-4 h-4 text-slate-400 opacity-60" />
             </div>
-            <div className="p-2.5 bg-orange-500/10 text-orange-500 rounded-xl">
-              <ArrowDownLeft className="w-5 h-5" />
-            </div>
-          </div>
-          <span className="text-[11px] text-secondary mt-4 block font-semibold">
-            Based on current purchase order contracts
-          </span>
-        </motion.div>
-
-        {/* Shop overall QTLS */}
-        <motion.div 
-          initial={{ opacity: 0, y: 20, scale: 0.985 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          whileHover={{ y: -5, transition: { duration: 0.22, ease: "easeOut" } }}
-          transition={{ duration: 0.48, delay: 0.12, ease: [0.16, 1, 0.3, 1] }}
-          className="liquid-glass p-6 rounded-3xl premium-border flex flex-col justify-between interactive-card"
-        >
-          <div className="flex justify-between items-start">
-            <div>
-              <span className="text-[10px] font-black uppercase tracking-widest text-secondary block">Shop Volume (Buyers)</span>
-              <span className="text-2xl font-black tracking-tight mt-1 block">{(totalBuyerVolume ?? 0).toFixed(2)} QTLS</span>
-            </div>
-            <div className="p-2.5 bg-emerald-500/10 text-emerald-600 rounded-xl">
-              <TrendingDown className="w-5 h-5" />
-            </div>
-          </div>
-          <span className="text-[11px] text-emerald-600 mt-4 flex items-center gap-1 font-semibold">
-            <ArrowUpRight className="w-3 h-3" /> Aggregated outbound fulfillment weight
-          </span>
-        </motion.div>
-
-        {/* Shop overall Amount */}
-        <motion.div 
-          initial={{ opacity: 0, y: 20, scale: 0.985 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          whileHover={{ y: -5, transition: { duration: 0.22, ease: "easeOut" } }}
-          transition={{ duration: 0.48, delay: 0.18, ease: [0.16, 1, 0.3, 1] }}
-          className="liquid-glass p-6 rounded-3xl premium-border flex flex-col justify-between interactive-card"
-        >
-          <div className="flex justify-between items-start">
-            <div>
-              <span className="text-[10px] font-black uppercase tracking-widest text-secondary block">Shop Accounts Receivable</span>
-              <span className="text-2xl font-black tracking-tight mt-1 text-emerald-600 block">₹ {formatINR(totalBuyerAmount)}</span>
-            </div>
-            <div className="p-2.5 bg-emerald-500/10 text-emerald-600 rounded-xl">
-              <ArrowUpRight className="w-5 h-5" />
-            </div>
-          </div>
-          <span className="text-[11px] text-secondary mt-4 block font-semibold">
-            Pending merchant collection audits
-          </span>
-        </motion.div>
-      </div>
-
-      {/* Recharts Trade Flow */}
-      {chartData.length > 0 && (
-        <motion.div 
-          initial={{ opacity: 0, y: 22, scale: 0.99 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          transition={{ duration: 0.5, delay: 0.22, ease: [0.16, 1, 0.3, 1] }}
-          className="liquid-glass p-6 rounded-3xl premium-border-high"
-        >
-          <h2 className="text-sm font-black uppercase tracking-widest text-secondary mb-6 flex items-center gap-2">
-            <TrendingUp className="w-4 h-4 text-primary" /> Contract Values by Purchase Order
-          </h2>
-          <div className="h-64 w-full min-w-0">
-            <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={100} initialDimension={{ width: 300, height: 200 }}>
-              <BarChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
-                <XAxis dataKey="name" stroke="#888888" fontSize={11} tickLine={false} />
-                <YAxis stroke="#888888" fontSize={11} tickLine={false} tickFormatter={(val) => `₹${(val/100000).toFixed(1)}L`} />
-                <Tooltip 
-                  formatter={(val: number) => [`₹ ${formatINR(val)}`, '']}
-                  contentStyle={{ background: '#1e1e1e', borderColor: '#333', borderRadius: '12px', color: '#fff' }}
-                />
-                <Legend iconSize={10} iconType="circle" wrapperStyle={{ fontSize: '11px', fontWeight: 'bold' }} />
-                <Bar name="Miller Contract Value" dataKey="SupplierVal" fill="#e11d48" radius={[6, 6, 0, 0]} />
-                <Bar name="Shop Billing Value" dataKey="BuyerVal" fill="#059669" radius={[6, 6, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </motion.div>
-      )}
-
-      {/* Main ledger Table view */}
-      <div className="space-y-6">
-        {/* Search, Filter, Tabs controllers */}
-        <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
-          {/* Tabs */}
-          <div className="flex bg-surface-container rounded-2xl p-1 gap-1 border border-outline-variant/20 self-start md:self-auto w-full md:w-auto">
-            <button
-              onClick={() => setActiveTab('all')}
-              className={cn(
-                "px-5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all w-full md:w-auto",
-                activeTab === 'all' ? 'bg-on-background text-background' : 'hover:bg-on-background/5 text-secondary'
-              )}
-            >
-              All Ledgers
-            </button>
-            <button
-              onClick={() => setActiveTab('suppliers')}
-              className={cn(
-                "px-5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all w-full md:w-auto",
-                activeTab === 'suppliers' ? 'bg-on-background text-background' : 'hover:bg-on-background/5 text-secondary'
-              )}
-            >
-              Miller (Suppliers)
-            </button>
-            <button
-              onClick={() => setActiveTab('buyers')}
-              className={cn(
-                "px-5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all w-full md:w-auto",
-                activeTab === 'buyers' ? 'bg-on-background text-background' : 'hover:bg-on-background/5 text-secondary'
-              )}
-            >
-              Shop (Buyers)
-            </button>
+            <span className="text-[10px] text-slate-500 font-medium">In selected view</span>
           </div>
 
-          {/* Search bar and Dropdown */}
-          <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto md:items-center">
-            <div className="relative w-full md:w-72">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-secondary" />
-              <input 
-                type="text"
-                placeholder="Search PO No, or party..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-surface-container border border-outline-variant/25 rounded-2xl pl-11 pr-4 py-2.5 text-xs text-on-surface placeholder:text-secondary focus:outline-none focus:border-primary transition-all"
+          <div className="p-4 rounded-2xl bg-white dark:bg-[#0a1610] border border-slate-200/80 dark:border-white/10 shadow-2xs space-y-1">
+            <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
+              Total PO QTL
+            </span>
+            <div className="flex items-baseline justify-between">
+              <span className="text-2xl font-black text-amber-700 dark:text-amber-400 font-mono">
+                {summary.totalPoQtl.toLocaleString('en-IN', { maximumFractionDigits: 1 })}
+              </span>
+              <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400">QTL</span>
+            </div>
+            <span className="text-[10px] text-slate-500 font-medium">Contracted Volume</span>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-white dark:bg-[#0a1610] border border-slate-200/80 dark:border-white/10 shadow-2xs space-y-1">
+            <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
+              Total Arrival QTL
+            </span>
+            <div className="flex items-baseline justify-between">
+              <span className="text-2xl font-black text-emerald-700 dark:text-emerald-400 font-mono">
+                {summary.totalArrivalQtl.toLocaleString('en-IN', { maximumFractionDigits: 1 })}
+              </span>
+              <CheckCircle2 className="w-4 h-4 text-emerald-500 opacity-60" />
+            </div>
+            <span className="text-[10px] text-slate-500 font-medium">Recorded at Mill/Shop</span>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-white dark:bg-[#0a1610] border border-slate-200/80 dark:border-white/10 shadow-2xs space-y-1">
+            <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
+              Pending Loadings
+            </span>
+            <div className="flex items-baseline justify-between">
+              <span className="text-2xl font-black text-rose-600 dark:text-rose-400 font-mono">
+                {summary.pendingLoadings}
+              </span>
+              <Clock className="w-4 h-4 text-rose-500 opacity-60" />
+            </div>
+            <span className="text-[10px] text-slate-500 font-medium">Awaiting Arrival</span>
+          </div>
+
+          <div className="col-span-2 sm:col-span-1 p-4 rounded-2xl bg-white dark:bg-[#0a1610] border border-slate-200/80 dark:border-white/10 shadow-2xs space-y-1">
+            <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
+              Pending QTL
+            </span>
+            <div className="flex items-baseline justify-between">
+              <span className="text-2xl font-black text-rose-700 dark:text-rose-400 font-mono">
+                {summary.pendingQtl.toLocaleString('en-IN', { maximumFractionDigits: 1 })}
+              </span>
+              <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400">QTL</span>
+            </div>
+            <span className="text-[10px] text-slate-500 font-medium">Volume in transit</span>
+          </div>
+        </div>
+
+        {/* 3. Operational Search & Filter Bar (Sections 3 & 4) */}
+        <div className="p-4 rounded-2xl bg-white dark:bg-[#0a1610] border border-slate-200/80 dark:border-white/10 shadow-2xs space-y-3">
+          {/* Prominent Search Bar */}
+          <div className="relative">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search orders by PO number, buyer, supplier/miller, brand, or bill number..."
+              className="w-full pl-10 pr-9 py-2.5 bg-slate-50 dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 rounded-xl text-xs font-medium text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 transition-all"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5 cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Quick Filters Row */}
+          <div className="flex items-center gap-2 flex-wrap pt-1">
+            <div className="flex items-center gap-1.5 text-xs text-slate-400 font-bold mr-1 shrink-0">
+              <Filter className="w-3.5 h-3.5" />
+              <span>Filters:</span>
+            </div>
+
+            {/* Date Range Filter */}
+            <div className="flex items-center bg-slate-100 dark:bg-neutral-900 rounded-xl p-0.5 border border-slate-200/60 dark:border-neutral-800 text-xs">
+              {(['all', 'today', 'yesterday', 'week', 'month'] as const).map(tab => (
+                <button
+                  key={tab}
+                  onClick={() => {
+                    setDateRange(tab);
+                    setCustomDate('');
+                  }}
+                  className={cn(
+                    "px-2.5 py-1 rounded-lg font-bold capitalize transition-all cursor-pointer",
+                    dateRange === tab 
+                      ? "bg-white dark:bg-neutral-800 text-slate-900 dark:text-white shadow-2xs" 
+                      : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                  )}
+                >
+                  {tab === 'all' ? 'All Dates' : tab === 'week' ? '7 Days' : tab === 'month' ? 'This Month' : tab}
+                </button>
+              ))}
+              <input
+                type="date"
+                value={customDate}
+                onChange={(e) => {
+                  setCustomDate(e.target.value);
+                  setDateRange('custom');
+                }}
+                className={cn(
+                  "px-2 py-0.5 text-[11px] font-bold rounded-lg bg-transparent text-slate-600 dark:text-slate-300 border-0 focus:outline-none cursor-pointer",
+                  dateRange === 'custom' && "bg-white dark:bg-neutral-800 text-slate-900 dark:text-white"
+                )}
+                title="Pick custom date"
               />
             </div>
 
-             <div className="flex flex-wrap md:flex-nowrap gap-2 w-full md:w-auto">
-              <div className="relative w-full md:w-44">
-                <Filter className="absolute left-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-secondary" />
-                <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value as any)}
-                  className="w-full bg-surface-container border border-outline-variant/25 rounded-2xl pl-11 pr-10 py-2.5 text-xs text-on-surface focus:outline-none focus:border-primary appearance-none cursor-pointer"
-                >
-                  <option value="all">All Statuses</option>
-                  <option value="Placed">Fulfillment: Placed</option>
-                  <option value="Arrived">Fulfillment: Arrived</option>
-                </select>
-                <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-secondary pointer-events-none" />
-              </div>
-
-              {(activeTab === 'buyers' || activeTab === 'all') && (
-                <div className="relative w-full md:w-56">
-                  <Briefcase className="absolute left-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-secondary" />
-                  <select
-                    value={selectedSupplierFilter}
-                    onChange={(e) => setSelectedSupplierFilter(e.target.value)}
-                    className="w-full bg-surface-container border border-outline-variant/25 rounded-2xl pl-11 pr-10 py-2.5 text-xs text-on-surface focus:outline-none focus:border-primary appearance-none cursor-pointer font-bold"
-                  >
-                    <option value="all">All Suppliers</option>
-                    {uniqueSuppliers.map(sup => (
-                      <option key={sup} value={sup}>{sup}</option>
-                    ))}
-                  </select>
-                  <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-secondary pointer-events-none" />
-                </div>
+            {/* Buyer Dropdown */}
+            <select
+              value={selectedBuyer}
+              onChange={(e) => setSelectedBuyer(e.target.value)}
+              className={cn(
+                "px-3 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-amber-500/20",
+                selectedBuyer !== 'all'
+                  ? "bg-amber-50 dark:bg-amber-950/40 border-amber-500/50 text-amber-900 dark:text-amber-300"
+                  : "bg-slate-50 dark:bg-neutral-900 border-slate-200 dark:border-neutral-800 text-slate-700 dark:text-slate-300"
               )}
-            </div>
+            >
+              <option value="all">All Buyers ({uniqueBuyers.length})</option>
+              {uniqueBuyers.map(b => (
+                <option key={b} value={b}>{b}</option>
+              ))}
+            </select>
+
+            {/* Supplier / Miller Dropdown */}
+            <select
+              value={selectedSupplier}
+              onChange={(e) => setSelectedSupplier(e.target.value)}
+              className={cn(
+                "px-3 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-amber-500/20",
+                selectedSupplier !== 'all'
+                  ? "bg-amber-50 dark:bg-amber-950/40 border-amber-500/50 text-amber-900 dark:text-amber-300"
+                  : "bg-slate-50 dark:bg-neutral-900 border-slate-200 dark:border-neutral-800 text-slate-700 dark:text-slate-300"
+              )}
+            >
+              <option value="all">All Suppliers ({uniqueSuppliers.length})</option>
+              {uniqueSuppliers.map(s => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+
+            {/* Brand Dropdown */}
+            <select
+              value={selectedBrand}
+              onChange={(e) => setSelectedBrand(e.target.value)}
+              className={cn(
+                "px-3 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-amber-500/20",
+                selectedBrand !== 'all'
+                  ? "bg-amber-50 dark:bg-amber-950/40 border-amber-500/50 text-amber-900 dark:text-amber-300"
+                  : "bg-slate-50 dark:bg-neutral-900 border-slate-200 dark:border-neutral-800 text-slate-700 dark:text-slate-300"
+              )}
+            >
+              <option value="all">All Brands ({uniqueBrands.length})</option>
+              {uniqueBrands.map(br => (
+                <option key={br} value={br}>{br}</option>
+              ))}
+            </select>
+
+            {/* Status / Pending Filter */}
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as any)}
+              className={cn(
+                "px-3 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-amber-500/20",
+                statusFilter !== 'all'
+                  ? "bg-amber-50 dark:bg-amber-950/40 border-amber-500/50 text-amber-900 dark:text-amber-300"
+                  : "bg-slate-50 dark:bg-neutral-900 border-slate-200 dark:border-neutral-800 text-slate-700 dark:text-slate-300"
+              )}
+            >
+              <option value="all">All Statuses</option>
+              <option value="arrived">Arrived Orders Only</option>
+              <option value="pending">Pending Loading Only</option>
+            </select>
+
+            {/* Clear Filters Button */}
+            {activeFiltersCount > 0 && (
+              <button
+                onClick={handleClearFilters}
+                className="px-2.5 py-1.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-rose-700 dark:text-rose-300 text-xs font-bold hover:bg-rose-100 transition-all flex items-center gap-1 cursor-pointer"
+              >
+                <X className="w-3 h-3" />
+                <span>Clear ({activeFiltersCount})</span>
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Table itself */}
-        <motion.div 
-          initial={{ opacity: 0, y: 22, scale: 0.99 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          transition={{ duration: 0.5, delay: 0.22, ease: [0.16, 1, 0.3, 1] }}
-          className="liquid-glass rounded-3xl premium-border overflow-hidden"
-        >
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr className="border-b border-outline-variant/20 bg-surface-container/30 text-[10px] font-black uppercase tracking-widest text-secondary text-left">
-                  <th className="py-4.5 px-6">Date</th>
-                  <th className="py-4.5 px-6">Purchase Order No</th>
-                  <th className="py-4.5 px-6">Party Name</th>
-                  <th className="py-4.5 px-6">Type</th>
-                  <th className="py-4.5 px-6 text-right">Volume</th>
-                  <th className="py-4.5 px-6 text-right">Rate / Qtl</th>
-                  <th className="py-4.5 px-6 text-right">Amount</th>
-                  <th className="py-4.5 px-6 text-center">Fulfillment</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-outline-variant/10">
-                <AnimatePresence mode="popLayout">
-                  {filteredLedgers.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} className="py-16 text-center text-xs text-secondary font-medium">
-                        {ledgers.length === 0 ? (
-                          <div className="flex flex-col items-center justify-center space-y-3">
-                            <div className="w-12 h-12 rounded-2xl bg-surface-container flex items-center justify-center text-secondary border border-outline-variant/20">
-                              <BookOpen className="w-6 h-6" />
-                            </div>
-                            <p className="font-bold text-sm text-on-surface">Commercial Ledger is Empty</p>
-                            <p className="text-xs text-secondary max-w-sm">
-                              All commercial ledger records have been wiped. New entries will log automatically when procurement batches arrive or are placed.
-                            </p>
-                          </div>
-                        ) : (
-                          "No ledger entries found matching active filters."
-                        )}
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredLedgers.map((entry) => (
-                      <motion.tr 
-                        key={entry.id}
-                        layoutId={entry.id}
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="interactive-tr cursor-pointer"
-                      >
-                        <td className="py-4 px-6 text-xs text-on-surface font-semibold">
-                          {formatDateToDDMMYYYY(entry.date)}
-                        </td>
-                        <td className="py-4 px-6">
-                          <div className="flex items-center gap-2 group">
-                            <span className="font-mono text-xs font-bold text-secondary bg-surface-container px-2 py-1 rounded">
-                              {entry.purchaseOrderNo}
-                            </span>
-                            <button
-                              onClick={() => handleCopy(entry.purchaseOrderNo)}
-                              className="opacity-0 group-hover:opacity-100 p-1 hover:bg-surface-container-high rounded transition-all text-secondary"
-                              title="Copy PO Number"
-                            >
-                              {copiedId === entry.purchaseOrderNo ? (
-                                <Check className="w-3 h-3 text-emerald-500" />
-                              ) : (
-                                <Copy className="w-3 h-3" />
-                              )}
-                            </button>
-                          </div>
-                        </td>
-                        <td 
-                          className="py-4 px-6 text-xs text-on-surface hover:text-primary cursor-pointer transition-all"
-                          title="Click to view full transaction balance and history"
-                          onClick={() => setSelectedParty({ name: entry.partyName, type: entry.partyType })}
-                        >
-                          <div className="flex flex-col gap-1">
-                            <div className="flex items-center gap-1.5 group/link flex-wrap">
-                              <span className="font-black">{entry.partyName}</span>
-                              {(entry.isLifted || entry.notes?.includes('LIFTED')) && (
-                                <span className="inline-flex items-center gap-1 text-[8px] font-black tracking-widest text-purple-700 dark:text-purple-300 bg-purple-500/10 border border-purple-500/20 px-1.5 py-0.5 rounded uppercase">
-                                  <Truck className="w-3 h-3 text-purple-600 shrink-0" />
-                                  LIFTED TO {entry.partyName} {entry.originalPartyName ? `(EX: ${entry.originalPartyName})` : ''}
-                                </span>
-                              )}
-                              <span className="text-[9px] font-black tracking-widest text-primary bg-primary/5 px-2 py-0.5 rounded opacity-0 group-hover/link:opacity-100 transition-all uppercase">
-                                Ledger ➔
-                              </span>
-                            </div>
-                            {(() => {
-                              if (entry.partyType === 'Buyer') {
-                                const supplierName = ledgers.find(l => l.purchaseOrderNo === entry.purchaseOrderNo && l.partyType === 'Supplier')?.partyName;
-                                if (supplierName) {
-                                  return (
-                                    <span className="text-[10px] text-secondary font-medium flex items-center gap-1">
-                                      <span className="text-[9px] font-black uppercase text-secondary/60 tracking-wider">From:</span>
-                                      <span className="font-semibold text-on-surface/80 bg-surface-container px-1.5 py-0.5 rounded">{supplierName}</span>
-                                    </span>
-                                  );
-                                }
-                              } else {
-                                const buyerName = ledgers.find(l => l.purchaseOrderNo === entry.purchaseOrderNo && l.partyType === 'Buyer')?.partyName;
-                                if (buyerName) {
-                                  return (
-                                    <span className="text-[10px] text-secondary font-medium flex items-center gap-1">
-                                      <span className="text-[9px] font-black uppercase text-secondary/60 tracking-wider">To:</span>
-                                      <span className="font-semibold text-on-surface/80 bg-surface-container px-1.5 py-0.5 rounded">{buyerName}</span>
-                                    </span>
-                                  );
-                                }
-                              }
-                              return null;
-                            })()}
-                          </div>
-                        </td>
-                        <td className="py-4 px-6">
-                          {entry.partyType === 'Supplier' ? (
-                            <div className="flex flex-col gap-1 items-start">
-                              <span className="inline-flex items-center gap-1.5 text-[10px] font-black text-rose-700 bg-rose-500/10 dark:text-rose-300 dark:bg-rose-500/20 px-2.5 py-1 rounded-lg uppercase border border-rose-500/25 tracking-wide shadow-xs">
-                                Miller ➔ Buyer
-                              </span>
-                              <span className="text-[9px] text-secondary font-bold uppercase tracking-tight">
-                                Outward Supply
-                              </span>
-                            </div>
-                          ) : (
-                            <div className="flex flex-col gap-1 items-start">
-                              <span className="inline-flex items-center gap-1.5 text-[10px] font-black text-emerald-700 bg-emerald-500/10 dark:text-emerald-300 dark:bg-emerald-500/20 px-2.5 py-1 rounded-lg uppercase border border-emerald-500/25 tracking-wide shadow-xs">
-                                Buyer ➔ Miller
-                              </span>
-                              <span className="text-[9px] text-secondary font-bold uppercase tracking-tight">
-                                Inward Delivery
-                              </span>
-                            </div>
-                          )}
-                        </td>
-                        <td className="py-4 px-6 text-xs text-right font-semibold text-secondary">
-                          {(Number(entry.qty) || 0).toFixed(2)} QTLS
-                        </td>
-                        <td className="py-4 px-6 text-xs text-right font-mono font-bold text-primary">
-                          ₹ {formatINR(entry.rate || (entry.qty > 0 ? Math.round(entry.amount / entry.qty) : 0))}
-                        </td>
-                        <td className="py-4 px-6 text-xs font-black text-right text-on-surface">
-                          ₹ {formatINR(entry.amount)}
-                        </td>
-                        <td className="py-4 px-6 text-center">
-                          {entry.status === 'Arrived' ? (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20 dark:text-emerald-400 px-2.5 py-1 rounded-full uppercase">
-                              <CheckCircle className="w-3 h-3" /> Received
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 bg-amber-50 dark:bg-amber-950/20 dark:text-amber-400 px-2.5 py-1 rounded-full uppercase animate-pulse">
-                              <Clock className="w-3 h-3" /> In Transit
-                            </span>
-                          )}
-                        </td>
-                      </motion.tr>
-                    ))
-                  )}
-                </AnimatePresence>
-              </tbody>
-            </table>
+        {/* 4. Daily Order Organization (Section 1 & 2) */}
+        {groupedOrders.length === 0 ? (
+          <div className="p-12 text-center rounded-2xl bg-white dark:bg-[#0a1610] border border-slate-200/80 dark:border-white/10 shadow-2xs space-y-3">
+            <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-neutral-800 flex items-center justify-center text-slate-400 mx-auto">
+              <Search className="w-5 h-5 opacity-50" />
+            </div>
+            <h3 className="text-sm font-black text-slate-900 dark:text-white">No Matching Orders Found</h3>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+              No purchase orders match your active search or filter criteria. Try adjusting or clearing your filters.
+            </p>
+            {activeFiltersCount > 0 && (
+              <button
+                onClick={handleClearFilters}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm"
+              >
+                Clear All Filters
+              </button>
+            )}
           </div>
-        </motion.div>
+        ) : (
+          <div className="space-y-6">
+            {groupedOrders.map(group => {
+              const groupPoTotal = group.items.reduce((s, it) => s + it.poQtl, 0);
+              const groupArrTotal = group.items.reduce((s, it) => s + it.arrivalQtl, 0);
+
+              return (
+                <div key={group.dateKey} className="space-y-2">
+                  {/* Daily Date Header with Subtotals */}
+                  <div className="flex items-center justify-between px-1">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-amber-500" />
+                      <h2 className="text-sm font-black text-slate-900 dark:text-white tracking-tight">
+                        {group.dateKey}
+                      </h2>
+                      <span className="text-[11px] text-slate-500 font-bold">
+                        ({group.items.length} {group.items.length === 1 ? 'Order' : 'Orders'})
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-3 text-xs font-mono">
+                      <span className="text-slate-500">
+                        PO: <strong className="text-slate-800 dark:text-slate-200">{groupPoTotal.toLocaleString()} QTL</strong>
+                      </span>
+                      <span className="text-slate-300 dark:text-neutral-700">•</span>
+                      <span className="text-slate-500">
+                        Arrival: <strong className="text-emerald-600 dark:text-emerald-400">{groupArrTotal.toLocaleString()} QTL</strong>
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Orders Table for this Date */}
+                  <div className="overflow-x-auto rounded-2xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-[#0a1610] shadow-2xs">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="border-b border-slate-200/80 dark:border-white/10 bg-slate-50/75 dark:bg-neutral-900/60 text-[10px] font-black uppercase tracking-wider text-slate-500">
+                          <th className="py-3 px-3.5">Date</th>
+                          <th className="py-3 px-3.5">PO No.</th>
+                          <th className="py-3 px-3.5">Buyer</th>
+                          <th className="py-3 px-3.5">Supplier / Miller</th>
+                          <th className="py-3 px-3.5">Brand</th>
+                          <th className="py-3 px-3.5 text-right">PO QTL</th>
+                          <th className="py-3 px-3.5 text-right">Arrival QTL</th>
+                          <th className="py-3 px-3.5 text-right">Rate / QTL</th>
+                          <th className="py-3 px-3.5 text-right">Difference</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-white/5 font-medium">
+                        {group.items.map(po => {
+                          const diff = formatDifference(po.difference);
+
+                          return (
+                            <tr 
+                              key={po.id}
+                              className="hover:bg-slate-50/60 dark:hover:bg-white/[0.02] transition-colors"
+                            >
+                              {/* Date */}
+                              <td className="py-3 px-3.5 whitespace-nowrap text-slate-600 dark:text-slate-400 font-mono text-[11px]">
+                                {po.date}
+                              </td>
+
+                              {/* PO No (Clickable for PO Detail) */}
+                              <td className="py-3 px-3.5 whitespace-nowrap">
+                                <button
+                                  onClick={() => setSelectedPoForModal(po)}
+                                  className="font-mono font-black text-amber-600 dark:text-amber-400 hover:underline hover:text-amber-700 inline-flex items-center gap-1 cursor-pointer"
+                                  title="Click to view PO details"
+                                >
+                                  <span>{po.poNumber}</span>
+                                </button>
+                              </td>
+
+                              {/* Buyer (Clickable for Buyer Mini Profile) */}
+                              <td className="py-3 px-3.5">
+                                <button
+                                  onClick={() => setSelectedBuyerForModal(po.buyer)}
+                                  className="font-bold text-slate-900 dark:text-white hover:text-amber-600 dark:hover:text-amber-400 hover:underline text-left cursor-pointer transition-colors"
+                                  title={`View buyer profile for ${po.buyer}`}
+                                >
+                                  {po.buyer}
+                                </button>
+                              </td>
+
+                              {/* Supplier / Miller */}
+                              <td className="py-3 px-3.5 text-slate-700 dark:text-slate-300">
+                                {po.supplier}
+                              </td>
+
+                              {/* Brand */}
+                              <td className="py-3 px-3.5">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-slate-100 dark:bg-neutral-800 text-slate-800 dark:text-slate-200 text-[11px] font-bold border border-slate-200/60 dark:border-white/10">
+                                  {po.brand}
+                                </span>
+                              </td>
+
+                              {/* PO QTL */}
+                              <td className="py-3 px-3.5 text-right font-mono font-black text-slate-900 dark:text-white whitespace-nowrap">
+                                {po.poQtl.toLocaleString('en-IN', { maximumFractionDigits: 1 })}
+                              </td>
+
+                              {/* Arrival QTL */}
+                              <td className="py-3 px-3.5 text-right font-mono whitespace-nowrap">
+                                {po.arrivalQtl > 0 ? (
+                                  <span className="font-black text-emerald-600 dark:text-emerald-400">
+                                    {po.arrivalQtl.toLocaleString('en-IN', { maximumFractionDigits: 1 })}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400 font-bold italic">
+                                    0
+                                  </span>
+                                )}
+                              </td>
+
+                              {/* Rate / QTL */}
+                              <td className="py-3 px-3.5 text-right font-mono font-bold text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                                {po.rate > 0 ? `₹ ${formatINR(po.rate)}` : '—'}
+                              </td>
+
+                              {/* Difference (Quantity only, NO monetary calculation) */}
+                              <td className="py-3 px-3.5 text-right whitespace-nowrap font-mono">
+                                {po.arrivalQtl === 0 ? (
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
+                                    <Clock className="w-2.5 h-2.5" />
+                                    <span>Pending Load</span>
+                                  </span>
+                                ) : (
+                                  <span className={cn("text-xs", diff.colorClass)}>
+                                    {diff.text}
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
-      {/* Interactive Party Drill-down Detail Modal */}
+      {/* 5. Buyer Mini Profile Panel / Modal (Section 7) */}
       <AnimatePresence>
-        {selectedParty && drillDownData && (
-          <div className="fixed inset-0 bg-neutral-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="bg-surface border border-outline-variant/50 w-full max-w-4xl max-h-[85vh] rounded-3xl overflow-hidden shadow-2xl flex flex-col font-sans"
-            >
-              {/* Header */}
-              <div className="p-6 border-b border-outline-variant/30 bg-surface-container/50 flex justify-between items-center">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className={cn(
-                      "text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full border",
-                      drillDownData.type === 'Supplier' 
-                        ? "text-red-600 bg-red-50 border-red-200/50 dark:bg-red-950/20 dark:text-red-400" 
-                        : "text-emerald-600 bg-emerald-50 border-emerald-200/50 dark:bg-emerald-950/20 dark:text-emerald-400"
-                    )}>
-                      {drillDownData.type === 'Supplier' ? 'Supplier / Miller' : 'Buyer / Shop'}
-                    </span>
-                  </div>
-                  <h2 className="text-2xl font-black text-on-surface tracking-tight">
-                    {drillDownData.name}
-                  </h2>
-                </div>
-                <button 
-                  onClick={() => setSelectedParty(null)}
-                  className="p-2 hover:bg-on-background/5 rounded-full transition-all text-secondary"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              {/* Modal Body */}
-              <div className="p-6 overflow-y-auto space-y-6 flex-1 scrollbar-thin">
-                {/* Visual Stats */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="interactive-card p-5 rounded-2xl bg-emerald-500/[0.03] border border-emerald-500/10 flex flex-col justify-between">
-                    <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600">Arrived / Received Quantity</span>
-                    <span className="text-3xl font-black text-on-surface mt-2">{(Number(drillDownData.totalArrived) || 0).toFixed(2)} QTLS</span>
-                    <span className="text-[10px] text-secondary mt-1 font-semibold">Volume safely delivered and audited</span>
-                  </div>
-                  <div className="interactive-card p-5 rounded-2xl bg-amber-500/[0.03] border border-amber-500/10 flex flex-col justify-between">
-                    <span className="text-[10px] font-black uppercase tracking-widest text-amber-600">Pending / In-Transit Quantity</span>
-                    <span className="text-3xl font-black text-on-surface mt-2">{(Number(drillDownData.totalPending) || 0).toFixed(2)} QTLS</span>
-                    <span className="text-[10px] text-secondary mt-1 font-semibold">Volume placed but currently on route</span>
-                  </div>
-                </div>
-
-                {/* Counterparts matching: relationship view */}
-                <div className="space-y-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-surface-container-low/60 p-4 rounded-2xl border border-outline-variant/20">
-                    <h3 className="text-xs font-black uppercase tracking-widest text-secondary flex items-center gap-1.5">
-                      <Briefcase className="w-4 h-4 text-primary" />
-                      Interactive Counterparty Partnerships & Statuses
-                    </h3>
-
-                    {drillDownData.type === 'Buyer' && (
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-black uppercase tracking-wider text-secondary">Filter Supplier:</span>
-                        <div className="relative">
-                          <select
-                            value={modalSupplierFilter}
-                            onChange={(e) => setModalSupplierFilter(e.target.value)}
-                            className="bg-surface-container border border-outline-variant/30 rounded-xl pl-3 pr-8 py-1.5 text-xs text-on-surface focus:outline-none focus:border-primary appearance-none cursor-pointer font-bold"
-                          >
-                            <option value="all">All Suppliers</option>
-                            {drillDownData.counterparts.map(cp => (
-                              <option key={cp.name} value={cp.name}>{cp.name}</option>
-                            ))}
-                          </select>
-                          <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-secondary pointer-events-none" />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  
-                  <div className="space-y-4">
-                    {(() => {
-                      const filteredCounterparts = drillDownData.counterparts.filter((cp) => {
-                        if (drillDownData.type !== 'Buyer') return true;
-                        return modalSupplierFilter === 'all' || cp.name === modalSupplierFilter;
-                      });
-
-                      if (filteredCounterparts.length === 0) {
-                        return (
-                          <div className="py-8 text-center text-xs text-secondary font-medium bg-surface-container-low/20 rounded-2xl border border-dashed border-outline-variant/30">
-                            No transactions found for the selected supplier.
-                          </div>
-                        );
-                      }
-
-                      return filteredCounterparts.map((cp) => (
-                        <div key={cp.name} className="interactive-card p-4 rounded-2xl border border-outline-variant/30 bg-surface-container-low/40 space-y-3">
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-outline-variant/20 pb-2">
-                            <span className="font-bold text-sm text-on-surface flex items-center gap-2">
-                               <span className="w-2 h-2 rounded-full bg-primary" />
-                               {cp.name}
-                            </span>
-                            <div className="flex gap-4 text-[10px] font-black uppercase">
-                              <span className="text-emerald-700 dark:text-emerald-400 font-bold">Arrived: <strong className="text-on-surface font-mono text-xs font-bold">{(Number(cp.arrivedQty) || 0).toFixed(2)}</strong> QT</span>
-                              <span className="text-amber-700 dark:text-amber-400 font-bold">Pending: <strong className="text-on-surface font-mono text-xs font-bold">{(Number(cp.pendingQty) || 0).toFixed(2)}</strong> QT</span>
-                            </div>
-                          </div>
-
-                          {/* Partnership contract records list */}
-                          <div className="overflow-x-auto">
-                            <table className="w-full text-left text-xs">
-                              <thead>
-                                <tr className="text-[9px] font-black uppercase text-secondary/70 tracking-widest">
-                                  <th className="py-1">PO Number</th>
-                                  <th className="py-1">Date</th>
-                                  <th className="py-1 text-right">Volume</th>
-                                  <th className="py-1 text-right">Rate / Qtl</th>
-                                  <th className="py-1 text-right">Amount</th>
-                                  <th className="py-1 text-center">Status</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {cp.entries.map((entry: any, index: number) => (
-                                  <tr key={index} className="border-t border-outline-variant/10">
-                                    <td className="py-2.5 font-mono font-bold text-primary">{entry.po}</td>
-                                    <td className="py-2.5 text-secondary">{formatDateToDDMMYYYY(entry.date)}</td>
-                                    <td className="py-2.5 text-right font-mono font-bold">{(Number(entry.qty) || 0).toFixed(2)} QTLS</td>
-                                    <td className="py-2.5 text-right font-mono font-bold text-primary">₹ {formatINR(entry.rate || (entry.qty > 0 ? Math.round(entry.amount / entry.qty) : 0))}</td>
-                                    <td className="py-2.5 text-right font-mono">₹ {formatINR(entry.amount)}</td>
-                                    <td className="py-2.5 text-center col-span-1">
-                                      {entry.status === 'Arrived' ? (
-                                        <span className="text-[8px] font-black tracking-widest leading-none bg-emerald-500/10 text-emerald-600 px-1.5 py-0.5 rounded uppercase font-bold">Arrived</span>
-                                      ) : (
-                                        <span className="text-[8px] font-black tracking-widest leading-none bg-amber-500/10 text-amber-600 px-1.5 py-0.5 rounded uppercase animate-pulse font-bold">Pending</span>
-                                      )}
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      ));
-                    })()}
-                  </div>
-                </div>
-              </div>
-
-              {/* Close Panel */}
-              <div className="p-4 bg-surface-container border-t border-outline-variant/30 flex justify-end">
-                <button 
-                  onClick={() => setSelectedParty(null)}
-                  className="px-6 py-2.5 bg-on-background text-background rounded-xl text-xs font-black uppercase tracking-widest hover:opacity-90 active:scale-95 transition-all shadow-md cursor-pointer"
-                >
-                  Close Document
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Password Protected Delete Whole Ledger Confirmation Modal */}
-      <AnimatePresence>
-        {isDeleteAllModalOpen && (
-          <div className="fixed inset-0 bg-neutral-950/75 backdrop-blur-md z-50 flex items-center justify-center p-4">
+        {selectedBuyerForModal && buyerProfileData && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
             <motion.div
-              initial={{ opacity: 0, scale: 0.94, y: 16 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.94, y: 16 }}
-              transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-              className="bg-surface border border-red-500/40 dark:border-red-500/50 w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl flex flex-col font-sans"
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              className="bg-white dark:bg-[#0a1610] border border-slate-200/90 dark:border-white/10 rounded-3xl shadow-2xl p-6 w-full max-w-2xl text-slate-900 dark:text-white space-y-5"
             >
               {/* Header */}
-              <div className="p-6 border-b border-outline-variant/20 bg-gradient-to-br from-red-500/15 via-surface to-surface flex items-start gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-red-500/20 border border-red-500/40 flex items-center justify-center text-red-600 dark:text-red-400 shrink-0">
-                  <ShieldAlert className="w-6 h-6" />
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-white/10">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center font-black">
+                    <User className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-slate-900 dark:text-white">
+                      {buyerProfileData.name}
+                    </h3>
+                    <p className="text-[11px] text-slate-500 font-medium">
+                      Commercial Buyer Profile • Aggregate Operational History
+                    </p>
+                  </div>
                 </div>
-                <div className="space-y-1">
-                  <h3 className="text-xl font-black tracking-tight text-on-surface">
-                    Delete Whole Ledger Data
-                  </h3>
-                  <p className="text-xs text-secondary font-medium">
-                    Permanent action. Authorization password verification is required to erase all ledger records.
-                  </p>
+                <button
+                  onClick={() => setSelectedBuyerForModal(null)}
+                  className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Metrics Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                <div className="p-3 rounded-2xl bg-slate-50 dark:bg-neutral-900 border border-slate-200/60 dark:border-neutral-800">
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">
+                    Total Orders
+                  </span>
+                  <span className="text-lg font-black font-mono">
+                    {buyerProfileData.totalOrders}
+                  </span>
+                </div>
+
+                <div className="p-3 rounded-2xl bg-slate-50 dark:bg-neutral-900 border border-slate-200/60 dark:border-neutral-800">
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">
+                    Total PO QTL
+                  </span>
+                  <span className="text-lg font-black font-mono text-amber-700 dark:text-amber-400">
+                    {buyerProfileData.totalPoQtl.toLocaleString()}
+                  </span>
+                </div>
+
+                <div className="p-3 rounded-2xl bg-slate-50 dark:bg-neutral-900 border border-slate-200/60 dark:border-neutral-800">
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">
+                    Total Arrived
+                  </span>
+                  <span className="text-lg font-black font-mono text-emerald-600 dark:text-emerald-400">
+                    {buyerProfileData.totalArrivalQtl.toLocaleString()}
+                  </span>
+                </div>
+
+                <div className="p-3 rounded-2xl bg-slate-50 dark:bg-neutral-900 border border-slate-200/60 dark:border-neutral-800">
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">
+                    Pending QTL
+                  </span>
+                  <span className="text-lg font-black font-mono text-rose-600 dark:text-rose-400">
+                    {buyerProfileData.pendingQtl.toLocaleString()}
+                  </span>
                 </div>
               </div>
 
-              {/* Data Summary to be cleared */}
-              <div className="p-6 space-y-4">
-                <div className="p-4 rounded-2xl bg-red-500/5 border border-red-500/20 space-y-3">
-                  <div className="flex items-center gap-2 text-xs font-black text-red-600 dark:text-red-400 uppercase tracking-wider">
-                    <AlertTriangle className="w-4 h-4 shrink-0" />
-                    <span>Scope of Data Deletion</span>
-                  </div>
-                  <p className="text-xs text-secondary leading-relaxed">
-                    You are about to permanently purge the entire commercial ledger database, including all supplier grain receipts, buyer shop deliveries, lifting notes, and financial balances.
-                  </p>
-                  <div className="grid grid-cols-3 gap-2 pt-2 border-t border-red-500/15 text-center">
-                    <div className="p-2 bg-surface rounded-xl border border-outline-variant/20">
-                      <span className="block text-[9px] uppercase tracking-wider text-secondary font-bold">Records</span>
-                      <span className="font-mono font-black text-sm text-on-surface">{ledgers.length}</span>
-                    </div>
-                    <div className="p-2 bg-surface rounded-xl border border-outline-variant/20">
-                      <span className="block text-[9px] uppercase tracking-wider text-secondary font-bold">Total Volume</span>
-                      <span className="font-mono font-black text-sm text-on-surface">{(totalSupplierVolume + totalBuyerVolume).toFixed(1)} Q</span>
-                    </div>
-                    <div className="p-2 bg-surface rounded-xl border border-outline-variant/20">
-                      <span className="block text-[9px] uppercase tracking-wider text-secondary font-bold">Total Value</span>
-                      <span className="font-mono font-black text-sm text-on-surface">₹ {formatINR(totalSupplierAmount + totalBuyerAmount)}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <form onSubmit={handleDeleteWholeLedger} className="space-y-4">
-                  <div className="space-y-1.5">
-                    <label className="block text-xs font-black uppercase tracking-wider text-secondary flex items-center justify-between">
-                      <span className="flex items-center gap-1.5">
-                        <KeyRound className="w-3.5 h-3.5 text-primary" />
-                        <span>Master Authorization Password</span>
-                      </span>
-                      <span className="text-[10px] text-secondary/80 font-normal">
-                        Password required: <span className="font-bold text-primary font-mono bg-primary/10 px-1.5 py-0.5 rounded">tejas</span>
-                      </span>
-                    </label>
-                    <div className="relative">
-                      <input
-                        type={showPassword ? "text" : "password"}
-                        value={deletePassword}
-                        onChange={(e) => {
-                          setDeletePassword(e.target.value);
-                          if (passwordError) setPasswordError(null);
-                        }}
-                        placeholder="Enter password (tejas)"
-                        autoFocus
-                        required
-                        className="w-full bg-surface-container border border-outline-variant/30 rounded-xl px-4 py-3 text-xs text-on-surface focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 pr-10 font-mono"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-secondary hover:text-on-surface p-1 transition-colors"
-                        tabIndex={-1}
-                      >
-                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
-                  </div>
-
-                  {passwordError && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="p-3.5 bg-red-500/10 border border-red-500/25 rounded-xl text-red-600 dark:text-red-400 text-xs flex items-start gap-2"
+              {/* Suppliers Ordered From */}
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
+                  Suppliers & Millers Contracted With:
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {buyerProfileData.suppliers.map(s => (
+                    <span 
+                      key={s} 
+                      className="px-2.5 py-1 rounded-xl text-xs font-bold bg-slate-100 dark:bg-neutral-800 text-slate-800 dark:text-slate-200 border border-slate-200/60 dark:border-white/10"
                     >
-                      <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                      <span className="font-semibold">{passwordError}</span>
-                    </motion.div>
+                      {s}
+                    </span>
+                  ))}
+                  {buyerProfileData.suppliers.length === 0 && (
+                    <span className="text-xs text-slate-400 italic">No suppliers recorded.</span>
                   )}
+                </div>
+              </div>
 
-                  {/* Actions */}
-                  <div className="flex items-center justify-end gap-3 pt-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsDeleteAllModalOpen(false);
-                        setDeletePassword('');
-                        setPasswordError(null);
-                        setShowPassword(false);
-                      }}
-                      className="px-4 py-2.5 rounded-xl border border-outline-variant/40 text-xs font-bold text-secondary hover:bg-surface-container transition-all cursor-pointer"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={isDeleting || !deletePassword.trim()}
-                      className={cn(
-                        "px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider text-white transition-all shadow-md flex items-center gap-2 cursor-pointer",
-                        deletePassword.trim() 
-                          ? "bg-red-600 hover:bg-red-700 active:scale-95 shadow-red-600/20" 
-                          : "bg-red-600/50 cursor-not-allowed"
-                      )}
-                    >
-                      {isDeleting ? (
-                        <>
-                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                          <span>Wiping Ledger...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Trash2 className="w-3.5 h-3.5" />
-                          <span>Authorize & Delete Whole Ledger</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </form>
+              {/* Recent Orders Table */}
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
+                  Recent Orders
+                </span>
+                <div className="overflow-x-auto rounded-xl border border-slate-200/80 dark:border-white/10 max-h-48 overflow-y-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-200/80 dark:border-white/10 bg-slate-50 dark:bg-neutral-900 text-[9px] font-black uppercase text-slate-500">
+                        <th className="py-2 px-2.5">Date</th>
+                        <th className="py-2 px-2.5">PO</th>
+                        <th className="py-2 px-2.5">Supplier</th>
+                        <th className="py-2 px-2.5">Brand</th>
+                        <th className="py-2 px-2.5 text-right">PO QTL</th>
+                        <th className="py-2 px-2.5 text-right">Arrival</th>
+                        <th className="py-2 px-2.5 text-right">Rate</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-white/5 font-mono text-[11px]">
+                      {buyerProfileData.recentOrders.map(ro => (
+                        <tr key={ro.id}>
+                          <td className="py-2 px-2.5 whitespace-nowrap text-slate-600 dark:text-slate-400">{ro.dateShort}</td>
+                          <td className="py-2 px-2.5 font-bold text-amber-600 dark:text-amber-400 whitespace-nowrap">{ro.poNumber}</td>
+                          <td className="py-2 px-2.5 font-sans font-medium text-slate-700 dark:text-slate-300 truncate max-w-[120px]">{ro.supplier}</td>
+                          <td className="py-2 px-2.5 font-sans text-slate-600 dark:text-slate-400 truncate max-w-[100px]">{ro.brand}</td>
+                          <td className="py-2 px-2.5 text-right font-black text-slate-900 dark:text-white">{ro.poQtl}</td>
+                          <td className="py-2 px-2.5 text-right font-black text-emerald-600">{ro.arrivalQtl}</td>
+                          <td className="py-2 px-2.5 text-right text-slate-600 dark:text-slate-400">{ro.rate > 0 ? `₹${ro.rate}` : '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Modal Actions */}
+              <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-white/10">
+                <button
+                  type="button"
+                  onClick={() => setSelectedBuyerForModal(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-500 hover:text-slate-800 dark:hover:text-white cursor-pointer"
+                >
+                  Close
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedBuyer(buyerProfileData.name);
+                    setSelectedBuyerForModal(null);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+                >
+                  <span>View All Orders for {buyerProfileData.name}</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
               </div>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
 
-      {/* Floating Success Toast */}
+      {/* 6. PO Detail Modal (Section 8) */}
       <AnimatePresence>
-        {deleteSuccessToast && (
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
-            className="fixed bottom-8 right-8 z-50 bg-emerald-600 text-white px-5 py-3.5 rounded-2xl shadow-xl flex items-center gap-3 border border-emerald-400/30 text-xs font-bold"
-          >
-            <CheckCircle className="w-4 h-4 text-emerald-100 shrink-0" />
-            <span>{deleteSuccessToast}</span>
-          </motion.div>
+        {selectedPoForModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              className="bg-white dark:bg-[#0a1610] border border-slate-200/90 dark:border-white/10 rounded-3xl shadow-2xl p-6 w-full max-w-lg text-slate-900 dark:text-white space-y-5"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-white/10">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center font-black">
+                    <FileText className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black font-mono text-slate-900 dark:text-white">
+                      {selectedPoForModal.poNumber}
+                    </h3>
+                    <p className="text-[11px] text-slate-500 font-medium">
+                      Date: {selectedPoForModal.date}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setSelectedPoForModal(null)}
+                  className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Status Badge */}
+              <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-neutral-900 border border-slate-200/60 dark:border-neutral-800">
+                <span className="text-xs font-bold text-slate-500">Loading / Arrival Status:</span>
+                <span className={cn(
+                  "px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider border",
+                  selectedPoForModal.status === 'Arrived'
+                    ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30"
+                    : selectedPoForModal.status === 'Partial Arrival'
+                    ? "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30"
+                    : "bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/30"
+                )}>
+                  {selectedPoForModal.status}
+                </span>
+              </div>
+
+              {/* Details Key-Value List */}
+              <div className="space-y-2.5 text-xs divide-y divide-slate-100 dark:divide-white/5">
+                <div className="flex items-center justify-between pt-2">
+                  <span className="text-slate-500 font-medium">Buyer:</span>
+                  <span className="font-bold text-slate-900 dark:text-white">{selectedPoForModal.buyer}</span>
+                </div>
+
+                <div className="flex items-center justify-between pt-2">
+                  <span className="text-slate-500 font-medium">Supplier / Miller:</span>
+                  <span className="font-bold text-slate-900 dark:text-white">{selectedPoForModal.supplier}</span>
+                </div>
+
+                <div className="flex items-center justify-between pt-2">
+                  <span className="text-slate-500 font-medium">Brand:</span>
+                  <span className="font-bold px-2 py-0.5 rounded bg-slate-100 dark:bg-neutral-800 text-slate-900 dark:text-white">
+                    {selectedPoForModal.brand}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between pt-2 font-mono">
+                  <span className="text-slate-500 font-sans font-medium">Original PO Quantity:</span>
+                  <span className="font-black text-amber-700 dark:text-amber-400">
+                    {formatQtl(selectedPoForModal.poQtl)}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between pt-2 font-mono">
+                  <span className="text-slate-500 font-sans font-medium">Recorded Arrival Quantity:</span>
+                  <span className="font-black text-emerald-600 dark:text-emerald-400">
+                    {formatQtl(selectedPoForModal.arrivalQtl)}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between pt-2 font-mono">
+                  <span className="text-slate-500 font-sans font-medium">Difference:</span>
+                  <span className={cn("text-xs font-black", formatDifference(selectedPoForModal.difference).colorClass)}>
+                    {formatDifference(selectedPoForModal.difference).text}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between pt-2 font-mono">
+                  <span className="text-slate-500 font-sans font-medium">Historical Rate / QTL:</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">
+                    {selectedPoForModal.rate > 0 ? `₹ ${formatINR(selectedPoForModal.rate)}` : '—'}
+                  </span>
+                </div>
+
+                {selectedPoForModal.billNo && (
+                  <div className="flex items-center justify-between pt-2">
+                    <span className="text-slate-500 font-medium">Arrival Bill No:</span>
+                    <span className="font-mono font-bold text-slate-900 dark:text-white">{selectedPoForModal.billNo}</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-end pt-3 border-t border-slate-100 dark:border-white/10">
+                <button
+                  type="button"
+                  onClick={() => setSelectedPoForModal(null)}
+                  className="px-4 py-2 bg-slate-100 dark:bg-neutral-800 hover:bg-slate-200 dark:hover:bg-neutral-700 text-slate-800 dark:text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
+
     </div>
   );
 }

@@ -258,9 +258,9 @@ function MerchantOrdersView({
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      const matchBill = (order.billNo || order.id || '').toLowerCase().includes(q);
-      const matchItems = (order.items || '').toLowerCase().includes(q);
-      const matchSupplier = (order.supplier || '').toLowerCase().includes(q);
+      const matchBill = String(order.billNo ?? order.id ?? '').toLowerCase().includes(q);
+      const matchItems = String(order.items ?? '').toLowerCase().includes(q);
+      const matchSupplier = String(order.supplier ?? '').toLowerCase().includes(q);
       if (!matchBill && !matchItems && !matchSupplier) return false;
     }
     return true;

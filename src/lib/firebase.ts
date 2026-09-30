@@ -12,7 +12,8 @@ import {
   deleteDoc, 
   updateDoc,
   getDoc,
-  getDocFromServer
+  getDocFromServer,
+  writeBatch
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { sanitizeSupplierName } from './utils';
@@ -212,8 +213,27 @@ export async function getSingleDoc(collectionName: string, docId: string): Promi
   return null;
 }
 
+interface CollectionCacheEntry {
+  data: any[];
+  timestamp: number;
+}
+
+const collectionCache = new Map<string, CollectionCacheEntry>();
+const inFlightQueries = new Map<string, Promise<any[]>>();
+const CACHE_TTL_MS = 30000; // 30-second TTL cache for collections
+
+export function invalidateCollectionCache(collectionName?: string) {
+  if (collectionName) {
+    collectionCache.delete(collectionName);
+    inFlightQueries.delete(collectionName);
+  } else {
+    collectionCache.clear();
+    inFlightQueries.clear();
+  }
+}
+
 // Helper: Get all documents from a collection with automatic LocalStorage fallback & strict role boundary
-export async function getCollectionDocs(collectionName: string): Promise<any[]> {
+export async function getCollectionDocs(collectionName: string, forceFresh = false): Promise<any[]> {
   const callerRole = getCurrentCallerRole();
 
   // Strict data isolation:
@@ -235,46 +255,70 @@ export async function getCollectionDocs(collectionName: string): Promise<any[]> 
     }
   }
 
-  try {
-    const querySnapshot = await getDocs(collection(db, collectionName));
-    const itemsMap = new Map<string, any>();
-    
-    querySnapshot.forEach((docSnap) => {
-      const docData = docSnap.data();
-      const rawId = docSnap.id.replace(/^#/, '');
-      const canonicalKey = rawId.toLowerCase();
-
-      const item = { id: rawId, ...docData };
-      if (item.id && typeof item.id === 'string') {
-        item.id = item.id.replace(/^#/, '');
-      }
-
-      // If already encountered, prefer un-prefixed canonical ID over '#'-prefixed
-      if (!itemsMap.has(canonicalKey) || !docSnap.id.startsWith('#')) {
-        itemsMap.set(canonicalKey, item);
-      }
-    });
-
-    const items = Array.from(itemsMap.values());
-    return items;
-  } catch (error) {
-    console.warn(`Firestore getCollectionDocs notice for ${collectionName}:`, error);
-    if (typeof window !== 'undefined') {
-      try {
-        const localKey = collectionName === 'arrival_entries' ? 'arrival_entry_data_v4' : collectionName;
-        const cached = localStorage.getItem(localKey);
-        if (cached) {
-          const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed)) {
-            return parsed;
-          }
-        }
-      } catch (e) {
-        console.warn('LocalStorage fallback read error:', e);
-      }
+  // Fast path: In-memory cached data
+  if (!forceFresh) {
+    const cached = collectionCache.get(collectionName);
+    if (cached && (Date.now() - cached.timestamp < CACHE_TTL_MS)) {
+      return cached.data;
     }
-    return [];
+
+    // Deduplicate in-flight queries
+    const inFlight = inFlightQueries.get(collectionName);
+    if (inFlight) {
+      return inFlight;
+    }
   }
+
+  const queryPromise = (async () => {
+    try {
+      const querySnapshot = await getDocs(collection(db, collectionName));
+      const itemsMap = new Map<string, any>();
+      
+      querySnapshot.forEach((docSnap) => {
+        const docData = docSnap.data();
+        const rawId = docSnap.id.replace(/^#/, '');
+        const canonicalKey = rawId.toLowerCase();
+
+        const item = { id: rawId, ...docData };
+        if (item.id && typeof item.id === 'string') {
+          item.id = item.id.replace(/^#/, '');
+        }
+
+        // If already encountered, prefer un-prefixed canonical ID over '#'-prefixed
+        if (!itemsMap.has(canonicalKey) || !docSnap.id.startsWith('#')) {
+          itemsMap.set(canonicalKey, item);
+        }
+      });
+
+      const items = Array.from(itemsMap.values());
+      collectionCache.set(collectionName, { data: items, timestamp: Date.now() });
+      return items;
+    } catch (error: any) {
+      console.warn(`Firestore getCollectionDocs notice for ${collectionName}:`, error?.message || error);
+      if (typeof window !== 'undefined') {
+        try {
+          const localKey = collectionName === 'arrival_entries' ? 'arrival_entry_data_v4' : collectionName;
+          const cached = localStorage.getItem(localKey);
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (Array.isArray(parsed)) {
+              // Cache fallback briefly (5s) to avoid hammer loops
+              collectionCache.set(collectionName, { data: parsed, timestamp: Date.now() - (CACHE_TTL_MS - 5000) });
+              return parsed;
+            }
+          }
+        } catch (e) {
+          console.warn('LocalStorage fallback read error:', e);
+        }
+      }
+      return [];
+    } finally {
+      inFlightQueries.delete(collectionName);
+    }
+  })();
+
+  inFlightQueries.set(collectionName, queryPromise);
+  return queryPromise;
 }
 
 // Helper: Set/Write a specific document by ID with strict role isolation
@@ -317,6 +361,7 @@ export async function setCollectionDoc(collectionName: string, docId: string, da
 
     // Clean up any legacy duplicate '#rawId' document in Firestore
     deleteDoc(doc(db, collectionName, `#${rawId}`)).catch(() => {});
+    invalidateCollectionCache(collectionName);
   } catch (error) {
     console.warn(`Firestore setDoc warning for ${collectionName}/${docId}:`, error);
     throw error;
@@ -344,6 +389,7 @@ export async function addCollectionDoc(collectionName: string, data: any): Promi
   try {
     const cleanData = JSON.parse(JSON.stringify(data));
     const docRef = await addDoc(collection(db, collectionName), cleanData);
+    invalidateCollectionCache(collectionName);
     return { id: docRef.id, ...data };
   } catch (error) {
     console.warn(`Firestore addDoc warning for ${collectionName}:`, error);
@@ -379,6 +425,7 @@ export async function deleteCollectionDoc(collectionName: string, docId: string)
       console.error(`Firestore deleteCollectionDoc failure for ${collectionName}/${docId}:`, failure.reason);
       throw failure.reason;
     }
+    invalidateCollectionCache(collectionName);
   } catch (error) {
     console.warn(`Firestore deleteCollectionDoc notice for ${collectionName}/${docId}:`, error);
     throw error;
@@ -411,6 +458,8 @@ export async function clearAllFirestoreAndLocalData(): Promise<void> {
     }
   }
 
+  invalidateCollectionCache();
+
   if (typeof window !== 'undefined') {
     localStorage.removeItem('arrival_entry_data_v4');
     localStorage.removeItem('arrival_entry_sheets_v4');
@@ -431,12 +480,13 @@ export async function clearAllFirestoreAndLocalData(): Promise<void> {
 export async function updateCollectionDoc(collectionName: string, docId: string, data: any): Promise<void> {
   try {
     await updateDoc(doc(db, collectionName, docId), data);
+    invalidateCollectionCache(collectionName);
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `${collectionName}/${docId}`);
   }
 }
 
-// Global Sync helper to persist entire arrays (acting as a dual-write fallback + server-synced cloud storage)
+// Global Sync helper to persist entire arrays in controlled batches with rate limit resilience
 export async function syncCollection(collectionName: string, localData: any[]): Promise<void> {
   if (!Array.isArray(localData) || localData.length === 0) return;
   try {
@@ -449,21 +499,47 @@ export async function syncCollection(collectionName: string, localData: any[]): 
       return true;
     });
 
-    const promises = meaningfulItems.map(async (item, idx) => {
-      try {
-        const rawId = item.id ? String(item.id).trim().replace(/^#/, '') : `row-${idx}`;
-        const cleanItem = JSON.parse(JSON.stringify(item));
-        if (cleanItem && typeof cleanItem === 'object' && cleanItem.id) {
-          cleanItem.id = String(cleanItem.id).trim().replace(/^#/, '');
-        }
-        await setDoc(doc(db, collectionName, rawId), cleanItem, { merge: true });
-        // Clean up legacy duplicate hash document if present
-        deleteDoc(doc(db, collectionName, `#${rawId}`)).catch(() => {});
-      } catch (e) {
-        console.warn(`Failed to sync item ${item?.id || idx} in ${collectionName}:`, e);
-      }
+    if (meaningfulItems.length === 0) return;
+
+    // Deduplicate items by canonical rawId
+    const itemMap = new Map<string, any>();
+    meaningfulItems.forEach((item, idx) => {
+      const rawId = item.id ? String(item.id).trim().replace(/^#/, '') : `row-${idx}`;
+      const cleanItem = JSON.parse(JSON.stringify(item));
+      cleanItem.id = rawId;
+      itemMap.set(rawId, cleanItem);
     });
-    await Promise.all(promises);
+
+    const uniqueItems = Array.from(itemMap.values());
+    const BATCH_SIZE = 150;
+
+    for (let i = 0; i < uniqueItems.length; i += BATCH_SIZE) {
+      const chunk = uniqueItems.slice(i, i + BATCH_SIZE);
+      let attempts = 0;
+      let committed = false;
+
+      while (attempts < 3 && !committed) {
+        try {
+          const batch = writeBatch(db);
+          chunk.forEach((item) => {
+            const docRef = doc(db, collectionName, item.id);
+            batch.set(docRef, item, { merge: true });
+          });
+          await batch.commit();
+          committed = true;
+          if (i + BATCH_SIZE < uniqueItems.length) {
+            await new Promise(res => setTimeout(res, 50));
+          }
+        } catch (err: any) {
+          attempts++;
+          console.warn(`[syncCollection] ${collectionName} batch attempt ${attempts} warning:`, err?.message || err);
+          if (attempts >= 3) break;
+          await new Promise(res => setTimeout(res, 300 * Math.pow(2, attempts - 1)));
+        }
+      }
+    }
+
+    invalidateCollectionCache(collectionName);
   } catch (error) {
     console.warn(`Background sync issue for ${collectionName}:`, error);
   }
@@ -836,13 +912,19 @@ export async function autoCreateArrivalEntryForIncomingLog(
     // Save goto_arrival_bill so ArrivalEntry highlights it
     sessionStorage.setItem('goto_arrival_bill', firstBillNo);
 
-    // 5. Dual-write to Cloud Firestore asynchronously
-    const cloudFormatted = currentGrid.map((row, idx) => ({
-      ...row,
-      id: `row-${idx}`,
-      sheetId: sheets[mainSheetIndex]?.id || 'sheet-1',
-      sheetName: sheets[mainSheetIndex]?.name || 'All Arrivals (Main)'
-    }));
+    // 5. Dual-write only the newly injected items to Cloud Firestore asynchronously
+    const targetSheetId = sheets[mainSheetIndex]?.id || 'sheet-1';
+    const targetSheetName = sheets[mainSheetIndex]?.name || 'All Arrivals (Main)';
+    const cloudFormatted = newItemsToInject.map((row) => {
+      const cleanBill = row.billNo ? String(row.billNo).trim().replace(/[^a-zA-Z0-9_-]/g, '') : '';
+      const docId = cleanBill ? `row-${targetSheetId}-${cleanBill}` : (row.id ? String(row.id).replace(/^#/, '') : `row-${targetSheetId}-${Date.now()}`);
+      return {
+        ...row,
+        id: docId,
+        sheetId: targetSheetId,
+        sheetName: targetSheetName
+      };
+    });
     syncCollection('arrival_entries', cloudFormatted).catch(e => console.error('Cloud arrival entry sync error:', e));
 
     return firstBillNo;

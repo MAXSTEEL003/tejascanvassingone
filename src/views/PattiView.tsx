@@ -322,7 +322,7 @@ export default function PattiView() {
   };
 
   const copyPattiToClipboard = () => {
-    const formattedBills = formData.billNo.filter(b => b.trim() !== '').join(', ') || 'N/A';
+    const formattedBills = formData.billNo.filter(b => String(b ?? '').trim() !== '').join(', ') || 'N/A';
     
     const summary = `===========================================
         PATTI LEDGER RECEIPT SUMMARY

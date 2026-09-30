@@ -416,6 +416,8 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
       console.error("Admin Google Sign-in error:", err);
       if (err?.code === 'auth/popup-closed-by-user') {
         setErrorMsg('Sign-in popup was closed. Please try again.');
+      } else if (err?.code === 'auth/missing-initial-state' || (err?.message && (err.message.includes('missing initial state') || err.message.includes('sessionStorage')))) {
+        setErrorMsg('Browser storage partitioning / preview iframe blocked Google OAuth state. Please sign in with Username: "tejasadinarayan", or open preview directly in a new browser tab.');
       } else {
         setErrorMsg(err?.message || 'Google Sign-In failed. Please try again.');
       }

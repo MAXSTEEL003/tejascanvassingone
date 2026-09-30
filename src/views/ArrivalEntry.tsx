@@ -34,12 +34,15 @@ import {
   CheckSquare,
   Square,
   AlertTriangle,
-  ChevronUp
+  ChevronUp,
+  ArrowUp,
+  ArrowDown,
+  Layers
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, formatINR, getRegisteredSuppliers, sanitizeSupplierName } from '../lib/utils';
-import { getCollectionDocs, db } from '../lib/firebase';
-import { doc, writeBatch } from 'firebase/firestore';
+import { getCollectionDocs, db, invalidateCollectionCache } from '../lib/firebase';
+import { doc, writeBatch, collection, query, where, getDocs } from 'firebase/firestore';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -47,6 +50,24 @@ import ManifestCameraScanner, { ParsedManifestData } from '../components/Manifes
 import BillPhotoModal from '../components/BillPhotoModal';
 import ExcelImportModal from '../components/ExcelImportModal';
 import ColumnVisibilityModal from '../components/ColumnVisibilityModal';
+import ExcelColumnFilter, { FilterCondition as ExcelFilterCondition } from '../components/ExcelColumnFilter';
+import { 
+  getMonthYearFromDate, 
+  getCurrentMonthYearSheetName, 
+  getDefaultDateForSheetName, 
+  isMeaningfulRow, 
+  organizeArrivalSheetsByMonth 
+} from '../utils/arrivalSheetsManager';
+import { sortArrivalRowsOldestToNewest } from '../utils/excelImportEngine';
+import { 
+  normalizeDate,
+  isValidDate,
+  parseDateToObj,
+  formatDateDisplay,
+  formatDateDDMMYYYY,
+  dateToTimestamp,
+  computeDaysPending
+} from '../utils/dateUtils';
 import { 
   COLS_ORDER, 
   getColLetter, 
@@ -89,10 +110,10 @@ const DEFAULT_COLS: ColumnConfig[] = [
   { id: 'place', label: 'PLACE', width: 150, type: 'text', group: 'Meta' },
   { id: 'brand', label: 'BRAND', width: 140, type: 'select', options: BRANDS, group: 'Product' },
   { id: 'partyName', label: 'BUYER (PARTY)', width: 200, type: 'select', options: BUYERS, group: 'Entity' },
-  { id: 'noOfDays', label: 'PENDING DAYS', width: 130, type: 'calc', group: 'Logistics' },
+  { id: 'noOfDays', label: 'NO. OF DAYS', width: 130, type: 'text', group: 'Logistics' },
   { id: 'noOfDayRec', label: 'PAYMENT STATUS', width: 140, type: 'select', options: ['Not Cleared', 'Cleared'], group: 'Logistics' },
   { id: 'area', label: 'BUYER AREA (SHOP)', width: 160, type: 'text', group: 'Meta' },
-  { id: 'billNo', label: 'BILL NO', width: 110, type: 'text', group: 'Meta' },
+  { id: 'billNo', label: 'BILL NO', width: 140, type: 'text', group: 'Meta' },
   { id: 'qty', label: 'QTLS', width: 115, type: 'number', group: 'Weight' },
   { id: 'rate', label: 'Rate', width: 110, type: 'number', group: 'Pricing' },
   { id: 'amount', label: 'Amount', width: 140, type: 'calc', group: 'Pricing' },
@@ -106,7 +127,6 @@ const DEFAULT_COLS: ColumnConfig[] = [
   { id: 'chqNo', label: 'Ch/DD No.', width: 130, type: 'text', group: 'Settlement' },
   { id: 'chqDt', label: 'CHQ DT', width: 130, type: 'date', group: 'Settlement' },
   { id: 'bank', label: 'bank', width: 150, type: 'text', group: 'Settlement' },
-  { id: 'billPhoto', label: 'BILL PHOTO', width: 140, type: 'bill-photo', group: 'Document' },
   { id: 'purchaseOrderNo', label: 'purchase order no', width: 240, type: 'po-select', group: 'Fulfillment' }
 ];
 
@@ -114,40 +134,24 @@ const INITIAL_ROWS = 40;
 const ROW_HEIGHT = 40; // Virtual row height in px
 const OVERSCAN = 10;   // Buffer rows above and below visible viewport
 
-const parseAnyDate = (val: any): Date | null => {
-  if (!val) return null;
-  const str = String(val).trim();
-  if (!str) return null;
-
-  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
-    const [y, m, d] = str.split('-').map(Number);
-    const date = new Date(y, m - 1, d);
-    return isNaN(date.getTime()) ? null : date;
-  }
-
-  const dmyMatch = str.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
-  if (dmyMatch) {
-    const [, d, m, y] = dmyMatch.map(Number);
-    const date = new Date(y, m - 1, d);
-    return isNaN(date.getTime()) ? null : date;
-  }
-
-  const date = new Date(str);
-  return isNaN(date.getTime()) ? null : date;
+const MONTH_MAP_LOWER: Record<string, number> = {
+  jan: 1, january: 1,
+  feb: 2, february: 2,
+  mar: 3, march: 3,
+  apr: 4, april: 4,
+  may: 5,
+  jun: 6, june: 6,
+  jul: 7, july: 7,
+  aug: 8, august: 8,
+  sep: 9, september: 9,
+  oct: 10, october: 10,
+  nov: 11, november: 11,
+  dec: 12, december: 12
 };
 
-const formatDateToDDMMYYYY = (val: any): string => {
-  if (!val) return '';
-  const d = parseAnyDate(val);
-  if (d) {
-    const day = String(d.getDate()).padStart(2, '0');
-    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const m = monthNames[d.getMonth()];
-    const yyyy = d.getFullYear();
-    return `${day}-${m}-${yyyy}`;
-  }
-  return String(val);
-};
+export const parseAnyDate = (val: any): Date | null => parseDateToObj(val);
+
+export const formatDateToDDMMYYYY = (val: any): string => formatDateDisplay(val);
 
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -186,30 +190,7 @@ export const monthToNumber = (m: string): string => {
 };
 
 export const getDaysPendingNum = (row: any): number => {
-  if (!row || !row.date) return 0;
-  const status = row.noOfDayRec || 'Not Cleared';
-  const arrDate = parseAnyDate(row.date);
-  if (!arrDate) return 0;
-  arrDate.setHours(0, 0, 0, 0);
-
-  if (status === 'Cleared') {
-    if (row.chqDt) {
-      const chqDate = parseAnyDate(row.chqDt);
-      if (chqDate) {
-        chqDate.setHours(0, 0, 0, 0);
-        const diffTime = chqDate.getTime() - arrDate.getTime();
-        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-        return Math.max(0, diffDays);
-      }
-    }
-    return 0;
-  }
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const diffTime = today.getTime() - arrDate.getTime();
-  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-  return Math.max(0, diffDays);
+  return computeDaysPending(row?.date, row?.noOfDayRec, row?.chqDt);
 };
 
 const generateEmptyArrivalRows = (count = 100, defaultDate?: string): any[] => {
@@ -220,12 +201,35 @@ const generateEmptyArrivalRows = (count = 100, defaultDate?: string): any[] => {
   }));
 };
 
-interface FilterCondition {
-  operator: 'contains' | 'equals' | 'startsWith' | 'endsWith' | 'gt' | 'lt' | 'between' | 'blank' | 'notBlank' | 'in';
-  value?: any;
-  value2?: any;
-  selectedValues?: string[];
-}
+export type FilterCondition = ExcelFilterCondition;
+
+export const normalizeRowDaysAndStatus = (row: any) => {
+  if (!row) return row;
+  const dVal = String(row.noOfDays ?? '').trim();
+  const sVal = String(row.noOfDayRec ?? '').trim();
+  const isDStatus = /^(cleared|clear|paid|pending|not cleared|not-cleared|unpaid)$/i.test(dVal);
+  const isSDays = /^\d+\s*days?$/i.test(sVal) || (!isNaN(Number(sVal)) && Number(sVal) > 0 && Number(sVal) < 1000);
+
+  if (isDStatus && isSDays) {
+    return {
+      ...row,
+      noOfDays: sVal,
+      noOfDayRec: /clear|paid/i.test(dVal) ? 'Cleared' : 'Not Cleared'
+    };
+  } else if (isDStatus && !sVal) {
+    return {
+      ...row,
+      noOfDays: '',
+      noOfDayRec: /clear|paid/i.test(dVal) ? 'Cleared' : 'Not Cleared'
+    };
+  } else if (isSDays && !dVal) {
+    return {
+      ...row,
+      noOfDays: sVal
+    };
+  }
+  return row;
+};
 
 export default function ArrivalEntry() {
   interface Sheet {
@@ -234,37 +238,53 @@ export default function ArrivalEntry() {
     data: any[];
   }
 
-  // Sheets state
+  // Sheets state - Automatically organized into Month + Year sheets; "All Arrivals" is removed
   const [sheets, setSheets] = useState<Sheet[]>(() => {
+    let initialSheets: Sheet[] = [];
     const savedSheets = localStorage.getItem('arrival_entry_sheets_v4');
     if (savedSheets) {
       try {
         const parsed = JSON.parse(savedSheets);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.map((s, idx) => ({
-            id: s.id || `sheet-${idx + 1}`,
-            name: s.id === 'sheet-1' && (s.name === 'Sheet 1' || !s.name) ? 'All Arrivals (Main)' : (s.name || `Sheet ${idx + 1}`),
-            data: Array.isArray(s.data) && s.data.length > 0 ? s.data : generateEmptyArrivalRows(INITIAL_ROWS)
-          }));
+          initialSheets = parsed;
         }
       } catch (e) {}
     }
-    return [{ id: 'sheet-1', name: 'All Arrivals (Main)', data: generateEmptyArrivalRows(INITIAL_ROWS) }];
+
+    if (initialSheets.length === 0) {
+      try {
+        const fallbackData = JSON.parse(localStorage.getItem('arrival_entry_data_v4') || '[]');
+        if (Array.isArray(fallbackData) && fallbackData.length > 0) {
+          initialSheets = [{ id: 'sheet-fallback', name: getCurrentMonthYearSheetName(), data: fallbackData }];
+        }
+      } catch (e) {}
+    }
+
+    const organized = organizeArrivalSheetsByMonth(initialSheets, [], INITIAL_ROWS);
+    localStorage.setItem('arrival_entry_sheets_v4', JSON.stringify(organized.sheets));
+    return organized.sheets;
   });
 
-  const [currentSheetId, setCurrentSheetId] = useState<string>(() => sheets[0]?.id || 'sheet-1');
+  // Automatically determine today's local date and open the corresponding Month + Year sheet
+  const [currentSheetId, setCurrentSheetId] = useState<string>(() => {
+    const currentMonthYear = getCurrentMonthYearSheetName();
+    const found = sheets.find(s => s.name.toLowerCase() === currentMonthYear.toLowerCase());
+    return found?.id || sheets[sheets.length - 1]?.id || `sheet-${currentMonthYear.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+  });
 
   const currentSheet = useMemo(() => {
     const found = sheets.find(s => s.id === currentSheetId) || sheets[0];
+    const defaultDate = found ? getDefaultDateForSheetName(found.name) : new Date().toISOString().split('T')[0];
     return {
-      id: found?.id || 'sheet-1',
-      name: found?.name || 'Sheet 1',
-      data: Array.isArray(found?.data) ? found.data : generateEmptyArrivalRows(INITIAL_ROWS)
+      id: found?.id || 'sheet-current',
+      name: found?.name || getCurrentMonthYearSheetName(),
+      data: Array.isArray(found?.data) ? found.data : generateEmptyArrivalRows(INITIAL_ROWS, defaultDate)
     };
   }, [sheets, currentSheetId]);
 
   const data = useMemo(() => {
-    return Array.isArray(currentSheet?.data) ? currentSheet.data : [];
+    const raw = Array.isArray(currentSheet?.data) ? currentSheet.data : [];
+    return raw.map(normalizeRowDaysAndStatus);
   }, [currentSheet]);
 
   // Column definitions with user-resizable widths
@@ -319,6 +339,7 @@ export default function ArrivalEntry() {
   // Virtualization Scroll State
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(600);
+  const [gridKey, setGridKey] = useState(0);
   const gridContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<any>(null);
   const formulaInputRef = useRef<HTMLInputElement>(null);
@@ -326,7 +347,6 @@ export default function ArrivalEntry() {
   // Filters & Sorting state
   const [columnFilters, setColumnFilters] = useState<Record<string, FilterCondition>>({});
   const [openFilterColId, setOpenFilterColId] = useState<string | null>(null);
-  const [filterSearch, setFilterSearch] = useState<string>('');
   const [sortConfig, setSortConfig] = useState<{ colId: string; direction: 'asc' | 'desc' } | null>(null);
   const [selectedMonth, setSelectedMonth] = useState<string>('all');
   const [selectedDueArea, setSelectedDueArea] = useState<string>('All');
@@ -359,6 +379,18 @@ export default function ArrivalEntry() {
     row: any;
   }>({ isOpen: false, rowIndex: -1, row: null });
 
+  // Export XLS Modal states
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [exportTab, setExportTab] = useState<'current' | 'merge'>('current');
+  const [selectedSheetsForMerge, setSelectedSheetsForMerge] = useState<string[]>([]);
+
+  // Synchronize default selected sheets for merge when opening
+  useEffect(() => {
+    if (isExportModalOpen) {
+      setSelectedSheetsForMerge(sheets.map(s => s.id));
+    }
+  }, [isExportModalOpen, sheets]);
+
   // PO Relation match state
   const [placedOrders, setPlacedOrders] = useState<any[]>([]);
   const [poFilterQuery, setPoFilterQuery] = useState('');
@@ -376,6 +408,7 @@ export default function ArrivalEntry() {
   const [copyMainEntriesForMonth, setCopyMainEntriesForMonth] = useState<boolean>(true);
   const [newSheetInputName, setNewSheetInputName] = useState('');
   const [sheetToDelete, setSheetToDelete] = useState<Sheet | null>(null);
+  const [isDeletingSheet, setIsDeletingSheet] = useState(false);
 
   // Sync Top Scrollbar
   const topScrollRef = useRef<HTMLDivElement>(null);
@@ -412,6 +445,42 @@ export default function ArrivalEntry() {
     loadMeta();
   }, []);
 
+  // Track sheets loaded from Firestore in this session to prevent repeated downloads
+  const loadedSheetIdsRef = useRef<Set<string>>(new Set());
+  // Track document IDs marked for deletion from Firestore
+  const deletedDocIdsRef = useRef<Set<string>>(new Set());
+
+  // Load active sheet entries from Firestore once on demand without downloading repeatedly
+  useEffect(() => {
+    let isMounted = true;
+    async function loadSheetData() {
+      if (loadedSheetIdsRef.current.has(currentSheetId)) return;
+      loadedSheetIdsRef.current.add(currentSheetId);
+
+      try {
+        const cloudArrivals = await getCollectionDocs('arrival_entries').catch(() => []);
+        if (!isMounted || !Array.isArray(cloudArrivals) || cloudArrivals.length === 0) return;
+
+        if (cloudArrivals.length > 0) {
+          setSheets(prevSheets => {
+            const organized = organizeArrivalSheetsByMonth(prevSheets, cloudArrivals, INITIAL_ROWS, currentSheetId);
+            localStorage.setItem('arrival_entry_sheets_v4', JSON.stringify(organized.sheets));
+            const activeSheet = organized.sheets.find(s => s.id === currentSheetId) || organized.sheets[0];
+            if (activeSheet) {
+              localStorage.setItem('arrival_entry_data_v4', JSON.stringify(activeSheet.data));
+            }
+            return organized.sheets;
+          });
+        }
+      } catch (e) {
+        console.warn('ArrivalEntry Firestore sheet load notice:', e);
+      }
+    }
+
+    loadSheetData();
+    return () => { isMounted = false; };
+  }, [currentSheetId]);
+
   // Set Data Helper (updates local state & marks dirty)
   const setData = useCallback((newDataOrFn: any[] | ((prev: any[]) => any[])) => {
     setSheets(prevSheets => {
@@ -427,9 +496,6 @@ export default function ArrivalEntry() {
       if (activeSheet) {
         localStorage.setItem('arrival_entry_data_v4', JSON.stringify(activeSheet.data));
       }
-      try {
-        window.dispatchEvent(new CustomEvent('arrival-entry-updated'));
-      } catch (e) {}
       return updated;
     });
   }, [currentSheetId]);
@@ -458,30 +524,67 @@ export default function ArrivalEntry() {
     }
   }, [redoStack, data, setData]);
 
-  // Debounced Autosave for Dirty Rows only
+  // Debounced Autosave for Dirty Rows & Deletions
   useEffect(() => {
-    if (dirtyRowIds.current.size === 0) return;
+    if (dirtyRowIds.current.size === 0 && deletedDocIdsRef.current.size === 0) return;
 
     setSaveStatus('saving');
     const timer = setTimeout(async () => {
       try {
-        const rowsToSave = data.filter(r => r && r.id && dirtyRowIds.current.has(r.id));
-        if (rowsToSave.length > 0) {
-          const batch = writeBatch(db);
-          rowsToSave.forEach(row => {
+        const dirtyIds = new Set(dirtyRowIds.current);
+        const rowsToSave = data.filter(r => r && r.id && dirtyIds.has(r.id));
+        const meaningfulRows = rowsToSave.filter(r => isMeaningfulRow(r));
+        const emptiedRows = rowsToSave.filter(r => !isMeaningfulRow(r) && r && r.id && !String(r.id).startsWith('row-empty-'));
+
+        emptiedRows.forEach(r => {
+          deletedDocIdsRef.current.add(String(r.id));
+          if (r.billNo) {
+            const cleanBill = String(r.billNo).trim().replace(/[^a-zA-Z0-9_-]/g, '');
+            if (cleanBill) {
+              deletedDocIdsRef.current.add(`row-${currentSheetId}-${cleanBill}`);
+            }
+          }
+        });
+
+        const batch = writeBatch(db);
+        let hasOps = false;
+
+        // 1. Delete rows that were emptied or deleted
+        if (deletedDocIdsRef.current.size > 0) {
+          deletedDocIdsRef.current.forEach(delId => {
+            if (delId && !delId.startsWith('row-empty-')) {
+              batch.delete(doc(db, 'arrival_entries', delId));
+              hasOps = true;
+            }
+          });
+          deletedDocIdsRef.current.clear();
+        }
+
+        // 2. Save meaningful rows
+        if (meaningfulRows.length > 0) {
+          meaningfulRows.forEach(row => {
             const cleanBill = row.billNo ? String(row.billNo).trim().replace(/[^a-zA-Z0-9_-]/g, '') : '';
             const docId = cleanBill
               ? `row-${currentSheetId}-${cleanBill}`
               : (row.id ? String(row.id).replace(/^#/, '') : `row-${currentSheetId}-${Date.now()}`);
             const docRef = doc(db, 'arrival_entries', docId);
-            batch.set(docRef, { ...row, sheetId: currentSheetId, sheetName: currentSheet.name, lastUpdated: Date.now() }, { merge: true });
+            batch.set(docRef, { ...row, id: docId, sheetId: currentSheetId, sheetName: currentSheet.name, lastUpdated: Date.now() }, { merge: true });
+            hasOps = true;
           });
-          await batch.commit();
         }
+
+        if (hasOps) {
+          await batch.commit();
+          invalidateCollectionCache('arrival_entries');
+        }
+
         dirtyRowIds.current.clear();
         setSaveStatus('saved');
         const now = new Date();
         setLastSavedTime(`${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`);
+        try {
+          window.dispatchEvent(new CustomEvent('arrival-entry-updated'));
+        } catch (e) {}
       } catch (err) {
         console.error('Autosave batch commit error:', err);
         setSaveStatus('failed');
@@ -491,16 +594,25 @@ export default function ArrivalEntry() {
     return () => clearTimeout(timer);
   }, [data, currentSheetId, currentSheet.name]);
 
-  // Handle cell edit commit
-  const handleUpdateCell = useCallback((r: number, colId: string, val: any) => {
+  // Handle cell edit commit - supports rowId string or row index number
+  const handleUpdateCell = useCallback((rowIdentifier: string | number, colId: string, val: any) => {
     saveToHistory();
     const newData = [...data];
-    let row = { ...newData[r], [colId]: val, lastUpdated: Date.now() };
+    let idx = -1;
+    if (typeof rowIdentifier === 'string') {
+      idx = newData.findIndex(r => r && r.id === rowIdentifier);
+    }
+    if (idx === -1 && typeof rowIdentifier === 'number') {
+      idx = rowIdentifier;
+    }
+    if (idx === -1 || !newData[idx]) return;
+
+    let row = { ...newData[idx], [colId]: val, lastUpdated: Date.now() };
 
     // Standard business calculations if not overridden by explicit formula
     row = recalculateRowBusinessLogic(row);
 
-    newData[r] = row;
+    newData[idx] = row;
     if (row.id) dirtyRowIds.current.add(row.id);
     setData(newData);
   }, [data, saveToHistory, setData]);
@@ -635,46 +747,109 @@ export default function ArrivalEntry() {
       }
     }
 
-    // 8. Multi-column simultaneous filters
+    // 8. Multi-column simultaneous filters with Excel/Google Sheets behavior
     Object.entries(columnFilters).forEach(([colId, filter]) => {
+      if (!filter) return;
+      const colDef = columns.find(c => c.id === colId);
+      const colType = colDef?.type || (colId === 'noOfDays' ? 'number' : 'text');
+
       result = result.filter(row => {
         if (!row) return false;
-        const rawVal = row[colId];
-        const strVal = String(rawVal ?? '').toLowerCase();
+        const rawVal = colId === 'noOfDays' ? getDaysPendingNum(row) : row[colId];
 
-        switch (filter.operator) {
-          case 'contains':
-            return strVal.includes(String(filter.value ?? '').toLowerCase());
-          case 'equals':
-            return strVal === String(filter.value ?? '').toLowerCase();
-          case 'startsWith':
-            return strVal.startsWith(String(filter.value ?? '').toLowerCase());
-          case 'endsWith':
-            return strVal.endsWith(String(filter.value ?? '').toLowerCase());
-          case 'blank':
-            return rawVal === undefined || rawVal === null || strVal === '';
-          case 'notBlank':
-            return rawVal !== undefined && rawVal !== null && strVal !== '';
-          case 'gt': {
-            const num = parseFloat(strVal);
-            return !isNaN(num) && num > parseFloat(filter.value);
+        // A. Filter by Values: Unique value checkbox selection
+        if (filter.selectedValues && Array.isArray(filter.selectedValues)) {
+          const isBlank = rawVal === undefined || rawVal === null || String(rawVal).trim() === '';
+          const key = isBlank ? '__BLANK__' : String(rawVal).trim();
+          if (!filter.selectedValues.includes(key)) {
+            return false;
           }
-          case 'lt': {
-            const num = parseFloat(strVal);
-            return !isNaN(num) && num < parseFloat(filter.value);
-          }
-          case 'between': {
-            const num = parseFloat(strVal);
-            const min = parseFloat(filter.value);
-            const max = parseFloat(filter.value2);
-            return !isNaN(num) && num >= min && num <= max;
-          }
-          case 'in':
-            if (!filter.selectedValues || filter.selectedValues.length === 0) return true;
-            return filter.selectedValues.includes(String(rawVal ?? ''));
-          default:
-            return true;
         }
+
+        // B. Filter by Condition: Type-specific operator rule
+        if (filter.operator && filter.operator !== 'none') {
+          const op = filter.operator;
+          const v1 = filter.value !== undefined ? String(filter.value).trim() : '';
+          const v2 = filter.value2 !== undefined ? String(filter.value2).trim() : '';
+
+          if (colType === 'date') {
+            const rowD = parseAnyDate(rawVal);
+            if (op === 'blank') return !rowD;
+            if (op === 'notBlank') return !!rowD;
+            if (!rowD) return false;
+
+            rowD.setHours(0, 0, 0, 0);
+            const tDate1 = parseAnyDate(v1);
+            if (!tDate1) return true;
+            tDate1.setHours(0, 0, 0, 0);
+
+            const time = rowD.getTime();
+            const t1 = tDate1.getTime();
+
+            switch (op) {
+              case 'equals': return time === t1;
+              case 'before': return time < t1;
+              case 'after': return time > t1;
+              case 'onOrBefore': return time <= t1;
+              case 'onOrAfter': return time >= t1;
+              case 'between': {
+                const tDate2 = parseAnyDate(v2);
+                if (!tDate2) return time >= t1;
+                tDate2.setHours(0, 0, 0, 0);
+                const t2 = tDate2.getTime();
+                const min = Math.min(t1, t2);
+                const max = Math.max(t1, t2);
+                return time >= min && time <= max;
+              }
+              default: return true;
+            }
+          } else if (colType === 'number' || colType === 'calc') {
+            const num = parseFloat(String(rawVal ?? '').replace(/,/g, ''));
+            const isNumNaN = isNaN(num);
+            if (op === 'blank') return rawVal === undefined || rawVal === null || String(rawVal).trim() === '' || isNumNaN;
+            if (op === 'notBlank') return !isNumNaN;
+            if (isNumNaN) return false;
+
+            const targetNum = parseFloat(v1);
+            if (isNaN(targetNum)) return true;
+
+            switch (op) {
+              case 'equals': return num === targetNum;
+              case 'notEquals': return num !== targetNum;
+              case 'gt': return num > targetNum;
+              case 'lt': return num < targetNum;
+              case 'gte': return num >= targetNum;
+              case 'lte': return num <= targetNum;
+              case 'between': {
+                const targetNum2 = parseFloat(v2);
+                if (isNaN(targetNum2)) return num >= targetNum;
+                const min = Math.min(targetNum, targetNum2);
+                const max = Math.max(targetNum, targetNum2);
+                return num >= min && num <= max;
+              }
+              default: return true;
+            }
+          } else {
+            // Text comparison
+            const str = String(rawVal ?? '').trim().toLowerCase();
+            const target = v1.toLowerCase();
+            const isBlank = rawVal === undefined || rawVal === null || String(rawVal).trim() === '';
+
+            switch (op) {
+              case 'blank': return isBlank;
+              case 'notBlank': return !isBlank;
+              case 'equals': return !isBlank && str === target;
+              case 'notEquals': return isBlank || str !== target;
+              case 'contains': return !isBlank && str.includes(target);
+              case 'notContains': return isBlank || !str.includes(target);
+              case 'startsWith': return !isBlank && str.startsWith(target);
+              case 'endsWith': return !isBlank && str.endsWith(target);
+              default: return true;
+            }
+          }
+        }
+
+        return true;
       });
     });
 
@@ -684,18 +859,21 @@ export default function ArrivalEntry() {
         const valA = a ? a[sortConfig.colId] : '';
         const valB = b ? b[sortConfig.colId] : '';
 
+        // Date comparison
+        const colConfig = visibleColumns.find(c => c.id === sortConfig.colId);
+        if (colConfig?.type === 'date' || sortConfig.colId === 'date' || sortConfig.colId === 'chqDt') {
+          const timeA = dateToTimestamp(valA);
+          const timeB = dateToTimestamp(valB);
+          if (timeA !== timeB) {
+            return sortConfig.direction === 'asc' ? timeA - timeB : timeB - timeA;
+          }
+        }
+
         // Number comparison
         const numA = parseFloat(String(valA).replace(/,/g, ''));
         const numB = parseFloat(String(valB).replace(/,/g, ''));
         if (!isNaN(numA) && !isNaN(numB)) {
           return sortConfig.direction === 'asc' ? numA - numB : numB - numA;
-        }
-
-        // Date comparison
-        const dateA = parseAnyDate(valA)?.getTime();
-        const dateB = parseAnyDate(valB)?.getTime();
-        if (dateA && dateB) {
-          return sortConfig.direction === 'asc' ? dateA - dateB : dateB - dateA;
         }
 
         // String comparison
@@ -718,7 +896,8 @@ export default function ArrivalEntry() {
     quickDaysVal,
     quickDaysVal2,
     columnFilters,
-    sortConfig
+    sortConfig,
+    visibleColumns
   ]);
 
   // Virtualization Calculations
@@ -740,9 +919,10 @@ export default function ArrivalEntry() {
   // Start / Stop Editing
   const startEditing = useCallback((r: number, c: number) => {
     const col = visibleColumns[c];
-    if (!col || col.id === 'noOfDays') return;
+    if (!col) return;
+    const targetRow = filteredData[r];
     if (col.id === 'billPhoto') {
-      setBillPhotoModalState({ isOpen: true, rowIndex: r, row: data[r] });
+      setBillPhotoModalState({ isOpen: true, rowIndex: r, row: targetRow });
       return;
     }
 
@@ -750,7 +930,7 @@ export default function ArrivalEntry() {
     setSelectionRange({ startR: r, startC: c, endR: r, endC: c });
     setIsEditing(true);
 
-    const rawVal = data[r] ? data[r][col.id] : '';
+    const rawVal = targetRow ? targetRow[col.id] : '';
     setEditValue(rawVal !== undefined && rawVal !== null ? String(rawVal) : '');
 
     setTimeout(() => {
@@ -759,14 +939,17 @@ export default function ArrivalEntry() {
         if (inputRef.current.select) inputRef.current.select();
       }
     }, 10);
-  }, [visibleColumns, data]);
+  }, [visibleColumns, filteredData]);
 
   const stopEditing = useCallback((save: boolean = true) => {
-    if (save && activeCell && data[activeCell.r] && visibleColumns[activeCell.c]) {
-      handleUpdateCell(activeCell.r, visibleColumns[activeCell.c].id, editValue);
+    if (save && activeCell && visibleColumns[activeCell.c]) {
+      const targetRow = filteredData[activeCell.r];
+      if (targetRow) {
+        handleUpdateCell(targetRow.id || activeCell.r, visibleColumns[activeCell.c].id, editValue);
+      }
     }
     setIsEditing(false);
-  }, [activeCell, data, visibleColumns, editValue, handleUpdateCell]);
+  }, [activeCell, filteredData, visibleColumns, editValue, handleUpdateCell]);
 
   // Excel Copy (TSV) & Multi-Cell Paste
   const handleCopySelection = useCallback(() => {
@@ -778,7 +961,7 @@ export default function ArrivalEntry() {
 
     const rowsText: string[] = [];
     for (let r = startR; r <= endR; r++) {
-      const row = data[r];
+      const row = filteredData[r];
       const cells: string[] = [];
       for (let c = startC; c <= endC; c++) {
         const col = visibleColumns[c];
@@ -790,7 +973,7 @@ export default function ArrivalEntry() {
 
     const tsv = rowsText.join('\n');
     navigator.clipboard.writeText(tsv).catch(() => {});
-  }, [activeCell, selectionRange, data, visibleColumns]);
+  }, [activeCell, selectionRange, filteredData, visibleColumns]);
 
   const handlePasteSelection = useCallback(async () => {
     if (!activeCell) return;
@@ -868,6 +1051,60 @@ export default function ArrivalEntry() {
     setData(nextData);
   }, [selectionRange, data, visibleColumns, saveToHistory, setData]);
 
+  // Auto-scroll grid horizontally and vertically to keep activeCell comfortably in view
+  const ensureActiveCellVisible = useCallback((r: number, c: number) => {
+    const container = gridContainerRef.current;
+    if (!container) return;
+
+    const ROW_HEADER_WIDTH = 48; // sticky row numbers on left
+    const HEADER_HEIGHT = 44;     // sticky table headers on top
+    const PADDING = 28;           // comfortable padding margin around cell
+
+    // Horizontal calculation
+    let colLeft = ROW_HEADER_WIDTH;
+    for (let i = 0; i < c; i++) {
+      colLeft += visibleColumns[i]?.width || 100;
+    }
+    const colWidth = visibleColumns[c]?.width || 100;
+    const colRight = colLeft + colWidth;
+
+    const viewportScrollLeft = container.scrollLeft;
+    const viewportWidth = container.clientWidth;
+    const visibleLeftBound = viewportScrollLeft + ROW_HEADER_WIDTH;
+    const visibleRightBound = viewportScrollLeft + viewportWidth;
+
+    if (colLeft - PADDING < visibleLeftBound) {
+      const newScrollLeft = Math.max(0, colLeft - ROW_HEADER_WIDTH - PADDING);
+      container.scrollLeft = newScrollLeft;
+      if (topScrollRef.current) topScrollRef.current.scrollLeft = newScrollLeft;
+    } else if (colRight + PADDING > visibleRightBound) {
+      const newScrollLeft = colRight - viewportWidth + PADDING;
+      container.scrollLeft = newScrollLeft;
+      if (topScrollRef.current) topScrollRef.current.scrollLeft = newScrollLeft;
+    }
+
+    // Vertical calculation
+    const cellTop = r * ROW_HEIGHT;
+    const cellBottom = (r + 1) * ROW_HEIGHT;
+    const viewportScrollTop = container.scrollTop;
+    const viewportHeight = container.clientHeight;
+    const visibleTopBound = viewportScrollTop;
+    const visibleBottomBound = viewportScrollTop + viewportHeight - HEADER_HEIGHT;
+
+    if (cellTop - PADDING < visibleTopBound) {
+      container.scrollTop = Math.max(0, cellTop - PADDING);
+    } else if (cellBottom + PADDING > visibleBottomBound) {
+      container.scrollTop = cellBottom - viewportHeight + HEADER_HEIGHT + PADDING;
+    }
+  }, [visibleColumns]);
+
+  // Synchronize scroll position when active cell moves
+  useEffect(() => {
+    if (activeCell) {
+      ensureActiveCellVisible(activeCell.r, activeCell.c);
+    }
+  }, [activeCell, ensureActiveCellVisible]);
+
   // Keyboard navigation & Shortcuts
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (!activeCell) return;
@@ -909,8 +1146,8 @@ export default function ArrivalEntry() {
         if (e.shiftKey) {
           if (activeCell.r > 0) setActiveCell({ r: activeCell.r - 1, c: activeCell.c });
         } else {
-          if (activeCell.r < data.length - 1) setActiveCell({ r: activeCell.r + 1, c: activeCell.c });
-          else addRow();
+          if (activeCell.r < filteredData.length - 1) setActiveCell({ r: activeCell.r + 1, c: activeCell.c });
+          else if (filteredData.length === data.length) addRow();
         }
       } else if (e.key === 'Tab') {
         e.preventDefault();
@@ -919,7 +1156,7 @@ export default function ArrivalEntry() {
           if (activeCell.c > 0) setActiveCell({ r: activeCell.r, c: activeCell.c - 1 });
         } else {
           if (activeCell.c < visibleColumns.length - 1) setActiveCell({ r: activeCell.r, c: activeCell.c + 1 });
-          else if (activeCell.r < data.length - 1) setActiveCell({ r: activeCell.r + 1, c: 0 });
+          else if (activeCell.r < filteredData.length - 1) setActiveCell({ r: activeCell.r + 1, c: 0 });
         }
       } else if (e.key === 'Escape') {
         e.preventDefault();
@@ -951,7 +1188,7 @@ export default function ArrivalEntry() {
 
       case 'ArrowDown':
         e.preventDefault();
-        if (r < data.length - 1) {
+        if (r < filteredData.length - 1) {
           const nextR = r + 1;
           setActiveCell({ r: nextR, c });
           if (e.shiftKey) {
@@ -964,7 +1201,7 @@ export default function ArrivalEntry() {
           } else {
             setSelectionRange({ startR: nextR, startC: c, endR: nextR, endC: c });
           }
-        } else {
+        } else if (filteredData.length === data.length) {
           addRow();
         }
         break;
@@ -1005,15 +1242,109 @@ export default function ArrivalEntry() {
         }
         break;
 
-      case 'Tab':
+      case 'Home': {
         e.preventDefault();
+        const targetR = (e.ctrlKey || e.metaKey) ? 0 : r;
+        const targetC = 0;
+        setActiveCell({ r: targetR, c: targetC });
         if (e.shiftKey) {
-          if (c > 0) setActiveCell({ r, c: c - 1 });
+          setSelectionRange(prev => ({
+            startR: prev ? prev.startR : r,
+            startC: prev ? prev.startC : c,
+            endR: targetR,
+            endC: targetC
+          }));
         } else {
-          if (c < visibleColumns.length - 1) setActiveCell({ r, c: c + 1 });
-          else if (r < data.length - 1) setActiveCell({ r: r + 1, c: 0 });
+          setSelectionRange({ startR: targetR, startC: targetC, endR: targetR, endC: targetC });
         }
         break;
+      }
+
+      case 'End': {
+        e.preventDefault();
+        const targetR = (e.ctrlKey || e.metaKey) ? Math.max(0, filteredData.length - 1) : r;
+        const targetC = visibleColumns.length - 1;
+        setActiveCell({ r: targetR, c: targetC });
+        if (e.shiftKey) {
+          setSelectionRange(prev => ({
+            startR: prev ? prev.startR : r,
+            startC: prev ? prev.startC : c,
+            endR: targetR,
+            endC: targetC
+          }));
+        } else {
+          setSelectionRange({ startR: targetR, startC: targetC, endR: targetR, endC: targetC });
+        }
+        break;
+      }
+
+      case 'PageUp': {
+        e.preventDefault();
+        const pageSize = Math.max(1, Math.floor(viewportHeight / ROW_HEIGHT) - 2);
+        const nextR = Math.max(0, r - pageSize);
+        setActiveCell({ r: nextR, c });
+        if (e.shiftKey) {
+          setSelectionRange(prev => ({
+            startR: prev ? prev.startR : r,
+            startC: prev ? prev.startC : c,
+            endR: nextR,
+            endC: c
+          }));
+        } else {
+          setSelectionRange({ startR: nextR, startC: c, endR: nextR, endC: c });
+        }
+        break;
+      }
+
+      case 'PageDown': {
+        e.preventDefault();
+        const pageSize = Math.max(1, Math.floor(viewportHeight / ROW_HEIGHT) - 2);
+        const nextR = Math.min(Math.max(0, filteredData.length - 1), r + pageSize);
+        setActiveCell({ r: nextR, c });
+        if (e.shiftKey) {
+          setSelectionRange(prev => ({
+            startR: prev ? prev.startR : r,
+            startC: prev ? prev.startC : c,
+            endR: nextR,
+            endC: c
+          }));
+        } else {
+          setSelectionRange({ startR: nextR, startC: c, endR: nextR, endC: c });
+        }
+        break;
+      }
+
+      case 'Tab': {
+        e.preventDefault();
+        if (e.shiftKey) {
+          if (c > 0) {
+            const nextC = c - 1;
+            setActiveCell({ r, c: nextC });
+            setSelectionRange({ startR: r, startC: nextC, endR: r, endC: nextC });
+          } else if (r > 0) {
+            const nextR = r - 1;
+            const nextC = visibleColumns.length - 1;
+            setActiveCell({ r: nextR, c: nextC });
+            setSelectionRange({ startR: nextR, startC: nextC, endR: nextR, endC: nextC });
+          }
+        } else {
+          if (c < visibleColumns.length - 1) {
+            const nextC = c + 1;
+            setActiveCell({ r, c: nextC });
+            setSelectionRange({ startR: r, startC: nextC, endR: r, endC: nextC });
+          } else if (r < filteredData.length - 1) {
+            const nextR = r + 1;
+            setActiveCell({ r: nextR, c: 0 });
+            setSelectionRange({ startR: nextR, startC: 0, endR: nextR, endC: 0 });
+          } else if (filteredData.length === data.length) {
+            addRow();
+            const nextR = r + 1;
+            setActiveCell({ r: nextR, c: 0 });
+            setSelectionRange({ startR: nextR, startC: 0, endR: nextR, endC: 0 });
+          }
+        }
+        break;
+      }
 
       case 'Enter':
       case 'F2':
@@ -1022,10 +1353,49 @@ export default function ArrivalEntry() {
         break;
 
       case 'Delete':
-      case 'Backspace':
+      case 'Backspace': {
         e.preventDefault();
-        handleUpdateCell(r, visibleColumns[c].id, '');
+        saveToHistory();
+        const nextData = [...data];
+        const startR = selectionRange ? Math.min(selectionRange.startR, selectionRange.endR) : r;
+        const endR = selectionRange ? Math.min(Math.max(selectionRange.startR, selectionRange.endR), filteredData.length - 1) : r;
+        const startC = selectionRange ? Math.min(selectionRange.startC, selectionRange.endC) : c;
+        const endC = selectionRange ? Math.min(Math.max(selectionRange.startC, selectionRange.endC), visibleColumns.length - 1) : c;
+
+        for (let rowIdx = startR; rowIdx <= endR; rowIdx++) {
+          const targetRow = filteredData[rowIdx];
+          if (!targetRow) continue;
+          const realIdx = nextData.findIndex(item => item && item.id === targetRow.id);
+          if (realIdx === -1) continue;
+
+          const updatedRow = { ...nextData[realIdx] };
+          for (let colIdx = startC; colIdx <= endC; colIdx++) {
+            const col = visibleColumns[colIdx];
+            if (col && col.id) {
+              updatedRow[col.id] = '';
+              if (col.id === 'billNo') {
+                updatedRow.billPhoto = '';
+              }
+            }
+          }
+          const recalculated = recalculateRowBusinessLogic(updatedRow);
+          nextData[realIdx] = recalculated;
+          if (recalculated.id) {
+            dirtyRowIds.current.add(recalculated.id);
+            if (!isMeaningfulRow(recalculated) && !String(recalculated.id).startsWith('row-empty-')) {
+              deletedDocIdsRef.current.add(String(recalculated.id));
+              if (targetRow.billNo) {
+                const cleanBill = String(targetRow.billNo).trim().replace(/[^a-zA-Z0-9_-]/g, '');
+                if (cleanBill) {
+                  deletedDocIdsRef.current.add(`row-${currentSheetId}-${cleanBill}`);
+                }
+              }
+            }
+          }
+        }
+        setData(nextData);
         break;
+      }
 
       default:
         if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
@@ -1035,6 +1405,38 @@ export default function ArrivalEntry() {
         break;
     }
   };
+
+  const handleDeleteSingleRow = useCallback((filteredRowIdx: number) => {
+    saveToHistory();
+    const targetRow = filteredData[filteredRowIdx];
+    if (!targetRow) return;
+
+    if (targetRow.id && !String(targetRow.id).startsWith('row-empty-')) {
+      deletedDocIdsRef.current.add(String(targetRow.id));
+      if (targetRow.billNo) {
+        const cleanBill = String(targetRow.billNo).trim().replace(/[^a-zA-Z0-9_-]/g, '');
+        if (cleanBill) {
+          deletedDocIdsRef.current.add(`row-${currentSheetId}-${cleanBill}`);
+        }
+      }
+    }
+
+    const defaultDate = getDefaultDateForSheet(currentSheet.name);
+    const replacementEmptyRow = {
+      id: `row-empty-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      date: defaultDate,
+      sheetId: currentSheetId,
+      sheetName: currentSheet.name
+    };
+
+    const nextData = data.filter(r => r && r.id !== targetRow.id);
+    if (nextData.length < INITIAL_ROWS) {
+      nextData.push(replacementEmptyRow);
+    }
+
+    setData(nextData);
+    setGridKey(k => k + 1);
+  }, [data, filteredData, currentSheetId, currentSheet.name, saveToHistory, setData]);
 
   const addRow = () => {
     saveToHistory();
@@ -1120,33 +1522,125 @@ export default function ArrivalEntry() {
     return { totalQty, totalAmount, totalNetAmt, totalChqIssued };
   }, [data]);
 
-  // Export to Excel
-  const exportToExcel = () => {
-    const preparedData = data
-      .filter(row => Object.keys(row).length > 1)
+  // Merge Sheets helper handlers
+  const toggleSheetForMerge = (sheetId: string) => {
+    setSelectedSheetsForMerge(prev => {
+      if (prev.includes(sheetId)) {
+        return prev.filter(id => id !== sheetId);
+      } else {
+        return [...prev, sheetId];
+      }
+    });
+  };
+
+  const moveMergeSheet = (index: number, direction: 'up' | 'down') => {
+    setSelectedSheetsForMerge(prev => {
+      const next = [...prev];
+      const targetIndex = direction === 'up' ? index - 1 : index + 1;
+      if (targetIndex < 0 || targetIndex >= next.length) return prev;
+      const temp = next[index];
+      next[index] = next[targetIndex];
+      next[targetIndex] = temp;
+      return next;
+    });
+  };
+
+  const selectAllSheetsForMerge = () => {
+    setSelectedSheetsForMerge(sheets.map(s => s.id));
+  };
+
+  const clearAllSheetsForMerge = () => {
+    setSelectedSheetsForMerge([]);
+  };
+
+  // Export current sheet only (.xlsx)
+  const exportCurrentSheet = () => {
+    const preparedData = (currentSheet.data || [])
+      .filter(row => isMeaningfulRow(row))
       .map(row => {
         const obj: Record<string, any> = {};
         visibleColumns.forEach(col => {
           let val = row[col.id];
           if (isFormula(val)) {
-            const evaluated = evaluateFormula(val, data, data.indexOf(row));
+            const evaluated = evaluateFormula(val, currentSheet.data, currentSheet.data.indexOf(row));
             val = evaluated.error ? evaluated.error : evaluated.result;
           }
-          obj[col.label] = val;
+          if (col.type === 'date' && val) {
+            val = formatDateDisplay(val);
+          }
+          obj[col.label] = val !== undefined && val !== null ? val : '';
         });
         return obj;
       });
 
+    if (preparedData.length === 0) {
+      alert(`No records to export in ${currentSheet.name}.`);
+      return;
+    }
+
     const worksheet = XLSX.utils.json_to_sheet(preparedData);
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, currentSheet.name || 'Arrival_Audit');
+    const cleanSheetName = (currentSheet.name || 'Arrival_Audit').substring(0, 31).replace(/[:\\/?*\[\]]/g, '_');
+    XLSX.utils.book_append_sheet(workbook, worksheet, cleanSheetName);
 
     const now = new Date();
     const dd = String(now.getDate()).padStart(2, '0');
     const mm = String(now.getMonth() + 1).padStart(2, '0');
     const yyyy = now.getFullYear();
-    XLSX.writeFile(workbook, `Arrival_Log_${dd}-${mm}-${yyyy}.xlsx`);
+    const fileCleanName = (currentSheet.name || 'Arrivals').replace(/[^a-zA-Z0-9_-]/g, '_');
+    XLSX.writeFile(workbook, `Arrival_${fileCleanName}_${dd}-${mm}-${yyyy}.xlsx`);
+    setIsExportModalOpen(false);
   };
+
+  // Export merged sheets (ONE WORKSHEET ONLY, Header once at row 0, rows appended in sequence)
+  const exportMergedSheets = () => {
+    if (selectedSheetsForMerge.length === 0) {
+      alert('Please select at least one sheet to merge and export.');
+      return;
+    }
+
+    const headers = visibleColumns.map(col => col.label);
+    const allRows: any[][] = [];
+
+    selectedSheetsForMerge.forEach(sheetId => {
+      const sheet = sheets.find(s => s.id === sheetId);
+      if (!sheet || !Array.isArray(sheet.data)) return;
+
+      const meaningfulRows = sheet.data.filter(row => isMeaningfulRow(row));
+      meaningfulRows.forEach(row => {
+        const rowValues = visibleColumns.map(col => {
+          let val = row[col.id];
+          if (isFormula(val)) {
+            const evaluated = evaluateFormula(val, sheet.data, sheet.data.indexOf(row));
+            val = evaluated.error ? evaluated.error : evaluated.result;
+          }
+          if (col.type === 'date' && val) {
+            val = formatDateDisplay(val);
+          }
+          return val !== undefined && val !== null ? val : '';
+        });
+        allRows.push(rowValues);
+      });
+    });
+
+    if (allRows.length === 0) {
+      alert('None of the selected sheets contain meaningful records to export.');
+      return;
+    }
+
+    const worksheet = XLSX.utils.aoa_to_sheet([headers, ...allRows]);
+    const workbook = XLSX.utils.book_new();
+    // Exactly ONE worksheet only
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Merged_Arrivals');
+
+    const now = new Date();
+    const dd = String(now.getDate()).padStart(2, '0');
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const yyyy = now.getFullYear();
+    XLSX.writeFile(workbook, `Arrivals_Merged_${dd}-${mm}-${yyyy}.xlsx`);
+    setIsExportModalOpen(false);
+  };
+
 
   // Due List PDF generation with independent options
   const handleGenerateDueListPDF = () => {
@@ -1381,7 +1875,7 @@ export default function ArrivalEntry() {
       return;
     }
 
-    const newSheetId = `sheet-${Date.now()}`;
+    const newSheetId = `sheet-${sheetName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
     const defaultDate = getDefaultDateForSheet(sheetName);
 
     let initialRows: any[] = [];
@@ -1406,15 +1900,141 @@ export default function ArrivalEntry() {
       data: initialRows
     };
 
+    // Mark as loaded in loadedSheetIdsRef so loadSheetData won't try to overwrite or wipe it
+    loadedSheetIdsRef.current.add(newSheetId);
+
     setSheets(prev => {
       const next = [...prev, newSheet];
-      localStorage.setItem('arrival_entry_sheets_v4', JSON.stringify(next));
-      return next;
+      const sorted = [...next].sort((a, b) => {
+        const parseKey = (name: string) => {
+          const parts = name.trim().split(' ');
+          if (parts.length === 2) {
+            const m = [
+              'january', 'february', 'march', 'april', 'may', 'june',
+              'july', 'august', 'september', 'october', 'november', 'december'
+            ].indexOf(parts[0].toLowerCase());
+            const y = parseInt(parts[1], 10);
+            if (m !== -1 && !isNaN(y)) return y * 100 + m;
+          }
+          return 999999;
+        };
+        return parseKey(a.name) - parseKey(b.name);
+      });
+      localStorage.setItem('arrival_entry_sheets_v4', JSON.stringify(sorted));
+      return sorted;
     });
 
+    localStorage.setItem('arrival_entry_data_v4', JSON.stringify(initialRows));
     setCurrentSheetId(newSheetId);
+    setGridKey(k => k + 1);
     setIsAddSheetModalOpen(false);
     setNewSheetInputName('');
+  };
+
+  // Delete sheet and purge all imported / created rows belonging to it from Firestore and local state
+  const handleConfirmDeleteSheet = async (targetSheet: Sheet) => {
+    if (sheets.length <= 1) {
+      alert('Cannot delete the only remaining sheet.');
+      setSheetToDelete(null);
+      return;
+    }
+
+    setIsDeletingSheet(true);
+    const toDelId = targetSheet.id;
+    const toDelName = targetSheet.name;
+
+    try {
+      // 1. Collect all document IDs from local sheet data
+      const docIdsToDelete = new Set<string>();
+      (targetSheet.data || []).forEach(row => {
+        if (row && row.id && !String(row.id).startsWith('row-empty-')) {
+          docIdsToDelete.add(String(row.id));
+        }
+        if (row && row.billNo) {
+          const cleanBill = String(row.billNo).trim().replace(/[^a-zA-Z0-9_-]/g, '');
+          if (cleanBill) {
+            docIdsToDelete.add(`row-${toDelId}-${cleanBill}`);
+          }
+        }
+      });
+
+      // 2. Query Firestore arrival_entries for all docs matching this sheetId, sheetName, or Month date
+      try {
+        const qBySheetId = query(collection(db, 'arrival_entries'), where('sheetId', '==', toDelId));
+        const snap1 = await getDocs(qBySheetId);
+        snap1.forEach(d => docIdsToDelete.add(d.id));
+
+        if (toDelName) {
+          const qBySheetName = query(collection(db, 'arrival_entries'), where('sheetName', '==', toDelName));
+          const snap2 = await getDocs(qBySheetName);
+          snap2.forEach(d => docIdsToDelete.add(d.id));
+        }
+
+        // Also check all documents in arrival_entries whose date matches toDelName (Month + Year)
+        const allArrivalsSnap = await getDocs(collection(db, 'arrival_entries'));
+        allArrivalsSnap.forEach(d => {
+          const dData = d.data();
+          if (dData) {
+            const matchesSheetId = dData.sheetId === toDelId;
+            const matchesSheetName = dData.sheetName === toDelName;
+            const matchesDateMonth = dData.date && getMonthYearFromDate(dData.date) === toDelName;
+            if (matchesSheetId || matchesSheetName || matchesDateMonth) {
+              docIdsToDelete.add(d.id);
+            }
+          }
+        });
+      } catch (e) {
+        console.warn('Notice querying Firestore for sheet deletion:', e);
+      }
+
+      // 3. Batch delete all identified documents in Firestore (max 400 per batch)
+      if (docIdsToDelete.size > 0) {
+        const docIdArray = Array.from(docIdsToDelete);
+        const BATCH_SIZE = 400;
+        for (let i = 0; i < docIdArray.length; i += BATCH_SIZE) {
+          const chunk = docIdArray.slice(i, i + BATCH_SIZE);
+          const batch = writeBatch(db);
+          chunk.forEach(id => {
+            batch.delete(doc(db, 'arrival_entries', id));
+          });
+          await batch.commit();
+        }
+      }
+
+      // 4. Invalidate collection cache so in-memory getCollectionDocs returns fresh data!
+      invalidateCollectionCache('arrival_entries');
+
+      // 5. Invalidate cache ref so this sheet is not loaded again
+      loadedSheetIdsRef.current.delete(toDelId);
+
+      // 6. Update local sheets state and localStorage
+      const remainingSheets = sheets.filter(s => s.id !== toDelId);
+      setSheets(remainingSheets);
+      localStorage.setItem('arrival_entry_sheets_v4', JSON.stringify(remainingSheets));
+
+      // 7. Switch active sheet if current sheet was deleted
+      if (currentSheetId === toDelId) {
+        const nextActive = remainingSheets[0];
+        const nextId = nextActive ? nextActive.id : 'sheet-1';
+        setCurrentSheetId(nextId);
+        if (nextActive) {
+          localStorage.setItem('arrival_entry_data_v4', JSON.stringify(nextActive.data));
+        }
+      }
+
+      setGridKey(k => k + 1);
+
+      try {
+        window.dispatchEvent(new CustomEvent('arrival-entry-updated'));
+      } catch (e) {}
+
+    } catch (err) {
+      console.error('Error deleting sheet and its data:', err);
+      alert('Encountered an error while deleting sheet data from database.');
+    } finally {
+      setIsDeletingSheet(false);
+      setSheetToDelete(null);
+    }
   };
 
   // Paper Manifest camera capture apply
@@ -1445,13 +2065,13 @@ export default function ArrivalEntry() {
 
   // Active cell display value and formula bar value
   const activeCellRawValue = useMemo(() => {
-    if (!activeCell || !data[activeCell.r] || !visibleColumns[activeCell.c]) return '';
+    if (!activeCell || !filteredData[activeCell.r] || !visibleColumns[activeCell.c]) return '';
     const colId = visibleColumns[activeCell.c].id;
-    return data[activeCell.r][colId] ?? '';
-  }, [activeCell, data, visibleColumns]);
+    return filteredData[activeCell.r][colId] ?? '';
+  }, [activeCell, filteredData, visibleColumns]);
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-surface-container-lowest overflow-hidden">
+    <div className="w-full flex-1 flex flex-col h-full max-h-full min-h-0 bg-surface-container-lowest overflow-hidden select-none relative">
       
       {/* Top Header Workspace Bar */}
       <div className="bg-surface border-b border-outline-variant px-4 py-3 flex flex-wrap items-center justify-between gap-3 shrink-0">
@@ -1551,7 +2171,7 @@ export default function ArrivalEntry() {
 
           {/* Export XLS */}
           <button
-            onClick={exportToExcel}
+            onClick={() => setIsExportModalOpen(true)}
             className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider shadow-md shadow-emerald-600/20 transition-all cursor-pointer"
           >
             <Download className="w-4 h-4" />
@@ -1770,11 +2390,12 @@ export default function ArrivalEntry() {
 
       {/* Main Virtualized Grid Container */}
       <div
+        key={`grid-viewport-${gridKey}`}
         ref={gridContainerRef}
         tabIndex={0}
         onKeyDown={handleKeyDown}
         onScroll={handleGridScroll}
-        className="flex-1 overflow-auto bg-surface-container-lowest focus:outline-none scrollbar-thin select-none relative"
+        className="flex-1 min-h-0 overflow-auto bg-surface-container-lowest focus:outline-none scrollbar-thin select-none relative"
       >
         <div style={{ width: `${totalTableWidth}px`, height: `${totalRowsCount * ROW_HEIGHT + 44}px`, position: 'relative' }}>
           
@@ -1844,7 +2465,6 @@ export default function ArrivalEntry() {
                       onClick={(e) => {
                         e.stopPropagation();
                         setOpenFilterColId(openFilterColId === col.id ? null : col.id);
-                        setFilterSearch('');
                       }}
                       className={cn(
                         "p-1 rounded hover:bg-surface-container transition-colors relative",
@@ -1865,87 +2485,32 @@ export default function ArrivalEntry() {
                     className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-primary/50 transition-colors z-20"
                   />
 
-                  {/* Filter Popup Menu */}
-                  {openFilterColId === col.id && (
-                    <div 
-                      className="absolute top-11 right-0 bg-surface border border-outline-variant rounded-xl shadow-2xl z-50 p-3 w-64 text-left normal-case tracking-normal text-on-surface"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <div className="flex items-center justify-between pb-2 mb-2 border-b border-outline-variant/30">
-                        <span className="text-[10px] font-black uppercase text-secondary flex items-center gap-1">
-                          <Filter className="w-3 h-3 text-primary" /> Filter {col.label}
-                        </span>
-                        {isFiltered && (
-                          <button
-                            onClick={() => {
-                              setColumnFilters(prev => {
-                                const next = { ...prev };
-                                delete next[col.id];
-                                return next;
-                              });
-                              setOpenFilterColId(null);
-                            }}
-                            className="text-[9px] font-bold text-rose-500 hover:underline uppercase"
-                          >
-                            Clear
-                          </button>
-                        )}
-                      </div>
-
-                      {/* Text Search in Column Filter */}
-                      <input
-                        type="text"
-                        placeholder="Filter contains..."
-                        value={columnFilters[col.id]?.value || filterSearch}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setFilterSearch(val);
-                          setColumnFilters(prev => ({
-                            ...prev,
-                            [col.id]: { operator: 'contains', value: val }
-                          }));
-                        }}
-                        className="w-full px-2.5 py-1.5 bg-surface-container-low border border-outline-variant rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-primary"
-                      />
-
-                      <div className="flex gap-2 mt-2 pt-2 border-t border-outline-variant/20 text-[10px] font-bold text-secondary">
-                        <button
-                          onClick={() => {
-                            setColumnFilters(prev => ({
-                              ...prev,
-                              [col.id]: { operator: 'blank' }
-                            }));
-                            setOpenFilterColId(null);
-                          }}
-                          className="hover:text-primary"
-                        >
-                          Blanks
-                        </button>
-                        <span>|</span>
-                        <button
-                          onClick={() => {
-                            setColumnFilters(prev => ({
-                              ...prev,
-                              [col.id]: { operator: 'notBlank' }
-                            }));
-                            setOpenFilterColId(null);
-                          }}
-                          className="hover:text-primary"
-                        >
-                          Non-blanks
-                        </button>
-                      </div>
-
-                      <div className="mt-3 flex justify-end">
-                        <button
-                          onClick={() => setOpenFilterColId(null)}
-                          className="px-3 py-1 bg-primary text-on-primary text-[10px] font-bold rounded-lg uppercase"
-                        >
-                          Close
-                        </button>
-                      </div>
-                    </div>
-                  )}
+                  {/* Excel-Style Column Filter Component */}
+                  <ExcelColumnFilter
+                    column={col}
+                    activeFilter={columnFilters[col.id]}
+                    dataset={data}
+                    isOpen={openFilterColId === col.id}
+                    onClose={() => setOpenFilterColId(null)}
+                    onApply={(newFilter) => {
+                      setColumnFilters(prev => {
+                        const next = { ...prev };
+                        if (newFilter) {
+                          next[col.id] = newFilter;
+                        } else {
+                          delete next[col.id];
+                        }
+                        return next;
+                      });
+                    }}
+                    onSort={(dir) => {
+                      setSortConfig({ colId: col.id, direction: dir });
+                    }}
+                    currentSort={sortConfig?.colId === col.id ? sortConfig.direction : null}
+                    parseAnyDate={parseAnyDate}
+                    formatDateToDDMMYYYY={formatDateToDDMMYYYY}
+                    getDaysPendingNum={getDaysPendingNum}
+                  />
                 </div>
               );
             })}
@@ -1972,11 +2537,22 @@ export default function ArrivalEntry() {
                     setSelectionRange({ startR: rIdx, startC: 0, endR: rIdx, endC: visibleColumns.length - 1 });
                   }}
                   className={cn(
-                    "w-12 h-full border-r border-outline-variant/60 text-[10px] font-mono font-black flex items-center justify-center sticky left-0 z-20 cursor-pointer select-none",
+                    "w-12 h-full border-r border-outline-variant/60 text-[10px] font-mono font-black flex items-center justify-center sticky left-0 z-20 cursor-pointer select-none group/row",
                     activeCell?.r === rIdx ? "bg-primary text-on-primary" : "bg-surface-container-high text-secondary"
                   )}
                 >
-                  {rIdx + 1}
+                  <span className="group-hover/row:hidden">{rIdx + 1}</span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteSingleRow(rIdx);
+                    }}
+                    className="hidden group-hover/row:flex items-center justify-center text-rose-500 hover:text-rose-700 hover:bg-rose-500/15 p-1 rounded cursor-pointer transition-colors"
+                    title={`Delete row ${rIdx + 1}`}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 </div>
 
                 {/* Cells */}
@@ -1998,18 +2574,35 @@ export default function ArrivalEntry() {
                   } else if (col.type === 'calc' && (col.id === 'amount' || col.id === 'netAmt') && rawVal) {
                     displayVal = `₹ ${formatINR(rawVal)}`;
                   } else if (col.type === 'date' && rawVal) {
-                    displayVal = formatDateToDDMMYYYY(rawVal);
+                    displayVal = formatDateDisplay(rawVal);
                   }
 
                   // Days Pending formatting and cell badge styling
                   let daysBadgeClass: string | null = null;
                   if (col.id === 'noOfDays') {
-                    const isCleared = (row?.noOfDayRec || 'Not Cleared') === 'Cleared';
-                    const hasDate = !!(row && row.date && parseAnyDate(row.date));
+                    // Check if row has an explicit preserved or imported value for noOfDays
+                    const explicitVal = row?.noOfDays !== undefined && row?.noOfDays !== null && String(row?.noOfDays).trim() !== ''
+                      ? String(row.noOfDays).trim()
+                      : (row?.payment !== undefined && row?.payment !== null && String(row?.payment).trim() !== '' && !row?.noOfDays
+                          ? String(row.payment).trim()
+                          : '');
+
+                    const hasDate = !!(row && row.date && isValidDate(row.date));
                     const daysNum = getDaysPendingNum(row);
 
-                    if (isCleared) {
-                      displayVal = 'Cleared';
+                    if (explicitVal) {
+                      displayVal = explicitVal;
+                      const matchNum = explicitVal.match(/\d+/);
+                      const numForBadge = matchNum ? parseInt(matchNum[0], 10) : NaN;
+                      if (!isNaN(numForBadge)) {
+                        if (numForBadge >= 0 && numForBadge <= 14) {
+                          daysBadgeClass = "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300/50 dark:border-emerald-800/50 font-bold px-2 py-0.5 rounded text-[11px] leading-tight select-none";
+                        } else if (numForBadge >= 15 && numForBadge <= 28) {
+                          daysBadgeClass = "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300/50 dark:border-amber-800/50 font-bold px-2 py-0.5 rounded text-[11px] leading-tight select-none";
+                        } else if (numForBadge >= 29) {
+                          daysBadgeClass = "bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300/50 dark:border-rose-800/50 font-bold px-2 py-0.5 rounded text-[11px] leading-tight select-none";
+                        }
+                      }
                     } else if (hasDate) {
                       displayVal = `${daysNum} Days`;
                       if (daysNum >= 0 && daysNum <= 14) {
@@ -2048,7 +2641,7 @@ export default function ArrivalEntry() {
                               value={editValue}
                               onChange={(e) => {
                                 setEditValue(e.target.value);
-                                handleUpdateCell(rIdx, col.id, e.target.value);
+                                handleUpdateCell(row.id || rIdx, col.id, e.target.value);
                                 setIsEditing(false);
                               }}
                               onBlur={() => stopEditing(true)}
@@ -2079,6 +2672,46 @@ export default function ArrivalEntry() {
                             {displayVal}
                           </span>
                         )
+                      ) : col.id === 'noOfDayRec' ? (
+                        displayVal === 'Cleared' ? (
+                          <span className="bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300/50 dark:border-emerald-800/50 font-bold px-2 py-0.5 rounded text-[11px] leading-tight select-none">
+                            Cleared
+                          </span>
+                        ) : displayVal === 'Not Cleared' ? (
+                          <span className="bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300/50 dark:border-amber-800/50 font-bold px-2 py-0.5 rounded text-[11px] leading-tight select-none">
+                            Not Cleared
+                          </span>
+                        ) : (
+                          <span className="text-secondary font-bold text-[11px]">
+                            {String(displayVal ?? '')}
+                          </span>
+                        )
+                      ) : col.id === 'billNo' ? (
+                        <div className="flex items-center justify-between w-full h-full gap-1 overflow-hidden group/bill">
+                          <span className="truncate font-mono font-bold">
+                            {String(displayVal ?? '')}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setBillPhotoModalState({ isOpen: true, rowIndex: rIdx, row });
+                            }}
+                            className={cn(
+                              "shrink-0 p-1 rounded-md transition-all cursor-pointer flex items-center gap-0.5",
+                              row?.billPhoto
+                                ? "text-emerald-600 dark:text-emerald-400 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 shadow-xs"
+                                : "text-secondary/40 hover:text-primary hover:bg-primary/10 opacity-70 group-hover/bill:opacity-100"
+                            )}
+                            title={row?.billPhoto ? "View attached bill photo/document" : "Attach bill photo/document"}
+                          >
+                            {row?.billPhoto ? (
+                              <FileText className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                            ) : (
+                              <Camera className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        </div>
                       ) : (
                         <span className="truncate">
                           {String(displayVal ?? '')}
@@ -2101,11 +2734,31 @@ export default function ArrivalEntry() {
 
           {/* Virtual Bottom Spacer */}
           <div style={{ height: `${bottomSpacerHeight}px` }} />
+
+          {/* Empty / No Matching Records State */}
+          {filteredData.length === 0 && (
+            <div className="absolute inset-x-0 top-24 flex flex-col items-center justify-center p-12 text-center z-10 pointer-events-auto">
+              <div className="w-12 h-12 rounded-full bg-surface-container-high border border-outline-variant flex items-center justify-center text-secondary mb-3 shadow-sm">
+                <Filter className="w-6 h-6 opacity-40" />
+              </div>
+              <h3 className="text-sm font-black text-on-surface mb-1">No matching records found</h3>
+              <p className="text-xs text-secondary mb-4 max-w-sm">
+                No rows match your current column filters or search criteria.
+              </p>
+              <button
+                onClick={handleClearQuickFilters}
+                className="px-4 py-2 bg-primary hover:bg-primary-hover text-on-primary rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Clear All Filters</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
       {/* Bottom Summary Bar & Sheet Tabs */}
-      <div className="bg-surface border-t border-outline-variant px-4 py-2.5 flex items-center justify-between gap-4 shrink-0 text-xs">
+      <div className="bg-surface border-t border-outline-variant px-4 py-2 flex items-center justify-between gap-4 shrink-0 text-xs select-none sticky bottom-0 z-30 shadow-xs">
         
         {/* Sheet Tabs */}
         <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-1">
@@ -2470,37 +3123,34 @@ export default function ArrivalEntry() {
                 </div>
               </div>
               <p className="text-xs text-secondary mb-6 leading-relaxed">
-                Are you sure you want to delete <span className="font-black text-on-surface">"{sheetToDelete.name}"</span>? All local rows on this sheet will be deleted.
+                Are you sure you want to delete <span className="font-black text-on-surface">"{sheetToDelete.name}"</span>? All imported and recorded arrivals on this sheet will be permanently deleted from the database.
               </p>
               <div className="flex items-center justify-end gap-3">
                 <button
+                  type="button"
+                  disabled={isDeletingSheet}
                   onClick={() => setSheetToDelete(null)}
-                  className="px-4 py-2 text-xs font-bold text-secondary hover:bg-surface-container rounded-xl transition-all cursor-pointer"
+                  className="px-4 py-2 text-xs font-bold text-secondary hover:bg-surface-container rounded-xl transition-all cursor-pointer disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
-                  onClick={() => {
-                    if (sheets.length <= 1) {
-                      alert('Cannot delete the only remaining sheet.');
-                      setSheetToDelete(null);
-                      return;
-                    }
-                    const toDelId = sheetToDelete.id;
-                    setSheets(prev => {
-                      const next = prev.filter(s => s.id !== toDelId);
-                      localStorage.setItem('arrival_entry_sheets_v4', JSON.stringify(next));
-                      return next;
-                    });
-                    if (currentSheetId === toDelId) {
-                      const remaining = sheets.filter(s => s.id !== toDelId);
-                      setCurrentSheetId(remaining[0]?.id || 'sheet-1');
-                    }
-                    setSheetToDelete(null);
-                  }}
-                  className="px-5 py-2 text-xs font-black text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-md transition-all cursor-pointer"
+                  type="button"
+                  disabled={isDeletingSheet}
+                  onClick={() => handleConfirmDeleteSheet(sheetToDelete)}
+                  className="px-5 py-2 text-xs font-black text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
                 >
-                  Delete Sheet
+                  {isDeletingSheet ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Deleting Data...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete Sheet & Data</span>
+                    </>
+                  )}
                 </button>
               </div>
             </motion.div>
@@ -2515,11 +3165,68 @@ export default function ArrivalEntry() {
         currentSheetId={currentSheetId}
         currentSheetName={currentSheet.name}
         onImportComplete={(importedRows, mode) => {
-          if (mode === 'overwrite') {
-            setData(importedRows);
-          } else {
-            setData(prev => [...prev.filter(r => r && (r.partyName || r.millerName || r.billNo)), ...importedRows]);
+          // Stable sort imported rows oldest to newest by Arrival Date
+          const sortedImported = sortArrivalRowsOldestToNewest(importedRows).map(normalizeRowDaysAndStatus);
+
+          // Find the target sheet name corresponding to the imported dates
+          const firstDate = sortedImported[0]?.date;
+          const targetSheetName = firstDate ? getMonthYearFromDate(firstDate) : null;
+          let targetSheetIdToActivate = currentSheetId;
+
+          if (targetSheetName) {
+            const existingSheet = sheets.find(s => s.name.toLowerCase() === targetSheetName.toLowerCase());
+            targetSheetIdToActivate = existingSheet
+              ? existingSheet.id
+              : `sheet-${targetSheetName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
           }
+
+          // Update sheets and reorganize by month/year so rows are placed into correct sheets
+          setSheets(prevSheets => {
+            const currentNonEmpty = (prevSheets.find(s => s.id === currentSheetId)?.data || []).filter(r => isMeaningfulRow(r));
+            const baseCurrent = mode === 'overwrite' ? [] : currentNonEmpty;
+
+            const otherSheetsRows = prevSheets
+              .filter(s => s.id !== currentSheetId)
+              .flatMap(s => (s.data || []).filter(r => isMeaningfulRow(r)));
+
+            const combinedRows = [...otherSheetsRows, ...baseCurrent, ...sortedImported];
+            const organized = organizeArrivalSheetsByMonth(prevSheets, combinedRows, INITIAL_ROWS);
+            localStorage.setItem('arrival_entry_sheets_v4', JSON.stringify(organized.sheets));
+
+            const activeSheet = organized.sheets.find(s => s.id === targetSheetIdToActivate) || organized.sheets[0];
+            if (activeSheet) {
+              localStorage.setItem('arrival_entry_data_v4', JSON.stringify(activeSheet.data));
+            }
+            return organized.sheets;
+          });
+
+          // Switch active sheet to the one containing the imported rows
+          setCurrentSheetId(targetSheetIdToActivate);
+
+          // Reset all filters & search immediately so imported rows are not filtered out
+          setColumnFilters({});
+          setQuickSearch('');
+          setQuickShopLoc('All');
+          setQuickRoad('All');
+          setQuickStatus('All');
+          setQuickDaysOp('all');
+          setQuickDaysVal('');
+          setQuickDaysVal2('');
+          setSelectedDueArea('All');
+          setSortConfig(null);
+
+          // Reset scroll to top
+          setScrollTop(0);
+          if (gridContainerRef.current) {
+            gridContainerRef.current.scrollTop = 0;
+          }
+
+          // Invalidate Firestore cache ref so future sheet changes load fresh data
+          loadedSheetIdsRef.current.clear();
+
+          // Force virtual grid to remount and re-render without manual scroll or filter clicks
+          setGridKey(k => k + 1);
+
           setIsImportModalOpen(false);
         }}
       />
@@ -2568,16 +3275,249 @@ export default function ArrivalEntry() {
         row={billPhotoModalState.row}
         rowIndex={billPhotoModalState.rowIndex}
         onSavePhoto={(photoUrl) => {
-          if (billPhotoModalState.rowIndex >= 0) {
-            handleUpdateCell(billPhotoModalState.rowIndex, 'billPhoto', photoUrl);
-          }
+          const targetId = billPhotoModalState.row?.id || billPhotoModalState.rowIndex;
+          handleUpdateCell(targetId, 'billPhoto', photoUrl);
         }}
         onRemovePhoto={() => {
-          if (billPhotoModalState.rowIndex >= 0) {
-            handleUpdateCell(billPhotoModalState.rowIndex, 'billPhoto', '');
-          }
+          const targetId = billPhotoModalState.row?.id || billPhotoModalState.rowIndex;
+          handleUpdateCell(targetId, 'billPhoto', '');
         }}
       />
+
+      {/* Export XLS Modal (Current Sheet or Merge Sheets) */}
+      <AnimatePresence>
+        {isExportModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 10 }}
+              className="bg-surface border border-outline-variant rounded-2xl shadow-2xl w-full max-w-xl text-on-surface overflow-hidden flex flex-col max-h-[85vh]"
+            >
+              {/* Modal Header */}
+              <div className="px-6 py-4 border-b border-outline-variant flex items-center justify-between bg-surface-container-lowest/50 shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-600">
+                    <Download className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-black text-base tracking-tight">Export Arrival Records</h3>
+                    <p className="text-[11px] text-secondary font-medium">Download as Excel workbook (.xlsx)</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsExportModalOpen(false)}
+                  className="p-1.5 text-secondary hover:text-on-surface hover:bg-surface-container rounded-lg transition-all cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Mode Switcher Tabs */}
+              <div className="px-6 pt-4 pb-2 shrink-0">
+                <div className="grid grid-cols-2 p-1 bg-surface-container-low rounded-xl border border-outline-variant/60 gap-1 text-xs font-bold">
+                  <button
+                    type="button"
+                    onClick={() => setExportTab('current')}
+                    className={cn(
+                      'flex items-center justify-center gap-2 py-2 rounded-lg transition-all cursor-pointer',
+                      exportTab === 'current'
+                        ? 'bg-surface text-primary shadow-xs font-black'
+                        : 'text-secondary hover:text-on-surface'
+                    )}
+                  >
+                    <FileSpreadsheet className="w-4 h-4" />
+                    <span>Current Sheet Only</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setExportTab('merge')}
+                    className={cn(
+                      'flex items-center justify-center gap-2 py-2 rounded-lg transition-all cursor-pointer',
+                      exportTab === 'merge'
+                        ? 'bg-surface text-emerald-600 shadow-xs font-black'
+                        : 'text-secondary hover:text-on-surface'
+                    )}
+                  >
+                    <Layers className="w-4 h-4" />
+                    <span>Merge Sheets & Export</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Modal Body */}
+              <div className="px-6 py-3 overflow-y-auto flex-1 space-y-4">
+                {exportTab === 'current' ? (
+                  <div className="py-2 space-y-4">
+                    <div className="p-4 rounded-xl bg-surface-container-low border border-outline-variant/60 flex items-center justify-between">
+                      <div className="space-y-1">
+                        <span className="text-[10px] uppercase tracking-wider font-bold text-secondary">Active Sheet</span>
+                        <h4 className="text-base font-black text-on-surface flex items-center gap-2">
+                          <FileSpreadsheet className="w-4 h-4 text-primary" />
+                          {currentSheet.name}
+                        </h4>
+                        <p className="text-xs text-secondary">
+                          Contains {(currentSheet.data || []).filter(r => isMeaningfulRow(r)).length} recorded arrivals
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <span className="px-2.5 py-1 bg-emerald-500/10 text-emerald-700 text-xs font-bold rounded-lg border border-emerald-500/20">
+                          Ready to export
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="text-xs text-secondary leading-relaxed bg-surface-container-lowest p-3.5 rounded-xl border border-outline-variant/40">
+                      Exports all valid records from <span className="font-bold text-on-surface">{currentSheet.name}</span> with all visible columns, values, and calculated totals.
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="text-xs font-black text-on-surface">Select & Reorder Sheets to Merge</h4>
+                        <p className="text-[11px] text-secondary">Output will be ONE single flat worksheet with a single header row</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={selectAllSheetsForMerge}
+                          className="text-[11px] font-bold text-primary hover:underline cursor-pointer"
+                        >
+                          Select All
+                        </button>
+                        <span className="text-outline text-xs">•</span>
+                        <button
+                          type="button"
+                          onClick={clearAllSheetsForMerge}
+                          className="text-[11px] font-bold text-secondary hover:text-on-surface cursor-pointer"
+                        >
+                          Clear All
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Ordered Sheet List: selected sheets displayed in order of selectedSheetsForMerge, then unselected sheets */}
+                    <div className="border border-outline-variant rounded-xl overflow-hidden divide-y divide-outline-variant/60 bg-surface-container-lowest max-h-64 overflow-y-auto">
+                      {[
+                        ...selectedSheetsForMerge.map(id => sheets.find(s => s.id === id)).filter(Boolean) as typeof sheets,
+                        ...sheets.filter(s => !selectedSheetsForMerge.includes(s.id))
+                      ].map(sheet => {
+                        const isSelected = selectedSheetsForMerge.includes(sheet.id);
+                        const seqIndex = selectedSheetsForMerge.indexOf(sheet.id);
+                        const rowCount = (sheet.data || []).filter(r => isMeaningfulRow(r)).length;
+
+                        return (
+                          <div
+                            key={sheet.id}
+                            className={cn(
+                              'px-3.5 py-2.5 flex items-center justify-between gap-3 transition-colors',
+                              isSelected ? 'bg-surface hover:bg-surface-container-low/50' : 'opacity-60 bg-surface-container-low/30'
+                            )}
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <button
+                                type="button"
+                                onClick={() => toggleSheetForMerge(sheet.id)}
+                                className="cursor-pointer text-primary focus:outline-none"
+                              >
+                                {isSelected ? (
+                                  <CheckSquare className="w-4 h-4 text-emerald-600" />
+                                ) : (
+                                  <Square className="w-4 h-4 text-secondary" />
+                                )}
+                              </button>
+
+                              {isSelected ? (
+                                <span className="w-6 h-6 rounded-md bg-emerald-500/10 text-emerald-700 text-[11px] font-black flex items-center justify-center shrink-0">
+                                  #{seqIndex + 1}
+                                </span>
+                              ) : (
+                                <span className="w-6 h-6 rounded-md bg-surface-container text-secondary text-[11px] font-bold flex items-center justify-center shrink-0">
+                                  -
+                                </span>
+                              )}
+
+                              <div className="min-w-0">
+                                <span className="text-xs font-black text-on-surface truncate block">
+                                  {sheet.name}
+                                </span>
+                                <span className="text-[10px] text-secondary font-medium">
+                                  {rowCount} records
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Reordering Controls (Only active for selected sheets) */}
+                            {isSelected && (
+                              <div className="flex items-center gap-1 shrink-0">
+                                <button
+                                  type="button"
+                                  disabled={seqIndex === 0}
+                                  onClick={() => moveMergeSheet(seqIndex, 'up')}
+                                  title="Move Up in export sequence"
+                                  className="p-1 rounded-lg hover:bg-surface-container text-secondary hover:text-on-surface disabled:opacity-30 disabled:pointer-events-none transition-all cursor-pointer"
+                                >
+                                  <ArrowUp className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={seqIndex === selectedSheetsForMerge.length - 1}
+                                  onClick={() => moveMergeSheet(seqIndex, 'down')}
+                                  title="Move Down in export sequence"
+                                  className="p-1 rounded-lg hover:bg-surface-container text-secondary hover:text-on-surface disabled:opacity-30 disabled:pointer-events-none transition-all cursor-pointer"
+                                >
+                                  <ArrowDown className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-[11px] text-amber-800 dark:text-amber-300 leading-relaxed">
+                      💡 Merged XLS generates <span className="font-bold">ONE worksheet only</span>. Headers appear once at row 0, and records will be appended in sequence #1, #2, etc. Empty padding rows are automatically excluded.
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="px-6 py-4 border-t border-outline-variant bg-surface-container-lowest/50 flex items-center justify-between shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setIsExportModalOpen(false)}
+                  className="px-4 py-2 text-xs font-bold text-secondary hover:bg-surface-container rounded-xl transition-all cursor-pointer"
+                >
+                  Cancel
+                </button>
+
+                {exportTab === 'current' ? (
+                  <button
+                    type="button"
+                    onClick={exportCurrentSheet}
+                    className="px-5 py-2.5 text-xs font-black text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-md shadow-emerald-600/20 transition-all cursor-pointer flex items-center gap-2"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>Download {currentSheet.name} (.xlsx)</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={exportMergedSheets}
+                    disabled={selectedSheetsForMerge.length === 0}
+                    className="px-5 py-2.5 text-xs font-black text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:pointer-events-none rounded-xl shadow-md shadow-emerald-600/20 transition-all cursor-pointer flex items-center gap-2"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>Download Merged XLS ({selectedSheetsForMerge.length} Sheets)</span>
+                  </button>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
     </div>
   );

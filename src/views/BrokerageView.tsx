@@ -198,9 +198,9 @@ export default function BrokerageView() {
     return commissionLines.filter(line => {
       const q = (searchQuery || '').toLowerCase();
       const matchesSearch = 
-        (line.billNo || '').toLowerCase().includes(q) ||
-        (line.product || '').toLowerCase().includes(q) ||
-        (line.supplier || '').toLowerCase().includes(q);
+        String(line.billNo ?? '').toLowerCase().includes(q) ||
+        String(line.product ?? '').toLowerCase().includes(q) ||
+        String(line.supplier ?? '').toLowerCase().includes(q);
         
       const matchesSupplier = supplierFilter === 'all' || line.supplier === supplierFilter;
 

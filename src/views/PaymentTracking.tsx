@@ -537,10 +537,11 @@ export default function PaymentTracking() {
           }
         }
 
+        const rowBillStr = String(row?.billNo ?? '');
         const isLifted = !!(
           (matchingOrder && matchingOrder.liftingRecords && matchingOrder.liftingRecords.length > 0) ||
           (matchingOrder && (matchingOrder.currentShop || matchingOrder.redirectedShop)) ||
-          (row && (row.billNo?.includes('-LFT') || row.billNo?.startsWith('LFT-') || row.isLifted || row.redirectedTo))
+          (row && (rowBillStr.includes('-LFT') || rowBillStr.startsWith('LFT-') || row.isLifted || row.redirectedTo))
         );
         const liftingRecord = matchingOrder?.liftingRecords?.[0] || null;
 

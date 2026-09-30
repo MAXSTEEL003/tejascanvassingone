@@ -759,33 +759,38 @@ export default function OrdersDashboard() {
 
   // Sync with Firestore in Real-Time for Active Orders
   useEffect(() => {
-    let unsubscribe: () => void;
-    async function setupRealtimeSync() {
-      try {
-        unsubscribe = onSnapshot(collection(db, 'procurement_requests'), (snapshot) => {
-          const deletedSet = getDeletedProcurementIds();
-          const cloudOrdersMap = new Map<string, any>();
-          snapshot.forEach((doc) => {
-            const data = doc.data();
-            if (data && data.status !== 'Rejected' && data.status !== 'Completed' && data.status !== 'Archived' && !data.isArchived && !String(doc.id).startsWith('#ORD-99') && !String(doc.id).startsWith('TC-0000')) {
-              const rawObj = normalizeOrder({ id: doc.id, ...data });
-              const normKey = String(rawObj.id || doc.id).trim().toLowerCase().replace(/^#/, '');
-              if (!deletedSet.has(normKey) && !cloudOrdersMap.has(normKey)) {
-                cloudOrdersMap.set(normKey, rawObj);
-              }
+    let isMounted = true;
+    let unsubscribe: (() => void) | null = null;
+
+    try {
+      unsubscribe = onSnapshot(collection(db, 'procurement_requests'), (snapshot) => {
+        if (!isMounted) return;
+        const deletedSet = getDeletedProcurementIds();
+        const cloudOrdersMap = new Map<string, any>();
+        snapshot.forEach((doc) => {
+          const data = doc.data();
+          if (data && data.status !== 'Rejected' && data.status !== 'Completed' && data.status !== 'Archived' && !data.isArchived && !String(doc.id).startsWith('#ORD-99') && !String(doc.id).startsWith('TC-0000')) {
+            const rawObj = normalizeOrder({ id: doc.id, ...data });
+            const normKey = String(rawObj.id || doc.id).trim().toLowerCase().replace(/^#/, '');
+            if (!deletedSet.has(normKey) && !cloudOrdersMap.has(normKey)) {
+              cloudOrdersMap.set(normKey, rawObj);
             }
-          });
-          setCurrentOrders(Array.from(cloudOrdersMap.values()));
-        }, (err) => {
-          console.warn('Real-time subscription notice in OrdersDashboard:', err?.message || err);
+          }
         });
-      } catch (err) {
-        console.warn('Real-time subscription setup notice:', err);
+        setCurrentOrders(Array.from(cloudOrdersMap.values()));
+      }, (err) => {
+        console.warn('Real-time subscription notice in OrdersDashboard:', err?.message || err);
+      });
+
+      if (!isMounted && unsubscribe) {
+        unsubscribe();
       }
+    } catch (err) {
+      console.warn('Real-time subscription setup notice:', err);
     }
-    setupRealtimeSync();
     
     return () => {
+      isMounted = false;
       if (unsubscribe) unsubscribe();
     };
   }, []);

@@ -435,7 +435,7 @@ export default function InlinePattiSlip({ txn, onOpenFullPatti, onClose }: Inlin
 
   // Exact ASCII summary format matching PattiView
   const copyPattiToClipboard = () => {
-    const formattedBills = formData.billNo.filter(b => b.trim() !== '').join(', ') || 'N/A';
+    const formattedBills = formData.billNo.filter(b => String(b ?? '').trim() !== '').join(', ') || 'N/A';
     
     const summary = `===========================================
         PATTI LEDGER RECEIPT SUMMARY

@@ -1275,10 +1275,21 @@ function MainLayoutContent({ onSearchClick }: { onSearchClick: () => void }) {
     }
 
     return (
-      <div className="w-full min-h-dvh bg-[#fafaf9] dark:bg-[#07110c] flex flex-col items-center text-slate-900 dark:text-slate-100 font-sans antialiased">
-        <div className="w-full max-w-4xl min-h-dvh bg-[#fafaf9] dark:bg-[#07110c] relative flex flex-col">
+      <div className={cn(
+        "w-full bg-[#fafaf9] dark:bg-[#07110c] flex flex-col items-center text-slate-900 dark:text-slate-100 font-sans antialiased",
+        location.pathname === '/arrival-entry' ? "h-screen max-h-screen overflow-hidden" : "min-h-dvh"
+      )}>
+        <div className={cn(
+          "w-full bg-[#fafaf9] dark:bg-[#07110c] relative flex flex-col",
+          location.pathname === '/arrival-entry' ? "w-full max-w-none h-screen max-h-screen overflow-hidden flex-1" : "max-w-4xl min-h-dvh"
+        )}>
           <EmployeeHeader />
-          <main className="flex-1 w-full relative pb-20 p-3 sm:p-4">
+          <main className={cn(
+            "flex-1 w-full relative",
+            location.pathname === '/arrival-entry'
+              ? "p-0 pb-0 h-[calc(100dvh-4rem)] max-h-[calc(100dvh-4rem)] overflow-hidden flex flex-col min-h-0"
+              : "pb-20 p-3 sm:p-4"
+          )}>
             <AnimatePresence mode="wait" initial={false}>
               <motion.div
                 key={location.pathname}
@@ -1289,13 +1300,13 @@ function MainLayoutContent({ onSearchClick }: { onSearchClick: () => void }) {
                   duration: 0.28, 
                   ease: [0.22, 1, 0.36, 1] 
                 }}
-                className="w-full h-full"
+                className={cn("w-full", location.pathname === '/arrival-entry' ? "h-full flex-1 flex flex-col min-h-0 overflow-hidden" : "h-full")}
               >
                 <Outlet />
               </motion.div>
             </AnimatePresence>
           </main>
-          <EmployeeBottomBar />
+          {location.pathname !== '/arrival-entry' && <EmployeeBottomBar />}
         </div>
       </div>
     );
@@ -1345,7 +1356,12 @@ function MainLayoutContent({ onSearchClick }: { onSearchClick: () => void }) {
   return (
     <div 
       data-admin-portal="true" 
-      className="min-h-screen bg-[#fbfbfa] dark:bg-[#07110c] text-slate-900 dark:text-slate-100 admin-font font-sf antialiased relative selection:bg-amber-500/20 selection:text-amber-900 dark:selection:text-amber-300"
+      className={cn(
+        "bg-[#fbfbfa] dark:bg-[#07110c] text-slate-900 dark:text-slate-100 admin-font font-sf antialiased relative selection:bg-amber-500/20 selection:text-amber-900 dark:selection:text-amber-300",
+        location.pathname === '/arrival-entry' 
+          ? "h-screen max-h-screen overflow-hidden flex flex-col" 
+          : "min-h-screen"
+      )}
     >
       {/* Subtle Ambient Translucent Glow for Light & Dark Mode Depth */}
       <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
@@ -1369,7 +1385,10 @@ function MainLayoutContent({ onSearchClick }: { onSearchClick: () => void }) {
         onToggleSidebar={() => handleToggleSidebar(!isSidebarCollapsed)}
       />
       <main className={cn(
-        "pt-[calc(4rem+env(safe-area-inset-top,0px))] min-h-[calc(100vh-64px)] relative transition-all duration-300 z-10",
+        "pt-[calc(4rem+env(safe-area-inset-top,0px))] relative transition-all duration-300 z-10",
+        location.pathname === '/arrival-entry' 
+          ? "h-screen max-h-screen overflow-hidden flex flex-col" 
+          : "min-h-[calc(100vh-64px)]",
         isSidebarCollapsed ? "ml-0 md:ml-20" : "ml-0 md:ml-64"
       )}>
         <AnimatePresence mode="wait" initial={false}>
@@ -1382,7 +1401,7 @@ function MainLayoutContent({ onSearchClick }: { onSearchClick: () => void }) {
               duration: 0.35, 
               ease: [0.22, 1, 0.36, 1] 
             }}
-            className="w-full h-full"
+            className={cn("w-full", location.pathname === '/arrival-entry' ? "h-full flex-1 flex flex-col min-h-0 overflow-hidden" : "h-full")}
           >
             <Outlet />
           </motion.div>
