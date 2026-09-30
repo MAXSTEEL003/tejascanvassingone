@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Sparkles } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { motion } from 'motion/react';
 import RiceBrandsFlow from './RiceBrandsFlow';
 
 interface VarietyItem {
@@ -498,17 +499,29 @@ export default function AboutScrollExperience() {
                         </linearGradient>
                       </defs>
                       {selectedVariety.isPulse ? (
-                        <g className="transition-all duration-500 ease-out">
-                          <ellipse cx="30" cy="65" rx={selectedVariety.grainRx} ry={selectedVariety.grainRy}
-                            fill={`url(#cgg-${selectedVariety.id})`} />
+                        <g>
+                          <motion.ellipse
+                            cx={30} cy={65}
+                            animate={{ rx: selectedVariety.grainRx, ry: selectedVariety.grainRy }}
+                            transition={{ duration: 0.55, ease: 'easeOut' }}
+                            fill={`url(#cgg-${selectedVariety.id})`}
+                          />
                           <path d="M 30 46 Q 28 65 30 84" stroke="rgba(0,0,0,0.2)" strokeWidth="1.5" fill="none" />
                         </g>
                       ) : (
-                        <g className="transition-all duration-500 ease-out">
-                          <ellipse cx="30" cy="65" rx={selectedVariety.grainRx} ry={selectedVariety.grainRy}
-                            fill={`url(#cgg-${selectedVariety.id})`} transform="rotate(-3 30 65)" />
-                          <path
-                            d={`M 28 ${65 - selectedVariety.grainRy * 0.72} Q 30 65 28 ${65 + selectedVariety.grainRy * 0.72}`}
+                        <g>
+                          <motion.ellipse
+                            cx={30} cy={65}
+                            animate={{ rx: selectedVariety.grainRx, ry: selectedVariety.grainRy }}
+                            transition={{ duration: 0.55, ease: 'easeOut' }}
+                            fill={`url(#cgg-${selectedVariety.id})`}
+                            transform="rotate(-3 30 65)"
+                          />
+                          <motion.path
+                            animate={{
+                              d: `M 28 ${65 - selectedVariety.grainRy * 0.72} Q 30 65 28 ${65 + selectedVariety.grainRy * 0.72}`
+                            }}
+                            transition={{ duration: 0.55, ease: 'easeOut' }}
                             stroke="rgba(255,255,255,0.75)" strokeWidth="1.5" fill="none"
                           />
                         </g>
