@@ -455,42 +455,38 @@ export default function AboutScrollExperience() {
               </div>
             </div>
 
-            {/* Right: Flat Circular Orbital Variety Carousel */}
-            <div className="w-full lg:w-7/12 flex items-center justify-center relative min-h-[300px] sm:min-h-[420px]">
-              {/* Square container so border-radius:50% makes a perfect circle */}
+            {/* Right: 3D Coin-Tilt Circular Orbital Variety Carousel */}
+            <div className="w-full lg:w-7/12 flex items-center justify-center relative min-h-[300px] sm:min-h-[420px]"
+              style={{ perspective: '900px' }}>
+              {/* SQUARE container → border-radius:50% = true circle → rotateX tilts it like a coin */}
               <div
                 className="relative flex items-center justify-center"
                 style={{
-                  width: isMobile ? '290px' : '400px',
-                  height: isMobile ? '290px' : '400px',
+                  width: isMobile ? '280px' : '390px',
+                  height: isMobile ? '280px' : '390px',
                 }}
               >
-                {/* ── TRUE circular orbit ring — no 3D transform ── */}
+                {/* ── Ring: square → circle; rotateX gives the coin-tilt look ── */}
                 <div
                   className="absolute inset-0 rounded-full pointer-events-none"
                   style={{
-                    border: '1.5px solid rgba(201,161,88,0.4)',
-                    boxShadow: '0 0 48px rgba(201,161,88,0.12), inset 0 0 48px rgba(201,161,88,0.06)',
+                    border: '1.5px solid rgba(201,161,88,0.45)',
+                    boxShadow: '0 0 48px rgba(201,161,88,0.15), inset 0 0 40px rgba(201,161,88,0.07)',
+                    transform: `rotateX(66deg) rotateZ(${orbitRotation}deg)`,
+                    transformStyle: 'preserve-3d',
                   }}
-                />
-                {/* Inner dashed ring */}
-                <div
-                  className="absolute rounded-full pointer-events-none"
-                  style={{
-                    inset: '14px',
-                    border: '1px dashed rgba(255,255,255,0.14)',
-                  }}
-                />
+                >
+                  <div className="absolute inset-3 rounded-full border border-dashed border-white/20" />
+                </div>
 
-                {/* Center Grain */}
+                {/* Center Grain — sits flat above the tilted ring */}
                 <div className="relative z-30 flex flex-col items-center">
                   <div
                     className="relative flex items-center justify-center"
                     style={{ width: isMobile ? '50px' : '68px', height: isMobile ? '88px' : '120px' }}
                   >
-                    {/* Color glow */}
                     <div
-                      className="absolute inset-0 rounded-full blur-2xl animate-pulse opacity-50 transition-colors duration-500"
+                      className="absolute inset-0 rounded-full blur-2xl animate-pulse opacity-55 transition-colors duration-500"
                       style={{ background: selectedVariety.colorGradient.end }}
                     />
                     <svg viewBox="0 0 60 130" className="w-full h-full drop-shadow-[0_0_20px_rgba(251,191,36,0.85)] transition-all duration-500 ease-out">
@@ -519,25 +515,31 @@ export default function AboutScrollExperience() {
                       )}
                     </svg>
                   </div>
-                  {/* Badge label below the grain */}
                   <div className="mt-2 px-2.5 py-0.5 rounded-full bg-black/60 border border-amber-400/30 backdrop-blur-md">
                     <span className="text-[8.5px] font-bold text-amber-300 tracking-wide whitespace-nowrap">{selectedVariety.badge}</span>
                   </div>
                 </div>
 
-                {/* ── Variety Pill Buttons on the circle ── */}
+                {/* ── Variety Pills ──
+                    The ring is rotateX(66deg) in CSS 3D.
+                    Pills are in normal 2D space, so we manually foreshorten their y
+                    by cos(66°) ≈ 0.407 to make them appear to sit on the tilted disk.
+                    Depth scale + opacity simulate front/back perspective.
+                */}
                 {VARIETIES.map((variety, idx) => {
-                  // Start at top (-π/2) and distribute evenly clockwise
                   const baseAngle = -Math.PI / 2 + (idx / VARIETIES.length) * Math.PI * 2;
-                  // orbitRotation scrolls them around; keep it subtle (divide by 4)
                   const angle = baseAngle + (orbitRotation * Math.PI) / 180;
 
-                  // radius = half of container width minus a small buffer for pill size
-                  const radius = isMobile ? 118 : 162;
+                  const radius = isMobile ? 110 : 152;
                   const x = Math.cos(angle) * radius;
-                  const y = Math.sin(angle) * radius;
+                  // Foreshorten y by cos(66°) so pills match the tilted ellipse visually
+                  const y = Math.sin(angle) * radius * 0.407;
 
                   const isSelected = selectedVariety.id === variety.id;
+                  // Pills "behind" (top of tilted disk) = sin(angle) < 0
+                  const isBehind = Math.sin(angle) < 0;
+                  const depthScale = isSelected ? 1.1 : isBehind ? 0.82 : 0.97;
+                  const depthOpacity = isSelected ? 1 : isBehind ? 0.58 : 0.95;
 
                   return (
                     <button
@@ -547,13 +549,14 @@ export default function AboutScrollExperience() {
                       className={`absolute transition-all duration-300 cursor-pointer rounded-full px-2 sm:px-3 py-0.5 sm:py-1 text-[8.5px] sm:text-[10px] font-semibold backdrop-blur-md shadow-xl border flex items-center gap-1 whitespace-nowrap ${
                         isSelected
                           ? 'bg-amber-400 text-stone-950 border-amber-300 font-bold ring-2 ring-amber-300/50'
-                          : 'bg-black/70 text-white/90 border-white/20 hover:border-amber-400/60 hover:bg-black/85'
+                          : 'bg-black/75 text-white/90 border-white/20 hover:border-amber-400/60 hover:bg-black/90'
                       }`}
                       style={{
                         left: '50%',
                         top: '50%',
-                        transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px)) scale(${isSelected ? 1.1 : 1})`,
-                        zIndex: isSelected ? 40 : 20,
+                        transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px)) scale(${depthScale})`,
+                        zIndex: isSelected ? 40 : isBehind ? 10 : 25,
+                        opacity: depthOpacity,
                       }}
                     >
                       <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: variety.colorGradient.end }} />
