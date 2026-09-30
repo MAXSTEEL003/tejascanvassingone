@@ -176,6 +176,42 @@ const getDefaultDateForSheet = (sheetName: string): string => {
   return new Date().toISOString().split('T')[0];
 };
 
+export const monthToNumber = (m: string): string => {
+  const map: Record<string, string> = {
+    January: '01', February: '02', March: '03', April: '04',
+    May: '05', June: '06', July: '07', August: '08',
+    September: '09', October: '10', November: '11', December: '12'
+  };
+  return map[m] || '01';
+};
+
+export const getDaysPendingNum = (row: any): number => {
+  if (!row || !row.date) return 0;
+  const status = row.noOfDayRec || 'Not Cleared';
+  const arrDate = parseAnyDate(row.date);
+  if (!arrDate) return 0;
+  arrDate.setHours(0, 0, 0, 0);
+
+  if (status === 'Cleared') {
+    if (row.chqDt) {
+      const chqDate = parseAnyDate(row.chqDt);
+      if (chqDate) {
+        chqDate.setHours(0, 0, 0, 0);
+        const diffTime = chqDate.getTime() - arrDate.getTime();
+        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+        return Math.max(0, diffDays);
+      }
+    }
+    return 0;
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diffTime = today.getTime() - arrDate.getTime();
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  return Math.max(0, diffDays);
+};
+
 const generateEmptyArrivalRows = (count = 100, defaultDate?: string): any[] => {
   const d = defaultDate || new Date().toISOString().split('T')[0];
   return Array(count).fill(0).map((_, i) => ({
@@ -294,6 +330,23 @@ export default function ArrivalEntry() {
   const [sortConfig, setSortConfig] = useState<{ colId: string; direction: 'asc' | 'desc' } | null>(null);
   const [selectedMonth, setSelectedMonth] = useState<string>('all');
   const [selectedDueArea, setSelectedDueArea] = useState<string>('All');
+
+  // Top Quick Control Bar Filters
+  const [quickSearch, setQuickSearch] = useState<string>('');
+  const [quickShopLoc, setQuickShopLoc] = useState<string>('All');
+  const [quickRoad, setQuickRoad] = useState<string>('All');
+  const [quickStatus, setQuickStatus] = useState<string>('All');
+  const [quickDaysOp, setQuickDaysOp] = useState<'all' | '>' | '<' | '=' | '>=' | '<=' | 'between'>('all');
+  const [quickDaysVal, setQuickDaysVal] = useState<string>('');
+  const [quickDaysVal2, setQuickDaysVal2] = useState<string>('');
+
+  // Due List PDF Options Modal state
+  const [isDueListModalOpen, setIsDueListModalOpen] = useState(false);
+  const [dueListRoad, setDueListRoad] = useState<string>('All');
+  const [dueListStatus, setDueListStatus] = useState<'All' | 'Pending' | 'Cleared'>('Pending');
+  const [dueListDaysOp, setDueListDaysOp] = useState<'all' | '>' | '<' | '=' | '>=' | '<=' | 'between'>('all');
+  const [dueListDaysVal, setDueListDaysVal] = useState<string>('');
+  const [dueListDaysVal2, setDueListDaysVal2] = useState<string>('');
 
   // Modals
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -452,6 +505,54 @@ export default function ArrivalEntry() {
     setData(newData);
   }, [data, saveToHistory, setData]);
 
+  // Unique dropdown option sets for Quick Controls
+  const uniqueShopLocations = useMemo(() => {
+    const set = new Set<string>();
+    data.forEach(r => {
+      if (r?.area && String(r.area).trim()) {
+        set.add(String(r.area).trim());
+      }
+    });
+    return Array.from(set).sort();
+  }, [data]);
+
+  const uniqueRoads = useMemo(() => {
+    const set = new Set<string>();
+    data.forEach(r => {
+      if (r?.road && String(r.road).trim()) {
+        set.add(String(r.road).trim());
+      }
+      if (r?.area && String(r.area).trim()) {
+        set.add(String(r.area).trim());
+      }
+    });
+    return Array.from(set).sort();
+  }, [data]);
+
+  const hasActiveQuickFilters = useMemo(() => {
+    return (
+      quickSearch.trim() !== '' ||
+      quickShopLoc !== 'All' ||
+      quickRoad !== 'All' ||
+      quickStatus !== 'All' ||
+      quickDaysOp !== 'all' ||
+      Object.keys(columnFilters).length > 0 ||
+      selectedDueArea !== 'All'
+    );
+  }, [quickSearch, quickShopLoc, quickRoad, quickStatus, quickDaysOp, columnFilters, selectedDueArea]);
+
+  const handleClearQuickFilters = useCallback(() => {
+    setQuickSearch('');
+    setQuickShopLoc('All');
+    setQuickRoad('All');
+    setQuickStatus('All');
+    setQuickDaysOp('all');
+    setQuickDaysVal('');
+    setQuickDaysVal2('');
+    setColumnFilters({});
+    setSelectedDueArea('All');
+  }, []);
+
   // Filtered & Sorted Data Memo (UNDERLYING DATA IS NEVER MODIFIED)
   const filteredData = useMemo(() => {
     let result = [...data];
@@ -471,7 +572,70 @@ export default function ArrivalEntry() {
       });
     }
 
-    // 3. Multi-column simultaneous filters
+    // 3. Quick Control: Search (partyName, millerName, billNo, road, area, place)
+    if (quickSearch.trim()) {
+      const q = quickSearch.trim().toLowerCase();
+      result = result.filter(row => {
+        if (!row) return false;
+        const p = String(row.partyName || '').toLowerCase();
+        const m = String(row.millerName || '').toLowerCase();
+        const b = String(row.billNo || '').toLowerCase();
+        const r = String(row.road || '').toLowerCase();
+        const a = String(row.area || '').toLowerCase();
+        const pl = String(row.place || '').toLowerCase();
+        return p.includes(q) || m.includes(q) || b.includes(q) || r.includes(q) || a.includes(q) || pl.includes(q);
+      });
+    }
+
+    // 4. Quick Control: Shop Loc (Buyer Area)
+    if (quickShopLoc !== 'All') {
+      result = result.filter(row => row && row.area && String(row.area).trim() === quickShopLoc);
+    }
+
+    // 5. Quick Control: Road
+    if (quickRoad !== 'All') {
+      result = result.filter(row => {
+        if (!row) return false;
+        const roadVal = row.road ? String(row.road).trim() : '';
+        const areaVal = row.area ? String(row.area).trim() : '';
+        return roadVal === quickRoad || areaVal === quickRoad;
+      });
+    }
+
+    // 6. Quick Control: Status
+    if (quickStatus === 'Not Cleared') {
+      result = result.filter(row => (row?.noOfDayRec || 'Not Cleared') !== 'Cleared');
+    } else if (quickStatus === 'Cleared') {
+      result = result.filter(row => row?.noOfDayRec === 'Cleared');
+    }
+
+    // 7. Quick Control: Days Pending
+    if (quickDaysOp !== 'all') {
+      const v1 = parseFloat(quickDaysVal);
+      const v2 = parseFloat(quickDaysVal2);
+      if (!isNaN(v1)) {
+        result = result.filter(row => {
+          if (!row) return false;
+          const days = getDaysPendingNum(row);
+          switch (quickDaysOp) {
+            case '>': return days > v1;
+            case '<': return days < v1;
+            case '=': return days === v1;
+            case '>=': return days >= v1;
+            case '<=': return days <= v1;
+            case 'between': {
+              if (isNaN(v2)) return days >= v1;
+              const min = Math.min(v1, v2);
+              const max = Math.max(v1, v2);
+              return days >= min && days <= max;
+            }
+            default: return true;
+          }
+        });
+      }
+    }
+
+    // 8. Multi-column simultaneous filters
     Object.entries(columnFilters).forEach(([colId, filter]) => {
       result = result.filter(row => {
         if (!row) return false;
@@ -514,7 +678,7 @@ export default function ArrivalEntry() {
       });
     });
 
-    // 4. Multi-column sorting
+    // 9. Multi-column sorting
     if (sortConfig) {
       result.sort((a, b) => {
         const valA = a ? a[sortConfig.colId] : '';
@@ -542,7 +706,20 @@ export default function ArrivalEntry() {
     }
 
     return result;
-  }, [data, selectedMonth, selectedDueArea, columnFilters, sortConfig]);
+  }, [
+    data,
+    selectedMonth,
+    selectedDueArea,
+    quickSearch,
+    quickShopLoc,
+    quickRoad,
+    quickStatus,
+    quickDaysOp,
+    quickDaysVal,
+    quickDaysVal2,
+    columnFilters,
+    sortConfig
+  ]);
 
   // Virtualization Calculations
   const totalRowsCount = filteredData.length;
@@ -971,44 +1148,273 @@ export default function ArrivalEntry() {
     XLSX.writeFile(workbook, `Arrival_Log_${dd}-${mm}-${yyyy}.xlsx`);
   };
 
-  // Due List PDF
-  const generateDueListPDF = () => {
-    const pendingRows = data.filter(row => {
-      const hasBasic = row && (row.partyName || row.millerName || row.billNo || row.qty);
-      return hasBasic && (row.noOfDayRec || 'Not Cleared') !== 'Cleared';
+  // Due List PDF generation with independent options
+  const handleGenerateDueListPDF = () => {
+    // 1. Take candidate records from the CURRENT ACTIVE SHEET only
+    let candidateRows = (currentSheet.data || []).filter(row => {
+      const hasBasicData = !!(row && (row.partyName || row.millerName || row.billNo || row.qty || row.amount));
+      return hasBasicData;
     });
 
-    if (pendingRows.length === 0) {
-      alert('No pending payments found in the ledger to generate a Due List.');
+    // 2. Filter by Road
+    if (dueListRoad !== 'All') {
+      candidateRows = candidateRows.filter(row => {
+        const roadVal = row.road ? String(row.road).trim() : '';
+        const areaVal = row.area ? String(row.area).trim() : '';
+        return roadVal === dueListRoad || areaVal === dueListRoad;
+      });
+    }
+
+    // 3. Filter by Status (Pending, Cleared, All)
+    if (dueListStatus === 'Pending') {
+      candidateRows = candidateRows.filter(row => (row.noOfDayRec || 'Not Cleared') !== 'Cleared');
+    } else if (dueListStatus === 'Cleared') {
+      candidateRows = candidateRows.filter(row => row.noOfDayRec === 'Cleared');
+    }
+
+    // 4. Filter by Days Pending
+    if (dueListDaysOp !== 'all') {
+      const v1 = parseFloat(dueListDaysVal);
+      const v2 = parseFloat(dueListDaysVal2);
+      if (!isNaN(v1)) {
+        candidateRows = candidateRows.filter(row => {
+          const days = getDaysPendingNum(row);
+          switch (dueListDaysOp) {
+            case '>': return days > v1;
+            case '<': return days < v1;
+            case '=': return days === v1;
+            case '>=': return days >= v1;
+            case '<=': return days <= v1;
+            case 'between': {
+              if (isNaN(v2)) return days >= v1;
+              const min = Math.min(v1, v2);
+              const max = Math.max(v1, v2);
+              return days >= min && days <= max;
+            }
+            default: return true;
+          }
+        });
+      }
+    }
+
+    if (candidateRows.length === 0) {
+      alert(`No records found in "${currentSheet.name}" matching the selected Due List PDF criteria.`);
       return;
     }
 
-    const doc = new jsPDF('p', 'mm', 'a4');
-    doc.setFillColor(147, 0, 11);
-    doc.rect(0, 0, 210, 32, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(15);
-    doc.text(`DUE LIST - PENDING OUTSTANDINGS (${currentSheet.name})`, 10, 15);
-
-    const tableRows = pendingRows.map(r => [
-      r.date || '',
-      r.billNo || '',
-      r.partyName || '',
-      r.area || '',
-      r.qty || '',
-      `Rs. ${formatINR(r.netAmt || 0)}`
-    ]);
-
-    autoTable(doc, {
-      head: [['Date', 'Bill No', 'Buyer Party', 'Area', 'Qtls', 'Net Due']],
-      body: tableRows,
-      startY: 38,
-      theme: 'grid',
-      headStyles: { fillColor: [147, 0, 11], textColor: [255, 255, 255] }
+    // Sort by Party Name (Buyer) ascending
+    const sortedRows = [...candidateRows].sort((a, b) => {
+      const nameA = String(a.partyName || '').trim().toUpperCase();
+      const nameB = String(b.partyName || '').trim().toUpperCase();
+      return nameA.localeCompare(nameB);
     });
 
-    doc.save(`Due_List_${currentSheet.name}.pdf`);
+    // Generate jsPDF (A4 Portrait)
+    const doc = new jsPDF('p', 'mm', 'a4');
+    const primaryColor: [number, number, number] = [147, 0, 11]; // Deep crimson
+
+    // Crimson Top Header Banner
+    doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.rect(0, 0, 210, 30, 'F');
+
+    // Title inside banner
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.text(`DUE LIST - ${currentSheet.name.toUpperCase()}`, 8, 12);
+
+    // Subtitle inside banner
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    const filterDesc = [
+      `Road: ${dueListRoad}`,
+      `Status: ${dueListStatus === 'Pending' ? 'Pending / Not Cleared' : dueListStatus}`,
+      dueListDaysOp !== 'all' ? `Days: ${dueListDaysOp} ${dueListDaysVal}${dueListDaysOp === 'between' ? ` to ${dueListDaysVal2}` : ''}` : null,
+      `Records: ${sortedRows.length}`
+    ].filter(Boolean).join('  |  ');
+    doc.text(filterDesc, 8, 20);
+
+    const now = new Date();
+    const dd = String(now.getDate()).padStart(2, '0');
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const yyyy = now.getFullYear();
+    doc.text(`Generated: ${dd}-${mm}-${yyyy} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`, 8, 26);
+
+    // Exact 10 Columns:
+    // Date | Party Name | Party Loc | Miller Name | No. of Days Pending | Bill No | QTLs | Rate | Amount | LH
+    const tableHeaders = [
+      'Date',
+      'Party Name',
+      'Party Loc',
+      'Miller Name',
+      'No. of Days Pending',
+      'Bill No',
+      'QTLs',
+      'Rate',
+      'Amount',
+      'LH'
+    ];
+
+    let totalQtls = 0;
+    let totalAmount = 0;
+    let totalLh = 0;
+
+    const tableBody = sortedRows.map(row => {
+      const formattedDate = formatDateToDDMMYYYY(row.date);
+      const partyName = row.partyName || '';
+      const partyLoc = row.area || row.road || '';
+      const millerName = row.millerName || '';
+      
+      const isCleared = (row.noOfDayRec || 'Not Cleared') === 'Cleared';
+      const daysPending = getDaysPendingNum(row);
+      const daysPendingText = isCleared ? 'Cleared' : `${daysPending} Days`;
+
+      const billNoVal = row.billNo
+        ? String(row.billNo).trim().replace(/^(bill[-.\s]*|bil[-.\s]*|tc[-.\s]*|invoice[-.\s]*)/i, '')
+        : '';
+
+      const qVal = parseFloat(String(row.qty || 0).replace(/,/g, '')) || 0;
+      totalQtls += qVal;
+      const qtlsText = qVal > 0 ? qVal.toFixed(2) : (row.qty ? String(row.qty) : '');
+
+      const rateVal = parseFloat(String(row.rate || 0).replace(/,/g, '')) || 0;
+      const rateText = rateVal > 0 ? formatINR(rateVal) : (row.rate ? String(row.rate) : '');
+
+      const amtVal = parseFloat(String(row.amount || 0).replace(/,/g, '')) || (qVal * rateVal) || 0;
+      totalAmount += amtVal;
+      const amountText = amtVal > 0 ? formatINR(amtVal) : (row.amount ? String(row.amount) : '');
+
+      const lhVal = parseFloat(String(row.lh || 0).replace(/,/g, '')) || 0;
+      totalLh += lhVal;
+      const lhText = lhVal > 0 ? formatINR(lhVal) : (row.lh ? String(row.lh) : '');
+
+      return [
+        formattedDate,
+        partyName,
+        partyLoc,
+        millerName,
+        daysPendingText,
+        billNoVal,
+        qtlsText,
+        rateText,
+        amountText,
+        lhText
+      ];
+    });
+
+    autoTable(doc, {
+      startY: 34,
+      head: [tableHeaders],
+      body: tableBody,
+      foot: [
+        [
+          'Total',
+          `${sortedRows.length} Rows`,
+          '',
+          '',
+          '',
+          '',
+          totalQtls > 0 ? totalQtls.toFixed(2) : '',
+          '',
+          totalAmount > 0 ? formatINR(totalAmount) : '',
+          totalLh > 0 ? formatINR(totalLh) : ''
+        ]
+      ],
+      theme: 'striped',
+      headStyles: {
+        fillColor: primaryColor,
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        fontSize: 8,
+        halign: 'center'
+      },
+      footStyles: {
+        fillColor: [241, 245, 249],
+        textColor: [15, 23, 42],
+        fontStyle: 'bold',
+        fontSize: 8
+      },
+      styles: {
+        fontSize: 8,
+        cellPadding: 1.5,
+        valign: 'middle',
+        overflow: 'ellipsize'
+      },
+      columnStyles: {
+        0: { cellWidth: 20, halign: 'center' }, // Date
+        1: { cellWidth: 34, halign: 'left', fontStyle: 'bold' }, // Party Name
+        2: { cellWidth: 22, halign: 'left' },   // Party Loc
+        3: { cellWidth: 28, halign: 'left' },   // Miller Name
+        4: { cellWidth: 18, halign: 'center' }, // No. of Days Pending
+        5: { cellWidth: 16, halign: 'center' }, // Bill No
+        6: { cellWidth: 14, halign: 'right' },  // QTLs
+        7: { cellWidth: 14, halign: 'right' },  // Rate
+        8: { cellWidth: 18, halign: 'right', fontStyle: 'bold' }, // Amount
+        9: { cellWidth: 10, halign: 'right' }   // LH
+      },
+      margin: { left: 8, right: 8 }
+    });
+
+    const cleanSheetName = currentSheet.name.replace(/[^a-zA-Z0-9_-]/g, '_');
+    doc.save(`Due_List_${cleanSheetName}_${dd}-${mm}-${yyyy}.pdf`);
+    setIsDueListModalOpen(false);
+  };
+
+  // Add Sheet creation handler
+  const handleCreateSheet = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    let sheetName = '';
+    if (createSheetMode === 'month') {
+      sheetName = `${selectedSheetMonth} ${selectedSheetYear}`;
+    } else {
+      sheetName = newSheetInputName.trim();
+    }
+
+    if (!sheetName) {
+      alert('Please enter a sheet name or select a month.');
+      return;
+    }
+
+    const exists = sheets.some(s => s.name.trim().toLowerCase() === sheetName.toLowerCase());
+    if (exists) {
+      alert(`A sheet named "${sheetName}" already exists.`);
+      return;
+    }
+
+    const newSheetId = `sheet-${Date.now()}`;
+    const defaultDate = getDefaultDateForSheet(sheetName);
+
+    let initialRows: any[] = [];
+    if (createSheetMode === 'month' && copyMainEntriesForMonth) {
+      const monthPrefix = `${selectedSheetYear}-${monthToNumber(selectedSheetMonth)}`;
+      const matchingRows = (sheets[0]?.data || []).filter(r => r && r.date && r.date.startsWith(monthPrefix));
+      if (matchingRows.length > 0) {
+        initialRows = matchingRows.map(r => ({
+          ...r,
+          id: `row-${newSheetId}-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`
+        }));
+      }
+    }
+
+    if (initialRows.length === 0) {
+      initialRows = generateEmptyArrivalRows(INITIAL_ROWS, defaultDate);
+    }
+
+    const newSheet: Sheet = {
+      id: newSheetId,
+      name: sheetName,
+      data: initialRows
+    };
+
+    setSheets(prev => {
+      const next = [...prev, newSheet];
+      localStorage.setItem('arrival_entry_sheets_v4', JSON.stringify(next));
+      return next;
+    });
+
+    setCurrentSheetId(newSheetId);
+    setIsAddSheetModalOpen(false);
+    setNewSheetInputName('');
   };
 
   // Paper Manifest camera capture apply
@@ -1118,7 +1524,7 @@ export default function ArrivalEntry() {
 
           {/* Due List PDF */}
           <button
-            onClick={generateDueListPDF}
+            onClick={() => setIsDueListModalOpen(true)}
             className="flex items-center gap-1.5 px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider shadow-md shadow-rose-600/20 transition-all cursor-pointer"
           >
             <FileText className="w-4 h-4" />
@@ -1150,6 +1556,168 @@ export default function ArrivalEntry() {
           >
             <Download className="w-4 h-4" />
             <span>Export XLS</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Top Quick Control Bar */}
+      <div className="bg-surface-container-low/80 backdrop-blur-xs border-b border-outline-variant px-4 py-2 flex flex-wrap items-center justify-between gap-2.5 shrink-0 select-none">
+        
+        {/* Left: Quick Search & Filter Controls */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Quick Search */}
+          <div className="relative flex items-center">
+            <Search className="w-3.5 h-3.5 text-secondary absolute left-2.5 pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Search party, miller, bill, road, area..."
+              value={quickSearch}
+              onChange={(e) => setQuickSearch(e.target.value)}
+              className="pl-8 pr-7 py-1.5 bg-surface border border-outline-variant rounded-xl text-xs font-medium text-on-surface placeholder:text-secondary/60 focus:outline-none focus:ring-1 focus:ring-primary w-52 md:w-64 transition-all"
+            />
+            {quickSearch && (
+              <button
+                onClick={() => setQuickSearch('')}
+                className="absolute right-2 text-secondary hover:text-on-surface p-0.5"
+                title="Clear Search"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+
+          {/* Shop Loc Dropdown */}
+          <div className="flex items-center">
+            <select
+              value={quickShopLoc}
+              onChange={(e) => setQuickShopLoc(e.target.value)}
+              className={cn(
+                "px-2.5 py-1.5 bg-surface border rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer max-w-[150px] truncate transition-colors",
+                quickShopLoc !== 'All' ? "border-primary text-primary bg-primary/5" : "border-outline-variant text-on-surface"
+              )}
+              title="Filter by Shop / Buyer Location (Area)"
+            >
+              <option value="All">Shop Loc: All</option>
+              {uniqueShopLocations.map(loc => (
+                <option key={loc} value={loc}>{loc}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Road Dropdown */}
+          <div className="flex items-center">
+            <select
+              value={quickRoad}
+              onChange={(e) => setQuickRoad(e.target.value)}
+              className={cn(
+                "px-2.5 py-1.5 bg-surface border rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer max-w-[150px] truncate transition-colors",
+                quickRoad !== 'All' ? "border-primary text-primary bg-primary/5" : "border-outline-variant text-on-surface"
+              )}
+              title="Filter by Road"
+            >
+              <option value="All">Road: All</option>
+              {uniqueRoads.map(r => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Status Dropdown */}
+          <div className="flex items-center">
+            <select
+              value={quickStatus}
+              onChange={(e) => setQuickStatus(e.target.value)}
+              className={cn(
+                "px-2.5 py-1.5 bg-surface border rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer transition-colors",
+                quickStatus !== 'All' ? "border-primary text-primary bg-primary/5" : "border-outline-variant text-on-surface"
+              )}
+              title="Filter by Payment Status"
+            >
+              <option value="All">Status: All</option>
+              <option value="Not Cleared">Status: Pending</option>
+              <option value="Cleared">Status: Cleared</option>
+            </select>
+          </div>
+
+          {/* Days Pending Dropdown + Inputs */}
+          <div className={cn(
+            "flex items-center gap-1 bg-surface border rounded-xl p-0.5 transition-colors",
+            quickDaysOp !== 'all' ? "border-primary bg-primary/5" : "border-outline-variant"
+          )}>
+            <select
+              value={quickDaysOp}
+              onChange={(e) => setQuickDaysOp(e.target.value as any)}
+              className="px-2 py-1 bg-transparent text-xs font-semibold text-on-surface focus:outline-none cursor-pointer"
+              title="Filter by Days Pending"
+            >
+              <option value="all">Days: All</option>
+              <option value=">">&gt; (More than)</option>
+              <option value="<">&lt; (Less than)</option>
+              <option value="=">= (Equal to)</option>
+              <option value=">=">&ge; (At least)</option>
+              <option value="<=">&le; (At most)</option>
+              <option value="between">Between</option>
+            </select>
+
+            {quickDaysOp !== 'all' && (
+              <input
+                type="number"
+                min="0"
+                placeholder="Days"
+                value={quickDaysVal}
+                onChange={(e) => setQuickDaysVal(e.target.value)}
+                className="w-14 px-1.5 py-1 bg-surface border border-outline-variant rounded text-xs font-bold text-primary focus:outline-none"
+              />
+            )}
+
+            {quickDaysOp === 'between' && (
+              <>
+                <span className="text-[10px] text-secondary font-bold px-0.5">to</span>
+                <input
+                  type="number"
+                  min="0"
+                  placeholder="Max"
+                  value={quickDaysVal2}
+                  onChange={(e) => setQuickDaysVal2(e.target.value)}
+                  className="w-14 px-1.5 py-1 bg-surface border border-outline-variant rounded text-xs font-bold text-primary focus:outline-none"
+                />
+              </>
+            )}
+          </div>
+
+          {/* Clear Filters Button */}
+          {hasActiveQuickFilters && (
+            <button
+              onClick={handleClearQuickFilters}
+              className="flex items-center gap-1 px-2.5 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 rounded-xl text-xs font-bold transition-all cursor-pointer"
+              title="Clear all active quick filters"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Clear</span>
+            </button>
+          )}
+        </div>
+
+        {/* Right: Due List PDF & + Add Sheet Buttons */}
+        <div className="flex items-center gap-2">
+          {/* Due List PDF Trigger */}
+          <button
+            onClick={() => setIsDueListModalOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-sm shadow-rose-600/20 transition-all cursor-pointer"
+            title="Open Due List PDF Generator"
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span>Due List PDF</span>
+          </button>
+
+          {/* + Add Sheet Trigger */}
+          <button
+            onClick={() => setIsAddSheetModalOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary-hover text-on-primary rounded-xl text-xs font-bold shadow-sm shadow-primary/20 transition-all cursor-pointer"
+            title="Create New Sheet"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Add Sheet</span>
           </button>
         </div>
       </div>
@@ -1433,6 +2001,29 @@ export default function ArrivalEntry() {
                     displayVal = formatDateToDDMMYYYY(rawVal);
                   }
 
+                  // Days Pending formatting and cell badge styling
+                  let daysBadgeClass: string | null = null;
+                  if (col.id === 'noOfDays') {
+                    const isCleared = (row?.noOfDayRec || 'Not Cleared') === 'Cleared';
+                    const hasDate = !!(row && row.date && parseAnyDate(row.date));
+                    const daysNum = getDaysPendingNum(row);
+
+                    if (isCleared) {
+                      displayVal = 'Cleared';
+                    } else if (hasDate) {
+                      displayVal = `${daysNum} Days`;
+                      if (daysNum >= 0 && daysNum <= 14) {
+                        daysBadgeClass = "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300/50 dark:border-emerald-800/50 font-bold px-2 py-0.5 rounded text-[11px] leading-tight select-none";
+                      } else if (daysNum >= 15 && daysNum <= 28) {
+                        daysBadgeClass = "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300/50 dark:border-amber-800/50 font-bold px-2 py-0.5 rounded text-[11px] leading-tight select-none";
+                      } else if (daysNum >= 29) {
+                        daysBadgeClass = "bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300/50 dark:border-rose-800/50 font-bold px-2 py-0.5 rounded text-[11px] leading-tight select-none";
+                      }
+                    } else {
+                      displayVal = '';
+                    }
+                  }
+
                   return (
                     <div
                       key={col.id}
@@ -1446,7 +2037,7 @@ export default function ArrivalEntry() {
                         "h-full border-r border-outline-variant/20 px-2 flex items-center text-xs truncate relative cursor-cell",
                         isActive && "ring-2 ring-primary ring-inset z-10 bg-primary/[0.04]",
                         isCellInSelection && !isActive && "bg-primary/[0.08]",
-                        col.type === 'number' || col.type === 'calc' ? "justify-end text-right font-mono" : "justify-start text-on-surface"
+                        col.id === 'noOfDays' ? "justify-center" : (col.type === 'number' || col.type === 'calc' ? "justify-end text-right font-mono" : "justify-start text-on-surface")
                       )}
                     >
                       {isActive && isEditing ? (
@@ -1478,6 +2069,16 @@ export default function ArrivalEntry() {
                             />
                           )}
                         </div>
+                      ) : col.id === 'noOfDays' ? (
+                        daysBadgeClass ? (
+                          <span className={daysBadgeClass}>
+                            {displayVal}
+                          </span>
+                        ) : (
+                          <span className="text-secondary/60 text-[10px] font-bold">
+                            {displayVal}
+                          </span>
+                        )
                       ) : (
                         <span className="truncate">
                           {String(displayVal ?? '')}
@@ -1509,25 +2110,39 @@ export default function ArrivalEntry() {
         {/* Sheet Tabs */}
         <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-1">
           {sheets.map(sheet => (
-            <button
-              key={sheet.id}
-              onClick={() => setCurrentSheetId(sheet.id)}
-              className={cn(
-                "px-3 py-1.5 rounded-xl font-black text-xs transition-all whitespace-nowrap cursor-pointer",
-                sheet.id === currentSheetId
-                  ? "bg-primary text-on-primary shadow-sm shadow-primary/20"
-                  : "bg-surface-container hover:bg-surface-container-high text-secondary hover:text-on-surface"
+            <div key={sheet.id} className="relative group flex items-center">
+              <button
+                onClick={() => setCurrentSheetId(sheet.id)}
+                className={cn(
+                  "px-3 py-1.5 rounded-xl font-black text-xs transition-all whitespace-nowrap cursor-pointer",
+                  sheet.id === currentSheetId
+                    ? "bg-primary text-on-primary shadow-sm shadow-primary/20"
+                    : "bg-surface-container hover:bg-surface-container-high text-secondary hover:text-on-surface"
+                )}
+              >
+                {sheet.name}
+              </button>
+              {sheets.length > 1 && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSheetToDelete(sheet);
+                  }}
+                  className="opacity-0 group-hover:opacity-100 p-1 text-secondary hover:text-rose-500 rounded transition-opacity cursor-pointer -ml-2 mr-1"
+                  title={`Delete sheet "${sheet.name}"`}
+                >
+                  <X className="w-3 h-3" />
+                </button>
               )}
-            >
-              {sheet.name}
-            </button>
+            </div>
           ))}
           <button
             onClick={() => setIsAddSheetModalOpen(true)}
-            className="p-1.5 rounded-xl bg-surface-container hover:bg-surface-container-high text-secondary hover:text-on-surface transition-colors cursor-pointer"
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-surface-container hover:bg-surface-container-high text-secondary hover:text-on-surface transition-colors cursor-pointer text-xs font-bold"
             title="Add New Sheet"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-3.5 h-3.5" />
+            <span>Add Sheet</span>
           </button>
         </div>
 
@@ -1549,6 +2164,349 @@ export default function ArrivalEntry() {
           </div>
         </div>
       </div>
+
+      {/* Due List PDF Options Modal */}
+      <AnimatePresence>
+        {isDueListModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-surface border border-outline-variant rounded-2xl shadow-2xl p-6 w-full max-w-lg text-on-surface"
+            >
+              <div className="flex items-center justify-between pb-3 mb-4 border-b border-outline-variant/30">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2.5 rounded-xl bg-rose-500/10 text-rose-600">
+                    <FileText className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-black text-base tracking-tight">Due List PDF Generation</h3>
+                    <p className="text-[11px] text-secondary font-medium">
+                      Active Sheet: <span className="font-bold text-on-surface">{currentSheet.name}</span>
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsDueListModalOpen(false)}
+                  className="p-1.5 rounded-lg hover:bg-surface-container text-secondary hover:text-on-surface cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                {/* Option 1: Road */}
+                <div>
+                  <label className="text-[11px] font-bold text-secondary uppercase block mb-1">
+                    Road
+                  </label>
+                  <select
+                    value={dueListRoad}
+                    onChange={(e) => setDueListRoad(e.target.value)}
+                    className="w-full px-3 py-2 bg-surface-container-low border border-outline-variant rounded-xl text-xs font-bold text-on-surface focus:outline-none focus:ring-2 focus:ring-rose-500 cursor-pointer"
+                  >
+                    <option value="All">All Roads</option>
+                    {uniqueRoads.map(r => (
+                      <option key={r} value={r}>{r}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Option 2: Status */}
+                <div>
+                  <label className="text-[11px] font-bold text-secondary uppercase block mb-1">
+                    Status
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { id: 'Pending', label: 'Pending Only' },
+                      { id: 'Cleared', label: 'Cleared Only' },
+                      { id: 'All', label: 'All Statuses' }
+                    ].map(st => (
+                      <button
+                        key={st.id}
+                        type="button"
+                        onClick={() => setDueListStatus(st.id as any)}
+                        className={cn(
+                          "py-2 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer text-center",
+                          dueListStatus === st.id
+                            ? "bg-rose-500/10 border-rose-500 text-rose-700 dark:text-rose-400 font-black shadow-xs"
+                            : "bg-surface-container-low border-outline-variant text-secondary hover:text-on-surface"
+                        )}
+                      >
+                        {st.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Option 3: Days Pending */}
+                <div>
+                  <label className="text-[11px] font-bold text-secondary uppercase block mb-1">
+                    Days Pending
+                  </label>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <select
+                      value={dueListDaysOp}
+                      onChange={(e) => setDueListDaysOp(e.target.value as any)}
+                      className="px-3 py-2 bg-surface-container-low border border-outline-variant rounded-xl text-xs font-bold text-on-surface focus:outline-none focus:ring-2 focus:ring-rose-500 cursor-pointer"
+                    >
+                      <option value="all">All Days</option>
+                      <option value=">">&gt; (Greater than)</option>
+                      <option value="<">&lt; (Less than)</option>
+                      <option value="=">= (Equal to)</option>
+                      <option value=">=">&ge; (Greater or equal)</option>
+                      <option value="<=">&le; (Less or equal)</option>
+                      <option value="between">Between</option>
+                    </select>
+
+                    {dueListDaysOp !== 'all' && (
+                      <input
+                        type="number"
+                        min="0"
+                        placeholder="Days"
+                        value={dueListDaysVal}
+                        onChange={(e) => setDueListDaysVal(e.target.value)}
+                        className="w-24 px-3 py-2 bg-surface-container-low border border-outline-variant rounded-xl text-xs font-bold text-on-surface focus:outline-none focus:ring-2 focus:ring-rose-500"
+                      />
+                    )}
+
+                    {dueListDaysOp === 'between' && (
+                      <>
+                        <span className="text-xs text-secondary font-bold">to</span>
+                        <input
+                          type="number"
+                          min="0"
+                          placeholder="Max"
+                          value={dueListDaysVal2}
+                          onChange={(e) => setDueListDaysVal2(e.target.value)}
+                          className="w-24 px-3 py-2 bg-surface-container-low border border-outline-variant rounded-xl text-xs font-bold text-on-surface focus:outline-none focus:ring-2 focus:ring-rose-500"
+                        />
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* PDF Specifications Summary */}
+                <div className="p-3 bg-surface-container-low rounded-xl border border-outline-variant/30 text-[11px] text-secondary space-y-1">
+                  <p className="font-bold text-on-surface">Exact 10 PDF Columns:</p>
+                  <p className="font-mono text-[10px] text-secondary">
+                    Date • Party Name • Party Loc • Miller Name • No. of Days Pending • Bill No • QTLs • Rate • Amount • LH
+                  </p>
+                  <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold pt-1">
+                    ✓ PDF filters operate independently and will not alter the live grid view or sheet data.
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-outline-variant/20">
+                  <button
+                    type="button"
+                    onClick={() => setIsDueListModalOpen(false)}
+                    className="px-4 py-2 text-xs font-bold text-secondary hover:bg-surface-container rounded-xl transition-all cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleGenerateDueListPDF}
+                    className="px-5 py-2 text-xs font-black text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-md shadow-rose-600/20 transition-all cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Generate PDF</span>
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Add Sheet Modal */}
+      <AnimatePresence>
+        {isAddSheetModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-surface border border-outline-variant rounded-2xl shadow-2xl p-6 w-full max-w-md text-on-surface"
+            >
+              <div className="flex items-center justify-between pb-3 mb-4 border-b border-outline-variant/30">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-primary/10 text-primary">
+                    <Plus className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-black text-base tracking-tight">Create New Sheet</h3>
+                    <p className="text-[11px] text-secondary font-medium">Add by Month or Custom Sheet Name</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsAddSheetModalOpen(false)}
+                  className="p-1.5 rounded-lg hover:bg-surface-container text-secondary hover:text-on-surface cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Mode Switcher */}
+              <div className="grid grid-cols-2 p-1 bg-surface-container-low rounded-xl mb-4 text-xs font-bold">
+                <button
+                  type="button"
+                  onClick={() => setCreateSheetMode('month')}
+                  className={cn(
+                    "py-1.5 rounded-lg transition-all cursor-pointer",
+                    createSheetMode === 'month' ? "bg-surface text-primary shadow-xs" : "text-secondary hover:text-on-surface"
+                  )}
+                >
+                  By Month
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCreateSheetMode('custom')}
+                  className={cn(
+                    "py-1.5 rounded-lg transition-all cursor-pointer",
+                    createSheetMode === 'custom' ? "bg-surface text-primary shadow-xs" : "text-secondary hover:text-on-surface"
+                  )}
+                >
+                  Custom Name
+                </button>
+              </div>
+
+              <form onSubmit={handleCreateSheet} className="space-y-4">
+                {createSheetMode === 'month' ? (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[11px] font-bold text-secondary uppercase block mb-1">Month</label>
+                        <select
+                          value={selectedSheetMonth}
+                          onChange={(e) => setSelectedSheetMonth(e.target.value)}
+                          className="w-full px-3 py-2 bg-surface-container-low border border-outline-variant rounded-xl text-xs font-bold text-on-surface focus:outline-none focus:ring-2 focus:ring-primary cursor-pointer"
+                        >
+                          {MONTH_NAMES.map(m => (
+                            <option key={m} value={m}>{m}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-secondary uppercase block mb-1">Year</label>
+                        <select
+                          value={selectedSheetYear}
+                          onChange={(e) => setSelectedSheetYear(e.target.value)}
+                          className="w-full px-3 py-2 bg-surface-container-low border border-outline-variant rounded-xl text-xs font-bold text-on-surface focus:outline-none focus:ring-2 focus:ring-primary cursor-pointer"
+                        >
+                          {['2024', '2025', '2026', '2027', '2028'].map(y => (
+                            <option key={y} value={y}>{y}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <label className="flex items-center gap-2 p-2.5 bg-surface-container-low rounded-xl border border-outline-variant/30 text-xs text-secondary cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={copyMainEntriesForMonth}
+                        onChange={(e) => setCopyMainEntriesForMonth(e.target.checked)}
+                        className="w-4 h-4 rounded text-primary focus:ring-primary"
+                      />
+                      <span>Copy matching records from Main Sheet ({selectedSheetMonth} {selectedSheetYear})</span>
+                    </label>
+                  </>
+                ) : (
+                  <div>
+                    <label className="text-[11px] font-bold text-secondary uppercase block mb-1">Sheet Name</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Special Consignment, Buffer..."
+                      value={newSheetInputName}
+                      onChange={(e) => setNewSheetInputName(e.target.value)}
+                      className="w-full px-3 py-2 bg-surface-container-low border border-outline-variant rounded-xl text-xs font-bold text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
+                      autoFocus
+                    />
+                  </div>
+                )}
+
+                <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-outline-variant/20">
+                  <button
+                    type="button"
+                    onClick={() => setIsAddSheetModalOpen(false)}
+                    className="px-4 py-2 text-xs font-bold text-secondary hover:bg-surface-container rounded-xl transition-all cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 text-xs font-black text-white bg-primary hover:bg-primary-hover rounded-xl shadow-md shadow-primary/20 transition-all cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Create Sheet</span>
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Delete Sheet Confirmation Modal */}
+      <AnimatePresence>
+        {sheetToDelete && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-surface border border-outline-variant rounded-2xl shadow-2xl p-6 w-full max-w-md text-on-surface"
+            >
+              <div className="flex items-center gap-2.5 text-rose-600 mb-3">
+                <div className="p-2 rounded-xl bg-rose-500/10">
+                  <Trash2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-base tracking-tight">Delete Sheet</h3>
+                  <p className="text-[10px] text-secondary font-medium">Permanent action</p>
+                </div>
+              </div>
+              <p className="text-xs text-secondary mb-6 leading-relaxed">
+                Are you sure you want to delete <span className="font-black text-on-surface">"{sheetToDelete.name}"</span>? All local rows on this sheet will be deleted.
+              </p>
+              <div className="flex items-center justify-end gap-3">
+                <button
+                  onClick={() => setSheetToDelete(null)}
+                  className="px-4 py-2 text-xs font-bold text-secondary hover:bg-surface-container rounded-xl transition-all cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    if (sheets.length <= 1) {
+                      alert('Cannot delete the only remaining sheet.');
+                      setSheetToDelete(null);
+                      return;
+                    }
+                    const toDelId = sheetToDelete.id;
+                    setSheets(prev => {
+                      const next = prev.filter(s => s.id !== toDelId);
+                      localStorage.setItem('arrival_entry_sheets_v4', JSON.stringify(next));
+                      return next;
+                    });
+                    if (currentSheetId === toDelId) {
+                      const remaining = sheets.filter(s => s.id !== toDelId);
+                      setCurrentSheetId(remaining[0]?.id || 'sheet-1');
+                    }
+                    setSheetToDelete(null);
+                  }}
+                  className="px-5 py-2 text-xs font-black text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-md transition-all cursor-pointer"
+                >
+                  Delete Sheet
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Excel / CSV Import Modal */}
       <ExcelImportModal
