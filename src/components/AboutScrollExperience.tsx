@@ -405,7 +405,7 @@ export default function AboutScrollExperience() {
           <div className="absolute inset-0 bg-gradient-to-r from-[#0A160F]/95 via-[#0D1F15]/85 to-[#0A160F]/95" />
 
           <div className="relative z-10 h-full max-w-7xl mx-auto px-4 sm:px-8 flex flex-col lg:flex-row items-center justify-between gap-4 sm:gap-8 lg:gap-12 pt-16 sm:pt-20 lg:py-16">
-            {/* Left Content: Typography + Grain Spec Card (positioned a little below) */}
+            {/* Left Content: Typography + Grain Spec Card */}
             <div className="w-full lg:w-5/12 text-left pt-6 sm:pt-10 lg:pt-8 shrink-0">
               <h2
                 style={{ fontFamily: 'var(--font-serif)' }}
@@ -418,83 +418,84 @@ export default function AboutScrollExperience() {
                 Harvested at peak maturity from verified fertile riverbeds. Every panicle is hand-checked for kernel density, natural translucency, and optimal moisture content before entering Sortex canvassing.
               </p>
 
-              {/* Unified Single Display: Compact Grain Inspection & Spec Card (Small, fitted for mobile UI) */}
+              {/* Grain Inspection Spec Card */}
               <div className="p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-[#081810]/90 sm:bg-white/10 backdrop-blur-xl border border-amber-400/40 text-white max-w-md shadow-2xl">
-                <div className="flex items-center justify-between gap-2 mb-1.5 sm:mb-2 pb-1.5 border-b border-white/15">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
-                    <span className="text-[8.5px] sm:text-[9.5px] uppercase tracking-wider text-amber-300 font-mono font-bold shrink-0">
-                      Inspecting:
-                    </span>
-                    <h3 className="text-xs sm:text-sm font-bold text-white tracking-wide truncate">
-                      {selectedVariety.name}
-                    </h3>
-                    <span className="text-[8.5px] sm:text-[9px] px-1.5 py-0.5 rounded-full bg-amber-400/20 text-amber-300 font-mono font-medium shrink-0">
-                      {selectedVariety.scaleLabel}
-                    </span>
-                  </div>
-                  <span className="text-[9px] sm:text-[10px] text-stone-300 font-mono shrink-0">
-                    {selectedVariety.origin}
+                {/* Header row — name + tag, no truncation issues */}
+                <div className="flex items-center gap-2 mb-1 pb-1.5 border-b border-white/15">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                  <span className="text-[8.5px] uppercase tracking-wider text-amber-300 font-mono font-bold shrink-0">
+                    Inspecting:
+                  </span>
+                  <h3 className="text-xs sm:text-sm font-bold text-white tracking-wide flex-1 min-w-0">
+                    {selectedVariety.name}
+                  </h3>
+                  <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-amber-400/20 text-amber-300 font-mono font-medium shrink-0">
+                    {selectedVariety.tag}
                   </span>
                 </div>
+                {/* Sub-row: origin + scale label (no longer stuffed in header) */}
+                <p className="text-[8.5px] text-stone-400 font-mono mb-2 leading-snug">
+                  {selectedVariety.origin} · {selectedVariety.scaleLabel}
+                </p>
 
                 <div className="grid grid-cols-3 gap-1.5 sm:gap-2 text-center">
                   <div className="p-1 sm:p-1.5 rounded-lg bg-black/40 border border-white/10">
                     <span className="text-[7.5px] sm:text-[8.5px] uppercase tracking-wider text-white/60 block font-mono">Length</span>
-                    <span className="text-[10.5px] sm:text-xs font-bold text-amber-300 font-mono">
-                      {selectedVariety.length}
-                    </span>
+                    <span className="text-[10.5px] sm:text-xs font-bold text-amber-300 font-mono">{selectedVariety.length}</span>
                   </div>
                   <div className="p-1 sm:p-1.5 rounded-lg bg-black/40 border border-white/10">
                     <span className="text-[7.5px] sm:text-[8.5px] uppercase tracking-wider text-white/60 block font-mono">Elongation</span>
-                    <span className="text-[10.5px] sm:text-xs font-bold text-emerald-300 font-mono">
-                      {selectedVariety.elongation}
-                    </span>
+                    <span className="text-[10.5px] sm:text-xs font-bold text-emerald-300 font-mono">{selectedVariety.elongation}</span>
                   </div>
                   <div className="p-1 sm:p-1.5 rounded-lg bg-black/40 border border-white/10">
                     <span className="text-[7.5px] sm:text-[8.5px] uppercase tracking-wider text-white/60 block font-mono">Moisture</span>
-                    <span className="text-[10.5px] sm:text-xs font-bold text-sky-300 font-mono">
-                      {selectedVariety.moisture}
-                    </span>
+                    <span className="text-[10.5px] sm:text-xs font-bold text-sky-300 font-mono">{selectedVariety.moisture}</span>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Right: 3D Orbital Model (Placed higher as requested) */}
-            <div className="w-full lg:w-7/12 flex-1 lg:flex-initial flex items-center justify-center relative min-h-[260px] sm:min-h-[400px] -mt-5 sm:-mt-8 lg:-mt-12 pb-2 sm:pb-0">
-              {/* Tilted Orbit Ring Canvas/CSS */}
+            {/* Right: Flat Circular Orbital Variety Carousel */}
+            <div className="w-full lg:w-7/12 flex items-center justify-center relative min-h-[300px] sm:min-h-[420px]">
+              {/* Square container so border-radius:50% makes a perfect circle */}
               <div
-                className="relative w-[280px] sm:w-[390px] md:w-[470px] h-[220px] sm:h-[340px] md:h-[430px] flex items-center justify-center"
+                className="relative flex items-center justify-center"
                 style={{
-                  perspective: '1000px',
+                  width: isMobile ? '290px' : '400px',
+                  height: isMobile ? '290px' : '400px',
                 }}
               >
-                {/* 3D Tilted Elliptical Ring Outline */}
+                {/* ── TRUE circular orbit ring — no 3D transform ── */}
                 <div
-                  className="absolute inset-0 rounded-full border border-amber-400/35 shadow-[0_0_40px_rgba(251,191,36,0.18)]"
+                  className="absolute inset-0 rounded-full pointer-events-none"
                   style={{
-                    transform: `rotateX(66deg) rotateZ(${orbitRotation}deg)`,
-                    transformStyle: 'preserve-3d',
+                    border: '1.5px solid rgba(201,161,88,0.4)',
+                    boxShadow: '0 0 48px rgba(201,161,88,0.12), inset 0 0 48px rgba(201,161,88,0.06)',
                   }}
-                >
-                  {/* Subtle orbiting dashed inner ring */}
-                  <div className="absolute inset-3 rounded-full border border-dashed border-white/20" />
-                </div>
+                />
+                {/* Inner dashed ring */}
+                <div
+                  className="absolute rounded-full pointer-events-none"
+                  style={{
+                    inset: '14px',
+                    border: '1px dashed rgba(255,255,255,0.14)',
+                  }}
+                />
 
-                {/* Center Gleaming Grain with Proportional Custom Size & Shape */}
+                {/* Center Grain */}
                 <div className="relative z-30 flex flex-col items-center">
-                  <div className="relative w-16 h-28 sm:w-20 sm:h-32 flex items-center justify-center">
-                    {/* Glowing halo tailored to variety color */}
-                    <div 
-                      className="absolute inset-0 rounded-full blur-xl animate-pulse opacity-60" 
+                  <div
+                    className="relative flex items-center justify-center"
+                    style={{ width: isMobile ? '50px' : '68px', height: isMobile ? '88px' : '120px' }}
+                  >
+                    {/* Color glow */}
+                    <div
+                      className="absolute inset-0 rounded-full blur-2xl animate-pulse opacity-50 transition-colors duration-500"
                       style={{ background: selectedVariety.colorGradient.end }}
                     />
-                    
-                    {/* Translucent Rice/Pulse Grain SVG */}
                     <svg viewBox="0 0 60 130" className="w-full h-full drop-shadow-[0_0_20px_rgba(251,191,36,0.85)] transition-all duration-500 ease-out">
                       <defs>
-                        <linearGradient id={`centerGrainGrad-${selectedVariety.id}`} x1="0%" y1="0%" x2="100%" y2="100%">
+                        <linearGradient id={`cgg-${selectedVariety.id}`} x1="0%" y1="0%" x2="100%" y2="100%">
                           <stop offset="0%" stopColor={selectedVariety.colorGradient.start} />
                           <stop offset="50%" stopColor={selectedVariety.colorGradient.mid} />
                           <stop offset="100%" stopColor={selectedVariety.colorGradient.end} />
@@ -502,88 +503,61 @@ export default function AboutScrollExperience() {
                       </defs>
                       {selectedVariety.isPulse ? (
                         <g className="transition-all duration-500 ease-out">
-                          <ellipse
-                            cx="30"
-                            cy="65"
-                            rx={selectedVariety.grainRx}
-                            ry={selectedVariety.grainRy}
-                            fill={`url(#centerGrainGrad-${selectedVariety.id})`}
-                            className="transition-all duration-500 ease-out"
-                          />
-                          {/* Pulse Hilum Seam */}
-                          <path
-                            d="M 30 46 Q 28 65 30 84"
-                            stroke="rgba(0,0,0,0.2)"
-                            strokeWidth="1.5"
-                            fill="none"
-                          />
+                          <ellipse cx="30" cy="65" rx={selectedVariety.grainRx} ry={selectedVariety.grainRy}
+                            fill={`url(#cgg-${selectedVariety.id})`} />
+                          <path d="M 30 46 Q 28 65 30 84" stroke="rgba(0,0,0,0.2)" strokeWidth="1.5" fill="none" />
                         </g>
                       ) : (
                         <g className="transition-all duration-500 ease-out">
-                          <ellipse
-                            cx="30"
-                            cy="65"
-                            rx={selectedVariety.grainRx}
-                            ry={selectedVariety.grainRy}
-                            fill={`url(#centerGrainGrad-${selectedVariety.id})`}
-                            transform="rotate(-3 30 65)"
-                            className="transition-all duration-500 ease-out"
-                          />
-                          {/* Polished inner spine scaled to length */}
+                          <ellipse cx="30" cy="65" rx={selectedVariety.grainRx} ry={selectedVariety.grainRy}
+                            fill={`url(#cgg-${selectedVariety.id})`} transform="rotate(-3 30 65)" />
                           <path
                             d={`M 28 ${65 - selectedVariety.grainRy * 0.72} Q 30 65 28 ${65 + selectedVariety.grainRy * 0.72}`}
-                            stroke="rgba(255,255,255,0.75)"
-                            strokeWidth="1.5"
-                            fill="none"
-                            className="transition-all duration-500 ease-out"
+                            stroke="rgba(255,255,255,0.75)" strokeWidth="1.5" fill="none"
                           />
                         </g>
                       )}
                     </svg>
                   </div>
+                  {/* Badge label below the grain */}
+                  <div className="mt-2 px-2.5 py-0.5 rounded-full bg-black/60 border border-amber-400/30 backdrop-blur-md">
+                    <span className="text-[8.5px] font-bold text-amber-300 tracking-wide whitespace-nowrap">{selectedVariety.badge}</span>
+                  </div>
                 </div>
 
-                {/* Orbiting Variety Pills around the ring with non-obstructing wide clearance */}
+                {/* ── Variety Pill Buttons on the circle ── */}
                 {VARIETIES.map((variety, idx) => {
-                  const angle = (idx / VARIETIES.length) * Math.PI * 2 + (orbitRotation * Math.PI) / 180;
-                  const radiusX = isMobile ? 116 : 205; // Generous clearance tailored to screen size
-                  const radiusY = isMobile ? 48 : 95;  // Clear vertical clearance below and above center grain
-                  const x = Math.cos(angle) * radiusX;
-                  const y = Math.sin(angle) * radiusY;
+                  // Start at top (-π/2) and distribute evenly clockwise
+                  const baseAngle = -Math.PI / 2 + (idx / VARIETIES.length) * Math.PI * 2;
+                  // orbitRotation scrolls them around; keep it subtle (divide by 4)
+                  const angle = baseAngle + (orbitRotation * Math.PI) / 180;
+
+                  // radius = half of container width minus a small buffer for pill size
+                  const radius = isMobile ? 118 : 162;
+                  const x = Math.cos(angle) * radius;
+                  const y = Math.sin(angle) * radius;
+
                   const isSelected = selectedVariety.id === variety.id;
-                  const isBack = Math.sin(angle) < -0.15;
-                  const depthZ = isSelected ? 40 : isBack ? 10 : 25;
-                  const depthOpacity = isSelected ? 1 : isBack ? 0.65 : 0.95;
-                  const depthScale = isMobile 
-                    ? (isSelected ? 0.96 : isBack ? 0.78 : 0.88)
-                    : (isSelected ? 1.08 : isBack ? 0.88 : 0.98);
 
                   return (
                     <button
                       key={variety.id}
                       type="button"
                       onClick={() => setSelectedVariety(variety)}
-                      className={`absolute transition-all duration-300 cursor-pointer rounded-full px-2.5 sm:px-4 py-1 sm:py-1.5 text-[10px] sm:text-xs font-semibold backdrop-blur-md shadow-xl border flex items-center gap-1.5 whitespace-nowrap ${
+                      className={`absolute transition-all duration-300 cursor-pointer rounded-full px-2 sm:px-3 py-0.5 sm:py-1 text-[8.5px] sm:text-[10px] font-semibold backdrop-blur-md shadow-xl border flex items-center gap-1 whitespace-nowrap ${
                         isSelected
-                          ? 'bg-amber-400 text-stone-950 border-amber-300 font-bold ring-2 ring-amber-300 shadow-amber-400/40'
-                          : 'bg-black/75 text-white/90 border-white/20 hover:bg-black/90 hover:border-amber-400/60'
+                          ? 'bg-amber-400 text-stone-950 border-amber-300 font-bold ring-2 ring-amber-300/50'
+                          : 'bg-black/70 text-white/90 border-white/20 hover:border-amber-400/60 hover:bg-black/85'
                       }`}
                       style={{
                         left: '50%',
                         top: '50%',
-                        transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px)) scale(${depthScale})`,
-                        zIndex: depthZ,
-                        opacity: depthOpacity,
+                        transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px)) scale(${isSelected ? 1.1 : 1})`,
+                        zIndex: isSelected ? 40 : 20,
                       }}
                     >
-                      <span 
-                        className="w-2 h-2 rounded-full shrink-0" 
-                        style={{ backgroundColor: variety.colorGradient.end }}
-                      />
+                      <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: variety.colorGradient.end }} />
                       <span>{variety.name}</span>
-                      <span className="text-[9px] font-mono opacity-80">
-                        {variety.length}
-                      </span>
                     </button>
                   );
                 })}
