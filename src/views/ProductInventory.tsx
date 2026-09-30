@@ -360,8 +360,7 @@ export default function ProductInventory() {
         const loadedList = Array.from(supSet).sort();
         setSuppliersList(loadedList);
 
-        // If registered supplier(s) exist, auto-migrate any existing products that still have
-        // the placeholder 'ANNAPURNA RICE & AGRO INDUSTRIES' or blank supplier to the real supplier!
+        // Auto-assign primary supplier to products that have no supplier specified
         if (loadedList.length > 0) {
           const primarySup = loadedList[0];
           setProducts(prev => {
@@ -369,7 +368,7 @@ export default function ProductInventory() {
             const updated = prev.map(p => {
               if (!p) return p;
               const cur = (p.supplier || '').trim();
-              if (!cur || cur.toUpperCase().includes('ANNAPURNA') || (loadedList.length === 1 && cur !== primarySup)) {
+              if (!cur) {
                 changed = true;
                 return { ...p, supplier: primarySup };
               }

@@ -46,9 +46,8 @@ export default function UsersManagement() {
         const parsed = JSON.parse(saved);
         const filterLegacy = (list: any[]) => (list || []).filter(item => {
           if (!item) return false;
-          const name = String(item.name || '').toUpperCase();
           const id = String(item.id || '').toUpperCase();
-          return !name.includes('ANNAPURNA') && !name.includes('VK FOODS') && !name.includes('V.K FOODS') && !name.includes('V.K. FOODS') && id !== 'SUP-01' && id !== 'BUY-01';
+          return id !== 'SUP-01' && id !== 'BUY-01';
         });
         return {
           suppliers: filterLegacy(parsed.suppliers),
@@ -117,10 +116,8 @@ export default function UsersManagement() {
 
           combinedStakeholders.forEach((cs: any) => {
             if (!cs || !cs.id) return;
-            const normId = String(cs.id || '').trim().toLowerCase().replace(/^#/, '');
-            const normName = String(cs.name || '').toUpperCase();
-            if (deletedSet.has(normId) || normId === 'sup-01' || normId === 'buy-01' || normName.includes('ANNAPURNA') || normName.includes('VK FOODS') || normName.includes('V.K FOODS') || normName.includes('V.K. FOODS')) {
-              return; // Skip deleted legacy stakeholder
+            if (deletedSet.has(normId) || normId === 'sup-01' || normId === 'buy-01') {
+              return; // Skip deleted stakeholder
             }
 
             const type = cs.type || 'buyers';
@@ -267,12 +264,9 @@ export default function UsersManagement() {
 
             const isCloudReal = !!(cloudRow.partyName || cloudRow.millerName || cloudRow.billNo);
             const isLocalReal = !!(localRow && (localRow.partyName || localRow.millerName || localRow.billNo));
-            const isCloudDummy = cloudRow.billNo === '1042';
 
             let shouldOverwrite = false;
-            if (isCloudDummy) {
-              shouldOverwrite = false;
-            } else if (!isLocalReal && isCloudReal) {
+            if (!isLocalReal && isCloudReal) {
               shouldOverwrite = true;
             } else if (isLocalReal && isCloudReal) {
               const localTime = localRow.lastUpdated ? new Date(localRow.lastUpdated).getTime() : 0;

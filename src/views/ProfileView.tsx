@@ -19,9 +19,7 @@ export default function ProfileView() {
   const navigate = useNavigate();
 
   const [profName, setProfName] = useState(() => {
-    const val = localStorage.getItem('userName');
-    if (val && (val.includes('V.K') || val.includes('VK FOODS'))) return 'Authorized Merchant';
-    return val || 'Authorized Merchant';
+    return localStorage.getItem('userName') || 'Authorized Merchant';
   });
   const [profPhone, setProfPhone] = useState(() => localStorage.getItem('userPhone') || '9342380981');
   const [profGstin, setProfGstin] = useState(() => localStorage.getItem('userGstin') || '29AAGCV7712M1ZP');

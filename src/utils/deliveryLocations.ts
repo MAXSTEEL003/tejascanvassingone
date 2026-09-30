@@ -38,8 +38,7 @@ export function cleanLocationName(raw: string): string {
 export function getDefaultDeliveryLocations(): DeliveryLocation[] {
   const userAddress = localStorage.getItem('userAddress') || 'No. 15, APMC Yard, Yeshwanthpur, Bangalore, Karnataka - 560022';
   const userPhone = localStorage.getItem('userPhone') || '9342380981';
-  const rawName = localStorage.getItem('userName') || 'Trade Buyer';
-  const userName = (rawName.includes('V.K') || rawName.includes('VK FOODS')) ? 'Trade Buyer' : rawName;
+  const userName = localStorage.getItem('userName') || 'Trade Buyer';
   const userGstin = localStorage.getItem('userGstin') || '29AAGCV7712M1ZP';
 
   const cleanedShopName = cleanLocationName(userName);

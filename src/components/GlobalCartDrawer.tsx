@@ -98,7 +98,7 @@ export default function GlobalCartDrawer() {
   const cartList = React.useMemo(() => {
     return items.map((item) => {
       let sup = (item.supplier || '').trim();
-      if (!sup || sup.toUpperCase().includes('ANNAPURNA')) {
+      if (!sup) {
         sup = defaultSupplier;
       }
       return {

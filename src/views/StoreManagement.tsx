@@ -391,13 +391,7 @@ export default function StoreManagement() {
   const [tempBuyerName, setTempBuyerName] = useState('');
 
   // Grainly UI state: quantity per product, wishlist, search toggle, and carousel slide
-  const [productQuantities, setProductQuantities] = useState<Record<string, number>>({
-    'prod-1': 50,
-    'prod-2': 50,
-    'prod-3': 50,
-    'prod-4': 50,
-    'prod-5': 50,
-  });
+  const [productQuantities, setProductQuantities] = useState<Record<string, number>>({});
   const [wishlist, setWishlist] = useState<string[]>(() => {
     try {
       return JSON.parse(localStorage.getItem('user_wishlist') || '[]');
@@ -695,18 +689,15 @@ export default function StoreManagement() {
           }
 
           if (rawSupplier && rawSupplier.trim()) {
-            const isPlaceholder = rawSupplier.toUpperCase().includes('ANNAPURNA');
-            if (!isPlaceholder) {
-              const matchById = activeSuppliers.find(s => s.id === rawSupplier);
-              if (matchById && matchById.name) return matchById.name.trim();
-              const matchByName = activeSuppliers.find(s => s.name?.trim().toLowerCase() === rawSupplier.trim().toLowerCase());
-              if (matchByName && matchByName.name) return matchByName.name.trim();
-              if (activeSuppliers.length === 0) return rawSupplier.trim();
-            }
+            const matchById = activeSuppliers.find(s => s.id === rawSupplier);
+            if (matchById && matchById.name) return matchById.name.trim();
+            const matchByName = activeSuppliers.find(s => s.name?.trim().toLowerCase() === rawSupplier.trim().toLowerCase());
+            if (matchByName && matchByName.name) return matchByName.name.trim();
+            if (activeSuppliers.length === 0) return rawSupplier.trim();
           }
 
           const primarySup = activeSuppliers[0];
-          return primarySup ? primarySup.name.trim() : (rawSupplier && !rawSupplier.toUpperCase().includes('ANNAPURNA') ? rawSupplier.trim() : 'DIRECT MILL');
+          return primarySup ? primarySup.name.trim() : (rawSupplier && rawSupplier.trim() ? rawSupplier.trim() : 'DIRECT MILL');
         };
 
         if (activeList.length > 0) {

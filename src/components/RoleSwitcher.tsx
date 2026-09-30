@@ -44,10 +44,7 @@ export default function RoleSwitcher({ className }: { className?: string }) {
           if (raw) {
             const parsed = JSON.parse(raw);
             const buyers = Array.isArray(parsed) ? parsed.filter((s: any) => s.type === 'buyers') : (parsed.buyers || []);
-            const valid = buyers.find((b: any) => {
-              const n = (b.name || '').toUpperCase();
-              return n && !n.includes('VK FOODS') && !n.includes('V.K FOODS') && !n.includes('ANNAPURNA');
-            });
+            const valid = buyers.find((b: any) => Boolean(b && b.name));
             if (valid?.name) defaultBuyer = valid.name;
           }
         } catch {}

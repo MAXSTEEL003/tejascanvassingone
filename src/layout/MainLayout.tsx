@@ -51,9 +51,7 @@ function MerchantHeader({ onSearchClick }: { onSearchClick?: () => void }) {
 
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [profName, setProfName] = useState(() => {
-    const val = localStorage.getItem('userName');
-    if (val && (val.includes('V.K') || val.includes('VK FOODS'))) return 'Authorized Merchant';
-    return val || 'Authorized Merchant';
+    return localStorage.getItem('userName') || 'Authorized Merchant';
   });
   const [profPhone, setProfPhone] = useState(() => localStorage.getItem('userPhone') || '9342380981');
   const [profGstin, setProfGstin] = useState(() => localStorage.getItem('userGstin') || '29AAGCV7712M1ZP');
@@ -104,7 +102,7 @@ function MerchantHeader({ onSearchClick }: { onSearchClick?: () => void }) {
         // Securely query solely the current merchant's own profile record
         const found = await getSingleDoc('stakeholders', currentUid).catch(() => null);
         if (found) {
-          const cleanName = (found.name && !found.name.includes('V.K') && !found.name.includes('VK FOODS')) ? found.name : 'Authorized Merchant';
+          const cleanName = found.name || 'Authorized Merchant';
           localStorage.setItem('userName', cleanName);
           localStorage.setItem('userPhone', found.phone || '9342380981');
           localStorage.setItem('userGstin', found.gstin || '29AAGCV7712M1ZP');
@@ -133,8 +131,7 @@ function MerchantHeader({ onSearchClick }: { onSearchClick?: () => void }) {
   useEffect(() => {
     if (isProfileOpen) {
       const storedName = localStorage.getItem('userName');
-      const cleanStored = (storedName && !storedName.includes('V.K') && !storedName.includes('VK FOODS')) ? storedName : 'Authorized Merchant';
-      setProfName(cleanStored);
+      setProfName(storedName || 'Authorized Merchant');
       setProfPhone(localStorage.getItem('userPhone') || '9342380981');
       setProfGstin(localStorage.getItem('userGstin') || '29AAGCV7712M1ZP');
       setProfAddress(localStorage.getItem('userAddress') || 'No. 15, APMC Yard, Yeshwanthpur, Bangalore, Karnataka - 560022');

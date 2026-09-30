@@ -61,81 +61,10 @@ async function testConnection() {
 
 let hasAttemptedSeed = false;
 
-// Auto-seed Firestore collections if they don't contain documents yet
+// Auto-seed Firestore collections (No-op in production)
 export async function ensureFirestoreSeeded(): Promise<void> {
   if (hasAttemptedSeed) return;
   hasAttemptedSeed = true;
-  try {
-    if (typeof window !== 'undefined' && sessionStorage.getItem('firestore_seeded') === 'true') {
-      return;
-    }
-    if (typeof window !== 'undefined') {
-      sessionStorage.setItem('firestore_seeded', 'true');
-    }
-  } catch (e) {
-    console.warn('Storage warning during seed check:', e);
-  }
-
-  // In production deployment mode, seedCollections is empty so no test data is auto-inserted
-  const seedCollections: { [key: string]: any[] } = {};
-
-  for (const [colName, seedDocs] of Object.entries(seedCollections)) {
-    try {
-      const snap = await getDocs(collection(db, colName));
-      if (snap.empty && !localStorage.getItem(`cleared_${colName}`)) {
-        let deletedProcSet = new Set<string>();
-        if (colName === 'procurement_requests') {
-          try {
-            const rawDel = localStorage.getItem('deleted_procurement_ids');
-            if (rawDel) {
-              const parsed = JSON.parse(rawDel);
-              if (Array.isArray(parsed)) {
-                deletedProcSet = new Set(parsed.map((id: string) => String(id).trim().toLowerCase().replace(/^#/, '')));
-              }
-            }
-          } catch (e) {}
-        } else if (colName === 'product_inventory') {
-          try {
-            const rawDel = localStorage.getItem('deleted_product_inventory_ids');
-            if (rawDel) {
-              const parsed = JSON.parse(rawDel);
-              if (Array.isArray(parsed)) {
-                deletedProcSet = new Set(parsed.map((id: string) => String(id).trim().toLowerCase().replace(/^#/, '')));
-              }
-            }
-          } catch (e) {}
-        } else if (colName === 'ledgers') {
-          if (localStorage.getItem('ledger_cleared_all') === 'true') {
-            continue;
-          }
-          try {
-            const rawDel = localStorage.getItem('deleted_ledger_ids');
-            if (rawDel) {
-              const parsed = JSON.parse(rawDel);
-              if (Array.isArray(parsed)) {
-                deletedProcSet = new Set(parsed.map((id: string) => String(id).trim().toLowerCase().replace(/^#/, '')));
-              }
-            }
-          } catch (e) {}
-        } else if (colName === 'placed_orders') {
-          if (localStorage.getItem('placed_orders_cleared_all') === 'true' || localStorage.getItem('cleared_placed_orders') === 'true') {
-            continue;
-          }
-        }
-
-        console.log(`Seeding empty collection in Firestore: ${colName}`);
-        for (const seedItem of seedDocs) {
-          const seedNorm = String(seedItem.id || '').trim().toLowerCase().replace(/^#/, '');
-          if (!deletedProcSet.has(seedNorm)) {
-            await setDoc(doc(db, colName, seedItem.id), seedItem, { merge: true });
-          }
-        }
-      }
-    } catch (e) {
-      console.warn(`Seed check skipped for ${colName}:`, e);
-      break; // Stop seeding attempts if rate limit or quota is exceeded
-    }
-  }
 }
 
 if (typeof window !== 'undefined') {
@@ -327,47 +256,6 @@ export async function getCollectionDocs(collectionName: string): Promise<any[]> 
     });
 
     const items = Array.from(itemsMap.values());
-
-    if (collectionName === 'procurement_requests') {
-      try {
-        const rawDel = localStorage.getItem('deleted_procurement_ids');
-        if (rawDel) {
-          const deletedSet = new Set(JSON.parse(rawDel).map((id: string) => String(id).trim().toLowerCase().replace(/^#/, '')));
-          return items.filter(item => {
-            const norm = String(item.id || '').trim().toLowerCase().replace(/^#/, '');
-            return !deletedSet.has(norm);
-          });
-        }
-      } catch (e) {}
-    }
-
-    if (collectionName === 'product_inventory') {
-      try {
-        const rawDel = localStorage.getItem('deleted_product_inventory_ids');
-        const deletedSet = rawDel ? new Set(JSON.parse(rawDel).map((id: string) => String(id).trim().toLowerCase().replace(/^#/, ''))) : new Set();
-        return items.filter(item => {
-          const norm = String(item.id || '').trim().toLowerCase().replace(/^#/, '');
-          if (norm.startsWith('prod-')) return false;
-          return !deletedSet.has(norm);
-        });
-      } catch (e) {
-        return items.filter(item => !String(item.id || '').trim().toLowerCase().startsWith('prod-'));
-      }
-    }
-
-    if (collectionName === 'ledgers') {
-      try {
-        const rawDel = localStorage.getItem('deleted_ledger_ids');
-        if (rawDel) {
-          const deletedSet = new Set(JSON.parse(rawDel).map((id: string) => String(id).trim().toLowerCase().replace(/^#/, '')));
-          return items.filter(item => {
-            const norm = String(item.id || '').trim().toLowerCase().replace(/^#/, '');
-            return !deletedSet.has(norm);
-          });
-        }
-      } catch (e) {}
-    }
-
     return items;
   } catch (error) {
     console.warn(`Firestore getCollectionDocs notice for ${collectionName}:`, error);
@@ -378,30 +266,6 @@ export async function getCollectionDocs(collectionName: string): Promise<any[]> 
         if (cached) {
           const parsed = JSON.parse(cached);
           if (Array.isArray(parsed)) {
-            if (collectionName === 'procurement_requests') {
-              try {
-                const rawDel = localStorage.getItem('deleted_procurement_ids');
-                if (rawDel) {
-                  const deletedSet = new Set(JSON.parse(rawDel).map((id: string) => String(id).trim().toLowerCase().replace(/^#/, '')));
-                  return parsed.filter((item: any) => {
-                    const norm = String(item.id || '').trim().toLowerCase().replace(/^#/, '');
-                    return !deletedSet.has(norm);
-                  });
-                }
-              } catch (e) {}
-            }
-            if (collectionName === 'ledgers') {
-              try {
-                const rawDel = localStorage.getItem('deleted_ledger_ids');
-                if (rawDel) {
-                  const deletedSet = new Set(JSON.parse(rawDel).map((id: string) => String(id).trim().toLowerCase().replace(/^#/, '')));
-                  return parsed.filter((item: any) => {
-                    const norm = String(item.id || '').trim().toLowerCase().replace(/^#/, '');
-                    return !deletedSet.has(norm);
-                  });
-                }
-              } catch (e) {}
-            }
             return parsed;
           }
         }

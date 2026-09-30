@@ -237,7 +237,7 @@ export default function ArrivalEntry() {
         if (Array.isArray(parsed) && parsed.length > 0) {
           const cleaned = parsed.map((s, idx) => {
             const rowData = Array.isArray(s.data) ? s.data : [];
-            const hasUserEntry = rowData.some(r => r && (r.partyName || r.millerName || (r.billNo && r.billNo !== '1042')));
+            const hasUserEntry = rowData.some(r => r && (r.partyName || r.millerName || r.billNo));
             return {
               id: s.id || `sheet-${idx + 1}`,
               name: s.id === 'sheet-1' && (s.name === 'Sheet 1' || !s.name) ? 'All Arrivals (Main)' : (s.name || `Sheet ${idx + 1}`),
@@ -856,12 +856,9 @@ export default function ArrivalEntry() {
                   const localRow = grid[idx];
                   const isCloudReal = !!(cloudRow.partyName || cloudRow.millerName || cloudRow.billNo);
                   const isLocalReal = !!(localRow && (localRow.partyName || localRow.millerName || localRow.billNo));
-                  const isCloudDummy = cloudRow.billNo === '1042';
 
                   let shouldOverwrite = false;
-                  if (isCloudDummy) {
-                    shouldOverwrite = false;
-                  } else if (!isLocalReal && isCloudReal) {
+                  if (!isLocalReal && isCloudReal) {
                     shouldOverwrite = true;
                   } else if (isLocalReal && isCloudReal) {
                     const localTime = localRow.lastUpdated ? new Date(localRow.lastUpdated).getTime() : 0;

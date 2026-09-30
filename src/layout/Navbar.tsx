@@ -110,9 +110,6 @@ export default function Navbar({
     try {
       const r = getVerifiedUserRole() || 'admin';
       const stored = localStorage.getItem('userName');
-      if (stored && (stored.includes('V.K') || stored.includes('VK FOODS'))) {
-        return r === 'admin' ? 'Tejas Canvassing' : r === 'merchant' ? 'Wholesale Merchant' : 'Procurement Staff';
-      }
       return stored || (r === 'admin' ? 'Tejas Canvassing' : r === 'merchant' ? 'Wholesale Merchant' : 'Procurement Staff');
     } catch {
       return 'Tejas Canvassing';
@@ -125,11 +122,7 @@ export default function Navbar({
         const r = getVerifiedUserRole() || 'admin';
         setRole(r);
         const stored = localStorage.getItem('userName');
-        if (stored && (stored.includes('V.K') || stored.includes('VK FOODS'))) {
-          setUserName(r === 'admin' ? 'Tejas Canvassing' : r === 'merchant' ? 'Wholesale Merchant' : 'Procurement Staff');
-        } else {
-          setUserName(stored || (r === 'admin' ? 'Tejas Canvassing' : r === 'merchant' ? 'Wholesale Merchant' : 'Procurement Staff'));
-        }
+        setUserName(stored || (r === 'admin' ? 'Tejas Canvassing' : r === 'merchant' ? 'Wholesale Merchant' : 'Procurement Staff'));
       } catch {}
     };
     window.addEventListener('storage', handleSync);

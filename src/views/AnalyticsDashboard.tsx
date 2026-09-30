@@ -29,7 +29,7 @@ function isRealArrivalRow(r: any): boolean {
   if (!r || typeof r !== 'object') return false;
   const hasParty = !!(r.partyName && String(r.partyName).trim());
   const hasMiller = !!(r.millerName && String(r.millerName).trim());
-  const hasBill = !!(r.billNo && String(r.billNo).trim() !== '' && String(r.billNo).trim() !== '1042');
+  const hasBill = !!(r.billNo && String(r.billNo).trim() !== '');
   const hasQty = !!(r.qty && parseFloat(r.qty) > 0);
   const hasNet = !!(r.netAmt && parseFloat(r.netAmt) > 0);
   const hasAmount = !!(r.amount && parseFloat(r.amount) > 0);

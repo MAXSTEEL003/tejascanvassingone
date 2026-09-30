@@ -404,12 +404,9 @@ export default function PaymentTracking() {
             // Only overwrite local with cloud if cloud has real data and is newer, or if local is empty/unset
             const isCloudReal = !!(cloudRow.partyName || cloudRow.millerName || cloudRow.billNo);
             const isLocalReal = !!(localRow && (localRow.partyName || localRow.millerName || localRow.billNo));
-            const isCloudDummy = cloudRow.billNo === '1042';
 
             let shouldOverwrite = false;
-            if (isCloudDummy) {
-              shouldOverwrite = false;
-            } else if (!isLocalReal && isCloudReal) {
+            if (!isLocalReal && isCloudReal) {
               shouldOverwrite = true;
             } else if (isLocalReal && isCloudReal) {
               const localTime = localRow.lastUpdated ? new Date(localRow.lastUpdated).getTime() : 0;
@@ -427,12 +424,6 @@ export default function PaymentTracking() {
           }
         });
         finalArrival = grid;
-      }
-
-      const hasDummy = finalArrival.some(row => row && row.billNo === '1042');
-      if (hasDummy) {
-        finalArrival = generateEmptyArrivalRows(100);
-        localStorage.setItem('arrival_entry_data_v4', JSON.stringify(finalArrival));
       }
 
       setArrivalRows(finalArrival);

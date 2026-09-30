@@ -246,12 +246,9 @@ export default function OrdersDashboard() {
 
               const isCloudReal = !!(cloudRow.partyName || cloudRow.millerName || cloudRow.billNo);
               const isLocalReal = !!(localRow && (localRow.partyName || localRow.millerName || localRow.billNo));
-              const isCloudDummy = cloudRow.billNo === '1042';
 
               let shouldOverwrite = false;
-              if (isCloudDummy) {
-                shouldOverwrite = false;
-              } else if (!isLocalReal && isCloudReal) {
+              if (!isLocalReal && isCloudReal) {
                 shouldOverwrite = true;
               } else if (isLocalReal && isCloudReal) {
                 const localTime = localRow.lastUpdated ? new Date(localRow.lastUpdated).getTime() : 0;
@@ -354,12 +351,9 @@ export default function OrdersDashboard() {
 
             const isCloudReal = !!(cloudRow.partyName || cloudRow.millerName || cloudRow.billNo);
             const isLocalReal = !!(localRow && (localRow.partyName || localRow.millerName || localRow.billNo));
-            const isCloudDummy = cloudRow.billNo === '1042';
 
             let shouldOverwrite = false;
-            if (isCloudDummy) {
-              shouldOverwrite = false;
-            } else if (!isLocalReal && isCloudReal) {
+            if (!isLocalReal && isCloudReal) {
               shouldOverwrite = true;
             } else if (isLocalReal && isCloudReal) {
               const localTime = localRow.lastUpdated ? new Date(localRow.lastUpdated).getTime() : 0;
@@ -536,7 +530,7 @@ export default function OrdersDashboard() {
           localInv.forEach((p: any) => {
             if (p && p.supplier && p.supplier.trim()) {
               const norm = p.supplier.trim().toUpperCase();
-              if (!norm.includes('ANNAPURNA') && !supMap.has(norm)) {
+              if (!supMap.has(norm)) {
                 supMap.set(norm, { id: `SUP-INV-${Math.random().toString(36).substr(2, 4)}`, name: p.supplier.trim() });
               }
             }

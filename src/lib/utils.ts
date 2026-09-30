@@ -71,7 +71,7 @@ export function sanitizeSupplierName(rawSupplier?: string, fallback = 'DIRECT MI
   }
 
   const clean = (rawSupplier || '').trim();
-  if (!clean || clean.toUpperCase().includes('ANNAPURNA')) {
+  if (!clean) {
     return list.length > 0 ? list[0].name : fallback;
   }
 
