@@ -29,6 +29,8 @@ import {
   Clock,
   Layers,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   FileText,
   Calculator,
   MessageSquare,
@@ -37,9 +39,20 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, formatINR, formatDateToDDMMYYYY } from '../lib/utils';
-import { getCollectionDocs, syncCollection } from '../lib/firebase';
+import { getCollectionDocs, syncCollection, setCollectionDoc } from '../lib/firebase';
 import { PRELOADED_TRANSACTIONS } from '../lib/analyticsEngine';
 import InlinePattiSlip from '../components/InlinePattiSlip';
+import { 
+  dateToTimestamp, 
+  formatDateDisplay, 
+  formatDateDDMMYYYY as formatIndianDate 
+} from '../utils/dateUtils';
+import { 
+  ArrivalSheet, 
+  getCurrentMonthYearSheetName, 
+  organizeArrivalSheetsByMonth, 
+  isMeaningfulRow 
+} from '../utils/arrivalSheetsManager';
 
 const BUYER_PROFILES_LOOKUP: Record<string, { email: string; phone: string }> = {
   'G.K.UDYOG': { email: 'hr_hk2005@yahoo.com', phone: '8880088844' },
@@ -158,9 +171,16 @@ const PaymentRow = memo(function PaymentRow({
 
         {/* Bill No (Unconditional for arrived orders) */}
         <td className="p-4 text-xs font-mono font-bold text-neutral-800 dark:text-neutral-200">
-          <span className="bg-amber-500/10 text-amber-700 dark:text-amber-400 px-2 py-1 rounded-lg border border-amber-500/20">
-            {txn.billNo || 'N/A'}
-          </span>
+          <div className="flex flex-col gap-1 items-start">
+            <span className="bg-amber-500/10 text-amber-700 dark:text-amber-400 px-2 py-1 rounded-lg border border-amber-500/20">
+              {txn.billNo || 'N/A'}
+            </span>
+            {txn.sheetName && (
+              <span className="text-[9px] font-bold text-neutral-400 dark:text-neutral-500 uppercase tracking-tight">
+                {txn.sheetName}
+              </span>
+            )}
+          </div>
         </td>
 
         {/* Trade Partners Details */}
@@ -328,7 +348,34 @@ const PaymentRow = memo(function PaymentRow({
 
 export default function PaymentTracking() {
   const navigate = useNavigate();
-  const [arrivalRows, setArrivalRows] = useState<any[]>([]);
+  const [allSheets, setAllSheets] = useState<ArrivalSheet[]>([]);
+  const [selectedSheets, setSelectedSheets] = useState<string[]>(() => {
+    try {
+      const stored = localStorage.getItem('payment_tracking_selected_sheets');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+      const single = localStorage.getItem('payment_tracking_selected_sheet');
+      if (single) {
+        return [single];
+      }
+    } catch {}
+    return ['running-month'];
+  });
+  const [isSheetSelectorOpen, setIsSheetSelectorOpen] = useState(false);
+  const sheetSelectorRef = React.useRef<HTMLDivElement>(null);
+
+  const [isOverdueMinimized, setIsOverdueMinimized] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('payment_overdue_minimized') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
   const [placedOrders, setPlacedOrders] = useState<any[]>([]);
   const [cloudStatus, setCloudStatus] = useState<'idle' | 'syncing' | 'synced' | 'error'>('idle');
   const [searchQuery, setSearchQuery] = useState('');
@@ -347,6 +394,96 @@ export default function PaymentTracking() {
     discountPercent: 0,
     discountAmount: '0'
   });
+
+  const currentRunningMonthName = useMemo(() => getCurrentMonthYearSheetName(), []);
+
+  // Multi-sheet toggle handlers with persistence
+  const handleToggleSheet = useCallback((sheetId: string) => {
+    setSelectedSheets(prev => {
+      let next: string[];
+      if (sheetId === 'all') {
+        next = prev.includes('all') ? ['running-month'] : ['all'];
+      } else {
+        const withoutAll = prev.filter(x => x !== 'all');
+        if (withoutAll.includes(sheetId)) {
+          next = withoutAll.filter(x => x !== sheetId);
+          if (next.length === 0) {
+            next = ['running-month'];
+          }
+        } else {
+          next = [...withoutAll, sheetId];
+        }
+      }
+      try {
+        localStorage.setItem('payment_tracking_selected_sheets', JSON.stringify(next));
+      } catch (e) {
+        console.error("Failed saving sheets selection:", e);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleSelectAllSheets = useCallback(() => {
+    const next = ['all'];
+    setSelectedSheets(next);
+    try {
+      localStorage.setItem('payment_tracking_selected_sheets', JSON.stringify(next));
+    } catch {}
+  }, []);
+
+  const handleSelectRunningMonthOnly = useCallback(() => {
+    const next = ['running-month'];
+    setSelectedSheets(next);
+    try {
+      localStorage.setItem('payment_tracking_selected_sheets', JSON.stringify(next));
+    } catch {}
+  }, []);
+
+  // Display label for the multi-sheet selector trigger
+  const selectedSheetsLabel = useMemo(() => {
+    if (selectedSheets.includes('all')) {
+      return 'All Sheets (Aggregated)';
+    }
+    if (selectedSheets.length === 1 && selectedSheets[0] === 'running-month') {
+      return `Running: ${currentRunningMonthName}`;
+    }
+    if (selectedSheets.length === 1) {
+      const sheet = allSheets.find(s => s.id === selectedSheets[0]);
+      return sheet ? sheet.name : selectedSheets[0];
+    }
+    if (selectedSheets.length > 1) {
+      const containsRunning = selectedSheets.includes('running-month');
+      return `${selectedSheets.length} Sheets Selected${containsRunning ? ' (inc. Current)' : ''}`;
+    }
+    return `Running: ${currentRunningMonthName}`;
+  }, [selectedSheets, allSheets, currentRunningMonthName]);
+
+  // Click outside to dismiss sheet selector popover
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (sheetSelectorRef.current && !sheetSelectorRef.current.contains(event.target as Node)) {
+        setIsSheetSelectorOpen(false);
+      }
+    };
+    if (isSheetSelectorOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isSheetSelectorOpen]);
+
+  const toggleOverdueMinimized = useCallback(() => {
+    setIsOverdueMinimized(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem('payment_overdue_minimized', String(next));
+      } catch (e) {
+        console.error("Failed to save overdue minimized preference:", e);
+      }
+      return next;
+    });
+  }, []);
 
   // Calculate pending days for an arrival record on-the-fly
   const calculatePendingDays = useCallback((row: any) => {
@@ -374,7 +511,7 @@ export default function PaymentTracking() {
     return diffDays >= 0 ? diffDays : 0;
   }, []);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setCloudStatus('syncing');
     try {
       // 1. Fetch live and local placed orders
@@ -384,55 +521,47 @@ export default function PaymentTracking() {
       const uniquePlaced = Array.from(new Map(combinedPlaced.map(item => [item.id, item])).values());
       setPlacedOrders(uniquePlaced);
 
-      // 2. Fetch live and local arrival entries
-      const localArrival = JSON.parse(localStorage.getItem('arrival_entry_data_v4') || '[]');
-      const cloudArrival = await getCollectionDocs('arrival_entries').catch(() => []);
-      
-      let finalArrival = [...localArrival];
-      if (cloudArrival && cloudArrival.length > 0) {
-        // Build fully-filled Excel 30-row structure or maintain cloud rows size
-        const grid = Array(Math.max(30, cloudArrival.length, localArrival.length)).fill(0).map((_, i) => {
-          return localArrival[i] || { date: new Date().toISOString().split('T')[0] };
-        });
-        
-        cloudArrival.forEach(row => {
-          const idx = parseInt(row.id.replace('row-', ''));
-          if (!isNaN(idx) && idx >= 0) {
-            const { id, ...cloudRow } = row;
-            const localRow = grid[idx];
-            
-            // Only overwrite local with cloud if cloud has real data and is newer, or if local is empty/unset
-            const isCloudReal = !!(cloudRow.partyName || cloudRow.millerName || cloudRow.billNo);
-            const isLocalReal = !!(localRow && (localRow.partyName || localRow.millerName || localRow.billNo));
+      // 2. Fetch live and local arrival sheets
+      let rawLocalSheets: ArrivalSheet[] = [];
+      try {
+        const stored = localStorage.getItem('arrival_entry_sheets_v4');
+        if (stored) {
+          rawLocalSheets = JSON.parse(stored);
+        }
+      } catch {}
 
-            let shouldOverwrite = false;
-            if (!isLocalReal && isCloudReal) {
-              shouldOverwrite = true;
-            } else if (isLocalReal && isCloudReal) {
-              const localTime = localRow.lastUpdated ? new Date(localRow.lastUpdated).getTime() : 0;
-              const cloudTime = cloudRow.lastUpdated ? new Date(cloudRow.lastUpdated).getTime() : 0;
-              if (cloudTime > localTime || !localRow.lastUpdated) {
-                shouldOverwrite = true;
-              }
-            } else if (!isLocalReal && !isCloudReal) {
-              shouldOverwrite = true;
-            }
-
-            if (shouldOverwrite) {
-              grid[idx] = cloudRow;
-            }
+      // Fallback: if arrival_entry_sheets_v4 is empty, check arrival_entry_data_v4
+      if (!rawLocalSheets || rawLocalSheets.length === 0) {
+        try {
+          const singleSheetData = JSON.parse(localStorage.getItem('arrival_entry_data_v4') || '[]');
+          if (Array.isArray(singleSheetData) && singleSheetData.length > 0) {
+            rawLocalSheets = [{
+              id: 'sheet-running-month',
+              name: getCurrentMonthYearSheetName(),
+              data: singleSheetData
+            }];
           }
-        });
-        finalArrival = grid;
+        } catch {}
       }
 
-      setArrivalRows(finalArrival);
+      const cloudArrival = await getCollectionDocs('arrival_entries').catch(() => []);
+
+      // Organize all arrival records into month sheets using the official organizeArrivalSheetsByMonth
+      const organized = organizeArrivalSheetsByMonth(rawLocalSheets, cloudArrival);
+      const sheetsList = organized.sheets;
+      setAllSheets(sheetsList);
+
+      // Update localStorage so arrival_entry_sheets_v4 is consistent
+      try {
+        localStorage.setItem('arrival_entry_sheets_v4', JSON.stringify(sheetsList));
+      } catch {}
+
       setCloudStatus('synced');
     } catch (err) {
       console.error("Failed to load pipeline records:", err);
       setCloudStatus('error');
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadData();
@@ -448,7 +577,54 @@ export default function PaymentTracking() {
       window.removeEventListener('storage', loadData);
       window.removeEventListener('goto-arrival-event', handleGotoArrival);
     };
-  }, []);
+  }, [loadData]);
+
+  // Derive active arrivalRows depending on selectedSheets ('all', 'running-month', or multiple sheet IDs)
+  const arrivalRows = useMemo(() => {
+    if (!allSheets || allSheets.length === 0) return [];
+
+    const isAll = selectedSheets.includes('all');
+    let targetSheets: ArrivalSheet[] = [];
+
+    if (isAll) {
+      targetSheets = allSheets;
+    } else {
+      const targetSheetIds = new Set<string>();
+      selectedSheets.forEach(id => {
+        if (id === 'running-month') {
+          const rm = allSheets.find(s => s.name.trim().toLowerCase() === currentRunningMonthName.toLowerCase()) || allSheets[allSheets.length - 1];
+          if (rm) targetSheetIds.add(rm.id);
+        } else {
+          targetSheetIds.add(id);
+        }
+      });
+
+      if (targetSheetIds.size === 0) {
+        const rm = allSheets.find(s => s.name.trim().toLowerCase() === currentRunningMonthName.toLowerCase()) || allSheets[0];
+        if (rm) targetSheetIds.add(rm.id);
+      }
+
+      targetSheets = allSheets.filter(s => targetSheetIds.has(s.id));
+    }
+
+    const rows: any[] = [];
+    targetSheets.forEach(sheet => {
+      if (Array.isArray(sheet.data)) {
+        sheet.data.forEach((row, idx) => {
+          if (isMeaningfulRow(row)) {
+            rows.push({
+              ...row,
+              sheetId: sheet.id,
+              sheetName: sheet.name,
+              _sheetIndex: idx
+            });
+          }
+        });
+      }
+    });
+
+    return rows;
+  }, [allSheets, selectedSheets, currentRunningMonthName]);
 
   // Filter and map contract & physical orders - Arrived Orders entered in the Arrival Entry database
   const contractTxns = useMemo(() => {
@@ -556,7 +732,9 @@ export default function PaymentTracking() {
 
         return {
           id: matchingOrder?.id || (row.purchaseOrderNo ? String(row.purchaseOrderNo) : null) || (cleanedBill ? cleanedBill : `ARR-${index + 1001}`),
-          originalIndex: index,
+          originalIndex: row._sheetIndex !== undefined ? row._sheetIndex : index,
+          sheetId: row.sheetId,
+          sheetName: row.sheetName,
           isArrival: true,
           date: row.date || matchingOrder?.date || new Date().toISOString().split('T')[0],
           billNo: finalBill,
@@ -591,7 +769,9 @@ export default function PaymentTracking() {
   }, [placedOrders, arrivalRows, calculatePendingDays]);
 
   const overdueTxns = useMemo(() => {
-    return contractTxns.filter(txn => txn.status !== 'Cleared' && txn.daysOutstanding > 60);
+    return contractTxns
+      .filter(txn => txn.status !== 'Cleared' && txn.daysOutstanding > 60)
+      .sort((a, b) => b.daysOutstanding - a.daysOutstanding);
   }, [contractTxns]);
 
   // Aggregate Operational Multi-Metrics
@@ -649,14 +829,11 @@ export default function PaymentTracking() {
   const filteredTxns = useMemo(() => {
     const currentList = contractTxns;
     
-    const parseCustomDate = (obj: any): number => {
-      if (!obj) return 0;
-      const dateStr = obj.purchaseOrderSentAt || obj.createdAt || obj.date;
-      if (!dateStr) return 0;
-      if (typeof dateStr === 'number') return dateStr;
-      const parsed = Date.parse(dateStr);
-      if (!isNaN(parsed)) return parsed;
-      return 0;
+    const getTxnTimestamp = (obj: any): number => {
+      if (!obj) return -1;
+      const d = obj.date || obj.chqDt || obj.rawRow?.date || obj.rawOrder?.date;
+      const ts = dateToTimestamp(d);
+      return ts === Infinity ? -1 : ts;
     };
 
     const filtered = currentList.filter(txn => {
@@ -666,8 +843,10 @@ export default function PaymentTracking() {
         txn.buyer.toLowerCase().includes(query) ||
         txn.supplier.toLowerCase().includes(query) ||
         txn.id.toLowerCase().includes(query) ||
+        (txn.billNo && txn.billNo.toLowerCase().includes(query)) ||
         (txn.place && txn.place.toLowerCase().includes(query)) ||
         (txn.area && txn.area.toLowerCase().includes(query)) ||
+        (txn.sheetName && txn.sheetName.toLowerCase().includes(query)) ||
         (txn.originalBuyer && txn.originalBuyer.toLowerCase().includes(query));
 
       if (!matchText) return false;
@@ -690,8 +869,9 @@ export default function PaymentTracking() {
     });
 
     return [...filtered].sort((a: any, b: any) => {
-      const timeA = parseCustomDate(a);
-      const timeB = parseCustomDate(b);
+      const timeA = getTxnTimestamp(a);
+      const timeB = getTxnTimestamp(b);
+      // Newest payments first (descending), older later
       if (timeA !== timeB) return timeB - timeA;
       return String(b.id || '').localeCompare(String(a.id || ''));
     });
@@ -830,32 +1010,58 @@ export default function PaymentTracking() {
       const ccVal = parseFloat(paymentData.discountAmount) || 0;
 
       if (selectedTxn.isArrival) {
-        // 1. Direct Physical Shipment update in arrivalRows
+        // 1. Direct Physical Shipment update in allSheets
         const originalIndex = selectedTxn.originalIndex;
-        if (originalIndex !== undefined && originalIndex !== null && originalIndex >= 0) {
-          const updatedGrid = [...arrivalRows];
-          const currentAmt = parseFloat(updatedGrid[originalIndex].amount) || 0;
-          const currentLh = parseFloat(updatedGrid[originalIndex].lh) || 0;
-          const currentTds = parseFloat(updatedGrid[originalIndex].tds) || 0;
-          const currentDiffIn = parseFloat(updatedGrid[originalIndex].diffIn) || 0;
+        const targetSheetId = selectedTxn.sheetId;
 
-          updatedGrid[originalIndex] = {
-            ...updatedGrid[originalIndex],
-            noOfDayRec: 'Cleared',
-            chqAm: parseFloat(paymentData.amount) || selectedTxn.amount,
-            chqNo: paymentData.refNo || '',
-            chqDt: paymentData.date,
-            bank: paymentData.bank,
-            shortage: shortageVal,
-            cc: ccVal,
-            netAmt: (currentAmt - currentLh - ccVal - currentTds - shortageVal - currentDiffIn - (parseFloat(paymentData.amount) || selectedTxn.amount)).toFixed(2),
-            lastUpdated: Date.now()
-          };
-          updatedGrid[originalIndex].noOfDays = calculatePendingDays(updatedGrid[originalIndex]);
+        const updatedAllSheets = allSheets.map(sheet => {
+          if (!targetSheetId || sheet.id === targetSheetId) {
+            const updatedData = [...sheet.data];
+            const targetIdx = (originalIndex !== undefined && originalIndex >= 0 && originalIndex < updatedData.length)
+              ? originalIndex
+              : updatedData.findIndex(r => r && (
+                  (r.billNo && selectedTxn.billNo && String(r.billNo).trim().toLowerCase() === String(selectedTxn.billNo).trim().toLowerCase()) ||
+                  (r.purchaseOrderNo && String(r.purchaseOrderNo).trim() === String(selectedTxn.id).trim())
+                ));
 
-          setArrivalRows(updatedGrid);
-          localStorage.setItem('arrival_entry_data_v4', JSON.stringify(updatedGrid));
-          await syncCollection('arrival_entries', updatedGrid).catch(() => {});
+            if (targetIdx !== -1 && targetIdx < updatedData.length) {
+              const currentAmt = parseFloat(updatedData[targetIdx].amount) || 0;
+              const currentLh = parseFloat(updatedData[targetIdx].lh) || 0;
+              const currentTds = parseFloat(updatedData[targetIdx].tds) || 0;
+              const currentDiffIn = parseFloat(updatedData[targetIdx].diffIn) || 0;
+
+              const updatedRow = {
+                ...updatedData[targetIdx],
+                noOfDayRec: 'Cleared',
+                chqAm: parseFloat(paymentData.amount) || selectedTxn.amount,
+                chqNo: paymentData.refNo || '',
+                chqDt: paymentData.date,
+                bank: paymentData.bank,
+                shortage: shortageVal,
+                cc: ccVal,
+                netAmt: (currentAmt - currentLh - ccVal - currentTds - shortageVal - currentDiffIn - (parseFloat(paymentData.amount) || selectedTxn.amount)).toFixed(2),
+                lastUpdated: Date.now()
+              };
+              updatedRow.noOfDays = calculatePendingDays(updatedRow);
+              updatedData[targetIdx] = updatedRow;
+
+              const docId = updatedRow.id || `row-${targetIdx}`;
+              setCollectionDoc('arrival_entries', docId, updatedRow).catch(err => {
+                console.warn("Could not sync single arrival entry doc to Firestore:", err);
+              });
+
+              return { ...sheet, data: updatedData };
+            }
+          }
+          return sheet;
+        });
+
+        setAllSheets(updatedAllSheets);
+        localStorage.setItem('arrival_entry_sheets_v4', JSON.stringify(updatedAllSheets));
+
+        const currentSheetObj = updatedAllSheets.find(s => targetSheetId ? s.id === targetSheetId : true);
+        if (currentSheetObj) {
+          localStorage.setItem('arrival_entry_data_v4', JSON.stringify(currentSheetObj.data));
         }
 
         // 2. Also keep matching placed order in lockstep if it exists
@@ -868,7 +1074,7 @@ export default function PaymentTracking() {
         if (matchingPlaced) {
           const updatedPlaced = placedOrders.map((p: any) => {
             if (p.id === matchingPlaced.id) {
-              return {
+              const upd = {
                 ...p,
                 paymentStatus: 'Received',
                 paymentDetails: {
@@ -882,18 +1088,19 @@ export default function PaymentTracking() {
                   discountPercent: paymentData.discountPercent
                 }
               };
+              setCollectionDoc('placed_orders', String(p.id), upd).catch(() => {});
+              return upd;
             }
             return p;
           });
           setPlacedOrders(updatedPlaced);
           localStorage.setItem('placed_orders', JSON.stringify(updatedPlaced));
-          await syncCollection('placed_orders', updatedPlaced).catch(() => {});
         }
       } else {
         // 1. Placed order batch payout update
         const updatedPlaced = placedOrders.map((p: any) => {
           if (p.id === selectedTxn.id) {
-            return {
+            const upd = {
               ...p,
               paymentStatus: 'Received',
               paymentDetails: {
@@ -907,48 +1114,60 @@ export default function PaymentTracking() {
                 discountPercent: paymentData.discountPercent
               }
             };
+            setCollectionDoc('placed_orders', String(p.id), upd).catch(() => {});
+            return upd;
           }
           return p;
         });
 
         setPlacedOrders(updatedPlaced);
         localStorage.setItem('placed_orders', JSON.stringify(updatedPlaced));
-        await syncCollection('placed_orders', updatedPlaced).catch(() => {});
 
-        // 2. Also keep matching arrival entry row in lockstep if it exists
+        // 2. Also keep matching arrival entry row in lockstep across all sheets
         if (selectedTxn.matchingArrival) {
-          const matchingIndex = arrivalRows.findIndex(row => {
-            if (!row) return false;
-            if (row.purchaseOrderNo && String(row.purchaseOrderNo).trim() === String(selectedTxn.id).trim()) return true;
-            if (row.billNo && selectedTxn.billNo && String(row.billNo).trim().toLowerCase() === String(selectedTxn.billNo).trim().toLowerCase()) return true;
-            return false;
+          const targetSheetId = selectedTxn.matchingArrival.sheetId;
+          const updatedAllSheets = allSheets.map(sheet => {
+            if (!targetSheetId || sheet.id === targetSheetId) {
+              const updatedData = [...sheet.data];
+              const matchingIndex = updatedData.findIndex(row => {
+                if (!row) return false;
+                if (row.purchaseOrderNo && String(row.purchaseOrderNo).trim() === String(selectedTxn.id).trim()) return true;
+                if (row.billNo && selectedTxn.billNo && String(row.billNo).trim().toLowerCase() === String(selectedTxn.billNo).trim().toLowerCase()) return true;
+                return false;
+              });
+
+              if (matchingIndex !== -1) {
+                const currentAmt = parseFloat(updatedData[matchingIndex].amount) || 0;
+                const currentLh = parseFloat(updatedData[matchingIndex].lh) || 0;
+                const currentTds = parseFloat(updatedData[matchingIndex].tds) || 0;
+                const currentDiffIn = parseFloat(updatedData[matchingIndex].diffIn) || 0;
+
+                const updatedRow = {
+                  ...updatedData[matchingIndex],
+                  noOfDayRec: 'Cleared',
+                  chqAm: parseFloat(paymentData.amount) || selectedTxn.amount,
+                  chqNo: paymentData.refNo || '',
+                  chqDt: paymentData.date,
+                  bank: paymentData.bank,
+                  shortage: shortageVal,
+                  cc: ccVal,
+                  netAmt: (currentAmt - currentLh - ccVal - currentTds - shortageVal - currentDiffIn - (parseFloat(paymentData.amount) || selectedTxn.amount)).toFixed(2),
+                  lastUpdated: Date.now()
+                };
+                updatedRow.noOfDays = calculatePendingDays(updatedRow);
+                updatedData[matchingIndex] = updatedRow;
+
+                const docId = updatedRow.id || `row-${matchingIndex}`;
+                setCollectionDoc('arrival_entries', docId, updatedRow).catch(() => {});
+
+                return { ...sheet, data: updatedData };
+              }
+            }
+            return sheet;
           });
 
-          if (matchingIndex !== -1) {
-            const updatedGrid = [...arrivalRows];
-            const currentAmt = parseFloat(updatedGrid[matchingIndex].amount) || 0;
-            const currentLh = parseFloat(updatedGrid[matchingIndex].lh) || 0;
-            const currentTds = parseFloat(updatedGrid[matchingIndex].tds) || 0;
-            const currentDiffIn = parseFloat(updatedGrid[matchingIndex].diffIn) || 0;
-
-            updatedGrid[matchingIndex] = {
-              ...updatedGrid[matchingIndex],
-              noOfDayRec: 'Cleared',
-              chqAm: parseFloat(paymentData.amount) || selectedTxn.amount,
-              chqNo: paymentData.refNo || '',
-              chqDt: paymentData.date,
-              bank: paymentData.bank,
-              shortage: shortageVal,
-              cc: ccVal,
-              netAmt: (currentAmt - currentLh - ccVal - currentTds - shortageVal - currentDiffIn - (parseFloat(paymentData.amount) || selectedTxn.amount)).toFixed(2),
-              lastUpdated: Date.now()
-            };
-            updatedGrid[matchingIndex].noOfDays = calculatePendingDays(updatedGrid[matchingIndex]);
-
-            setArrivalRows(updatedGrid);
-            localStorage.setItem('arrival_entry_data_v4', JSON.stringify(updatedGrid));
-            await syncCollection('arrival_entries', updatedGrid).catch(() => {});
-          }
+          setAllSheets(updatedAllSheets);
+          localStorage.setItem('arrival_entry_sheets_v4', JSON.stringify(updatedAllSheets));
         }
       }
 
@@ -968,24 +1187,49 @@ export default function PaymentTracking() {
 
     try {
       if (txn.isArrival) {
-        // 1. Direct Physical Shipment payment reversal in arrivalRows
+        // 1. Direct Physical Shipment payment reversal in allSheets
         const originalIndex = txn.originalIndex;
-        if (originalIndex !== undefined && originalIndex !== null && originalIndex >= 0) {
-          const updatedGrid = [...arrivalRows];
-          updatedGrid[originalIndex] = {
-            ...updatedGrid[originalIndex],
-            noOfDayRec: 'Not Cleared',
-            chqAm: '',
-            chqNo: '',
-            chqDt: '',
-            bank: '',
-            lastUpdated: Date.now()
-          };
-          updatedGrid[originalIndex].noOfDays = calculatePendingDays(updatedGrid[originalIndex]);
+        const targetSheetId = txn.sheetId;
 
-          setArrivalRows(updatedGrid);
-          localStorage.setItem('arrival_entry_data_v4', JSON.stringify(updatedGrid));
-          await syncCollection('arrival_entries', updatedGrid).catch(() => {});
+        const updatedAllSheets = allSheets.map(sheet => {
+          if (!targetSheetId || sheet.id === targetSheetId) {
+            const updatedData = [...sheet.data];
+            const targetIdx = (originalIndex !== undefined && originalIndex >= 0 && originalIndex < updatedData.length)
+              ? originalIndex
+              : updatedData.findIndex(r => r && (
+                  (r.billNo && txn.billNo && String(r.billNo).trim().toLowerCase() === String(txn.billNo).trim().toLowerCase()) ||
+                  (r.purchaseOrderNo && String(r.purchaseOrderNo).trim() === String(txn.id).trim())
+                ));
+
+            if (targetIdx !== -1 && targetIdx < updatedData.length) {
+              const updatedRow = {
+                ...updatedData[targetIdx],
+                noOfDayRec: 'Not Cleared',
+                chqAm: '',
+                chqNo: '',
+                chqDt: '',
+                bank: '',
+                lastUpdated: Date.now()
+              };
+              updatedRow.noOfDays = calculatePendingDays(updatedRow);
+              updatedData[targetIdx] = updatedRow;
+
+              const docId = updatedRow.id || `row-${targetIdx}`;
+              setCollectionDoc('arrival_entries', docId, updatedRow).catch(err => {
+                console.warn("Could not sync single arrival entry doc reversal to Firestore:", err);
+              });
+
+              return { ...sheet, data: updatedData };
+            }
+          }
+          return sheet;
+        });
+
+        setAllSheets(updatedAllSheets);
+        localStorage.setItem('arrival_entry_sheets_v4', JSON.stringify(updatedAllSheets));
+        const currentSheetObj = updatedAllSheets.find(s => targetSheetId ? s.id === targetSheetId : true);
+        if (currentSheetObj) {
+          localStorage.setItem('arrival_entry_data_v4', JSON.stringify(currentSheetObj.data));
         }
 
         // 2. Also reverse matching placed order payment in lockstep if it exists
@@ -998,62 +1242,73 @@ export default function PaymentTracking() {
         if (matchingPlaced) {
           const updatedPlaced = placedOrders.map((p: any) => {
             if (p.id === matchingPlaced.id) {
-              return {
+              const upd = {
                 ...p,
                 paymentStatus: 'Awaiting Settlement',
                 paymentDetails: undefined
               };
+              setCollectionDoc('placed_orders', String(p.id), upd).catch(() => {});
+              return upd;
             }
             return p;
           });
           setPlacedOrders(updatedPlaced);
           localStorage.setItem('placed_orders', JSON.stringify(updatedPlaced));
-          await syncCollection('placed_orders', updatedPlaced).catch(() => {});
         }
       } else {
         // 1. Reverse Placed Order Payment
         const updatedPlaced = placedOrders.map((p: any) => {
           if (p.id === txn.id) {
-            return {
+            const upd = {
               ...p,
               paymentStatus: 'Awaiting Settlement',
               paymentDetails: undefined
             };
+            setCollectionDoc('placed_orders', String(p.id), upd).catch(() => {});
+            return upd;
           }
           return p;
         });
 
         setPlacedOrders(updatedPlaced);
         localStorage.setItem('placed_orders', JSON.stringify(updatedPlaced));
-        await syncCollection('placed_orders', updatedPlaced).catch(() => {});
 
-        // 2. Reverse Matching Arrival Entry
-        if (txn.matchingArrival) {
-          const matchingIndex = arrivalRows.findIndex(row => {
-            if (!row) return false;
-            if (row.purchaseOrderNo && String(row.purchaseOrderNo).trim() === String(txn.id).trim()) return true;
-            if (row.billNo && txn.billNo && String(row.billNo).trim().toLowerCase() === String(txn.billNo).trim().toLowerCase()) return true;
-            return false;
-          });
+        // 2. Reverse Matching Arrival Entry in allSheets
+        const targetSheetId = txn.matchingArrival?.sheetId;
+        const updatedAllSheets = allSheets.map(sheet => {
+          if (!targetSheetId || sheet.id === targetSheetId) {
+            const updatedData = [...sheet.data];
+            const matchingIndex = updatedData.findIndex(row => {
+              if (!row) return false;
+              if (row.purchaseOrderNo && String(row.purchaseOrderNo).trim() === String(txn.id).trim()) return true;
+              if (row.billNo && txn.billNo && String(row.billNo).trim().toLowerCase() === String(txn.billNo).trim().toLowerCase()) return true;
+              return false;
+            });
 
-          if (matchingIndex !== -1) {
-            const updatedGrid = [...arrivalRows];
-            updatedGrid[matchingIndex] = {
-              ...updatedGrid[matchingIndex],
-              noOfDayRec: 'Not Cleared',
-              chqAm: '',
-              chqNo: '',
-              chqDt: '',
-              bank: '',
-              lastUpdated: Date.now()
-            };
-            updatedGrid[matchingIndex].noOfDays = calculatePendingDays(updatedGrid[matchingIndex]);
+            if (matchingIndex !== -1) {
+              const updatedRow = {
+                ...updatedData[matchingIndex],
+                noOfDayRec: 'Not Cleared',
+                chqAm: '',
+                chqNo: '',
+                chqDt: '',
+                bank: '',
+                lastUpdated: Date.now()
+              };
+              updatedRow.noOfDays = calculatePendingDays(updatedRow);
+              updatedData[matchingIndex] = updatedRow;
 
-            setArrivalRows(updatedGrid);
-            localStorage.setItem('arrival_entry_data_v4', JSON.stringify(updatedGrid));
-            await syncCollection('arrival_entries', updatedGrid).catch(() => {});
+              const docId = updatedRow.id || `row-${matchingIndex}`;
+              setCollectionDoc('arrival_entries', docId, updatedRow).catch(() => {});
+
+              return { ...sheet, data: updatedData };
+            }
           }
-        }
+          return sheet;
+        });
+
+        setAllSheets(updatedAllSheets);
+        localStorage.setItem('arrival_entry_sheets_v4', JSON.stringify(updatedAllSheets));
       }
 
       window.dispatchEvent(new Event('storage'));
@@ -1063,7 +1318,7 @@ export default function PaymentTracking() {
       console.error("Error reversing payment status:", err);
       setCloudStatus('error');
     }
-  }, [arrivalRows, placedOrders, calculatePendingDays]);
+  }, [allSheets, placedOrders, calculatePendingDays]);
 
   const toggleRowSelected = useCallback((txn: any) => {
     setSelectedTxn((prev: any) => (prev?.id === txn.id ? null : txn));
@@ -1178,9 +1433,12 @@ export default function PaymentTracking() {
         <motion.div 
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-rose-50/50 dark:bg-rose-950/10 border border-rose-500/15 rounded-2xl p-4 shadow-sm overflow-hidden"
+          className="bg-rose-50/50 dark:bg-rose-950/10 border border-rose-500/20 rounded-2xl p-4 shadow-sm overflow-hidden transition-all"
         >
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3.5 pb-3 border-b border-rose-500/10">
+          <div className={cn(
+            "flex flex-col sm:flex-row sm:items-center justify-between gap-3",
+            !isOverdueMinimized && "mb-3.5 pb-3 border-b border-rose-500/10"
+          )}>
             <div className="flex items-center gap-2.5">
               <div className="p-1.5 bg-rose-500/15 text-rose-600 dark:text-rose-400 rounded-lg shrink-0 animate-pulse">
                 <AlertCircle className="w-4 h-4" />
@@ -1197,57 +1455,132 @@ export default function PaymentTracking() {
                 </p>
               </div>
             </div>
-            <div className="text-left sm:text-right">
-              <span className="text-[9px] text-rose-500 font-extrabold uppercase tracking-wider block">Total Overdue</span>
-              <span className="text-base font-black text-rose-700 dark:text-rose-400 font-mono">
-                ₹{formatINR(overdueTxns.reduce((sum, item) => sum + item.amount, 0))}
-              </span>
+
+            <div className="flex items-center gap-4 self-start sm:self-auto">
+              <div className="text-left sm:text-right">
+                <span className="text-[9px] text-rose-500 font-extrabold uppercase tracking-wider block">Total Overdue</span>
+                <span className="text-base font-black text-rose-700 dark:text-rose-400 font-mono">
+                  ₹{formatINR(overdueTxns.reduce((sum, item) => sum + item.amount, 0))}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={toggleOverdueMinimized}
+                className="flex items-center gap-1 px-2.5 py-1.5 bg-rose-100 hover:bg-rose-200 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 text-rose-800 dark:text-rose-300 border border-rose-300 dark:border-rose-800/60 rounded-xl text-[10px] font-black uppercase tracking-wider transition-colors cursor-pointer shrink-0"
+                title={isOverdueMinimized ? "Expand Overdue Payments" : "Minimize Overdue Section"}
+              >
+                {isOverdueMinimized ? (
+                  <>
+                    <ChevronDown className="w-3.5 h-3.5" />
+                    <span>Expand ({overdueTxns.length})</span>
+                  </>
+                ) : (
+                  <>
+                    <ChevronUp className="w-3.5 h-3.5" />
+                    <span>Minimize</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            {overdueTxns.map((txn, index) => (
-              <div 
-                key={`${txn.id || 'overdue'}-${index}`}
-                className="border border-rose-500/10 hover:border-rose-500/25 bg-white/40 dark:bg-neutral-900/40 rounded-xl p-3 flex flex-col justify-between shadow-sm relative group transition-all"
+          {/* Collapsible Multi-Payments High-Density Table View */}
+          <AnimatePresence>
+            {!isOverdueMinimized && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.2 }}
+                className="overflow-hidden"
               >
-                <div className="space-y-1.5 text-left">
-                  <div className="flex justify-between items-center gap-2">
-                    <span className="text-[9px] font-bold font-mono text-rose-600 bg-rose-50 dark:bg-rose-950/40 px-1.5 py-0.5 rounded">
-                      {txn.id}
-                    </span>
-                    <span className="text-[8px] font-black uppercase tracking-tight text-white bg-rose-600 px-1.5 py-0.5 rounded">
-                      {txn.daysOutstanding}d overdue
-                    </span>
-                  </div>
-
-                  <div>
-                    <h4 className="text-[11px] font-black text-neutral-800 dark:text-neutral-200 line-clamp-1 uppercase">
-                      {txn.buyer}
-                    </h4>
-                    <p className="text-[9px] text-neutral-500 dark:text-neutral-400 font-bold truncate">
-                      {txn.supplier}
-                    </p>
-                  </div>
+                <div className="overflow-x-auto max-h-80 overflow-y-auto rounded-xl border border-rose-500/20 bg-white/80 dark:bg-neutral-900/80 shadow-inner">
+                  <table className="w-full text-left border-collapse">
+                    <thead className="bg-rose-100/60 dark:bg-rose-950/40 text-[9px] font-black uppercase tracking-wider text-rose-900 dark:text-rose-300 sticky top-0 z-10 backdrop-blur-sm border-b border-rose-500/20">
+                      <tr>
+                        <th className="py-2 px-3">Bill / Ref</th>
+                        <th className="py-2 px-3">Party (Buyer)</th>
+                        <th className="py-2 px-3">Miller (Supplier)</th>
+                        <th className="py-2 px-3">Sheet</th>
+                        <th className="py-2 px-3">Arrival Date</th>
+                        <th className="py-2 px-3 text-center">Aging</th>
+                        <th className="py-2 px-3 text-right">Overdue Amt</th>
+                        <th className="py-2 px-3 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-rose-500/10 text-xs">
+                      {overdueTxns.map((txn, index) => {
+                        const formattedDate = formatDateDisplay(txn.date);
+                        return (
+                          <tr 
+                            key={`${txn.id || 'overdue'}-${index}`}
+                            className="hover:bg-rose-500/5 transition-colors group"
+                          >
+                            <td className="py-2 px-3 font-mono font-bold text-[11px] text-rose-700 dark:text-rose-400 whitespace-nowrap">
+                              {txn.billNo || txn.id}
+                            </td>
+                            <td className="py-2 px-3 font-bold text-neutral-800 dark:text-neutral-200">
+                              <div className="flex items-center gap-1.5">
+                                <span className="truncate max-w-[200px]">{txn.buyer}</span>
+                                {txn.isLifted && (
+                                  <span className="text-[8px] bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300 px-1 py-0.2 rounded font-black uppercase tracking-tight">
+                                    Lifted
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="py-2 px-3 text-neutral-500 dark:text-neutral-400 font-medium text-[11px] truncate max-w-[180px]">
+                              {txn.supplier}
+                            </td>
+                            <td className="py-2 px-3 text-[10px] font-bold uppercase tracking-tight text-neutral-400 dark:text-neutral-500 whitespace-nowrap">
+                              {txn.sheetName || 'Arrivals'}
+                            </td>
+                            <td className="py-2 px-3 text-[10px] font-mono text-neutral-500 dark:text-neutral-400 whitespace-nowrap">
+                              {formattedDate || txn.date}
+                            </td>
+                            <td className="py-2 px-3 text-center whitespace-nowrap">
+                              <span className="inline-block bg-rose-600 text-white font-mono text-[9px] font-black px-1.5 py-0.5 rounded-full">
+                                {txn.daysOutstanding}d overdue
+                              </span>
+                            </td>
+                            <td className="py-2 px-3 text-right font-mono font-black text-rose-700 dark:text-rose-400 whitespace-nowrap">
+                              ₹{formatINR(txn.amount)}
+                            </td>
+                            <td className="py-2 px-3 text-right whitespace-nowrap">
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenPaymentModal(txn)}
+                                  className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[9px] font-black uppercase tracking-wider transition-colors shadow-sm cursor-pointer"
+                                >
+                                  Collect
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const buyerProfile = resolveBuyerProfile(txn.buyer);
+                                    const formattedAmt = formatINR(txn.amount);
+                                    const formattedD = formatDateToDDMMYYYY(txn.date);
+                                    const text = `Hello *${txn.buyer}*,\n\nUrgent payment reminder from *Tejas Canvassing*.\n\nYour account has an overdue balance of *₹${formattedAmt}* (${txn.daysOutstanding} days aging) for Bill *${txn.billNo || 'N/A'}* arrived on ${formattedD}.\n\nPlease arrange settlement immediately.\n\nThank you,\n*Tejas Canvassing*`;
+                                    const waUrl = `https://api.whatsapp.com/send?phone=91${buyerProfile.phone}&text=${encodeURIComponent(text)}`;
+                                    window.open(waUrl, '_blank');
+                                  }}
+                                  className="p-1 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 rounded-lg transition-colors cursor-pointer"
+                                  title="WhatsApp Overdue Notice"
+                                >
+                                  <MessageSquare className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
-
-                <div className="flex justify-between items-center mt-2.5 pt-2 border-t border-neutral-100/60 dark:border-neutral-800/60">
-                  <div className="text-left">
-                    <span className="text-[7px] text-neutral-400 uppercase font-black block leading-none">Receivable</span>
-                    <span className="text-[11px] font-black text-neutral-950 dark:text-white font-mono">
-                      ₹{formatINR(txn.amount)}
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => handleOpenPaymentModal(txn)}
-                    className="px-2 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[9px] font-black uppercase tracking-wider transition-colors shadow-sm"
-                  >
-                    Collect
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </motion.div>
       ) : (
         <motion.div 
@@ -1364,31 +1697,206 @@ export default function PaymentTracking() {
         <div className="p-6 border-b border-neutral-100 dark:border-neutral-800 space-y-6">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
              
-             {/* Consolidated Title Indicator */}
-             <div className="flex items-center gap-2 bg-neutral-100 dark:bg-neutral-950 px-4 py-2.5 rounded-2xl border border-neutral-200/50 dark:border-neutral-800">
-               <CreditCard className="w-4 h-4 text-primary shrink-0" />
-               <span className="text-xs font-black uppercase tracking-widest text-neutral-800 dark:text-neutral-200">
-                 Arrived Orders Ledger ({contractTxns.length})
-               </span>
+             {/* Consolidated Title Indicator & Multi-Sheet Selector */}
+             <div className="flex items-center gap-2.5 flex-wrap">
+               <div className="flex items-center gap-2 bg-neutral-100 dark:bg-neutral-950 px-4 py-2.5 rounded-2xl border border-neutral-200/50 dark:border-neutral-800">
+                 <CreditCard className="w-4 h-4 text-primary shrink-0" />
+                 <span className="text-xs font-black uppercase tracking-widest text-neutral-800 dark:text-neutral-200">
+                   Arrived Orders Ledger ({contractTxns.length})
+                 </span>
+               </div>
+
+               {/* Multi-Sheet Selector Dropdown / Popover */}
+               <div className="relative" ref={sheetSelectorRef}>
+                 <button
+                   type="button"
+                   onClick={() => setIsSheetSelectorOpen(prev => !prev)}
+                   className={cn(
+                     "flex items-center gap-2 px-3.5 py-2.5 rounded-2xl border text-xs font-bold transition-all shadow-sm cursor-pointer select-none",
+                     isSheetSelectorOpen 
+                       ? "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500/50 text-emerald-800 dark:text-emerald-300 ring-2 ring-emerald-500/20" 
+                       : "bg-neutral-100 hover:bg-neutral-200/70 dark:bg-neutral-950 dark:hover:bg-neutral-900 border-neutral-200/80 dark:border-neutral-800 text-neutral-800 dark:text-neutral-200"
+                   )}
+                   title="Click to select one or multiple sheets to track payments (persists across reloads)"
+                 >
+                   <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                   <span className="text-[10px] font-black uppercase tracking-wider text-neutral-500 dark:text-neutral-400 shrink-0">
+                     Sheets:
+                   </span>
+                   <span className="truncate max-w-[210px] font-extrabold text-neutral-900 dark:text-white">
+                     {selectedSheetsLabel}
+                   </span>
+                   <ChevronDown className={cn("w-3.5 h-3.5 text-neutral-500 transition-transform duration-150 shrink-0", isSheetSelectorOpen && "rotate-180")} />
+                 </button>
+
+                 <AnimatePresence>
+                   {isSheetSelectorOpen && (
+                     <motion.div
+                       initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                       animate={{ opacity: 1, y: 0, scale: 1 }}
+                       exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                       transition={{ duration: 0.15 }}
+                       className="absolute left-0 top-full mt-2 w-72 sm:w-80 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-2xl z-50 overflow-hidden"
+                     >
+                       <div className="p-3 bg-neutral-50 dark:bg-neutral-950/80 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
+                         <span className="text-[11px] font-black uppercase tracking-wider text-neutral-800 dark:text-neutral-200">
+                           Select Sheets to Track
+                         </span>
+                         <span className="text-[9px] font-bold text-neutral-500 dark:text-neutral-400 bg-neutral-200/70 dark:bg-neutral-800 px-2 py-0.5 rounded-full">
+                           Multi-Sheet
+                         </span>
+                       </div>
+
+                       {/* Quick action buttons */}
+                       <div className="p-2 border-b border-neutral-100 dark:border-neutral-800 flex items-center gap-1.5 bg-neutral-50/40 dark:bg-neutral-950/40">
+                         <button
+                           type="button"
+                           onClick={handleSelectRunningMonthOnly}
+                           className={cn(
+                             "flex-1 py-1.5 px-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-colors cursor-pointer",
+                             selectedSheets.length === 1 && selectedSheets[0] === 'running-month'
+                               ? "bg-emerald-600 text-white shadow-sm"
+                               : "bg-white dark:bg-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 border border-neutral-200/60 dark:border-neutral-700"
+                           )}
+                         >
+                           Running Month
+                         </button>
+                         <button
+                           type="button"
+                           onClick={handleSelectAllSheets}
+                           className={cn(
+                             "flex-1 py-1.5 px-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-colors cursor-pointer",
+                             selectedSheets.includes('all')
+                               ? "bg-emerald-600 text-white shadow-sm"
+                               : "bg-white dark:bg-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 border border-neutral-200/60 dark:border-neutral-700"
+                           )}
+                         >
+                           All Sheets
+                         </button>
+                       </div>
+
+                       {/* Sheet checkboxes list */}
+                       <div className="max-h-60 overflow-y-auto p-2 space-y-1">
+                         {/* Running month option */}
+                         {(() => {
+                           const isChecked = selectedSheets.includes('all') || selectedSheets.includes('running-month');
+                           return (
+                             <div
+                               onClick={() => handleToggleSheet('running-month')}
+                               className={cn(
+                                 "flex items-center justify-between p-2 rounded-xl text-xs font-semibold cursor-pointer transition-colors select-none",
+                                 isChecked
+                                   ? "bg-emerald-50/80 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200"
+                                   : "hover:bg-neutral-100 dark:hover:bg-neutral-800/60 text-neutral-700 dark:text-neutral-300"
+                               )}
+                             >
+                               <div className="flex items-center gap-2.5">
+                                 <div className={cn(
+                                   "w-4 h-4 rounded-md border flex items-center justify-center transition-colors shrink-0",
+                                   isChecked
+                                     ? "bg-emerald-600 border-emerald-600 text-white"
+                                     : "border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800"
+                                 )}>
+                                   {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
+                                 </div>
+                                 <span className="font-extrabold truncate max-w-[170px]">
+                                   Current Month ({currentRunningMonthName})
+                                 </span>
+                               </div>
+                               <span className="text-[9px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950 px-1.5 py-0.5 rounded">
+                                 Default
+                               </span>
+                             </div>
+                           );
+                         })()}
+
+                         {/* Individual Month Sheets */}
+                         {allSheets.map(sheet => {
+                           const isRunning = sheet.name.trim().toLowerCase() === currentRunningMonthName.toLowerCase();
+                           if (isRunning) return null; // Listed as current month option
+
+                           const isChecked = selectedSheets.includes('all') || selectedSheets.includes(sheet.id);
+                           const rowCount = Array.isArray(sheet.data) ? sheet.data.filter(isMeaningfulRow).length : 0;
+
+                           return (
+                             <div
+                               key={sheet.id}
+                               onClick={() => handleToggleSheet(sheet.id)}
+                               className={cn(
+                                 "flex items-center justify-between p-2 rounded-xl text-xs font-semibold cursor-pointer transition-colors select-none",
+                                 isChecked
+                                   ? "bg-emerald-50/80 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200"
+                                   : "hover:bg-neutral-100 dark:hover:bg-neutral-800/60 text-neutral-700 dark:text-neutral-300"
+                               )}
+                             >
+                               <div className="flex items-center gap-2.5">
+                                 <div className={cn(
+                                   "w-4 h-4 rounded-md border flex items-center justify-center transition-colors shrink-0",
+                                   isChecked
+                                     ? "bg-emerald-600 border-emerald-600 text-white"
+                                     : "border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800"
+                                 )}>
+                                   {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
+                                 </div>
+                                 <span className="font-bold truncate max-w-[170px]">
+                                   {sheet.name}
+                                 </span>
+                               </div>
+                               <span className="text-[10px] font-mono font-semibold text-neutral-400 dark:text-neutral-500 shrink-0">
+                                 {rowCount} records
+                               </span>
+                             </div>
+                           );
+                         })}
+                       </div>
+
+                       {/* Done Footer */}
+                       <div className="p-2 border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50/60 dark:bg-neutral-950/60 flex items-center justify-between">
+                         <span className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400 pl-1">
+                           Auto-saved to preferences
+                         </span>
+                         <button
+                           type="button"
+                           onClick={() => setIsSheetSelectorOpen(false)}
+                           className="px-3.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition-colors cursor-pointer"
+                         >
+                           Done
+                         </button>
+                       </div>
+                     </motion.div>
+                   )}
+                 </AnimatePresence>
+               </div>
              </div>
 
              {/* Search and Quick Filters */}
              <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
                 
-                {/* Robust Search Box */}
-                <div className="relative flex-1 lg:flex-none lg:w-64">
-                   <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400 dark:text-neutral-500" />
+                {/* Prominent High-Visibility Search Box */}
+                <div className="relative flex-1 sm:flex-none sm:w-80 lg:w-96 group">
+                   <div className="absolute left-2.5 top-1/2 -translate-y-1/2 p-1.5 rounded-xl bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary transition-colors shadow-sm pointer-events-none group-focus-within:bg-primary group-focus-within:text-white">
+                     <Search className="w-4 h-4" />
+                   </div>
                    <input 
                      type="text" 
-                     placeholder="Quick search pipeline..." 
+                     placeholder="Search Party, Miller, Bill No, Area, Sheet..." 
                      value={searchQuery}
                      onChange={(e) => setSearchQuery(e.target.value)}
-                     className="w-full bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-xl py-2 pl-10 pr-8 text-xs font-bold outline-none focus:ring-2 focus:ring-primary/20 transition-all text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400" 
+                     className="w-full bg-white dark:bg-neutral-950 border-2 border-primary/35 hover:border-primary/60 focus:border-primary dark:border-primary/40 dark:hover:border-primary/70 dark:focus:border-primary rounded-2xl py-2.5 pl-11 pr-10 text-xs sm:text-sm font-bold text-neutral-900 dark:text-white placeholder:text-neutral-400 dark:placeholder:text-neutral-500 outline-none shadow-sm shadow-primary/5 focus:ring-4 focus:ring-primary/15 transition-all" 
                    />
-                   {searchQuery && (
-                     <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-100">
+                   {searchQuery ? (
+                     <button 
+                       type="button"
+                       onClick={() => setSearchQuery('')} 
+                       className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-neutral-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer"
+                       title="Clear search"
+                     >
                        <X className="w-3.5 h-3.5" />
                      </button>
+                   ) : (
+                     <span className="hidden sm:inline-flex absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-mono font-bold text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-neutral-800 px-1.5 py-0.5 rounded border border-neutral-200/80 dark:border-neutral-700/80 pointer-events-none">
+                       /
+                     </span>
                    )}
                 </div>
 

@@ -538,12 +538,6 @@ export default function ArrivalEntry() {
 
         emptiedRows.forEach(r => {
           deletedDocIdsRef.current.add(String(r.id));
-          if (r.billNo) {
-            const cleanBill = String(r.billNo).trim().replace(/[^a-zA-Z0-9_-]/g, '');
-            if (cleanBill) {
-              deletedDocIdsRef.current.add(`row-${currentSheetId}-${cleanBill}`);
-            }
-          }
         });
 
         const batch = writeBatch(db);
@@ -560,13 +554,12 @@ export default function ArrivalEntry() {
           deletedDocIdsRef.current.clear();
         }
 
-        // 2. Save meaningful rows
+        // 2. Save meaningful rows - preserve exact unique row.id to prevent collision
         if (meaningfulRows.length > 0) {
-          meaningfulRows.forEach(row => {
+          meaningfulRows.forEach((row, idx) => {
+            const existingId = row.id && !String(row.id).startsWith('row-empty-') ? String(row.id).replace(/^#/, '') : null;
             const cleanBill = row.billNo ? String(row.billNo).trim().replace(/[^a-zA-Z0-9_-]/g, '') : '';
-            const docId = cleanBill
-              ? `row-${currentSheetId}-${cleanBill}`
-              : (row.id ? String(row.id).replace(/^#/, '') : `row-${currentSheetId}-${Date.now()}`);
+            const docId = existingId || (cleanBill ? `row-${currentSheetId}-${cleanBill}-${idx + 1}` : `row-${currentSheetId}-${idx + 1}-${Date.now()}`);
             const docRef = doc(db, 'arrival_entries', docId);
             batch.set(docRef, { ...row, id: docId, sheetId: currentSheetId, sheetName: currentSheet.name, lastUpdated: Date.now() }, { merge: true });
             hasOps = true;
@@ -1384,12 +1377,6 @@ export default function ArrivalEntry() {
             dirtyRowIds.current.add(recalculated.id);
             if (!isMeaningfulRow(recalculated) && !String(recalculated.id).startsWith('row-empty-')) {
               deletedDocIdsRef.current.add(String(recalculated.id));
-              if (targetRow.billNo) {
-                const cleanBill = String(targetRow.billNo).trim().replace(/[^a-zA-Z0-9_-]/g, '');
-                if (cleanBill) {
-                  deletedDocIdsRef.current.add(`row-${currentSheetId}-${cleanBill}`);
-                }
-              }
             }
           }
         }
@@ -1413,12 +1400,6 @@ export default function ArrivalEntry() {
 
     if (targetRow.id && !String(targetRow.id).startsWith('row-empty-')) {
       deletedDocIdsRef.current.add(String(targetRow.id));
-      if (targetRow.billNo) {
-        const cleanBill = String(targetRow.billNo).trim().replace(/[^a-zA-Z0-9_-]/g, '');
-        if (cleanBill) {
-          deletedDocIdsRef.current.add(`row-${currentSheetId}-${cleanBill}`);
-        }
-      }
     }
 
     const defaultDate = getDefaultDateForSheet(currentSheet.name);
@@ -3164,40 +3145,77 @@ export default function ArrivalEntry() {
         onClose={() => setIsImportModalOpen(false)}
         currentSheetId={currentSheetId}
         currentSheetName={currentSheet.name}
-        onImportComplete={(importedRows, mode) => {
+        onImportComplete={(importedRows, mode, targetSheetNameParam) => {
           // Stable sort imported rows oldest to newest by Arrival Date
           const sortedImported = sortArrivalRowsOldestToNewest(importedRows).map(normalizeRowDaysAndStatus);
 
-          // Find the target sheet name corresponding to the imported dates
-          const firstDate = sortedImported[0]?.date;
-          const targetSheetName = firstDate ? getMonthYearFromDate(firstDate) : null;
+          // Determine target sheet:
+          // 1. If targetSheetNameParam was explicitly provided from the Excel tab/sheet, prefer it.
+          // 2. Otherwise use the active currentSheet.
+          let resolvedTargetName = targetSheetNameParam || currentSheet.name;
           let targetSheetIdToActivate = currentSheetId;
 
-          if (targetSheetName) {
-            const existingSheet = sheets.find(s => s.name.toLowerCase() === targetSheetName.toLowerCase());
-            targetSheetIdToActivate = existingSheet
-              ? existingSheet.id
-              : `sheet-${targetSheetName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+          // Check if a sheet with this name already exists
+          const existingSheet = sheets.find(s => s.name.toLowerCase() === resolvedTargetName.toLowerCase() || s.id === currentSheetId);
+          if (existingSheet) {
+            resolvedTargetName = existingSheet.name;
+            targetSheetIdToActivate = existingSheet.id;
+          } else {
+            targetSheetIdToActivate = `sheet-${resolvedTargetName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
           }
 
-          // Update sheets and reorganize by month/year so rows are placed into correct sheets
+          // Ensure every imported row is assigned to the target sheet
+          const preparedImported = sortedImported.map((row, rIdx) => ({
+            ...row,
+            sheetId: targetSheetIdToActivate,
+            sheetName: resolvedTargetName,
+            id: row.id || `row-${targetSheetIdToActivate}-${rIdx + 1}`
+          }));
+
+          // Update sheets directly and preserve all rows without scattering or dropping!
           setSheets(prevSheets => {
-            const currentNonEmpty = (prevSheets.find(s => s.id === currentSheetId)?.data || []).filter(r => isMeaningfulRow(r));
+            const targetSheet = prevSheets.find(s => s.id === targetSheetIdToActivate || s.name.toLowerCase() === resolvedTargetName.toLowerCase());
+            const currentNonEmpty = (targetSheet?.data || []).filter(r => isMeaningfulRow(r));
             const baseCurrent = mode === 'overwrite' ? [] : currentNonEmpty;
 
-            const otherSheetsRows = prevSheets
-              .filter(s => s.id !== currentSheetId)
-              .flatMap(s => (s.data || []).filter(r => isMeaningfulRow(r)));
-
-            const combinedRows = [...otherSheetsRows, ...baseCurrent, ...sortedImported];
-            const organized = organizeArrivalSheetsByMonth(prevSheets, combinedRows, INITIAL_ROWS);
-            localStorage.setItem('arrival_entry_sheets_v4', JSON.stringify(organized.sheets));
-
-            const activeSheet = organized.sheets.find(s => s.id === targetSheetIdToActivate) || organized.sheets[0];
-            if (activeSheet) {
-              localStorage.setItem('arrival_entry_data_v4', JSON.stringify(activeSheet.data));
+            const finalMeaningful = [...baseCurrent, ...preparedImported];
+            const emptyPaddingCount = Math.max(0, INITIAL_ROWS - finalMeaningful.length);
+            const finalData = [...finalMeaningful];
+            const defaultDate = getDefaultDateForSheetName(resolvedTargetName);
+            for (let i = 0; i < emptyPaddingCount; i++) {
+              finalData.push({
+                id: `row-empty-${Date.now()}-${finalData.length}-${Math.random().toString(36).substring(2, 6)}`,
+                date: defaultDate,
+                sheetId: targetSheetIdToActivate,
+                sheetName: resolvedTargetName
+              });
             }
-            return organized.sheets;
+
+            let found = false;
+            const nextSheets = prevSheets.map(s => {
+              if (s.id === targetSheetIdToActivate || s.name.toLowerCase() === resolvedTargetName.toLowerCase()) {
+                found = true;
+                return {
+                  ...s,
+                  id: targetSheetIdToActivate,
+                  name: resolvedTargetName,
+                  data: finalData
+                };
+              }
+              return s;
+            });
+
+            if (!found) {
+              nextSheets.push({
+                id: targetSheetIdToActivate,
+                name: resolvedTargetName,
+                data: finalData
+              });
+            }
+
+            localStorage.setItem('arrival_entry_sheets_v4', JSON.stringify(nextSheets));
+            localStorage.setItem('arrival_entry_data_v4', JSON.stringify(finalData));
+            return nextSheets;
           });
 
           // Switch active sheet to the one containing the imported rows

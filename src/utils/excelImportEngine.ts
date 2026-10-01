@@ -741,28 +741,33 @@ export async function executeChunkedBatchImport(
       }
     }
 
-    // Check if row has meaningful data
-    const isMeaningful = !!(
+    // Check if row has meaningful data - keep any row that has any mapped value or ledger data
+    const hasAnyMappedData = activeMappings.some(col => {
+      const v = entry[col.mappedFieldId!];
+      return v !== undefined && v !== null && String(v).trim() !== '';
+    });
+    const isMeaningful = hasAnyMappedData || !!(
       entry.partyName ||
       entry.millerName ||
       entry.billNo ||
       entry.qty ||
+      entry.rate ||
       entry.amount ||
-      entry.netAmt
+      entry.netAmt ||
+      entry.area ||
+      entry.place ||
+      entry.brand ||
+      entry.purchaseOrderNo
     );
 
     if (isMeaningful) {
-      // Deterministic Idempotent Document ID with duplicate protection
+      // Deterministic, completely collision-free Document ID with row index guarantee
       const cleanBill = entry.billNo ? String(entry.billNo).trim().replace(/[^a-zA-Z0-9_-]/g, '') : '';
-      const baseDocId = cleanBill
-        ? `row-${sheetId}-${cleanBill}`
-        : `row-${sheetId}-${rIdx}-${Date.now().toString(36)}`;
+      const docId = cleanBill
+        ? `row-${sheetId}-${cleanBill}-${rIdx + 1}`
+        : `row-${sheetId}-idx-${rIdx + 1}-${Date.now().toString(36)}`;
       
-      const docId = seenDocIds.has(baseDocId)
-        ? `${baseDocId}-sub-${rIdx}`
-        : baseDocId;
       seenDocIds.add(docId);
-
       entry.id = docId;
       structuredEntries.push(entry);
     }

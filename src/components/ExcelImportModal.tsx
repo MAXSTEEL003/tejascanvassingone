@@ -31,7 +31,7 @@ interface ExcelImportModalProps {
   onClose: () => void;
   currentSheetId: string;
   currentSheetName: string;
-  onImportComplete: (importedRows: any[], mode: 'overwrite' | 'append') => void;
+  onImportComplete: (importedRows: any[], mode: 'overwrite' | 'append', targetSheetName?: string) => void;
 }
 
 export default function ExcelImportModal({
@@ -106,14 +106,47 @@ export default function ExcelImportModal({
       return;
     }
 
-    // Find header row (first non-empty row)
-    let headerIdx = 0;
-    while (headerIdx < rawData.length && rawData[headerIdx].every(v => v === '' || v === undefined)) {
-      headerIdx++;
+    // Robust Header detection: inspect first 15 rows to find the row with the most ledger header keywords
+    const headerRegex = /^(date|dt|party|buyer|shop|cust|miller|suppl|mill|bill|inv|qty|qtl|bags|weight|rate|price|amt|amount|net|area|place|brand|status|days|rec|bank|chq|po|order|lh|cc|tds|commission|broker|truck)/i;
+    
+    let bestHeaderIdx = 0;
+    let maxKeywordMatches = 0;
+    const scanLimit = Math.min(15, rawData.length);
+
+    for (let r = 0; r < scanLimit; r++) {
+      const row = rawData[r] || [];
+      let matches = 0;
+      row.forEach(cell => {
+        const text = String(cell || '').trim();
+        if (text && headerRegex.test(text)) {
+          matches++;
+        }
+      });
+      if (matches > maxKeywordMatches) {
+        maxKeywordMatches = matches;
+        bestHeaderIdx = r;
+      }
+    }
+
+    // Fall back to first row with at least 2 non-empty cells if no strong keyword matches found
+    let headerIdx = bestHeaderIdx;
+    if (maxKeywordMatches < 2) {
+      let firstRowWithData = 0;
+      while (firstRowWithData < rawData.length) {
+        const nonEmptyCount = (rawData[firstRowWithData] || []).filter(v => v !== '' && v !== undefined && String(v).trim() !== '').length;
+        if (nonEmptyCount >= 2) {
+          headerIdx = firstRowWithData;
+          break;
+        }
+        firstRowWithData++;
+      }
     }
 
     const headers = (rawData[headerIdx] || []).map(v => String(v || '').trim());
-    const dataRows = rawData.slice(headerIdx + 1).filter(r => r.some(v => v !== '' && v !== undefined));
+    // Data rows are all rows after headerIdx that contain at least one non-empty cell
+    const dataRows = rawData.slice(headerIdx + 1).filter(r => 
+      Array.isArray(r) && r.some(v => v !== '' && v !== undefined && String(v).trim() !== '')
+    );
 
     setRawHeaders(headers);
     setRawMatrix(dataRows);
@@ -188,16 +221,17 @@ export default function ExcelImportModal({
     });
 
     try {
+      const targetName = selectedSheet || currentSheetName;
       const result = await executeChunkedBatchImport(
         currentSheetId,
-        currentSheetName,
+        targetName,
         rawMatrix,
         detectedColumns,
         (p) => setProgress(p)
       );
 
       // Pass the fully normalized, payment-derived, and oldest-to-newest sorted records directly to onImportComplete
-      onImportComplete(result.structuredEntries, importMode);
+      onImportComplete(result.structuredEntries, importMode, targetName);
       setStep('completed');
     } catch (err: any) {
       setProgress(prev => ({
@@ -278,21 +312,35 @@ export default function ExcelImportModal({
                 <Layers className="w-4 h-4 text-primary" /> Select Sheet to Import
               </h3>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                {sheetNames.map(name => (
-                  <button
-                    key={name}
-                    type="button"
-                    onClick={() => {
-                      if (workbook) processSheet(workbook, name);
-                    }}
-                    className="p-4 rounded-xl border border-outline-variant hover:border-primary bg-surface-container hover:bg-primary/5 text-left transition-all group"
-                  >
-                    <span className="text-xs font-black text-on-surface group-hover:text-primary block truncate">
-                      {name}
-                    </span>
-                    <span className="text-[10px] text-secondary font-medium">Click to import this sheet</span>
-                  </button>
-                ))}
+                {sheetNames.map(name => {
+                  let rowEstimate = 0;
+                  try {
+                    const ws = workbook?.Sheets[name];
+                    if (ws) {
+                      const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as any[][];
+                      rowEstimate = raw.filter(r => Array.isArray(r) && r.some(v => v !== '' && v !== undefined && String(v).trim() !== '')).length;
+                      if (rowEstimate > 0) rowEstimate = Math.max(1, rowEstimate - 1); // exclude header
+                    }
+                  } catch {}
+
+                  return (
+                    <button
+                      key={name}
+                      type="button"
+                      onClick={() => {
+                        if (workbook) processSheet(workbook, name);
+                      }}
+                      className="p-4 rounded-xl border border-outline-variant hover:border-primary bg-surface-container hover:bg-primary/5 text-left transition-all group"
+                    >
+                      <span className="text-xs font-black text-on-surface group-hover:text-primary block truncate">
+                        {name}
+                      </span>
+                      <span className="text-[10px] text-secondary font-medium block mt-1">
+                        {rowEstimate > 0 ? `~${rowEstimate} data rows • Click to import` : 'Click to import this sheet'}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -448,7 +496,7 @@ export default function ExcelImportModal({
                       onChange={() => setImportMode('append')}
                       className="text-primary focus:ring-primary"
                     />
-                    Append to current sheet ({currentSheetName})
+                    Append to sheet ({selectedSheet || currentSheetName})
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-on-surface">
                     <input
@@ -459,7 +507,7 @@ export default function ExcelImportModal({
                       onChange={() => setImportMode('overwrite')}
                       className="text-primary focus:ring-primary"
                     />
-                    Overwrite current sheet
+                    Overwrite sheet ({selectedSheet || currentSheetName})
                   </label>
                 </div>
               </div>

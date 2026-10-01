@@ -915,9 +915,10 @@ export async function autoCreateArrivalEntryForIncomingLog(
     // 5. Dual-write only the newly injected items to Cloud Firestore asynchronously
     const targetSheetId = sheets[mainSheetIndex]?.id || 'sheet-1';
     const targetSheetName = sheets[mainSheetIndex]?.name || 'All Arrivals (Main)';
-    const cloudFormatted = newItemsToInject.map((row) => {
+    const cloudFormatted = newItemsToInject.map((row, idx) => {
+      const existingId = row.id && !String(row.id).startsWith('row-empty-') ? String(row.id).replace(/^#/, '') : null;
       const cleanBill = row.billNo ? String(row.billNo).trim().replace(/[^a-zA-Z0-9_-]/g, '') : '';
-      const docId = cleanBill ? `row-${targetSheetId}-${cleanBill}` : (row.id ? String(row.id).replace(/^#/, '') : `row-${targetSheetId}-${Date.now()}`);
+      const docId = existingId || (cleanBill ? `row-${targetSheetId}-${cleanBill}-${idx + 1}` : `row-${targetSheetId}-${idx + 1}-${Date.now()}`);
       return {
         ...row,
         id: docId,
