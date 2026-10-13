@@ -285,7 +285,7 @@ export default function AboutView() {
   const currentTesti = testimonials[testiIndex];
 
   return (
-    <div className="font-sans text-stone-800 min-h-screen flex flex-col selection:bg-amber-400 selection:text-emerald-950 pb-[env(safe-area-inset-bottom,0px)]" style={{ background: "var(--warm-bg)", fontFamily: "var(--font-sans)" }}>
+    <div className="about-luxury-page font-sans text-stone-800 min-h-screen flex flex-col selection:bg-amber-400 selection:text-emerald-950 pb-[env(safe-area-inset-bottom,0px)]" style={{ background: "var(--warm-bg)", fontFamily: "var(--font-sans)" }}>
       <PwaInstallModal isOpen={isPwaModalOpen} onClose={() => setIsPwaModalOpen(false)} />
 
       {/* ── Floating Navigation ── */}

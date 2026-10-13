@@ -28,7 +28,7 @@ export function AdminRoute() {
   }
 
   if (role === 'employee') {
-    return <Navigate to="/inventory" replace />;
+    return <Navigate to="/employee/dashboard" replace />;
   }
 
   if (role === 'merchant') {
@@ -97,7 +97,7 @@ export function MerchantRoute({ allowPublic = false }: { allowPublic?: boolean }
 
   // Staff cannot accidentally enter merchant application state
   if (role === 'employee') {
-    return <Navigate to="/inventory" replace />;
+    return <Navigate to="/employee/dashboard" replace />;
   }
 
   if (role === 'merchant' || allowPublic) {

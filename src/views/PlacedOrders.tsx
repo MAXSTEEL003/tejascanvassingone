@@ -207,6 +207,40 @@ const getMerchantStatus = (status: string) => {
   };
 };
 
+// Resolves actual high quality rice bag image for orders preview
+export const getOrderBagImage = (order: any): string => {
+  if (!order) return '/images/keshar_kali.png';
+  if (order.image && typeof order.image === 'string' && order.image.trim().length > 0) {
+    return order.image;
+  }
+  const text = `${order.items || ''} ${order.product || ''} ${order.variety || ''} ${order.category || ''}`.toLowerCase();
+  if (text.includes('keshar kali') || text.includes('kali')) {
+    return '/images/keshar_kali.png';
+  }
+  if (text.includes('madhuram') || text.includes('keshar')) {
+    return '/images/keshar_madhuram.png';
+  }
+  if (text.includes('simha') || text.includes('lion') || text.includes('sona')) {
+    return '/images/simha.png';
+  }
+  if (text.includes('bell') || text.includes('bellric')) {
+    return '/images/bellric.png';
+  }
+  if (text.includes('cow') || text.includes('kamadhenu')) {
+    return '/images/cow.jpg';
+  }
+  if (text.includes('jmr')) {
+    return '/images/jmr.jpg';
+  }
+  if (text.includes('jasmine')) {
+    return 'https://lh3.googleusercontent.com/aida-public/AB6AXuB-zw5USNmhSWJ7W6KYNTxtxlvbucTGBqM91aYmN9ZxAlgvZIBCtLu_HO1Y6j9huJHOUICTW230tfwmeYNZI89Quj-o1n6dnY7tVzThXMjnw50G_5ZUVyBb9v-fkOlF3OOsh5q8N6x1ZNmKG64sKYprqc-gQ5WdOd8ZKy7r_r44wx2qzB0srt6O205GYTyY5is626j2iSoylgKkn9ktJSrD1UhQuuITJU9Ka26Vej9j0oHRlpcaqL73YbujaFhOQ7Ly71Qt9ofGdr';
+  }
+  if (text.includes('basmati') || text.includes('1121') || text.includes('sella')) {
+    return 'https://lh3.googleusercontent.com/aida-public/AB6AXuBm-XMaGdzxCjePQf6HZQOYwr69Zxd_uImfU8ASz83aco_TNkafvvB-t0733UI0fDTWC3wi9pQSVnG9w3qwPRkWNJtZFfCchbPI9xjyqSb9veIK4ypfBYDZwvKvlc9BKauhSKHl5r33cNwMa_vB5-KtU-2NWfwjBT2BBro7NA2hMwxtu9OaCg4Od4Gp0_NkBdnV_kOLR5mkQnZZdf9IJ8vI_GZT2CJ0DED3KfwlWc2HJooTd6KuSiu0vEWJXK80aG9OVARp4OxxFi52';
+  }
+  return '/images/keshar_kali.png';
+};
+
 function MerchantOrdersView({ 
   orders, 
   isLoading, 
@@ -216,498 +250,402 @@ function MerchantOrdersView({
   isLoading: boolean, 
   onRefresh: () => void,
 }) {
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'PROCESSING' | 'TRANSIT' | 'ARRIVED'>('ALL');
+  const [trackingOrder, setTrackingOrder] = useState<any | null>(null);
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'PENDING' | 'CONFIRMED' | 'DISPATCHED' | 'DELIVERED'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const navigate = useNavigate();
-  const isMerchant = (localStorage.getItem('userRole') || 'admin') === 'merchant';
-
-  // Metric Aggregations
-  const totalQtls = orders.reduce((sum, order) => {
-    const qty = order.originalOrders 
-      ? order.originalOrders.reduce((subSum: number, sub: any) => subSum + (parseFloat(sub.qty) || 0), 0)
-      : (parseFloat(order.qty) || 50);
-    return sum + qty;
-  }, 0);
-
-  const inTransitCount = orders.filter(o => {
-    const s = String(o.status || '').toLowerCase();
-    const p = o.progress || 0;
-    return s === 'in transit' || (p >= 50 && p < 100);
-  }).length;
-
-  const arrivedCount = orders.filter(o => {
-    const s = String(o.status || '').toLowerCase();
-    const p = o.progress || 0;
-    return s === 'arrived' || s === 'delivered' || p >= 100;
-  }).length;
-
-  const processingCount = Math.max(0, orders.length - inTransitCount - arrivedCount);
 
   // Filtered orders list
   const filteredOrders = orders.filter(order => {
     const s = String(order.status || '').toLowerCase();
     const p = order.progress || 0;
-    const isArrived = s === 'arrived' || s === 'delivered' || p >= 100;
-    const isTransit = s === 'in transit' || (p >= 50 && p < 100);
-    const isProcessing = !isArrived && !isTransit;
+    const isDelivered = s === 'arrived' || s === 'delivered' || p >= 100;
+    const isDispatched = s === 'in transit' || s === 'dispatched' || (p >= 50 && p < 100);
+    const isConfirmed = s === 'confirmed' || s === 'accepted';
+    const isPending = !isDelivered && !isDispatched && !isConfirmed;
 
-    if (statusFilter === 'PROCESSING' && !isProcessing) return false;
-    if (statusFilter === 'TRANSIT' && !isTransit) return false;
-    if (statusFilter === 'ARRIVED' && !isArrived) return false;
+    if (statusFilter === 'PENDING' && !isPending) return false;
+    if (statusFilter === 'CONFIRMED' && !isConfirmed) return false;
+    if (statusFilter === 'DISPATCHED' && !isDispatched) return false;
+    if (statusFilter === 'DELIVERED' && !isDelivered) return false;
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       const matchBill = String(order.billNo ?? order.id ?? '').toLowerCase().includes(q);
-      const matchItems = String(order.items ?? '').toLowerCase().includes(q);
+      const matchItems = String(order.items ?? order.product ?? '').toLowerCase().includes(q);
       const matchSupplier = String(order.supplier ?? '').toLowerCase().includes(q);
       if (!matchBill && !matchItems && !matchSupplier) return false;
     }
     return true;
   });
 
-  return (
-    <div className="max-w-4xl mx-auto px-3 sm:px-6 py-4 sm:py-5 pb-28 space-y-3.5 sm:space-y-4 font-sans">
-      {/* Top Action & Navigation Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-[#07140f] border border-slate-200/80 dark:border-neutral-800 rounded-2xl p-3.5 sm:p-4 shadow-2xs">
-        <div className="space-y-1">
+  const getOrderStatusPill = (statusStr: string, progress: number = 0) => {
+    const s = String(statusStr || '').toLowerCase().trim();
+    if (s === 'arrived' || s === 'delivered' || progress >= 100) {
+      return {
+        label: 'Delivered',
+        className: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800'
+      };
+    }
+    if (s === 'in transit' || s === 'dispatched' || (progress >= 50 && progress < 100)) {
+      return {
+        label: 'Dispatched',
+        className: 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400 border border-blue-200 dark:border-blue-800'
+      };
+    }
+    if (s === 'confirmed' || s === 'accepted') {
+      return {
+        label: 'Confirmed',
+        className: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800'
+      };
+    }
+    return {
+      label: 'Pending',
+      className: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200 dark:border-amber-800'
+    };
+  };
+
+  // Screen 8: Order Tracking View
+  if (trackingOrder) {
+    const s = String(trackingOrder.status || '').toLowerCase().trim();
+    const p = trackingOrder.progress || 0;
+    const isDelivered = s === 'arrived' || s === 'delivered' || p >= 100;
+    const isDispatched = isDelivered || s === 'in transit' || s === 'dispatched' || (p >= 50 && p < 100);
+    const isConfirmed = isDispatched || s === 'confirmed' || s === 'accepted';
+    const isPlaced = true;
+
+    const pill = getOrderStatusPill(trackingOrder.status, trackingOrder.progress);
+    const orderQty = trackingOrder.originalOrders 
+      ? trackingOrder.originalOrders.reduce((sum, sub) => sum + (parseFloat(sub.qty) || 0), 0)
+      : (parseFloat(trackingOrder.qty) || 18);
+
+    const steps = [
+      {
+        id: 1,
+        title: 'Order Placed',
+        time: formatDateLong(trackingOrder.date),
+        desc: 'Order received by Tejas Canvassing brokerage desk.',
+        completed: isPlaced,
+        active: !isConfirmed
+      },
+      {
+        id: 2,
+        title: 'Order Confirmed',
+        time: isConfirmed ? formatDateLong(trackingOrder.date) : 'Pending Confirmation',
+        desc: 'Trade contract acknowledged by direct mill supplier partner.',
+        completed: isConfirmed,
+        active: isConfirmed && !isDispatched
+      },
+      {
+        id: 3,
+        title: 'Dispatched from Mill',
+        time: isDispatched ? 'In Transit' : 'Scheduled',
+        desc: 'Ex-mill loading target confirmed. Logistics freight allocated.',
+        completed: isDispatched,
+        active: isDispatched && !isDelivered
+      },
+      {
+        id: 4,
+        title: 'Out for Delivery',
+        time: isDelivered ? 'Arrived' : isDispatched ? 'Approaching' : 'Pending Transit',
+        desc: 'Truck approaching destination APMC Yard unloading bay.',
+        completed: isDelivered,
+        active: false
+      },
+      {
+        id: 5,
+        title: 'Delivered & Unloaded',
+        time: isDelivered ? 'Completed' : 'Pending Arrival',
+        desc: 'Shipment received, verified, and weighed at unloading yard.',
+        completed: isDelivered,
+        active: false
+      }
+    ];
+
+    return (
+      <div className="max-w-2xl mx-auto px-3 sm:px-6 py-4 pb-28 space-y-4 font-sans text-[#111827] dark:text-slate-100">
+        {/* Header matching Screen 8: < Order Tracking */}
+        <header className="flex items-center gap-2 pb-2 border-b border-[#E5E7EB] dark:border-neutral-800">
           <button 
             type="button"
-            onClick={() => navigate('/store')}
-            className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 dark:text-emerald-400 hover:text-emerald-800 transition-all cursor-pointer border-0 bg-transparent py-0.5"
+            onClick={() => setTrackingOrder(null)}
+            className="p-1.5 -ml-1 text-[#111827] dark:text-white hover:bg-slate-100 dark:hover:bg-neutral-800 rounded-lg transition-colors cursor-pointer"
+            title="Back to Orders"
           >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            Back to Grain Store
+            <ArrowLeft className="w-5 h-5" />
           </button>
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 flex items-center justify-center border border-emerald-500/20 shrink-0">
-              <Package className="w-4 h-4" />
-            </div>
+          <h1 className="text-lg font-bold tracking-tight text-[#111827] dark:text-white">
+            Order Tracking
+          </h1>
+        </header>
+
+        {/* Order Summary Card (Screen 8) */}
+        <section className="bg-white dark:bg-[#141414] border border-[#E5E7EB] dark:border-[#262626] rounded-2xl p-4 sm:p-5 shadow-xs space-y-3 text-left">
+          <div className="flex items-start justify-between gap-2 pb-2 border-b border-[#E5E7EB] dark:border-[#262626]">
             <div>
-              <h1 className="font-serif text-lg sm:text-xl font-normal tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
-                Order Tracking & Logistics
-              </h1>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-                Live dispatch updates for <span className="font-bold text-emerald-800 dark:text-emerald-300">{localStorage.getItem('userName') || 'Merchant Store'}</span>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-sm text-[#111827] dark:text-white font-mono">
+                  Order #{trackingOrder.billNo || trackingOrder.id}
+                </span>
+                <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold", pill.className)}>
+                  {pill.label}
+                </span>
+              </div>
+              <p className="text-xs text-[#6B7280] dark:text-neutral-400 mt-0.5">
+                Placed on {formatDateLong(trackingOrder.date)}
               </p>
             </div>
+            <div className="text-right">
+              <span className="text-[10px] text-[#6B7280] dark:text-neutral-400 block">Total Amount</span>
+              <span className="font-bold text-sm font-mono text-[#C22424]">
+                {trackingOrder.total || `₹ ${formatINR(orderQty * 4200)}`}
+              </span>
+            </div>
           </div>
-        </div>
 
-        <div className="flex items-center gap-2 self-stretch sm:self-auto justify-end">
-          <button
-            type="button"
-            onClick={onRefresh}
-            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
-          >
-            {isLoading ? (
-              <>
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                Updating...
-              </>
-            ) : (
-              <>
-                <RefreshCw className="w-3.5 h-3.5 text-emerald-600" />
-                Refresh
-              </>
-            )}
-          </button>
-          <button 
-            type="button"
-            onClick={() => navigate('/brokerage')}
-            className="px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
-          >
-            Brokerage Ledger
-            <ArrowRight className="w-3.5 h-3.5 text-white" />
-          </button>
-        </div>
-      </div>
+          <div className="flex items-center justify-between text-xs pt-1.5 gap-2">
+            <span className="text-[#6B7280] dark:text-neutral-400 shrink-0">Product:</span>
+            <div className="flex items-center gap-2 justify-end min-w-0 flex-1">
+              <div className="w-8 h-8 rounded-lg bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 flex items-center justify-center p-0.5 shrink-0 overflow-hidden">
+                <img 
+                  src={getOrderBagImage(trackingOrder)} 
+                  alt="Rice Bag" 
+                  className="w-full h-full object-contain"
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).src = '/images/keshar_kali.png';
+                  }}
+                />
+              </div>
+              <span className="font-bold text-[#111827] dark:text-white text-right truncate max-w-[200px]">
+                {trackingOrder.items || trackingOrder.product || '1121 Raw Basmati Rice'} ({orderQty} QTL)
+              </span>
+            </div>
+          </div>
 
-      {/* Compressed Mobile-Optimized Executive Summary Strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-2.5">
-        <div className="bg-white dark:bg-[#0c1813] border border-slate-200/80 dark:border-neutral-800 rounded-2xl p-2.5 sm:p-3 shadow-2xs">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Total Orders</span>
-          <span className="text-base sm:text-lg font-black font-mono text-slate-900 dark:text-white">{orders.length}</span>
-        </div>
-        <div className="bg-white dark:bg-[#0c1813] border border-slate-200/80 dark:border-neutral-800 rounded-2xl p-2.5 sm:p-3 shadow-2xs">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Total Volume</span>
-          <span className="text-base sm:text-lg font-black font-mono text-emerald-700 dark:text-emerald-400">{totalQtls.toLocaleString()} <span className="text-[10px] font-sans font-bold">QTLS</span></span>
-        </div>
-        <div className="bg-white dark:bg-[#0c1813] border border-slate-200/80 dark:border-neutral-800 rounded-2xl p-2.5 sm:p-3 shadow-2xs">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-amber-500 block">In Transit</span>
-          <span className="text-base sm:text-lg font-black font-mono text-amber-600 dark:text-amber-400">{inTransitCount}</span>
-        </div>
-        <div className="bg-white dark:bg-[#0c1813] border border-slate-200/80 dark:border-neutral-800 rounded-2xl p-2.5 sm:p-3 shadow-2xs">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-500 block">Arrived / Done</span>
-          <span className="text-base sm:text-lg font-black font-mono text-emerald-600 dark:text-emerald-300">{arrivedCount}</span>
-        </div>
-      </div>
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-[#6B7280] dark:text-neutral-400">Direct Mill Supplier:</span>
+            <span className="font-medium text-[#111827] dark:text-white text-right">
+              {sanitizeSupplierName(trackingOrder.supplier, 'Direct Mill Partner')}
+            </span>
+          </div>
 
-      {/* Filter Chips & Search Bar */}
-      {orders.length > 0 && (
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-1">
-          {/* Status filter pills */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 no-scrollbar">
-            {[
-              { id: 'ALL', label: `All (${orders.length})` },
-              { id: 'PROCESSING', label: `Processing (${processingCount})` },
-              { id: 'TRANSIT', label: `In Transit (${inTransitCount})` },
-              { id: 'ARRIVED', label: `Arrived (${arrivedCount})` },
-            ].map(f => (
-              <button
-                key={f.id}
-                type="button"
-                onClick={() => setStatusFilter(f.id as any)}
-                className={cn(
-                  "px-2.5 sm:px-3 py-1 rounded-full text-xs font-bold transition-all whitespace-nowrap cursor-pointer",
-                  statusFilter === f.id
-                    ? "bg-emerald-700 text-white shadow-xs"
-                    : "bg-white dark:bg-[#0a1511] text-slate-600 dark:text-slate-300 border border-slate-200/80 dark:border-neutral-800 hover:bg-slate-50"
-                )}
-              >
-                {f.label}
-              </button>
+          {/* Delivery Yard */}
+          <div className="bg-[#FAFBFA] dark:bg-[#1C1C1C] p-3 rounded-xl border border-[#E5E7EB] dark:border-[#262626] flex items-start gap-2.5 text-xs text-[#6B7280] dark:text-neutral-300">
+            <MapPin className="w-4 h-4 text-[#C22424] shrink-0 mt-0.5" />
+            <div>
+              <span className="font-bold text-[#111827] dark:text-white block">Delivery Destination:</span>
+              <span className="text-[11px] leading-relaxed">
+                {trackingOrder.destination || trackingOrder.address || 'APMC Yard, Yeshwanthpur, Bangalore, Karnataka - 560022'}
+              </span>
+            </div>
+          </div>
+        </section>
+
+        {/* Vertical 5-Step Order Status Timeline (Screen 8) */}
+        <section className="bg-white dark:bg-[#141414] border border-[#E5E7EB] dark:border-[#262626] rounded-2xl p-4 sm:p-5 shadow-xs space-y-4 text-left">
+          <h2 className="text-sm font-bold text-[#111827] dark:text-white pb-2 border-b border-[#E5E7EB] dark:border-[#262626]">
+            Shipment Timeline
+          </h2>
+
+          <div className="relative pl-6 space-y-6">
+            {/* Vertical connector line */}
+            <div className="absolute left-[11px] top-2 bottom-2 w-0.5 bg-[#E5E7EB] dark:bg-[#262626]" />
+
+            {steps.map((st) => (
+              <div key={st.id} className="relative flex items-start gap-3.5">
+                {/* Timeline Icon Node */}
+                <div 
+                  className={cn(
+                    "absolute -left-6 w-6 h-6 rounded-full flex items-center justify-center text-white shrink-0 z-10 transition-all",
+                    st.completed 
+                      ? "bg-[#C22424] shadow-xs" 
+                      : st.active
+                      ? "bg-white border-2 border-[#C22424] text-[#C22424]"
+                      : "bg-neutral-100 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 text-neutral-400"
+                  )}
+                >
+                  {st.completed ? (
+                    <Check className="w-3.5 h-3.5 stroke-[3]" />
+                  ) : st.active ? (
+                    <span className="w-2 h-2 rounded-full bg-[#C22424] animate-ping" />
+                  ) : (
+                    <span className="w-1.5 h-1.5 rounded-full bg-neutral-300 dark:bg-neutral-600" />
+                  )}
+                </div>
+
+                <div className="min-w-0 flex-1 pl-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className={cn(
+                      "text-xs font-bold leading-tight",
+                      st.completed || st.active ? "text-[#111827] dark:text-white" : "text-[#6B7280] dark:text-neutral-500"
+                    )}>
+                      {st.title}
+                    </h3>
+                    <span className="text-[10px] text-[#6B7280] dark:text-neutral-400 whitespace-nowrap">
+                      {st.time}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-[#6B7280] dark:text-neutral-400 leading-relaxed mt-0.5">
+                    {st.desc}
+                  </p>
+                </div>
+              </div>
             ))}
           </div>
+        </section>
 
-          {/* Quick Search */}
-          <div className="relative w-full sm:w-64">
-            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search Bill ID, rice type..."
-              className="w-full pl-8 pr-3 py-1.5 bg-white dark:bg-[#0a1511] border border-slate-200/80 dark:border-neutral-800 rounded-xl text-xs text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-emerald-500 shadow-2xs"
-            />
-          </div>
-        </div>
-      )}
-
-      {isLoading && orders.length === 0 ? (
-        <div className="py-24 text-center space-y-4">
-          <Loader2 className="w-8 h-8 mx-auto text-emerald-600 animate-spin" />
-          <p className="text-secondary text-sm font-bold">Connecting secure logistics nodes...</p>
-        </div>
-      ) : orders.length === 0 ? (
-        <div className="bg-white dark:bg-[#040f0c] border border-emerald-900/10 dark:border-emerald-950/40 rounded-3xl p-12 text-center space-y-6 shadow-sm">
-          <div className="w-16 h-16 bg-emerald-500/10 text-emerald-600 rounded-full flex items-center justify-center mx-auto border border-emerald-500/10">
-            <Package className="w-8 h-8" />
-          </div>
-          <div className="space-y-2">
-            <h3 className="text-lg font-black text-emerald-950 dark:text-emerald-50">No Orders Tracked</h3>
-            <p className="text-secondary text-xs max-w-sm mx-auto leading-relaxed">
-              You haven't placed any grain shipments from the store catalog yet. Choose from our catalog and place an order to register tracking.
-            </p>
-          </div>
-          <button
-            onClick={() => navigate('/store')}
-            className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-sm cursor-pointer border-0"
+        {/* Back and Support Actions */}
+        <div className="space-y-2 pt-2">
+          <a
+            href="tel:+919342380981"
+            className="w-full py-3 bg-[#FAFBFA] dark:bg-neutral-800 hover:bg-neutral-100 text-[#111827] dark:text-neutral-200 border border-[#E5E7EB] dark:border-neutral-700 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all no-underline cursor-pointer"
           >
-            Open Grain Store
-          </button>
-        </div>
-      ) : filteredOrders.length === 0 ? (
-        <div className="bg-white dark:bg-[#07140f] border border-slate-200/80 dark:border-neutral-800 rounded-2xl p-8 text-center space-y-3 shadow-2xs">
-          <Package className="w-8 h-8 mx-auto text-slate-400" />
-          <p className="text-xs font-bold text-slate-700 dark:text-slate-300">No orders match the search or filter criteria.</p>
+            <span>Direct APMC Broker Desk: +91 93423 80981</span>
+          </a>
           <button
             type="button"
-            onClick={() => { setStatusFilter('ALL'); setSearchQuery(''); }}
-            className="text-xs font-bold text-emerald-700 dark:text-emerald-400 hover:underline cursor-pointer"
+            onClick={() => setTrackingOrder(null)}
+            className="w-full py-3 bg-white dark:bg-[#141414] hover:bg-neutral-50 text-[#6B7280] dark:text-neutral-400 rounded-xl font-bold text-xs transition-all cursor-pointer border border-[#E5E7EB] dark:border-[#262626]"
           >
-            Clear Filters
+            Return to My Orders List
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Screen 7: My Orders List View
+  return (
+    <div className="max-w-2xl mx-auto px-3 sm:px-6 py-4 pb-28 space-y-4 font-sans text-[#111827] dark:text-slate-100">
+      {/* Top Header matching Screen 7: My Orders */}
+      <header className="flex items-center justify-between pb-2 border-b border-[#E5E7EB] dark:border-neutral-800">
+        <h1 className="text-xl font-bold tracking-tight text-[#111827] dark:text-white">
+          My Orders
+        </h1>
+        <button
+          type="button"
+          onClick={onRefresh}
+          className="p-1.5 text-[#6B7280] hover:text-[#111827] dark:text-slate-400 dark:hover:text-white rounded-lg transition-colors cursor-pointer"
+          title="Refresh"
+        >
+          {isLoading ? <Loader2 className="w-4 h-4 animate-spin text-[#C22424]" /> : <RefreshCw className="w-4 h-4" />}
+        </button>
+      </header>
+
+      {/* Filter Pills matching Screen 7 */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+        {[
+          { id: 'ALL', label: `All (${orders.length})` },
+          { id: 'PENDING', label: 'Pending' },
+          { id: 'CONFIRMED', label: 'Confirmed' },
+          { id: 'DISPATCHED', label: 'Dispatched' },
+          { id: 'DELIVERED', label: 'Delivered' },
+        ].map((f) => (
+          <button
+            key={f.id}
+            type="button"
+            onClick={() => setStatusFilter(f.id as any)}
+            className={cn(
+              "px-3 py-1.5 rounded-full text-xs font-bold transition-all whitespace-nowrap cursor-pointer",
+              statusFilter === f.id
+                ? "bg-[#C22424] text-white shadow-xs"
+                : "bg-white dark:bg-[#141414] text-[#111827] dark:text-neutral-300 border border-[#E5E7EB] dark:border-[#262626] hover:bg-neutral-50"
+            )}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Search Bar */}
+      <div className="relative">
+        <Search className="w-4 h-4 text-[#6B7280] absolute left-3.5 top-1/2 -translate-y-1/2" />
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search by Order ID, rice variety..."
+          className="w-full pl-9 pr-4 py-2 bg-white dark:bg-[#141414] border border-[#E5E7EB] dark:border-[#262626] rounded-xl text-xs text-[#111827] dark:text-white outline-none focus:border-[#C22424] shadow-2xs"
+        />
+      </div>
+
+      {/* Orders List matching Screen 7 Cards */}
+      {isLoading && orders.length === 0 ? (
+        <div className="py-20 text-center space-y-3">
+          <Loader2 className="w-8 h-8 mx-auto text-[#C22424] animate-spin" />
+          <p className="text-xs font-bold text-[#6B7280]">Loading orders...</p>
+        </div>
+      ) : filteredOrders.length === 0 ? (
+        <div className="bg-white dark:bg-[#141414] border border-[#E5E7EB] dark:border-[#262626] rounded-2xl p-8 text-center space-y-3 shadow-xs">
+          <Package className="w-8 h-8 mx-auto text-neutral-300" />
+          <p className="text-xs font-bold text-[#6B7280]">No orders found matching this filter.</p>
+          <button
+            type="button"
+            onClick={() => navigate('/store')}
+            className="text-xs font-bold text-[#C22424] hover:underline cursor-pointer"
+          >
+            Explore Rice Catalog
           </button>
         </div>
       ) : (
-        <div className="space-y-4 sm:space-y-5">
-          {filteredOrders.map((order, idx) => {
-            const isExpanded = expandedId === order.id;
-            
-            // Map status string to active tracking step
-            const statusStr = String(order.status || '').toLowerCase().trim();
-            const progress = order.progress || 5;
-
-            // Milestones
-            const hasConfirmed = true;
-            const hasApproved = statusStr !== 'awaiting settlement' && statusStr !== 'pending approval' && statusStr !== 'rejected';
-            const hasTransit = statusStr === 'in transit' || progress >= 50 || statusStr === 'settled' || statusStr === 'arrived' || statusStr === 'delivered';
-            const hasArrived = statusStr === 'arrived' || statusStr === 'delivered' || progress >= 100;
-
-            const badgeInfo = getMerchantStatus(order.status);
-
-            // Simple description message based on tracking level
-            let deliveryText = "Your order is logged and awaiting supplier validation.";
-            if (statusStr === 'rejected') {
-              deliveryText = "Your order is under administrative review by the procurement desk.";
-            } else if (hasArrived) {
-              deliveryText = "Shipment successfully arrived at destination APMC Yard!";
-            } else if (hasTransit) {
-              deliveryText = "Truck is currently on the road. GPS logs update every hour.";
-            } else if (hasApproved) {
-              deliveryText = "Supplier confirmed and loaded items. Dispatching soon.";
-            }
-
-            const itemsCount = order.originalOrders ? order.originalOrders.reduce((sum: number, sub: any) => sum + (parseFloat(sub.qty) || 0), 0) : (parseFloat(order.qty) || 50);
+        <div className="space-y-3">
+          {filteredOrders.map((order) => {
+            const pill = getOrderStatusPill(order.status, order.progress);
+            const orderQty = order.originalOrders 
+              ? order.originalOrders.reduce((sum, sub) => sum + (parseFloat(sub.qty) || 0), 0)
+              : (parseFloat(order.qty) || 18);
+            const totalDisplay = order.total || `₹ ${formatINR(orderQty * 4200)}`;
 
             return (
               <motion.div
                 key={order.id}
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: idx * 0.04 }}
-                className="bg-white dark:bg-[#06150f] border border-slate-200/90 dark:border-emerald-950/70 rounded-3xl p-4 sm:p-6 shadow-xs hover:shadow-md transition-all relative overflow-hidden text-left space-y-3.5"
+                whileHover={{ y: -1 }}
+                whileTap={{ scale: 0.99 }}
+                onClick={() => setTrackingOrder(order)}
+                className="bg-white dark:bg-[#141414] border border-[#E5E7EB] dark:border-[#262626] rounded-2xl p-4 shadow-xs hover:border-[#C22424]/40 transition-all cursor-pointer text-left space-y-3"
               >
-                {/* Visual Accent Ribbon */}
-                <div className={cn(
-                  "absolute top-0 left-0 right-0 h-1.5",
-                  statusStr === 'rejected' ? "bg-amber-500" : hasArrived ? "bg-emerald-500" : hasTransit ? "bg-orange-500 animate-pulse" : "bg-emerald-400"
-                )} />
-
-                {/* Card Header Info */}
-                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 pt-1">
-                  <div className="space-y-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-[10px] font-mono font-black uppercase text-amber-900 dark:text-amber-300 bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 rounded-lg">
-                        ID: {order.billNo || order.id}
-                      </span>
-                      <span className={cn("text-[9.5px] font-sans font-black uppercase px-2.5 py-0.5 rounded-lg shadow-2xs", badgeInfo.className)}>
-                        {badgeInfo.text}
-                      </span>
-                      <span className="text-slate-400 dark:text-slate-500 text-xs font-medium font-sans">
-                        Placed on {formatDateLong(order.date)}
-                      </span>
-                    </div>
-                    <h4 className="text-base font-black text-slate-900 dark:text-white truncate max-w-md uppercase tracking-tight">
-                      {order.items || `Bulk Grain Lot (${itemsCount} QTLS)`}
-                    </h4>
-                  </div>
-
-                  {/* Right Side Order Total Pill */}
-                  <div className="text-right flex sm:flex-col items-center sm:items-end justify-between sm:justify-start gap-1 bg-slate-50 dark:bg-emerald-950/40 p-2.5 px-3.5 rounded-2xl border border-slate-100 dark:border-emerald-950/60">
-                    <span className="text-[10px] text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider">Total Order Value</span>
-                    <span className="text-base font-black font-mono text-slate-900 dark:text-white">
-                      {order.total || `₹ ${formatINR(itemsCount * 4200)}`}
-                    </span>
-                  </div>
+                {/* Top Row: Order ID & Status Pill */}
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-xs sm:text-sm font-mono text-[#111827] dark:text-white">
+                    Order #{order.billNo || order.id}
+                  </span>
+                  <span className={cn("px-2.5 py-0.5 rounded-full text-[10px] font-bold", pill.className)}>
+                    {pill.label}
+                  </span>
                 </div>
 
-                {/* Loading days Required Notice */}
-                {order.loadingDays && statusStr !== 'rejected' && (
-                  <div className="bg-orange-500/10 border border-orange-500/20 rounded-2xl p-2.5 px-3.5 flex items-center gap-2 text-orange-950 dark:text-orange-200">
-                    <Clock className="w-4 h-4 text-orange-600 shrink-0" />
-                    <p className="text-[11px] font-extrabold uppercase tracking-wide">
-                      ⚡ Dispatch Target: Loading requested in {order.loadingDays} Day(s)
-                    </p>
-                  </div>
-                )}
+                {/* Date */}
+                <p className="text-[11px] text-[#6B7280] dark:text-slate-400 -mt-1">
+                  Placed on {formatDateLong(order.date)}
+                </p>
 
-                {/* Tracker Timeline or Under Review Box */}
-                {statusStr === 'rejected' ? (
-                  <div className="my-3 bg-amber-500/10 dark:bg-amber-950/30 border border-amber-500/25 rounded-2xl p-4 flex items-center gap-3 text-amber-900 dark:text-amber-200">
-                    <Clock className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
-                    <div className="text-left">
-                      <p className="text-xs font-black uppercase tracking-wider">Order Under Review</p>
-                      <p className="text-[11.5px] font-medium leading-relaxed mt-0.5">
-                        Your procurement request is currently under review by our trade administration desk.
+                {/* Middle Item info with thumbnail */}
+                <div className="flex items-center justify-between gap-3 pt-1 border-t border-[#E5E7EB] dark:border-neutral-800">
+                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                    <div className="w-11 h-11 rounded-xl bg-slate-50 dark:bg-neutral-800 border border-[#E5E7EB] dark:border-neutral-700 flex items-center justify-center shrink-0 p-1 overflow-hidden shadow-2xs">
+                      <img 
+                        src={getOrderBagImage(order)} 
+                        alt={order.items || order.product || 'Rice Bag'} 
+                        className="w-full h-full object-contain"
+                        loading="lazy"
+                        onError={(e) => {
+                          // Fallback to keshar kali if specific image fails
+                          (e.currentTarget as HTMLImageElement).src = '/images/keshar_kali.png';
+                        }}
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h4 className="font-bold text-xs text-[#111827] dark:text-white truncate">
+                        {order.items || order.product || '1121 Raw Basmati Rice'}
+                      </h4>
+                      <p className="text-[11px] text-[#6B7280] dark:text-slate-400 mt-0.5">
+                        {orderQty} QTL • <span className="font-mono font-bold text-[#111827] dark:text-white">{totalDisplay}</span>
                       </p>
                     </div>
                   </div>
-                ) : (
-                  <div className="my-4 pt-1">
-                    <div className="relative">
-                      {/* Horizontal connector line */}
-                      <div className="absolute top-4 left-4 right-4 h-1 bg-slate-200 dark:bg-neutral-800 -z-1" />
-                      
-                      {/* Active connector fill line */}
-                      <div 
-                        className={cn(
-                          "absolute top-4 left-4 h-1 bg-emerald-500 -z-1 transition-all duration-500",
-                          hasArrived ? "w-[92%]" : hasTransit ? "w-[61%]" : hasApproved ? "w-[31%]" : "w-0"
-                        )} 
-                      />
 
-                      {/* Milestones container */}
-                      <div className="flex justify-between items-center relative z-10">
-                        {/* Step 1: Confirmed */}
-                        <div className="flex flex-col items-center space-y-1.5 w-1/4">
-                          <div className={cn(
-                            "w-8 h-8 rounded-full flex items-center justify-center text-xs font-black transition-all",
-                            hasConfirmed 
-                              ? "bg-emerald-500 text-white shadow-sm scale-110" 
-                              : "bg-slate-100 dark:bg-neutral-800 border border-slate-300 dark:border-neutral-700 text-slate-400"
-                          )}>
-                            <Clock className="w-4 h-4" />
-                          </div>
-                          <span className={cn(
-                            "text-[9.5px] font-black uppercase tracking-wider text-center leading-tight",
-                            hasConfirmed ? "text-emerald-700 dark:text-emerald-400" : "text-slate-400"
-                          )}>
-                            Placed
-                          </span>
-                        </div>
-
-                        {/* Step 2: Approved / Loaded */}
-                        <div className="flex flex-col items-center space-y-1.5 w-1/4">
-                          <div className={cn(
-                            "w-8 h-8 rounded-full flex items-center justify-center text-xs font-black transition-all",
-                            hasApproved 
-                              ? "bg-orange-500 text-white shadow-sm scale-110" 
-                              : "bg-slate-100 dark:bg-neutral-800 border border-slate-300 dark:border-neutral-700 text-slate-400"
-                          )}>
-                            <CheckCircle2 className="w-4 h-4" />
-                          </div>
-                          <span className={cn(
-                            "text-[9.5px] font-black uppercase tracking-wider text-center leading-tight",
-                            hasApproved ? "text-orange-600 dark:text-orange-400" : "text-slate-400"
-                          )}>
-                            Approved
-                          </span>
-                        </div>
-
-                        {/* Step 3: Transit */}
-                        <div className="flex flex-col items-center space-y-1.5 w-1/4">
-                          <div className={cn(
-                            "w-8 h-8 rounded-full flex items-center justify-center text-xs font-black transition-all",
-                            hasTransit 
-                              ? "bg-teal-500 text-white shadow-sm scale-110" 
-                              : "bg-slate-100 dark:bg-neutral-800 border border-slate-300 dark:border-neutral-700 text-slate-400"
-                          )}>
-                            <Truck className="w-4 h-4" />
-                          </div>
-                          <span className={cn(
-                            "text-[9.5px] font-black uppercase tracking-wider text-center leading-tight",
-                            hasTransit ? "text-teal-600 dark:text-teal-400" : "text-slate-400"
-                          )}>
-                            In Transit
-                          </span>
-                        </div>
-
-                        {/* Step 4: Arrived */}
-                        <div className="flex flex-col items-center space-y-1.5 w-1/4">
-                          <div className={cn(
-                            "w-8 h-8 rounded-full flex items-center justify-center text-xs font-black transition-all",
-                            hasArrived 
-                              ? "bg-emerald-600 text-white shadow-lg scale-115" 
-                              : "bg-slate-100 dark:bg-neutral-800 border border-slate-300 dark:border-neutral-700 text-slate-400"
-                          )}>
-                            <MapPin className="w-4 h-4" />
-                          </div>
-                          <span className={cn(
-                            "text-[9.5px] font-black uppercase tracking-wider text-center leading-tight",
-                            hasArrived ? "text-emerald-600 dark:text-emerald-400 font-extrabold" : "text-slate-400"
-                          )}>
-                            Arrived
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Sub status details box */}
-                <div className="bg-emerald-500/[0.04] dark:bg-emerald-950/20 rounded-2xl p-3 flex items-start gap-2.5 border border-emerald-500/15">
-                  <div className="p-1 rounded-lg bg-white dark:bg-[#071912] border border-emerald-500/20 shrink-0 mt-0.5 shadow-2xs">
-                    <Truck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                  </div>
-                  <div>
-                    <h5 className="text-[10.5px] font-black uppercase tracking-wider text-emerald-950 dark:text-emerald-300">Logistics Update</h5>
-                    <p className="text-slate-600 dark:text-slate-300 text-xs font-medium leading-relaxed mt-0.5">{deliveryText}</p>
-                  </div>
+                  <ChevronRight className="w-4 h-4 text-[#6B7280] shrink-0" />
                 </div>
-
-                {/* Card Footer Actions & Accordion Trigger */}
-                <div className="border-t border-slate-100 dark:border-emerald-950/60 pt-3 flex flex-wrap justify-between items-center gap-2">
-                  <span className="text-[10.5px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                    🚚 Supplier: <span className="text-slate-800 dark:text-slate-200 font-bold">{sanitizeSupplierName(order.supplier, 'Direct Mill')}</span>
-                  </span>
-                  
-                  <div className="flex items-center gap-2">
-                    {!isMerchant && (
-                      <button 
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          await autoCreateArrivalEntryForIncomingLog(order.id, order);
-                          navigate('/arrival-entry');
-                        }}
-                        className="px-3 py-1.5 bg-emerald-600/10 hover:bg-emerald-600 text-emerald-600 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all border border-emerald-600/20 flex items-center gap-1.5 cursor-pointer"
-                        title="Open Arrival Entry ledger spreadsheet"
-                      >
-                        <FileCheck2 className="w-3.5 h-3.5" />
-                        Arrival Entry
-                        <ChevronRight className="w-3 h-3" />
-                      </button>
-                    )}
-
-                    <button 
-                      onClick={() => setExpandedId(isExpanded ? null : order.id)}
-                      className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-neutral-800 hover:bg-slate-200 dark:hover:bg-neutral-700 text-slate-700 dark:text-slate-200 text-[10.5px] font-black uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-all active:scale-95"
-                    >
-                      <span>{isExpanded ? "Hide Details" : "View Breakdown"}</span>
-                      <ChevronRight className={cn("w-3.5 h-3.5 transition-transform duration-200", isExpanded && "rotate-90")} />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Expandable Itemized Details Drawer */}
-                <AnimatePresence>
-                  {isExpanded && (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      className="overflow-hidden"
-                    >
-                      <div className="pt-3.5 mt-2 border-t border-slate-100 dark:border-emerald-950/60 space-y-3 font-sans text-xs">
-                        {/* Itemized Products */}
-                        <div className="space-y-1.5">
-                          <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
-                            Itemized Products & Rates
-                          </span>
-                          {order.originalOrders && order.originalOrders.length > 0 ? (
-                            <div className="divide-y divide-slate-100 dark:divide-emerald-950/60 bg-slate-50 dark:bg-[#040f0c] rounded-2xl p-3 border border-slate-200/60 dark:border-emerald-950/60 space-y-1">
-                              {order.originalOrders.map((sub: any, sidx: number) => (
-                                <div key={`${sub.id || 'sub'}-${sidx}`} className="flex justify-between py-1.5 items-center first:pt-0 last:pb-0">
-                                  <div className="leading-tight">
-                                    <p className="font-extrabold text-slate-900 dark:text-white uppercase">{sub.product}</p>
-                                    <p className="text-[9px] text-slate-400 font-bold uppercase font-mono mt-0.5">ID: {sub.id}</p>
-                                  </div>
-                                  <div className="text-right">
-                                    <p className="font-mono font-black text-slate-900 dark:text-white text-xs">{sub.qty} QTLS</p>
-                                    <p className="text-[10px] text-emerald-700 dark:text-emerald-400 font-bold font-mono">@ ₹ {formatINR(sub.rate)}/Qtl</p>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <div className="flex justify-between items-center bg-slate-50 dark:bg-[#040f0c] border border-slate-200/60 dark:border-emerald-950/60 rounded-2xl p-3">
-                              <span className="font-extrabold text-slate-900 dark:text-white uppercase">{order.items || "Bulk Grain Lot"}</span>
-                              <span className="font-mono font-black text-slate-900 dark:text-white">{itemsCount} QTLS</span>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Dispatch & Destination Route */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 bg-slate-50 dark:bg-[#040f0c] p-3 rounded-2xl border border-slate-200/60 dark:border-emerald-950/60">
-                          <div>
-                            <span className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider block">Dispatch Origin</span>
-                            <span className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1 mt-0.5 text-xs">
-                              <MapPin className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                              <span>{order.origin || 'Punjab Grain Hub'}</span>
-                            </span>
-                          </div>
-                          <div>
-                            <span className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider block">Destination Yard</span>
-                            <span className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1 mt-0.5 text-xs">
-                              <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                              <span>{order.destination || 'APMC Yard, Bangalore'}</span>
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
               </motion.div>
             );
           })}
@@ -933,12 +871,30 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
       return false;
     };
 
+    const isApprovedStatus = (s: any) => {
+      const norm = String(s || '').trim().toLowerCase();
+      return (
+        norm === 'approved' ||
+        norm === 'accepted' ||
+        norm === 'awaiting settlement' ||
+        norm === 'confirmed' ||
+        norm === 'in transit' ||
+        norm === 'dispatched' ||
+        norm === 'arrived' ||
+        norm === 'unloaded' ||
+        norm === 'delivered' ||
+        norm === 'completed'
+      );
+    };
+
     const filterIgnored = (list: any[]) => (list || []).filter(
-      (o: any) => o && o.id !== 'ORD-TC-1024' && !String(o.id).startsWith('#ORD-99') && !String(o.id).startsWith('TC-0000')
+      (o: any) => o && o.id !== 'ORD-TC-1024' && !String(o.id).startsWith('#ORD-99') && !String(o.id).startsWith('TC-0000') && o.status !== 'Pending Approval' && o.status !== 'Draft Order' && o.status !== 'Rejected'
     );
 
     const validPlaced = filterIgnored(placedList);
-    const validProc = filterIgnored(procList);
+    const validProc = (procList || []).filter(
+      (o: any) => o && o.id !== 'ORD-TC-1024' && !String(o.id).startsWith('#ORD-99') && !String(o.id).startsWith('TC-0000') && o.status !== 'Draft Order' && o.status !== 'Rejected'
+    );
 
     // Map batch live tracking statuses by sub-order ID
     const batchStatusMap = new Map<string, any>();
@@ -967,16 +923,22 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
     const results: any[] = [];
     const addedKeys = new Set<string>();
 
-    // 1. Direct procurement requests (placed from store/bag/cart)
+    // 1. Direct procurement requests (placed from store/bag/cart) - ONLY show once approved!
     validProc.forEach((proc: any) => {
       if (!proc || !proc.id) return;
       const key = String(proc.id).trim().toLowerCase().replace(/^#/, '');
       if (isMerchantMatch(proc)) {
         const batchInfo = batchStatusMap.get(key);
+        // Only show in orders page once approved by admin or grouped into PO!
+        const isApproved = Boolean(batchInfo || isApprovedStatus(proc.status));
+        if (!isApproved) {
+          return;
+        }
+
         const orderObj = {
           ...proc,
-          status: batchInfo?.status || proc.status || 'Pending Approval',
-          progress: batchInfo?.progress || proc.progress || 10,
+          status: batchInfo?.status || (isApprovedStatus(proc.status) ? proc.status : 'Approved'),
+          progress: batchInfo?.progress || proc.progress || 25,
           supplier: batchInfo?.supplier || proc.supplier || 'Direct Mill',
           billNo: batchInfo?.billNo || proc.billNo || proc.id,
           origin: batchInfo?.origin || proc.origin || 'Mill Dispatch Hub',
@@ -1066,12 +1028,30 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
     procList: any[], 
     arrivalList: any[]
   ) => {
+    const isApprovedStatus = (s: any) => {
+      const norm = String(s || '').trim().toLowerCase();
+      return (
+        norm === 'approved' ||
+        norm === 'accepted' ||
+        norm === 'awaiting settlement' ||
+        norm === 'confirmed' ||
+        norm === 'in transit' ||
+        norm === 'dispatched' ||
+        norm === 'arrived' ||
+        norm === 'unloaded' ||
+        norm === 'delivered' ||
+        norm === 'completed'
+      );
+    };
+
     const filterIgnored = (list: any[]) => (list || []).filter(
-      (o: any) => o && o.id !== 'ORD-TC-1024' && !String(o.id).startsWith('#ORD-99') && !String(o.id).startsWith('TC-0000')
+      (o: any) => o && o.id !== 'ORD-TC-1024' && !String(o.id).startsWith('#ORD-99') && !String(o.id).startsWith('TC-0000') && o.status !== 'Pending Approval' && o.status !== 'Draft Order' && o.status !== 'Rejected'
     );
 
     const validPlaced = filterIgnored(placedList);
-    const validProc = filterIgnored(procList);
+    const validProc = (procList || []).filter(
+      (o: any) => o && o.id !== 'ORD-TC-1024' && !String(o.id).startsWith('#ORD-99') && !String(o.id).startsWith('TC-0000') && o.status !== 'Draft Order' && o.status !== 'Rejected'
+    );
 
     const placedSubOrderIds = new Set<string>();
     validPlaced.forEach((p: any) => {
@@ -1086,10 +1066,12 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
       }
     });
 
+    // Only include proc items that have been explicitly approved by admin
     const activeProc = validProc.filter((proc: any) => {
       if (!proc || !proc.id) return false;
       const normProcId = String(proc.id).trim().toLowerCase().replace(/^#/, '');
-      return !placedSubOrderIds.has(normProcId);
+      if (placedSubOrderIds.has(normProcId)) return false;
+      return isApprovedStatus(proc.status);
     });
 
     let combined = [...validPlaced, ...activeProc];
@@ -2222,9 +2204,10 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                     delay: idx * 0.05,
                     ease: [0.16, 1, 0.3, 1] 
                   }}
-                  className="liquid-glass p-6 rounded-2xl flex flex-col gap-6 relative overflow-hidden group interactive-card premium-border"
+                  className="floating-card liquid-glass p-6 rounded-2xl flex flex-col gap-6 relative overflow-hidden group interactive-card premium-border transition-all duration-300"
                 >
-                <div className="flex flex-col md:flex-row gap-6">
+                  <div className="absolute -right-8 -top-8 w-28 h-28 rounded-full bg-primary/10 blur-3xl pointer-events-none opacity-30 group-hover:opacity-70 transition-opacity" />
+                  <div className="flex flex-col md:flex-row gap-6 relative z-10">
                   {/* Expand controls */}
                   <div 
                     className="absolute top-0 right-0 w-12 h-16 bg-primary/5 opacity-40 hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer z-10 rounded-bl-xl border-l border-b border-outline-variant/30"
@@ -2340,7 +2323,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                         {/* Share summary button */}
                         <button 
                           onClick={(e) => handleOpenShare(order, e)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-secondary/[0.06] hover:bg-secondary/[0.12] rounded-lg text-[10px] font-black uppercase tracking-wider transition-all text-secondary border border-secondary/15"
+                          className="btn-tactile flex items-center gap-1.5 px-3 py-1.5 bg-secondary/[0.06] hover:bg-secondary/[0.12] rounded-lg text-[10px] font-black uppercase tracking-wider transition-all text-secondary border border-secondary/15 cursor-pointer"
                           title="Share order summary to customer"
                         >
                           <Share2 className="w-3.5 h-3.5" />
@@ -2350,7 +2333,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                         {/* Send PO to seller button */}
                         <button 
                           onClick={(e) => handleOpenPO(order, e)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/[0.06] hover:bg-primary/[0.12] rounded-lg text-[10px] font-black uppercase tracking-wider transition-all text-primary border border-primary/15"
+                          className="btn-tactile flex items-center gap-1.5 px-3 py-1.5 bg-primary/[0.06] hover:bg-primary/[0.12] rounded-lg text-[10px] font-black uppercase tracking-wider transition-all text-primary border border-primary/15 cursor-pointer"
                           title="Send Purchase Order email to Seller"
                         >
                           <Mail className="w-3.5 h-3.5" />
@@ -2360,7 +2343,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                         {/* Direct Print A4 PO for filing */}
                         <button 
                           onClick={(e) => handleOpenA4Preview(order, e)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 cursor-pointer shadow-sm hover:shadow"
+                          className="btn-tactile flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 cursor-pointer shadow-sm hover:shadow"
                           title="Print Purchase Order on A4 Sheet for Paperwork / Filing"
                         >
                           <Printer className="w-3.5 h-3.5 text-slate-600 dark:text-slate-300" />
@@ -2371,7 +2354,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                         {order.status !== 'Arrived' ? (
                           <button 
                             onClick={(e) => handleOpenArrivalConfirm(order, e)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600/[0.1] hover:bg-emerald-600 text-emerald-600 hover:text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition-all border border-emerald-600/20"
+                            className="btn-tactile flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600/[0.1] hover:bg-emerald-600 text-emerald-600 hover:text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition-all border border-emerald-600/20 cursor-pointer"
                             title="Mark order as Arrived and complete logistics pipeline"
                           >
                             <CheckCircle2 className="w-3.5 h-3.5" />
@@ -2384,7 +2367,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                               await autoCreateArrivalEntryForIncomingLog(order.id, order);
                               navigate('/arrival-entry');
                             }}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/20 dark:hover:bg-emerald-950/40 text-emerald-700 hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300 rounded-lg text-[10px] font-black uppercase tracking-wider border border-emerald-200/50 transition-all cursor-pointer"
+                            className="btn-tactile flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/20 dark:hover:bg-emerald-950/40 text-emerald-700 hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300 rounded-lg text-[10px] font-black uppercase tracking-wider border border-emerald-200/50 transition-all cursor-pointer"
                             title="This order is marked as arrived. Click to view or edit details in the Arrival Entry spreadsheet."
                           >
                             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
@@ -2402,7 +2385,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                         <button 
                           type="button"
                           onClick={(e) => handleOpenLiftingModal(order, e)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-500/10 hover:bg-purple-600 text-purple-600 dark:text-purple-400 hover:text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition-all border border-purple-500/20 shadow-sm cursor-pointer"
+                          className="btn-tactile flex items-center gap-1.5 px-3 py-1.5 bg-purple-500/10 hover:bg-purple-600 text-purple-600 dark:text-purple-400 hover:text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition-all border border-purple-500/20 shadow-sm cursor-pointer"
                           title="If customer denies arrival, redirect truck load to another shop"
                         >
                           <Truck className="w-3.5 h-3.5" />

@@ -40,8 +40,10 @@ import {
   Layers
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useNavigate } from 'react-router-dom';
+import { getVerifiedUserRole } from '../lib/auth';
 import { cn, formatINR, getRegisteredSuppliers, sanitizeSupplierName } from '../lib/utils';
-import { getCollectionDocs, db, invalidateCollectionCache } from '../lib/firebase';
+import { getCollectionDocs, setCollectionDoc, deleteCollectionDoc, db, invalidateCollectionCache } from '../lib/firebase';
 import { doc, writeBatch, collection, query, where, getDocs } from 'firebase/firestore';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
@@ -232,6 +234,19 @@ export const normalizeRowDaysAndStatus = (row: any) => {
 };
 
 export default function ArrivalEntry() {
+  const navigate = useNavigate();
+  const userRole = getVerifiedUserRole();
+
+  useEffect(() => {
+    if (userRole === 'employee') {
+      navigate('/employee/dashboard', { replace: true });
+    }
+  }, [userRole, navigate]);
+
+  if (userRole === 'employee') {
+    return null;
+  }
+
   interface Sheet {
     id: string;
     name: string;
@@ -450,28 +465,40 @@ export default function ArrivalEntry() {
   // Track document IDs marked for deletion from Firestore
   const deletedDocIdsRef = useRef<Set<string>>(new Set());
 
-  // Load active sheet entries from Firestore once on demand without downloading repeatedly
+  // Load active sheet entries and cloud sheet metadata from Firestore
   useEffect(() => {
     let isMounted = true;
     async function loadSheetData() {
-      if (loadedSheetIdsRef.current.has(currentSheetId)) return;
-      loadedSheetIdsRef.current.add(currentSheetId);
-
       try {
-        const cloudArrivals = await getCollectionDocs('arrival_entries').catch(() => []);
-        if (!isMounted || !Array.isArray(cloudArrivals) || cloudArrivals.length === 0) return;
+        const [cloudArrivals, cloudSheetsMeta] = await Promise.all([
+          getCollectionDocs('arrival_entries').catch(() => []),
+          getCollectionDocs('arrival_sheets').catch(() => [])
+        ]);
+        if (!isMounted) return;
 
-        if (cloudArrivals.length > 0) {
-          setSheets(prevSheets => {
-            const organized = organizeArrivalSheetsByMonth(prevSheets, cloudArrivals, INITIAL_ROWS, currentSheetId);
-            localStorage.setItem('arrival_entry_sheets_v4', JSON.stringify(organized.sheets));
-            const activeSheet = organized.sheets.find(s => s.id === currentSheetId) || organized.sheets[0];
-            if (activeSheet) {
-              localStorage.setItem('arrival_entry_data_v4', JSON.stringify(activeSheet.data));
+        setSheets(prevSheets => {
+          const organized = organizeArrivalSheetsByMonth(
+            prevSheets, 
+            cloudArrivals, 
+            INITIAL_ROWS, 
+            currentSheetId,
+            cloudSheetsMeta
+          );
+          localStorage.setItem('arrival_entry_sheets_v4', JSON.stringify(organized.sheets));
+          const activeSheet = organized.sheets.find(s => s.id === currentSheetId) || organized.sheets[0];
+          if (activeSheet) {
+            localStorage.setItem('arrival_entry_data_v4', JSON.stringify(activeSheet.data));
+          }
+
+          // Backfill/seed any local or discovered sheets into Firestore arrival_sheets if missing
+          organized.sheets.forEach(s => {
+            if (s && s.id && s.name && !cloudSheetsMeta.some((cm: any) => cm.id === s.id || cm.name?.toLowerCase() === s.name.toLowerCase())) {
+              setCollectionDoc('arrival_sheets', s.id, { id: s.id, name: s.name, createdAt: Date.now() }).catch(() => {});
             }
-            return organized.sheets;
           });
-        }
+
+          return organized.sheets;
+        });
       } catch (e) {
         console.warn('ArrivalEntry Firestore sheet load notice:', e);
       }
@@ -479,7 +506,7 @@ export default function ArrivalEntry() {
 
     loadSheetData();
     return () => { isMounted = false; };
-  }, [currentSheetId]);
+  }, []);
 
   // Set Data Helper (updates local state & marks dirty)
   const setData = useCallback((newDataOrFn: any[] | ((prev: any[]) => any[])) => {
@@ -1910,6 +1937,16 @@ export default function ArrivalEntry() {
     setGridKey(k => k + 1);
     setIsAddSheetModalOpen(false);
     setNewSheetInputName('');
+
+    // Persist sheet metadata to Firestore arrival_sheets collection immediately
+    setCollectionDoc('arrival_sheets', newSheetId, {
+      id: newSheetId,
+      name: sheetName,
+      createdAt: Date.now()
+    }).catch(err => {
+      console.warn('Failed to save sheet metadata to Firestore:', err);
+    });
+    invalidateCollectionCache('arrival_sheets');
   };
 
   // Delete sheet and purge all imported / created rows belonging to it from Firestore and local state
@@ -1984,6 +2021,8 @@ export default function ArrivalEntry() {
 
       // 4. Invalidate collection cache so in-memory getCollectionDocs returns fresh data!
       invalidateCollectionCache('arrival_entries');
+      deleteCollectionDoc('arrival_sheets', toDelId).catch(() => {});
+      invalidateCollectionCache('arrival_sheets');
 
       // 5. Invalidate cache ref so this sheet is not loaded again
       loadedSheetIdsRef.current.delete(toDelId);
@@ -2116,7 +2155,7 @@ export default function ArrivalEntry() {
           {/* Column Visibility */}
           <button
             onClick={() => setIsColVisibilityOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-2 bg-surface border border-outline-variant hover:border-primary/50 text-secondary hover:text-on-surface rounded-xl text-xs font-bold transition-all cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-2 bg-surface border border-outline-variant hover:border-primary/50 text-secondary hover:text-on-surface rounded-xl text-xs font-bold transition-all cursor-pointer btn-tactile"
             title="Show / Hide Columns"
           >
             <Columns3 className="w-4 h-4" />
@@ -2126,7 +2165,7 @@ export default function ArrivalEntry() {
           {/* Due List PDF */}
           <button
             onClick={() => setIsDueListModalOpen(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider shadow-md shadow-rose-600/20 transition-all cursor-pointer"
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider shadow-md shadow-rose-600/20 transition-all cursor-pointer btn-tactile"
           >
             <FileText className="w-4 h-4" />
             <span>Due List</span>
@@ -2135,7 +2174,7 @@ export default function ArrivalEntry() {
           {/* Camera Scanner */}
           <button
             onClick={() => setIsManifestScannerOpen(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:brightness-110 text-white rounded-xl text-xs font-bold uppercase tracking-wider shadow-md shadow-emerald-600/20 transition-all cursor-pointer"
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:brightness-110 text-white rounded-xl text-xs font-bold uppercase tracking-wider shadow-md shadow-emerald-600/20 transition-all cursor-pointer btn-tactile"
           >
             <Camera className="w-4 h-4" />
             <span>Scan Manifest</span>
@@ -2144,7 +2183,7 @@ export default function ArrivalEntry() {
           {/* Import XLS Wizard */}
           <button
             onClick={() => setIsImportModalOpen(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider shadow-md shadow-indigo-600/20 transition-all cursor-pointer"
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider shadow-md shadow-indigo-600/20 transition-all cursor-pointer btn-tactile"
           >
             <Upload className="w-4 h-4" />
             <span>Import XLS</span>
@@ -2153,7 +2192,7 @@ export default function ArrivalEntry() {
           {/* Export XLS */}
           <button
             onClick={() => setIsExportModalOpen(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider shadow-md shadow-emerald-600/20 transition-all cursor-pointer"
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider shadow-md shadow-emerald-600/20 transition-all cursor-pointer btn-tactile"
           >
             <Download className="w-4 h-4" />
             <span>Export XLS</span>
@@ -2304,7 +2343,7 @@ export default function ArrivalEntry() {
           {/* Due List PDF Trigger */}
           <button
             onClick={() => setIsDueListModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-sm shadow-rose-600/20 transition-all cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-sm shadow-rose-600/20 transition-all cursor-pointer btn-tactile"
             title="Open Due List PDF Generator"
           >
             <FileText className="w-3.5 h-3.5" />
@@ -2314,7 +2353,7 @@ export default function ArrivalEntry() {
           {/* + Add Sheet Trigger */}
           <button
             onClick={() => setIsAddSheetModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary-hover text-on-primary rounded-xl text-xs font-bold shadow-sm shadow-primary/20 transition-all cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary-hover text-on-primary rounded-xl text-xs font-bold shadow-sm shadow-primary/20 transition-all cursor-pointer btn-tactile"
             title="Create New Sheet"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -3156,7 +3195,7 @@ export default function ArrivalEntry() {
           let targetSheetIdToActivate = currentSheetId;
 
           // Check if a sheet with this name already exists
-          const existingSheet = sheets.find(s => s.name.toLowerCase() === resolvedTargetName.toLowerCase() || s.id === currentSheetId);
+          const existingSheet = sheets.find(s => s.name.toLowerCase() === resolvedTargetName.toLowerCase());
           if (existingSheet) {
             resolvedTargetName = existingSheet.name;
             targetSheetIdToActivate = existingSheet.id;
@@ -3217,6 +3256,14 @@ export default function ArrivalEntry() {
             localStorage.setItem('arrival_entry_data_v4', JSON.stringify(finalData));
             return nextSheets;
           });
+
+          // Persist target sheet definition to Firestore arrival_sheets
+          setCollectionDoc('arrival_sheets', targetSheetIdToActivate, {
+            id: targetSheetIdToActivate,
+            name: resolvedTargetName,
+            createdAt: Date.now()
+          }).catch(() => {});
+          invalidateCollectionCache('arrival_sheets');
 
           // Switch active sheet to the one containing the imported rows
           setCurrentSheetId(targetSheetIdToActivate);
@@ -3506,7 +3553,7 @@ export default function ArrivalEntry() {
                 <button
                   type="button"
                   onClick={() => setIsExportModalOpen(false)}
-                  className="px-4 py-2 text-xs font-bold text-secondary hover:bg-surface-container rounded-xl transition-all cursor-pointer"
+                  className="px-4 py-2 text-xs font-bold text-secondary hover:bg-surface-container rounded-xl transition-all cursor-pointer btn-tactile"
                 >
                   Cancel
                 </button>
@@ -3515,7 +3562,7 @@ export default function ArrivalEntry() {
                   <button
                     type="button"
                     onClick={exportCurrentSheet}
-                    className="px-5 py-2.5 text-xs font-black text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-md shadow-emerald-600/20 transition-all cursor-pointer flex items-center gap-2"
+                    className="px-5 py-2.5 text-xs font-black text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-md shadow-emerald-600/20 transition-all cursor-pointer flex items-center gap-2 btn-tactile"
                   >
                     <Download className="w-4 h-4" />
                     <span>Download {currentSheet.name} (.xlsx)</span>
@@ -3525,7 +3572,7 @@ export default function ArrivalEntry() {
                     type="button"
                     onClick={exportMergedSheets}
                     disabled={selectedSheetsForMerge.length === 0}
-                    className="px-5 py-2.5 text-xs font-black text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:pointer-events-none rounded-xl shadow-md shadow-emerald-600/20 transition-all cursor-pointer flex items-center gap-2"
+                    className="px-5 py-2.5 text-xs font-black text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:pointer-events-none rounded-xl shadow-md shadow-emerald-600/20 transition-all cursor-pointer flex items-center gap-2 btn-tactile"
                   >
                     <Download className="w-4 h-4" />
                     <span>Download Merged XLS ({selectedSheetsForMerge.length} Sheets)</span>

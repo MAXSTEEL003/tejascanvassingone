@@ -14,9 +14,12 @@ import {
   RefreshCw, 
   X, 
   ChevronRight,
+  ChevronDown,
   Package,
   Layers,
-  ArrowRight
+  ArrowRight,
+  ExternalLink,
+  Phone
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, formatINR } from '../lib/utils';
@@ -41,9 +44,11 @@ export default function LedgerManagement() {
   const [selectedBrand, setSelectedBrand] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'arrived' | 'pending'>('all');
 
-  // Modal States
+  // Modal & Expand States
   const [selectedBuyerForModal, setSelectedBuyerForModal] = useState<string | null>(null);
   const [selectedPoForModal, setSelectedPoForModal] = useState<OperationalPO | null>(null);
+  const [expandedPoId, setExpandedPoId] = useState<string | null>(null);
+  const [copiedPoNumber, setCopiedPoNumber] = useState<string | null>(null);
 
   // Synchronize URL param for buyer if set externally
   useEffect(() => {
@@ -306,7 +311,7 @@ export default function LedgerManagement() {
             <button
               onClick={loadOrdersData}
               disabled={isLoading}
-              className="px-3.5 py-2 rounded-xl bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 text-xs font-bold text-slate-700 dark:text-slate-200 hover:border-amber-500/40 hover:text-amber-600 transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs disabled:opacity-50"
+              className="px-3.5 py-2 rounded-xl bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 text-xs font-bold text-slate-700 dark:text-slate-200 hover:border-amber-500/40 hover:text-amber-600 transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs disabled:opacity-50 btn-tactile"
               title="Refresh ledger data"
             >
               <RefreshCw className={cn("w-3.5 h-3.5", isLoading && "animate-spin text-amber-500")} />
@@ -321,7 +326,12 @@ export default function LedgerManagement() {
 
         {/* 2. Top Operational Summary Cards (Section 9) */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-          <div className="p-4 rounded-2xl bg-white dark:bg-[#0a1610] border border-slate-200/80 dark:border-white/10 shadow-2xs space-y-1">
+          <motion.div 
+            whileHover={{ y: -3, scale: 1.01 }}
+            transition={{ duration: 0.2 }}
+            className="floating-card p-4 rounded-2xl border border-slate-200/80 dark:border-white/10 shadow-2xs space-y-1 relative overflow-hidden"
+          >
+            <div className="absolute -right-4 -top-4 w-16 h-16 bg-slate-500/5 rounded-full blur-xl pointer-events-none" />
             <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
               Total Orders
             </span>
@@ -332,9 +342,14 @@ export default function LedgerManagement() {
               <Package className="w-4 h-4 text-slate-400 opacity-60" />
             </div>
             <span className="text-[10px] text-slate-500 font-medium">In selected view</span>
-          </div>
+          </motion.div>
 
-          <div className="p-4 rounded-2xl bg-white dark:bg-[#0a1610] border border-slate-200/80 dark:border-white/10 shadow-2xs space-y-1">
+          <motion.div 
+            whileHover={{ y: -3, scale: 1.01 }}
+            transition={{ duration: 0.2 }}
+            className="floating-card p-4 rounded-2xl border border-slate-200/80 dark:border-white/10 shadow-2xs space-y-1 relative overflow-hidden"
+          >
+            <div className="absolute -right-4 -top-4 w-16 h-16 bg-amber-500/10 rounded-full blur-xl pointer-events-none" />
             <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
               Total PO QTL
             </span>
@@ -345,9 +360,14 @@ export default function LedgerManagement() {
               <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400">QTL</span>
             </div>
             <span className="text-[10px] text-slate-500 font-medium">Contracted Volume</span>
-          </div>
+          </motion.div>
 
-          <div className="p-4 rounded-2xl bg-white dark:bg-[#0a1610] border border-slate-200/80 dark:border-white/10 shadow-2xs space-y-1">
+          <motion.div 
+            whileHover={{ y: -3, scale: 1.01 }}
+            transition={{ duration: 0.2 }}
+            className="floating-card p-4 rounded-2xl border border-slate-200/80 dark:border-white/10 shadow-2xs space-y-1 relative overflow-hidden"
+          >
+            <div className="absolute -right-4 -top-4 w-16 h-16 bg-emerald-500/10 rounded-full blur-xl pointer-events-none" />
             <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
               Total Arrival QTL
             </span>
@@ -358,9 +378,14 @@ export default function LedgerManagement() {
               <CheckCircle2 className="w-4 h-4 text-emerald-500 opacity-60" />
             </div>
             <span className="text-[10px] text-slate-500 font-medium">Recorded at Mill/Shop</span>
-          </div>
+          </motion.div>
 
-          <div className="p-4 rounded-2xl bg-white dark:bg-[#0a1610] border border-slate-200/80 dark:border-white/10 shadow-2xs space-y-1">
+          <motion.div 
+            whileHover={{ y: -3, scale: 1.01 }}
+            transition={{ duration: 0.2 }}
+            className="floating-card p-4 rounded-2xl border border-slate-200/80 dark:border-white/10 shadow-2xs space-y-1 relative overflow-hidden"
+          >
+            <div className="absolute -right-4 -top-4 w-16 h-16 bg-rose-500/10 rounded-full blur-xl pointer-events-none" />
             <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
               Pending Loadings
             </span>
@@ -371,9 +396,14 @@ export default function LedgerManagement() {
               <Clock className="w-4 h-4 text-rose-500 opacity-60" />
             </div>
             <span className="text-[10px] text-slate-500 font-medium">Awaiting Arrival</span>
-          </div>
+          </motion.div>
 
-          <div className="col-span-2 sm:col-span-1 p-4 rounded-2xl bg-white dark:bg-[#0a1610] border border-slate-200/80 dark:border-white/10 shadow-2xs space-y-1">
+          <motion.div 
+            whileHover={{ y: -3, scale: 1.01 }}
+            transition={{ duration: 0.2 }}
+            className="floating-card col-span-2 sm:col-span-1 p-4 rounded-2xl border border-slate-200/80 dark:border-white/10 shadow-2xs space-y-1 relative overflow-hidden"
+          >
+            <div className="absolute -right-4 -top-4 w-16 h-16 bg-rose-500/10 rounded-full blur-xl pointer-events-none" />
             <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
               Pending QTL
             </span>
@@ -384,11 +414,11 @@ export default function LedgerManagement() {
               <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400">QTL</span>
             </div>
             <span className="text-[10px] text-slate-500 font-medium">Volume in transit</span>
-          </div>
+          </motion.div>
         </div>
 
         {/* 3. Operational Search & Filter Bar (Sections 3 & 4) */}
-        <div className="p-4 rounded-2xl bg-white dark:bg-[#0a1610] border border-slate-200/80 dark:border-white/10 shadow-2xs space-y-3">
+        <div className="floating-card p-4 rounded-2xl border border-slate-200/80 dark:border-white/10 shadow-2xs space-y-3">
           {/* Prominent Search Bar */}
           <div className="relative">
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -402,7 +432,7 @@ export default function LedgerManagement() {
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5 cursor-pointer"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5 cursor-pointer btn-tactile"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -426,7 +456,7 @@ export default function LedgerManagement() {
                     setCustomDate('');
                   }}
                   className={cn(
-                    "px-2.5 py-1 rounded-lg font-bold capitalize transition-all cursor-pointer",
+                    "px-2.5 py-1 rounded-lg font-bold capitalize transition-all cursor-pointer btn-tactile",
                     dateRange === tab 
                       ? "bg-white dark:bg-neutral-800 text-slate-900 dark:text-white shadow-2xs" 
                       : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
@@ -521,7 +551,7 @@ export default function LedgerManagement() {
             {activeFiltersCount > 0 && (
               <button
                 onClick={handleClearFilters}
-                className="px-2.5 py-1.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-rose-700 dark:text-rose-300 text-xs font-bold hover:bg-rose-100 transition-all flex items-center gap-1 cursor-pointer"
+                className="px-2.5 py-1.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-rose-700 dark:text-rose-300 text-xs font-bold hover:bg-rose-100 transition-all flex items-center gap-1 cursor-pointer btn-tactile"
               >
                 <X className="w-3 h-3" />
                 <span>Clear ({activeFiltersCount})</span>
@@ -543,7 +573,7 @@ export default function LedgerManagement() {
             {activeFiltersCount > 0 && (
               <button
                 onClick={handleClearFilters}
-                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm"
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm btn-tactile"
               >
                 Clear All Filters
               </button>
@@ -585,6 +615,7 @@ export default function LedgerManagement() {
                     <table className="w-full text-left text-xs border-collapse">
                       <thead>
                         <tr className="border-b border-slate-200/80 dark:border-white/10 bg-slate-50/75 dark:bg-neutral-900/60 text-[10px] font-black uppercase tracking-wider text-slate-500">
+                          <th className="w-9 py-3 px-2 text-center"></th>
                           <th className="py-3 px-3.5">Date</th>
                           <th className="py-3 px-3.5">PO No.</th>
                           <th className="py-3 px-3.5">Buyer</th>
@@ -599,88 +630,243 @@ export default function LedgerManagement() {
                       <tbody className="divide-y divide-slate-100 dark:divide-white/5 font-medium">
                         {group.items.map(po => {
                           const diff = formatDifference(po.difference);
+                          const isExpanded = expandedPoId === po.id;
 
                           return (
-                            <tr 
-                              key={po.id}
-                              className="hover:bg-slate-50/60 dark:hover:bg-white/[0.02] transition-colors"
-                            >
-                              {/* Date */}
-                              <td className="py-3 px-3.5 whitespace-nowrap text-slate-600 dark:text-slate-400 font-mono text-[11px]">
-                                {po.date}
-                              </td>
-
-                              {/* PO No (Clickable for PO Detail) */}
-                              <td className="py-3 px-3.5 whitespace-nowrap">
-                                <button
-                                  onClick={() => setSelectedPoForModal(po)}
-                                  className="font-mono font-black text-amber-600 dark:text-amber-400 hover:underline hover:text-amber-700 inline-flex items-center gap-1 cursor-pointer"
-                                  title="Click to view PO details"
-                                >
-                                  <span>{po.poNumber}</span>
-                                </button>
-                              </td>
-
-                              {/* Buyer (Clickable for Buyer Mini Profile) */}
-                              <td className="py-3 px-3.5">
-                                <button
-                                  onClick={() => setSelectedBuyerForModal(po.buyer)}
-                                  className="font-bold text-slate-900 dark:text-white hover:text-amber-600 dark:hover:text-amber-400 hover:underline text-left cursor-pointer transition-colors"
-                                  title={`View buyer profile for ${po.buyer}`}
-                                >
-                                  {po.buyer}
-                                </button>
-                              </td>
-
-                              {/* Supplier / Miller */}
-                              <td className="py-3 px-3.5 text-slate-700 dark:text-slate-300">
-                                {po.supplier}
-                              </td>
-
-                              {/* Brand */}
-                              <td className="py-3 px-3.5">
-                                <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-slate-100 dark:bg-neutral-800 text-slate-800 dark:text-slate-200 text-[11px] font-bold border border-slate-200/60 dark:border-white/10">
-                                  {po.brand}
-                                </span>
-                              </td>
-
-                              {/* PO QTL */}
-                              <td className="py-3 px-3.5 text-right font-mono font-black text-slate-900 dark:text-white whitespace-nowrap">
-                                {po.poQtl.toLocaleString('en-IN', { maximumFractionDigits: 1 })}
-                              </td>
-
-                              {/* Arrival QTL */}
-                              <td className="py-3 px-3.5 text-right font-mono whitespace-nowrap">
-                                {po.arrivalQtl > 0 ? (
-                                  <span className="font-black text-emerald-600 dark:text-emerald-400">
-                                    {po.arrivalQtl.toLocaleString('en-IN', { maximumFractionDigits: 1 })}
-                                  </span>
-                                ) : (
-                                  <span className="text-slate-400 font-bold italic">
-                                    0
-                                  </span>
+                            <React.Fragment key={po.id}>
+                              <tr 
+                                className={cn(
+                                  "hover:bg-slate-50/60 dark:hover:bg-white/[0.02] transition-colors",
+                                  isExpanded && "bg-amber-500/5 dark:bg-amber-500/10"
                                 )}
-                              </td>
+                              >
+                                {/* Dropdown Chevron Toggle */}
+                                <td className="w-9 py-3 px-2 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => setExpandedPoId(isExpanded ? null : po.id)}
+                                    className="p-1 rounded-lg hover:bg-slate-200/60 dark:hover:bg-white/10 text-slate-400 hover:text-slate-700 dark:hover:text-white transition-all btn-tactile cursor-pointer"
+                                    title={isExpanded ? "Collapse row" : "Expand order breakdown"}
+                                  >
+                                    <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-300", isExpanded && "rotate-180 text-amber-500")} />
+                                  </button>
+                                </td>
 
-                              {/* Rate / QTL */}
-                              <td className="py-3 px-3.5 text-right font-mono font-bold text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                                {po.rate > 0 ? `₹ ${formatINR(po.rate)}` : '—'}
-                              </td>
+                                {/* Date */}
+                                <td className="py-3 px-3.5 whitespace-nowrap text-slate-600 dark:text-slate-400 font-mono text-[11px]">
+                                  {po.date}
+                                </td>
 
-                              {/* Difference (Quantity only, NO monetary calculation) */}
-                              <td className="py-3 px-3.5 text-right whitespace-nowrap font-mono">
-                                {po.arrivalQtl === 0 ? (
-                                  <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
-                                    <Clock className="w-2.5 h-2.5" />
-                                    <span>Pending Load</span>
+                                {/* PO No (Clickable for PO Detail) */}
+                                <td className="py-3 px-3.5 whitespace-nowrap">
+                                  <button
+                                    onClick={() => setSelectedPoForModal(po)}
+                                    className="font-mono font-black text-amber-600 dark:text-amber-400 hover:underline hover:text-amber-700 inline-flex items-center gap-1 cursor-pointer btn-tactile"
+                                    title="Click to view PO details"
+                                  >
+                                    <span>{po.poNumber}</span>
+                                  </button>
+                                </td>
+
+                                {/* Buyer (Clickable for Buyer Mini Profile) */}
+                                <td className="py-3 px-3.5">
+                                  <button
+                                    onClick={() => setSelectedBuyerForModal(po.buyer)}
+                                    className="font-bold text-slate-900 dark:text-white hover:text-amber-600 dark:hover:text-amber-400 hover:underline text-left cursor-pointer transition-colors btn-tactile"
+                                    title={`View buyer profile for ${po.buyer}`}
+                                  >
+                                    {po.buyer}
+                                  </button>
+                                </td>
+
+                                {/* Supplier / Miller */}
+                                <td className="py-3 px-3.5 text-slate-700 dark:text-slate-300">
+                                  {po.supplier}
+                                </td>
+
+                                {/* Brand */}
+                                <td className="py-3 px-3.5">
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-slate-100 dark:bg-neutral-800 text-slate-800 dark:text-slate-200 text-[11px] font-bold border border-slate-200/60 dark:border-white/10">
+                                    {po.brand}
                                   </span>
-                                ) : (
-                                  <span className={cn("text-xs", diff.colorClass)}>
-                                    {diff.text}
-                                  </span>
-                                )}
-                              </td>
-                            </tr>
+                                </td>
+
+                                {/* PO QTL */}
+                                <td className="py-3 px-3.5 text-right font-mono font-black text-slate-900 dark:text-white whitespace-nowrap">
+                                  {po.poQtl.toLocaleString('en-IN', { maximumFractionDigits: 1 })}
+                                </td>
+
+                                {/* Arrival QTL */}
+                                <td className="py-3 px-3.5 text-right font-mono whitespace-nowrap">
+                                  {po.arrivalQtl > 0 ? (
+                                    <span className="font-black text-emerald-600 dark:text-emerald-400">
+                                      {po.arrivalQtl.toLocaleString('en-IN', { maximumFractionDigits: 1 })}
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-400 font-bold italic">
+                                      0
+                                    </span>
+                                  )}
+                                </td>
+
+                                {/* Rate / QTL */}
+                                <td className="py-3 px-3.5 text-right font-mono font-bold text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                                  {po.rate > 0 ? `₹ ${formatINR(po.rate)}` : '—'}
+                                </td>
+
+                                {/* Difference (Quantity only, NO monetary calculation) */}
+                                <td className="py-3 px-3.5 text-right whitespace-nowrap font-mono">
+                                  {po.arrivalQtl === 0 ? (
+                                    <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
+                                      <Clock className="w-2.5 h-2.5" />
+                                      <span>Pending Load</span>
+                                    </span>
+                                  ) : (
+                                    <span className={cn("text-xs", diff.colorClass)}>
+                                      {diff.text}
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+
+                              {/* Expandable Table Dropdown Drawer */}
+                              {isExpanded && (
+                                <tr key={`${po.id}-drawer`} className="table-dropdown-drawer">
+                                  <td colSpan={10} className="p-4 bg-slate-50/80 dark:bg-[#07110c]/90 border-b border-amber-500/20">
+                                    <motion.div
+                                      initial={{ opacity: 0, height: 0 }}
+                                      animate={{ opacity: 1, height: 'auto' }}
+                                      exit={{ opacity: 0, height: 0 }}
+                                      transition={{ duration: 0.25 }}
+                                      className="space-y-4"
+                                    >
+                                      {/* 3-Bento Cards */}
+                                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                        {/* Card 1: Fulfillment & Logistics */}
+                                        <div className="p-3.5 rounded-xl bg-white/80 dark:bg-neutral-900/80 border border-slate-200/80 dark:border-white/10 space-y-2">
+                                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                                            <Package className="w-3.5 h-3.5 text-amber-500" />
+                                            Fulfillment Ratio
+                                          </span>
+                                          <div className="flex items-center justify-between">
+                                            <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                                              {po.arrivalQtl > 0 ? `${Math.round((po.arrivalQtl / (po.poQtl || 1)) * 100)}% Fulfilled` : '0% Arrived'}
+                                            </span>
+                                            <span className="text-[11px] font-mono text-slate-500">
+                                              {po.arrivalQtl} / {po.poQtl} QTL
+                                            </span>
+                                          </div>
+                                          <div className="w-full h-2 bg-slate-200 dark:bg-neutral-800 rounded-full overflow-hidden">
+                                            <div 
+                                              className={cn(
+                                                "h-full rounded-full transition-all duration-500",
+                                                po.arrivalQtl >= po.poQtl ? "bg-emerald-500" : po.arrivalQtl > 0 ? "bg-amber-500" : "bg-rose-500"
+                                              )}
+                                              style={{ width: `${Math.min(100, Math.round((po.arrivalQtl / (po.poQtl || 1)) * 100))}%` }}
+                                            />
+                                          </div>
+                                          <div className="text-[10px] text-slate-500 flex items-center justify-between pt-1">
+                                            <span>Status: <strong className="text-slate-800 dark:text-slate-200">{po.status}</strong></span>
+                                            <span>Diff: <strong className={diff.colorClass}>{diff.text}</strong></span>
+                                          </div>
+                                        </div>
+
+                                        {/* Card 2: Valuation Estimate */}
+                                        <div className="p-3.5 rounded-xl bg-white/80 dark:bg-neutral-900/80 border border-slate-200/80 dark:border-white/10 space-y-1.5">
+                                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                                            <Building2 className="w-3.5 h-3.5 text-emerald-500" />
+                                            Contract Valuation
+                                          </span>
+                                          <div className="flex justify-between items-baseline">
+                                            <span className="text-[11px] text-slate-500 font-medium">Total Contract:</span>
+                                            <span className="text-xs font-mono font-black text-slate-900 dark:text-white">
+                                              ₹ {formatINR(po.poQtl * (po.rate || 0))}
+                                            </span>
+                                          </div>
+                                          <div className="flex justify-between items-baseline">
+                                            <span className="text-[11px] text-slate-500 font-medium">Recorded Arrival:</span>
+                                            <span className="text-xs font-mono font-black text-emerald-600 dark:text-emerald-400">
+                                              ₹ {formatINR(po.arrivalQtl * (po.rate || 0))}
+                                            </span>
+                                          </div>
+                                          <div className="flex justify-between items-baseline border-t border-slate-100 dark:border-neutral-800 pt-1">
+                                            <span className="text-[11px] text-slate-500 font-medium">Rate / QTL:</span>
+                                            <span className="text-xs font-mono font-bold text-amber-600 dark:text-amber-400">
+                                              ₹ {formatINR(po.rate || 0)}
+                                            </span>
+                                          </div>
+                                        </div>
+
+                                        {/* Card 3: Counterparties */}
+                                        <div className="p-3.5 rounded-xl bg-white/80 dark:bg-neutral-900/80 border border-slate-200/80 dark:border-white/10 space-y-1.5">
+                                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                                            <User className="w-3.5 h-3.5 text-indigo-500" />
+                                            Parties & Logistics
+                                          </span>
+                                          <div className="text-[11px]">
+                                            <span className="text-slate-400">Buyer: </span>
+                                            <strong className="text-slate-800 dark:text-slate-200">{po.buyer}</strong>
+                                          </div>
+                                          <div className="text-[11px]">
+                                            <span className="text-slate-400">Supplier: </span>
+                                            <strong className="text-slate-800 dark:text-slate-200">{po.supplier || '—'}</strong>
+                                          </div>
+                                          <div className="text-[11px]">
+                                            <span className="text-slate-400">Brand: </span>
+                                            <strong className="text-slate-800 dark:text-slate-200">{po.brand}</strong>
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      {/* Quick Actions Drawer Toolbar */}
+                                      <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-200/60 dark:border-white/10">
+                                        <div className="flex items-center gap-2">
+                                          <button
+                                            type="button"
+                                            onClick={() => setSelectedPoForModal(po)}
+                                            className="px-3 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 text-xs font-bold transition-all btn-tactile cursor-pointer flex items-center gap-1.5"
+                                          >
+                                            <ExternalLink className="w-3.5 h-3.5" />
+                                            <span>Open Full PO Modal</span>
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => setSelectedBuyerForModal(po.buyer)}
+                                            className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all btn-tactile cursor-pointer flex items-center gap-1.5"
+                                          >
+                                            <User className="w-3.5 h-3.5" />
+                                            <span>View {po.buyer} Ledger</span>
+                                          </button>
+                                        </div>
+
+                                        <div className="flex items-center gap-2">
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              navigator.clipboard?.writeText(po.poNumber);
+                                              setCopiedPoNumber(po.poNumber);
+                                              setTimeout(() => setCopiedPoNumber(null), 2000);
+                                            }}
+                                            className="px-3 py-1.5 rounded-lg bg-white dark:bg-neutral-800 border border-slate-200 dark:border-neutral-700 text-xs font-mono font-bold text-slate-600 dark:text-slate-300 hover:border-amber-500/40 transition-all btn-tactile cursor-pointer"
+                                          >
+                                            {copiedPoNumber === po.poNumber ? '✓ Copied PO' : `Copy ${po.poNumber}`}
+                                          </button>
+                                          <a
+                                            href={`https://wa.me/?text=${encodeURIComponent(`Purchase Order Update: ${po.poNumber} | Buyer: ${po.buyer} | Brand: ${po.brand} | PO Qty: ${po.poQtl} QTL | Arrived: ${po.arrivalQtl} QTL | Status: ${po.status}`)}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all btn-tactile cursor-pointer flex items-center gap-1.5"
+                                          >
+                                            <Phone className="w-3.5 h-3.5" />
+                                            <span>WhatsApp Summary</span>
+                                          </a>
+                                        </div>
+                                      </div>
+                                    </motion.div>
+                                  </td>
+                                </tr>
+                              )}
+                            </React.Fragment>
                           );
                         })}
                       </tbody>

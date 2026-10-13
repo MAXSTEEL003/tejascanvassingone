@@ -263,9 +263,46 @@ export function dateToTimestamp(val: any): number {
 
 /**
  * Extracts Month + Year sheet name from any date value (e.g. "September 2026")
+ * Supports standard dates, direct "Month YYYY" strings, "YYYY-MM", "MM/YYYY", etc.
  * Returns null if invalid or blank.
  */
 export function getMonthYearFromDate(val: any): string | null {
+  if (val === null || val === undefined || val === '') return null;
+
+  // 1. Direct check if val is already a Month Year string (e.g. "October 2026", "Oct 2026", "October-2026", "Oct-2026")
+  const str = String(val).trim();
+  const monthYearDirect = str.match(/^([a-zA-Z]+)[\s,/-]+(\d{2,4})$/);
+  if (monthYearDirect) {
+    const mStr = monthYearDirect[1].toLowerCase();
+    let y = parseInt(monthYearDirect[2], 10);
+    if (y < 100) y += 2000;
+    const mIdx = MONTH_NAMES_LONG.findIndex(m => m.toLowerCase().startsWith(mStr.substring(0, 3)));
+    if (mIdx !== -1 && y >= 1900 && y <= 2100) {
+      return `${MONTH_NAMES_LONG[mIdx]} ${y}`;
+    }
+  }
+
+  // 2. Direct check for YYYY-MM or YYYY/MM or YYYY.MM
+  const yyyymm = str.match(/^(\d{4})[./-](\d{1,2})$/);
+  if (yyyymm) {
+    const y = parseInt(yyyymm[1], 10);
+    const m = parseInt(yyyymm[2], 10);
+    if (m >= 1 && m <= 12 && y >= 1900 && y <= 2100) {
+      return `${MONTH_NAMES_LONG[m - 1]} ${y}`;
+    }
+  }
+
+  // 3. Direct check for MM-YYYY or MM/YYYY
+  const mmyyyy = str.match(/^(\d{1,2})[./-](\d{4})$/);
+  if (mmyyyy) {
+    const m = parseInt(mmyyyy[1], 10);
+    const y = parseInt(mmyyyy[2], 10);
+    if (m >= 1 && m <= 12 && y >= 1900 && y <= 2100) {
+      return `${MONTH_NAMES_LONG[m - 1]} ${y}`;
+    }
+  }
+
+  // 4. Canonical ISO date parsing
   const iso = normalizeDate(val);
   if (!iso) return null;
 

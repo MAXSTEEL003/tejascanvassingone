@@ -222,8 +222,11 @@ export default function ExcelImportModal({
 
     try {
       const targetName = selectedSheet || currentSheetName;
+      const targetSheetId = targetName.toLowerCase() === currentSheetName.toLowerCase()
+        ? currentSheetId
+        : `sheet-${targetName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
       const result = await executeChunkedBatchImport(
-        currentSheetId,
+        targetSheetId,
         targetName,
         rawMatrix,
         detectedColumns,

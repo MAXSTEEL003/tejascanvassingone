@@ -87,16 +87,35 @@ export function isMeaningfulRow(row: any): boolean {
 }
 
 /**
+ * Extracts Month + Year sheet name from sheetId string if formatted like "sheet-month-yyyy"
+ */
+export function parseSheetNameFromId(sheetId?: string): string | null {
+  if (!sheetId || typeof sheetId !== 'string') return null;
+  const clean = sheetId.replace(/^sheet-/, '');
+  const parts = clean.split('-');
+  if (parts.length === 2) {
+    const mIdx = MONTH_NAMES_LONG.findIndex(m => m.toLowerCase() === parts[0].toLowerCase());
+    const y = parseInt(parts[1], 10);
+    if (mIdx !== -1 && !isNaN(y) && y >= 1900 && y <= 2100) {
+      return `${MONTH_NAMES_LONG[mIdx]} ${y}`;
+    }
+  }
+  return null;
+}
+
+/**
  * Organizes all arrival records into Month + Year sheets.
  * Completely removes "All Arrivals".
  * Preserves all row fields, IDs, formulas, and document integrity.
  * NEVER drops rows across sheets or deduplicates by billNo!
+ * Preserves any user-added sheets (even if empty).
  */
 export function organizeArrivalSheetsByMonth(
   existingSheets: ArrivalSheet[],
   cloudRecords: any[] = [],
   initialRowsCount = 40,
-  preferredActiveSheetId?: string
+  preferredActiveSheetId?: string,
+  extraSheetMetadata: Array<{ id: string; name: string }> = []
 ): {
   sheets: ArrivalSheet[];
   activeSheetId: string;
@@ -112,8 +131,21 @@ export function organizeArrivalSheetsByMonth(
   const isMonthYearName = (name: string) => 
     /^(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4}$/i.test(name.trim());
 
+  // 0. Register any sheets defined in extraSheetMetadata (from Cloud arrival_sheets)
+  if (Array.isArray(extraSheetMetadata)) {
+    extraSheetMetadata.forEach(meta => {
+      if (meta && meta.name && !/all\s*arrivals/i.test(meta.name)) {
+        const name = meta.name.trim();
+        if (!sheetRowMaps.has(name)) {
+          sheetRowMaps.set(name, new Map());
+        }
+      }
+    });
+  }
+
   // 1. Process all existing sheets - rows ALREADY in a sheet STAY in that sheet!
   existingSheets.forEach(s => {
+    if (!s || !s.name) return;
     const isLegacyAllArrivals = /all\s*arrivals/i.test(s.name) || s.id === 'sheet-1';
 
     if (isLegacyAllArrivals) {
@@ -168,9 +200,15 @@ export function organizeArrivalSheetsByMonth(
     if (row.sheetName && !/all\s*arrivals/i.test(row.sheetName)) {
       targetSheetName = row.sheetName.trim();
     } else if (row.sheetId) {
-      const matchingSheet = existingSheets.find(s => s.id === row.sheetId);
+      const matchingSheet = existingSheets.find(s => s.id === row.sheetId) ||
+                            (extraSheetMetadata || []).find(s => s.id === row.sheetId);
       if (matchingSheet && !/all\s*arrivals/i.test(matchingSheet.name)) {
         targetSheetName = matchingSheet.name.trim();
+      } else {
+        const parsedFromId = parseSheetNameFromId(row.sheetId);
+        if (parsedFromId && !/all\s*arrivals/i.test(parsedFromId)) {
+          targetSheetName = parsedFromId;
+        }
       }
     }
 

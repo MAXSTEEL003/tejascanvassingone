@@ -3,8 +3,6 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   ArrowLeft,
   ArrowRight, 
-  ChevronLeft, 
-  Sparkles, 
   Lock, 
   Mail, 
   Phone, 
@@ -16,10 +14,14 @@ import {
   Check, 
   AlertCircle,
   Briefcase,
-  Layers,
-  ArrowUpRight,
   Info,
-  X
+  X,
+  Sun,
+  Moon,
+  Sparkles,
+  ShoppingBag,
+  ExternalLink,
+  ChevronRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
@@ -29,7 +31,6 @@ import {
   signInWithPopup,
   GoogleAuthProvider,
   RecaptchaVerifier,
-  signInWithPhoneNumber,
   ConfirmationResult
 } from 'firebase/auth';
 import { auth, setCollectionDoc } from '../lib/firebase';
@@ -40,58 +41,6 @@ declare global {
     recaptchaVerifier?: RecaptchaVerifier;
     confirmationResult?: ConfirmationResult;
   }
-}
-
-// Handcrafted botanical leaf stalk emblem matching the exact brandmark in reference
-export function TejasBotanicalLogo({ className = "w-8 h-8 text-[#143e2e] dark:text-emerald-400" }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 40 40"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      className={className}
-    >
-      {/* Central arched stem */}
-      <path
-        d="M20 34C20 24 19 14 21 6"
-        stroke="currentColor"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-      />
-      {/* Top delicate crest leaf */}
-      <path
-        d="M21 6C23 9 27 10 26 14C25 18 20.5 16.5 20 13"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      {/* Left upper leaf */}
-      <path
-        d="M19.5 16C16 13 11 14.5 12 19.5C13 23.5 18 22 19 19"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      {/* Right lower leaf */}
-      <path
-        d="M20 22C23.5 19.5 28.5 21 28 25.5C27 29.5 21.5 28.5 20.5 25"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      {/* Small lowest left leaf */}
-      <path
-        d="M19.8 26.5C17.5 25 14.5 26 15 29C15.5 31.5 19 31 19.8 28.5"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
 }
 
 // Crisp Google G Logo
@@ -118,6 +67,20 @@ function GoogleGIcon({ className = "w-4 h-4" }: { className?: string }) {
   );
 }
 
+// Brand Leaf Emblem
+export function TejasLogoEmblem({ className = "w-10 h-10" }: { className?: string }) {
+  return (
+    <div className={cn("rounded-2xl bg-[#C22424] text-white flex items-center justify-center shadow-md", className)}>
+      <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/>
+        <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/>
+      </svg>
+    </div>
+  );
+}
+
+export const TejasBotanicalLogo = TejasLogoEmblem;
+
 interface LoginViewProps {
   defaultStep?: string;
   defaultTab?: 'signin' | 'signup';
@@ -131,6 +94,35 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
   const rawRedirect = searchParams.get('redirect');
   const redirectTarget = rawRedirect && rawRedirect.startsWith('/') ? rawRedirect : null;
 
+  // Theme state
+  const [isDark, setIsDark] = useState(() => {
+    const saved = localStorage.getItem('theme');
+    return saved ? saved === 'dark' : true;
+  });
+
+  useEffect(() => {
+    if (isDark) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+  }, [isDark]);
+
+  const toggleTheme = () => {
+    const nextDark = !isDark;
+    setIsDark(nextDark);
+    if (nextDark) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+    window.dispatchEvent(new Event('theme-changed'));
+  };
+
   // Auto-redirect if already authenticated as requested role
   useEffect(() => {
     try {
@@ -139,7 +131,7 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
         const target = redirectTarget || (location.pathname.startsWith('/admin') ? location.pathname : '/admin');
         navigate(target, { replace: true });
       } else if ((secretRole === 'employee' || defaultPortal === 'employee') && activeRole === 'employee') {
-        const target = redirectTarget || '/inventory';
+        const target = redirectTarget || '/employee/dashboard';
         navigate(target, { replace: true });
       }
     } catch {}
@@ -152,10 +144,7 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
     return 'merchant';
   });
 
-  // Synchronize internal state with activePortal
-  const loginMode = activePortal === 'merchant' ? 'merchant' : 'admin_employee';
   const staffRole = activePortal === 'admin' ? 'admin' : 'employee';
-  const setStaffRole = (r: 'admin' | 'employee') => setActivePortal(r);
 
   // Input states
   const [merchantAuthTab, setMerchantAuthTab] = useState<'signin' | 'signup'>(defaultTab);
@@ -163,10 +152,6 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
   const [email, setEmail] = useState('tejas@example.com');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [authWithPhone, setAuthWithPhone] = useState(false);
-  const [phoneNumber, setPhoneNumber] = useState('9845012345');
-  const [otpSent, setOtpSent] = useState(false);
-  const [otpCode, setOtpCode] = useState('');
 
   // Merchant Signup states
   const [signupName, setSignupName] = useState('');
@@ -306,14 +291,12 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
           ? JSON.parse(existingStakeholdersStr) 
           : { buyers: [], suppliers: [], employees: [] };
         if (!Array.isArray(parsedStakeholders.buyers)) parsedStakeholders.buyers = [];
-        // Prepend new buyer so they appear right at the top
         parsedStakeholders.buyers = [
           newStakeholder, 
           ...parsedStakeholders.buyers.filter((b: any) => b.id !== userUid && b.email?.toLowerCase() !== emailVal.toLowerCase())
         ];
         localStorage.setItem('stakeholders_v2', JSON.stringify(parsedStakeholders));
 
-        // Save in dedicated buyer_registration_requests collection
         const existingReqs = JSON.parse(localStorage.getItem('buyer_registration_requests') || '[]');
         const updatedReqs = [newStakeholder, ...existingReqs.filter((r: any) => r.id !== userUid)];
         localStorage.setItem('buyer_registration_requests', JSON.stringify(updatedReqs));
@@ -350,7 +333,7 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
     }
   };
 
-  // Dedicated Google Sign-In for Admin (Restricted to exactly the 2 authorized Google accounts)
+  // Dedicated Google Sign-In for Admin
   const handleAdminGoogleSignIn = async () => {
     setLoading(true);
     setErrorMsg(null);
@@ -363,7 +346,6 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
       const user = result.user;
       const userEmail = (user.email || '').toLowerCase().trim();
 
-      // Check if account is one of the exactly two authorized Google accounts
       if (!isAuthorizedAdminGoogleAccount(userEmail)) {
         await auth.signOut();
         try {
@@ -376,7 +358,6 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
         return;
       }
 
-      // Authorized Google account!
       const userUid = user.uid || 'admin-tejas-01';
       const userName = user.displayName || 'Tejas Adinarayan (Admin HQ)';
 
@@ -416,8 +397,6 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
       console.error("Admin Google Sign-in error:", err);
       if (err?.code === 'auth/popup-closed-by-user') {
         setErrorMsg('Sign-in popup was closed. Please try again.');
-      } else if (err?.code === 'auth/missing-initial-state' || (err?.message && (err.message.includes('missing initial state') || err.message.includes('sessionStorage')))) {
-        setErrorMsg('Browser storage partitioning / preview iframe blocked Google OAuth state. Please sign in with Username: "tejasadinarayan", or open preview directly in a new browser tab.');
       } else {
         setErrorMsg(err?.message || 'Google Sign-In failed. Please try again.');
       }
@@ -440,7 +419,6 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
       const userEmail = (user.email || '').toLowerCase().trim();
       const userName = user.displayName || 'TEJAS CANVASSING';
 
-      // If an authorized admin signs in via Google, route them to Admin HQ!
       if (isAuthorizedAdminGoogleAccount(userEmail)) {
         localStorage.setItem('userRole', 'admin');
         localStorage.setItem('userEmail', userEmail);
@@ -506,7 +484,6 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
         setLoading(false);
         return;
       }
-      // Fallback for iFrame preview restrictions
       const cleanEmail = email.includes('@') ? email : 'merchant.google@riceaggregator.com';
       localStorage.setItem('userRole', 'merchant');
       localStorage.setItem('userEmail', cleanEmail);
@@ -524,7 +501,7 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
     }
   };
 
-  // Staff / Admin / Employee Sign-In with Secure Server-Side Verification
+  // Staff / Admin / Employee Sign-In
   const handleStaffSignIn = async (e: React.FormEvent, roleToSign: 'admin' | 'employee') => {
     e.preventDefault();
     setLoading(true);
@@ -541,11 +518,9 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
     }
 
     try {
-      // Authenticate securely via Express backend
       const result = await loginWithServer(inputUser, inputPass, roleToSign);
 
       if (result.success && result.user) {
-        // Also ensure Firebase Auth is synchronized for Firestore rules
         const firebaseEmail = result.user.email || `${inputUser.toLowerCase()}@riceaggregator.com`;
         try {
           await signInWithEmailAndPassword(auth, firebaseEmail, inputPass);
@@ -585,7 +560,7 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
           setSuccessMsg(`Welcome, ${empName}! Launching Operations Terminal...`);
           const target = (redirectTarget && !redirectTarget.includes('employee1977') && redirectTarget.startsWith('/'))
             ? redirectTarget
-            : '/inventory';
+            : '/employee/dashboard';
           setTimeout(() => {
             setLoading(false);
             navigate(target, { replace: true });
@@ -601,674 +576,654 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
     }
   };
 
-  // 3-tab Portal Selector (Merchant | Employee | Admin)
-  const renderPortalTabs = () => {
-    if (secretRole) return null;
-    return (
-      <div className="grid grid-cols-3 p-1 bg-slate-200/70 dark:bg-[#0c1813] rounded-xl border border-slate-200 dark:border-neutral-800 text-xs font-bold">
-        <button
-          type="button"
-          onClick={() => { setActivePortal('merchant'); setErrorMsg(null); setSuccessMsg(null); }}
-          className={cn(
-            "py-1.5 px-1.5 rounded-lg flex items-center justify-center gap-1 transition-all cursor-pointer text-[11px]",
-            activePortal === 'merchant'
-              ? "bg-white dark:bg-neutral-800 text-slate-900 dark:text-white shadow-xs font-extrabold"
-              : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
-          )}
-        >
-          <Briefcase className="w-3.5 h-3.5 text-emerald-600" />
-          <span>Merchant</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => { setActivePortal('employee'); setErrorMsg(null); setSuccessMsg(null); }}
-          className={cn(
-            "py-1.5 px-1.5 rounded-lg flex items-center justify-center gap-1 transition-all cursor-pointer text-[11px]",
-            activePortal === 'employee'
-              ? "bg-white dark:bg-neutral-800 text-slate-900 dark:text-white shadow-xs font-extrabold"
-              : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
-          )}
-        >
-          <Warehouse className="w-3.5 h-3.5 text-amber-600" />
-          <span>Employee</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => { setActivePortal('admin'); setErrorMsg(null); setSuccessMsg(null); }}
-          className={cn(
-            "py-1.5 px-1.5 rounded-lg flex items-center justify-center gap-1 transition-all cursor-pointer text-[11px]",
-            activePortal === 'admin'
-              ? "bg-white dark:bg-neutral-800 text-amber-700 dark:text-amber-400 shadow-xs font-extrabold"
-              : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
-          )}
-        >
-          <ShieldCheck className="w-3.5 h-3.5 text-amber-500" />
-          <span>Admin</span>
-        </button>
-      </div>
-    );
-  };
-
   return (
-    <div className="min-h-screen bg-[#f3f4f3] dark:bg-[#030906] flex flex-col items-center justify-center p-0 sm:py-6 sm:px-4 font-sans antialiased text-slate-900 dark:text-slate-100 select-none overflow-x-hidden">
+    <div className="min-h-dvh bg-[#FAFBFA] dark:bg-[#0A0A0A] flex flex-col items-center justify-center p-3 sm:p-5 font-sans antialiased text-neutral-900 dark:text-neutral-100 select-none overflow-x-hidden transition-colors duration-200">
       
-      {/* Invisible Recaptcha for phone verification */}
+      {/* Invisible Recaptcha */}
       <div id="recaptcha-container"></div>
 
-      {/* Phone Canvas Container (iPhone 16 Pro Frame on desktop, full screen with dynamic viewport on mobile) */}
-      <div className="w-full sm:max-w-[420px] h-[100dvh] min-h-[100dvh] sm:h-[844px] sm:min-h-0 bg-[#fafaf9] dark:bg-[#07130e] sm:rounded-[44px] shadow-[0_20px_70px_-10px_rgba(0,0,0,0.18)] dark:shadow-[0_25px_80px_-15px_rgba(0,0,0,0.7)] sm:border-[8px] sm:border-slate-800/90 dark:sm:border-neutral-800 overflow-hidden relative flex flex-col justify-between pb-safe pt-safe">
+      {/* Main Authentication Card */}
+      <div className="w-full max-w-[420px] bg-white dark:bg-[#141414] border border-[#E5E7EB] dark:border-[#262626] rounded-2xl sm:rounded-3xl shadow-[0_10px_35px_rgba(0,0,0,0.05)] dark:shadow-[0_16px_50px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col relative pt-[max(env(safe-area-inset-top,0px),12px)] pb-[max(env(safe-area-inset-bottom,0px),16px)]">
         
-        <div className="relative w-full h-full flex flex-col justify-between bg-[#fafaf9] dark:bg-[#07130e] text-slate-900 dark:text-slate-100 overflow-y-auto no-scrollbar">
-              {/* Top Navigation Bar with Back Arrow to About Us */}
-              <div className="px-5 pt-4 pb-1 flex items-center justify-between shrink-0">
-                <button
-                  type="button"
-                  id="btn-login-back-to-about"
-                  onClick={() => navigate('/about')}
-                  className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors cursor-pointer py-1.5 px-2.5 -ml-2 rounded-xl hover:bg-slate-200/60 dark:hover:bg-neutral-800/60 group"
-                  title="Go back to Public Front Page"
-                >
-                  <ArrowLeft className="w-4 h-4 text-[#143e2e] dark:text-emerald-400 transition-transform group-hover:-translate-x-0.5 stroke-[2.5]" />
-                  <span>Front Page</span>
-                </button>
+        {/* Top Header Bar */}
+        <div className="px-5 pt-1.5 pb-2.5 flex items-center justify-between border-b border-[#F0F2F1] dark:border-[#1E1E1E]">
+          <button
+            type="button"
+            id="btn-login-back-to-about"
+            onClick={() => navigate('/about')}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white transition-colors cursor-pointer py-1 px-2 -ml-1.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 group"
+            title="Go to Public About Page"
+          >
+            <ArrowLeft className="w-3.5 h-3.5 text-[#C22424] transition-transform group-hover:-translate-x-0.5" />
+            <span>About</span>
+          </button>
 
-                {secretRole ? (
-                  <span className="text-[9px] font-extrabold uppercase tracking-wider text-amber-700 dark:text-amber-400 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/20 flex items-center gap-1 font-mono">
-                    <Lock className="w-2.5 h-2.5 text-amber-600 dark:text-amber-400" />
-                    {secretRole === 'admin' ? 'Admin Portal' : 'Employee Portal'}
-                  </span>
-                ) : null}
-              </div>
+          <div className="flex items-center gap-2">
+            {secretRole ? (
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[#C22424] dark:text-red-300 bg-[#FEF2F2] dark:bg-red-950/40 px-2 py-0.5 rounded-full border border-[#FECACA] dark:border-red-900/40 flex items-center gap-1">
+                <Lock className="w-3 h-3 text-[#C22424]" />
+                {secretRole === 'admin' ? 'Admin Portal' : 'Employee Portal'}
+              </span>
+            ) : null}
 
-              {/* ========================================================== */}
-              {/* MODE A: MERCHANT LOGIN (Matching Screenshot 3)             */}
-              {/* ========================================================== */}
-              {loginMode === 'merchant' && (
-                <div className="px-6 py-2 flex-1 flex flex-col justify-between overflow-y-auto no-scrollbar">
-                  
-                  {/* Brand Header */}
-                  <div className="flex flex-col items-center text-center pt-2">
-                    <TejasBotanicalLogo className="w-10 h-10 text-[#143e2e] dark:text-emerald-400" />
-                    <h2 className="font-serif text-3xl font-normal text-[#143e2e] dark:text-white tracking-wide mt-1">
-                      Tejas
-                    </h2>
-                  </div>
-
-                  {/* Portal Selector Tabs (Merchant | Employee | Admin) */}
-                  <div className="pt-2">
-                    {renderPortalTabs()}
-                  </div>
-
-                  {/* Sign In vs Create Account Tab Switcher */}
-                  <div className="grid grid-cols-2 p-1 bg-slate-200/60 dark:bg-[#0c1813] rounded-xl border border-slate-200 dark:border-neutral-800 text-xs font-bold my-2">
-                    <button
-                      type="button"
-                      onClick={() => { setMerchantAuthTab('signin'); setErrorMsg(null); setSuccessMsg(null); }}
-                      className={cn(
-                        "py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer",
-                        merchantAuthTab === 'signin'
-                          ? "bg-white dark:bg-neutral-800 text-slate-900 dark:text-white shadow-xs font-bold"
-                          : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
-                      )}
-                    >
-                      <span>Sign In</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setMerchantAuthTab('signup'); setErrorMsg(null); setSuccessMsg(null); }}
-                      className={cn(
-                        "py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer",
-                        merchantAuthTab === 'signup'
-                          ? "bg-white dark:bg-neutral-800 text-slate-900 dark:text-white shadow-xs font-bold"
-                          : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
-                      )}
-                    >
-                      <span>Create Account</span>
-                    </button>
-                  </div>
-
-                  {/* Headline */}
-                  <div className="space-y-1 text-left pb-1">
-                    <h1 className="font-serif text-2xl sm:text-3xl font-normal text-slate-900 dark:text-white tracking-tight leading-tight">
-                      {merchantAuthTab === 'signin' ? 'Welcome Back' : 'Register Merchant'}
-                    </h1>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 font-normal leading-relaxed">
-                      {merchantAuthTab === 'signin'
-                        ? 'Sign in with your registered phone number, email, or firm name.'
-                        : 'Create a new business buyer account to start placing procurement orders.'}
-                    </p>
-                  </div>
-
-                  {/* Alerts */}
-                  {errorMsg && (
-                    <div className="p-2.5 my-1.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 text-xs rounded-xl flex items-center gap-2">
-                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                      <span>{errorMsg}</span>
-                    </div>
-                  )}
-                  {successMsg && (
-                    <div className="p-2.5 my-1.5 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900 text-emerald-800 dark:text-emerald-300 text-xs rounded-xl flex items-center gap-2">
-                      <Check className="w-3.5 h-3.5 shrink-0 text-emerald-600" />
-                      <span>{successMsg}</span>
-                    </div>
-                  )}
-
-                  {/* SIGN IN FORM */}
-                  {merchantAuthTab === 'signin' && (
-                    <form onSubmit={handleMerchantSignIn} className="space-y-3 pt-1 text-left">
-                      {/* Flexible Identifier Input (Phone, Email, or Username) */}
-                      <div className="space-y-1">
-                        <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center justify-between">
-                          <span>Phone Number, Email, or Username</span>
-                          <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-normal">
-                            {/^[0-9+\s-]{8,15}$/.test(identifier) ? '📱 Mobile Phone' : identifier.includes('@') ? '✉️ Email Address' : '🏢 Firm Username'}
-                          </span>
-                        </label>
-                        <div className="relative">
-                          <input
-                            type="text"
-                            required
-                            value={identifier}
-                            onChange={(e) => setIdentifier(e.target.value)}
-                            placeholder="Phone (+91 9845012345), Email, or Firm Name"
-                            className="w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-white dark:bg-[#0c1813] border border-slate-200 dark:border-neutral-800 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-[#143e2e]/25 focus:border-[#143e2e] transition-all shadow-2xs placeholder:text-slate-400"
-                          />
-                          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
-                            {/^[0-9+\s-]{8,15}$/.test(identifier) ? (
-                              <Phone className="w-3.5 h-3.5 text-emerald-600" />
-                            ) : identifier.includes('@') ? (
-                              <Mail className="w-3.5 h-3.5 text-emerald-600" />
-                            ) : (
-                              <Building2 className="w-3.5 h-3.5 text-emerald-600" />
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Password Input */}
-                      <div className="space-y-1">
-                        <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block">
-                          Password
-                        </label>
-                        <div className="relative">
-                          <input
-                            type={showPassword ? "text" : "password"}
-                            required
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            placeholder="••••••••"
-                            className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-[#0c1813] border border-slate-200 dark:border-neutral-800 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-[#143e2e]/25 focus:border-[#143e2e] transition-all shadow-2xs pr-9 placeholder:text-slate-400"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowPassword(!showPassword)}
-                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 cursor-pointer"
-                          >
-                            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                          </button>
-                        </div>
-
-                        {/* Forgot Password Link */}
-                        <div className="flex justify-end pt-0.5">
-                          <button
-                            type="button"
-                            onClick={() => alert("Password reset instructions will be sent to your registered merchant contact.")}
-                            className="text-[11px] font-medium text-slate-500 hover:text-slate-800 dark:hover:text-slate-300 cursor-pointer"
-                          >
-                            Forgot password?
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Primary Sign In Button */}
-                      <button
-                        type="submit"
-                        disabled={loading}
-                        className="w-full py-3 rounded-xl bg-[#143e2e] hover:bg-[#0e2f22] text-white font-semibold text-xs sm:text-sm shadow-xs transition-all cursor-pointer active:scale-[0.98] flex items-center justify-center gap-2 mt-1"
-                      >
-                        {loading ? (
-                          <div className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
-                        ) : (
-                          <span>Sign In to Merchant Terminal</span>
-                        )}
-                      </button>
-                    </form>
-                  )}
-
-                  {/* CREATE ACCOUNT (SIGN UP) FORM */}
-                  {merchantAuthTab === 'signup' && (
-                    <form onSubmit={handleMerchantSignUp} className="space-y-2.5 pt-1 text-left">
-                      {/* Merchant / Firm Name */}
-                      <div className="space-y-1">
-                        <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block">
-                          Merchant / Firm Name *
-                        </label>
-                        <div className="relative">
-                          <input
-                            type="text"
-                            required
-                            value={signupName}
-                            onChange={(e) => setSignupName(e.target.value)}
-                            placeholder="e.g. TEJAS RICE TRADERS"
-                            className="w-full pl-9 pr-3.5 py-2 rounded-xl bg-white dark:bg-[#0c1813] border border-slate-200 dark:border-neutral-800 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-[#143e2e]/25 focus:border-[#143e2e] transition-all shadow-2xs placeholder:text-slate-400"
-                          />
-                          <Building2 className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                        </div>
-                      </div>
-
-                      {/* Mobile Phone Number */}
-                      <div className="space-y-1">
-                        <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block">
-                          Mobile Phone Number *
-                        </label>
-                        <div className="relative">
-                          <input
-                            type="tel"
-                            required
-                            value={signupPhone}
-                            onChange={(e) => setSignupPhone(e.target.value)}
-                            placeholder="10-digit mobile (e.g. 9845012345)"
-                            className="w-full pl-9 pr-3.5 py-2 rounded-xl bg-white dark:bg-[#0c1813] border border-slate-200 dark:border-neutral-800 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-[#143e2e]/25 focus:border-[#143e2e] transition-all shadow-2xs placeholder:text-slate-400"
-                          />
-                          <Phone className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                        </div>
-                      </div>
-
-                      {/* Email Address & GSTIN Grid */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <div className="space-y-1">
-                          <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block">
-                            Email (Optional)
-                          </label>
-                          <input
-                            type="email"
-                            value={signupEmail}
-                            onChange={(e) => setSignupEmail(e.target.value)}
-                            placeholder="name@firm.com"
-                            className="w-full px-3 py-2 rounded-xl bg-[#fafaf9] dark:bg-[#0c1813] border border-slate-200 dark:border-neutral-800 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-[#143e2e]/25 focus:border-[#143e2e] transition-all shadow-2xs placeholder:text-slate-400"
-                          />
-                        </div>
-
-                        <div className="space-y-1">
-                          <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block">
-                            GSTIN (Optional)
-                          </label>
-                          <input
-                            type="text"
-                            value={signupGstin}
-                            onChange={(e) => setSignupGstin(e.target.value)}
-                            placeholder="29AAAAA0000A1Z5"
-                            className="w-full px-3 py-2 rounded-xl bg-[#fafaf9] dark:bg-[#0c1813] border border-slate-200 dark:border-neutral-800 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-[#143e2e]/25 focus:border-[#143e2e] transition-all shadow-2xs placeholder:text-slate-400 uppercase"
-                          />
-                        </div>
-                      </div>
-
-                      {/* Password Input */}
-                      <div className="space-y-1">
-                        <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block">
-                          Account Password *
-                        </label>
-                        <div className="relative">
-                          <input
-                            type={showPassword ? "text" : "password"}
-                            required
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            placeholder="••••••••"
-                            className="w-full px-3.5 py-2 rounded-xl bg-white dark:bg-[#0c1813] border border-slate-200 dark:border-neutral-800 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-[#143e2e]/25 focus:border-[#143e2e] transition-all shadow-2xs pr-9 placeholder:text-slate-400"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowPassword(!showPassword)}
-                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 cursor-pointer"
-                          >
-                            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Primary Create Account Button */}
-                      <button
-                        type="submit"
-                        disabled={loading}
-                        className="w-full py-3 rounded-xl bg-[#143e2e] hover:bg-[#0e2f22] text-white font-semibold text-xs sm:text-sm shadow-xs transition-all cursor-pointer active:scale-[0.98] flex items-center justify-center gap-2 mt-1"
-                      >
-                        {loading ? (
-                          <div className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
-                        ) : (
-                          <span>Register Business Account</span>
-                        )}
-                      </button>
-                    </form>
-                  )}
-
-                  {/* Or Continue With Divider */}
-                  <div className="relative py-2 text-center">
-                    <div className="absolute inset-0 flex items-center">
-                      <div className="w-full border-t border-slate-200 dark:border-neutral-800" />
-                    </div>
-                    <span className="relative px-3 bg-[#fafaf9] dark:bg-[#07130e] text-[11px] text-slate-400 font-medium">
-                      or continue with
-                    </span>
-                  </div>
-
-                  {/* Continue with Google */}
-                  <button
-                    type="button"
-                    onClick={handleGoogleSignIn}
-                    disabled={loading}
-                    className="w-full py-2.5 px-4 rounded-xl bg-white dark:bg-[#0c1813] hover:bg-slate-50 dark:hover:bg-neutral-800 border border-slate-200/90 dark:border-neutral-800 text-slate-700 dark:text-slate-200 font-medium text-xs shadow-2xs transition-all cursor-pointer flex items-center justify-center gap-2.5 active:scale-[0.98]"
-                  >
-                    <GoogleGIcon className="w-4 h-4" />
-                    <span>Continue with Google</span>
-                  </button>
-
-                  {/* Footer Endorsement */}
-                  <div className="text-center pt-3 pb-2">
-                    <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
-                      Trusted by 500+ businesses across India.
-                    </p>
-                  </div>
-
-                </div>
-              )}
-
-              {/* ========================================================== */}
-              {/* MODE B: ADMIN & EMPLOYEE PORTAL ("FOR ADMIN LOGIN DO       */}
-              {/* SOMETHING ELSE, ALSO FOR EMPLOYEE ALSO")                   */}
-              {/* ========================================================== */}
-              {loginMode === 'admin_employee' && (
-                <div className="px-6 py-2 flex-1 flex flex-col justify-between space-y-3.5 text-left">
-                  
-                  {/* Executive Header */}
-                  <div className="space-y-1 pt-1">
-                    <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-200/70 dark:bg-emerald-950/60 text-[9px] font-extrabold uppercase tracking-widest text-slate-700 dark:text-emerald-400 font-mono">
-                      <Lock className="w-3 h-3 text-amber-500" />
-                      Secret Access Terminal
-                    </div>
-                    <h2 className="font-serif text-2xl font-normal text-slate-900 dark:text-white tracking-tight">
-                      {staffRole === 'admin' ? 'Admin HQ Sign-In' : 'Employee Portal Sign-In'}
-                    </h2>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      {staffRole === 'admin' 
-                        ? 'Enter your executive credentials to access platform controls.' 
-                        : 'Enter your employee credentials issued by Admin (Tejas Adinarayan).'}
-                    </p>
-                  </div>
-
-                  {/* Portal Selector Tabs (Merchant | Employee | Admin) */}
-                  {renderPortalTabs()}
-
-                  {/* Role Detail Forms */}
-                  {staffRole === 'admin' ? (
-                    <div className="bg-white dark:bg-[#0c1813] border border-slate-200/90 dark:border-neutral-800 rounded-2xl p-4 sm:p-5 space-y-3.5 shadow-xs text-left">
-                      <div className="flex items-center justify-between border-b border-slate-100 dark:border-neutral-800 pb-2.5">
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-xl bg-emerald-500/10 dark:bg-emerald-950/60 border border-emerald-500/20 flex items-center justify-center shrink-0">
-                            <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                          </div>
-                          <div>
-                            <span className="text-xs font-bold text-slate-900 dark:text-white block leading-tight">
-                              Aggregator HQ Terminal
-                            </span>
-                            <span className="text-[10px] text-slate-400">
-                              Tejas Canvassing Brokerage
-                            </span>
-                          </div>
-                        </div>
-                        <span className="px-2 py-0.5 rounded text-[9px] font-extrabold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 font-mono tracking-wider">
-                          Google Auth
-                        </span>
-                      </div>
-
-                      <div className="space-y-1">
-                        <h3 className="text-xs font-bold text-slate-900 dark:text-white">
-                          Authorized Executive Access
-                        </h3>
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                          Sign in with your authorized Google account to access full admin controls, order ledger, analytics, and brokering operations.
-                        </p>
-                      </div>
-
-                      {/* Error / Success Notifications */}
-                      {errorMsg && (
-                        <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-700 dark:text-rose-400 text-xs font-semibold flex items-start gap-2">
-                          <AlertCircle className="w-4 h-4 shrink-0 text-rose-500 mt-0.5" />
-                          <span className="leading-snug">{errorMsg}</span>
-                        </div>
-                      )}
-                      {successMsg && (
-                        <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-xs font-semibold flex items-start gap-2">
-                          <Check className="w-4 h-4 shrink-0 text-emerald-500 mt-0.5" />
-                          <span className="leading-snug">{successMsg}</span>
-                        </div>
-                      )}
-
-                      {/* Primary Google Sign-In Button */}
-                      <button
-                        type="button"
-                        id="btn-admin-google-signin"
-                        onClick={handleAdminGoogleSignIn}
-                        disabled={loading}
-                        className="w-full py-3 px-4 rounded-xl bg-white dark:bg-[#14231c] hover:bg-slate-50 dark:hover:bg-[#192d24] border-2 border-emerald-600/50 dark:border-emerald-500/50 text-slate-900 dark:text-white font-bold text-xs shadow-xs transition-all cursor-pointer flex items-center justify-center gap-2.5 active:scale-[0.98] group"
-                      >
-                        <GoogleGIcon className="w-4 h-4 transition-transform group-hover:scale-110" />
-                        <span>{loading ? 'Verifying Google Account...' : 'Sign In with Google'}</span>
-                      </button>
-
-                      {/* Strict Security Policy Note */}
-                      <div className="p-2.5 rounded-xl bg-slate-100/70 dark:bg-[#07130e] border border-slate-200/80 dark:border-neutral-800 text-[10.5px] text-slate-500 dark:text-slate-400 space-y-0.5">
-                        <div className="flex items-center gap-1 font-bold text-slate-700 dark:text-slate-300">
-                          <Lock className="w-3 h-3 text-amber-500 shrink-0" />
-                          <span>Strict Access Protection</span>
-                        </div>
-                        <p className="leading-snug text-[10px]">
-                          Only 2 authorized Google accounts (Admin Tejas and designated account) can access this portal. All other Google accounts will be denied.
-                        </p>
-                      </div>
-
-                      {/* Discreet Fallback: Master Password login */}
-                      <div className="pt-0.5 border-t border-slate-100 dark:border-neutral-800/80">
-                        <details className="group/fallback text-left">
-                          <summary className="text-[10px] font-semibold text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 cursor-pointer list-none flex items-center justify-between py-1">
-                            <span>Alternative: Sign In with Password</span>
-                            <span className="group-open/fallback:rotate-180 transition-transform">▾</span>
-                          </summary>
-                          <form onSubmit={(e) => handleStaffSignIn(e, 'admin')} className="pt-2 space-y-2">
-                            <input
-                              type="text"
-                              value={staffUsername}
-                              onChange={(e) => setStaffUsername(e.target.value)}
-                              placeholder="Admin Username"
-                              className="w-full px-3 py-1.5 bg-slate-50 dark:bg-[#07130e] border border-slate-200 dark:border-neutral-800 rounded-lg text-xs outline-none"
-                            />
-                            <div className="relative flex items-center">
-                              <input
-                                type={showStaffPassword ? "text" : "password"}
-                                value={staffPassword}
-                                onChange={(e) => setStaffPassword(e.target.value)}
-                                placeholder="Admin Password"
-                                className="w-full px-3 py-1.5 bg-slate-50 dark:bg-[#07130e] border border-slate-200 dark:border-neutral-800 rounded-lg text-xs outline-none pr-8"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => setShowStaffPassword(prev => !prev)}
-                                className="absolute right-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                              >
-                                {showStaffPassword ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                              </button>
-                            </div>
-                            <button
-                              type="submit"
-                              disabled={loading}
-                              className="w-full py-1.5 rounded-lg bg-slate-900 hover:bg-black text-white font-semibold text-xs transition-colors"
-                            >
-                              Sign In with Password
-                            </button>
-                          </form>
-                        </details>
-                      </div>
-                    </div>
-                  ) : (
-                    <form onSubmit={(e) => handleStaffSignIn(e, 'employee')} className="bg-white dark:bg-[#0c1813] border border-slate-200/90 dark:border-neutral-800 rounded-2xl p-4 space-y-3 shadow-2xs">
-                      <div className="flex items-center justify-between border-b border-slate-100 dark:border-neutral-800 pb-2">
-                        <div>
-                          <span className="text-xs font-bold text-slate-900 dark:text-white block">
-                            Operations & Quality Desk
-                          </span>
-                          <span className="text-[10px] text-slate-400">
-                            Warehouse & Weighbridge
-                          </span>
-                        </div>
-                        <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20 font-mono">
-                          Field Access
-                        </span>
-                      </div>
-
-                      {/* Info Banner for Employee Credential Requirement */}
-                      <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-900 dark:text-amber-300 text-[11px] font-medium space-y-0.5 text-left">
-                        <div className="flex items-center gap-1 font-bold text-amber-800 dark:text-amber-400">
-                          <Info className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                          <span>Credentials Required</span>
-                        </div>
-                        <p className="text-[10.5px] leading-snug">
-                          Employees must request their Username & Password from Admin Tejas Adinarayan.
-                        </p>
-                      </div>
-
-                      {/* Error / Success Notifications */}
-                      {errorMsg && (
-                        <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-700 dark:text-rose-400 text-xs font-semibold flex items-center gap-2">
-                          <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
-                          <span>{errorMsg}</span>
-                        </div>
-                      )}
-                      {successMsg && (
-                        <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-xs font-semibold flex items-center gap-2">
-                          <Check className="w-4 h-4 shrink-0 text-emerald-500" />
-                          <span>{successMsg}</span>
-                        </div>
-                      )}
-
-                      {/* Employee Username Input */}
-                      <div className="space-y-1">
-                        <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block">
-                          Employee Username
-                        </label>
-                        <div className="relative flex items-center">
-                          <Warehouse className="absolute left-3 w-4 h-4 text-slate-400" />
-                          <input
-                            type="text"
-                            required
-                            value={staffUsername}
-                            onChange={(e) => setStaffUsername(e.target.value)}
-                            placeholder="Enter assigned username"
-                            className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-[#07130e] border border-slate-200 dark:border-neutral-800 rounded-xl text-xs text-slate-900 dark:text-white font-medium outline-none focus:ring-2 focus:ring-amber-500/30"
-                          />
-                        </div>
-                      </div>
-
-                      {/* Employee Password Input */}
-                      <div className="space-y-1">
-                        <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block">
-                          Employee Password
-                        </label>
-                        <div className="relative flex items-center">
-                          <Lock className="absolute left-3 w-4 h-4 text-slate-400" />
-                          <input
-                            type={showStaffPassword ? "text" : "password"}
-                            required
-                            value={staffPassword}
-                            onChange={(e) => setStaffPassword(e.target.value)}
-                            placeholder="Enter assigned password"
-                            className="w-full pl-9 pr-9 py-2 bg-slate-50 dark:bg-[#07130e] border border-slate-200 dark:border-neutral-800 rounded-xl text-xs text-slate-900 dark:text-white font-medium outline-none focus:ring-2 focus:ring-amber-500/30"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowStaffPassword(prev => !prev)}
-                            className="absolute right-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
-                          >
-                            {showStaffPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                          </button>
-                        </div>
-                      </div>
-
-                      <button
-                        type="submit"
-                        disabled={loading}
-                        className="w-full py-2.5 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white font-semibold text-xs shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-[0.98] mt-1"
-                      >
-                        <Warehouse className="w-4 h-4 text-amber-300" />
-                        <span>{loading ? 'Verifying Employee...' : 'Sign In as Employee'}</span>
-                      </button>
-
-                      <div className="text-center pt-1">
-                        <button
-                          type="button"
-                          onClick={() => setShowEmployeeRequestModal(true)}
-                          className="text-[10.5px] font-semibold text-amber-800 dark:text-amber-400 hover:underline cursor-pointer"
-                        >
-                          Need Credentials? Request Admin →
-                        </button>
-                      </div>
-                    </form>
-                  )}
-
-                  {/* Return to Merchant Experience */}
-                  <div className="pt-1 text-center">
-                    <button
-                      type="button"
-                      onClick={() => navigate('/login')}
-                      className="text-xs font-semibold text-[#143e2e] dark:text-emerald-400 hover:underline cursor-pointer"
-                    >
-                      ← Return to Public Merchant Store
-                    </button>
-                  </div>
-
-                </div>
-              )}
-
+            {/* Theme Toggle Button */}
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="w-7 h-7 rounded-lg bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 transition-all flex items-center justify-center cursor-pointer active:scale-95"
+              title={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
+              aria-label="Toggle Theme"
+            >
+              {isDark ? <Sun className="w-3.5 h-3.5 text-amber-400" /> : <Moon className="w-3.5 h-3.5 text-neutral-700" />}
+            </button>
+          </div>
         </div>
 
+        {/* Content Area */}
+        <div className="px-5 sm:px-6 py-4 flex-1 flex flex-col justify-between overflow-y-auto no-scrollbar">
+          
+          {/* Brand Identity */}
+          <div className="flex flex-col items-center text-center pb-3">
+            <TejasLogoEmblem className="w-10 h-10 mb-2" />
+            <div className="flex items-center gap-1.5">
+              <span className="text-lg font-black tracking-tight text-neutral-900 dark:text-white">
+                Tejas
+              </span>
+              <span className="text-[11px] font-black tracking-widest text-[#C22424] uppercase bg-[#FEF2F2] dark:bg-red-950/40 border border-[#FECACA] dark:border-red-900/40 px-1.5 py-0.5 rounded-md">
+                CANVASSING
+              </span>
+            </div>
+            <p className="text-[11px] font-medium text-neutral-500 dark:text-neutral-400 mt-1">
+              Wholesale Rice Canvassing Platform
+            </p>
+          </div>
+
+          {/* 3-Role Segmented Selector (Merchant | Employee | Admin) */}
+          {!secretRole && (
+            <div className="grid grid-cols-3 p-1 bg-neutral-100 dark:bg-[#1A1A1A] rounded-xl border border-neutral-200/80 dark:border-[#262626] text-xs font-bold mb-3.5">
+              <button
+                type="button"
+                onClick={() => { setActivePortal('merchant'); setErrorMsg(null); setSuccessMsg(null); }}
+                className={cn(
+                  "py-1.5 px-2 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer text-[11px]",
+                  activePortal === 'merchant'
+                    ? "bg-[#C22424] text-white shadow-xs font-bold"
+                    : "text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"
+                )}
+              >
+                <ShoppingBag className="w-3.5 h-3.5" />
+                <span>Merchant</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => { setActivePortal('employee'); setErrorMsg(null); setSuccessMsg(null); }}
+                className={cn(
+                  "py-1.5 px-2 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer text-[11px]",
+                  activePortal === 'employee'
+                    ? "bg-[#C22424] text-white shadow-xs font-bold"
+                    : "text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"
+                )}
+              >
+                <Warehouse className="w-3.5 h-3.5" />
+                <span>Employee</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => { setActivePortal('admin'); setErrorMsg(null); setSuccessMsg(null); }}
+                className={cn(
+                  "py-1.5 px-2 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer text-[11px]",
+                  activePortal === 'admin'
+                    ? "bg-[#C22424] text-white shadow-xs font-bold"
+                    : "text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"
+                )}
+              >
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>Admin</span>
+              </button>
+            </div>
+          )}
+
+          {/* Feedback alerts */}
+          <AnimatePresence>
+            {errorMsg && (
+              <motion.div 
+                initial={{ opacity: 0, y: -6 }} 
+                animate={{ opacity: 1, y: 0 }} 
+                exit={{ opacity: 0 }}
+                className="p-2.5 mb-3 bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 text-xs rounded-xl flex items-center gap-2"
+              >
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span className="leading-snug">{errorMsg}</span>
+              </motion.div>
+            )}
+            {successMsg && (
+              <motion.div 
+                initial={{ opacity: 0, y: -6 }} 
+                animate={{ opacity: 1, y: 0 }} 
+                exit={{ opacity: 0 }}
+                className="p-2.5 mb-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs rounded-xl flex items-center gap-2"
+              >
+                <Check className="w-4 h-4 shrink-0 text-emerald-600" />
+                <span className="leading-snug">{successMsg}</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* ============================================================== */}
+          {/* TAB 1: MERCHANT PORTAL                                         */}
+          {/* ============================================================== */}
+          {activePortal === 'merchant' && (
+            <div className="space-y-3.5 text-left">
+              {/* Sign In vs Register Tabs */}
+              <div className="grid grid-cols-2 p-1 bg-neutral-100 dark:bg-[#1A1A1A] rounded-xl border border-neutral-200/80 dark:border-[#262626] text-xs font-bold">
+                <button
+                  type="button"
+                  onClick={() => { setMerchantAuthTab('signin'); setErrorMsg(null); setSuccessMsg(null); }}
+                  className={cn(
+                    "py-1.5 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer",
+                    merchantAuthTab === 'signin'
+                      ? "bg-white dark:bg-[#262626] text-neutral-900 dark:text-white shadow-xs font-bold"
+                      : "text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"
+                  )}
+                >
+                  <span>Sign In</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setMerchantAuthTab('signup'); setErrorMsg(null); setSuccessMsg(null); }}
+                  className={cn(
+                    "py-1.5 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer",
+                    merchantAuthTab === 'signup'
+                      ? "bg-white dark:bg-[#262626] text-neutral-900 dark:text-white shadow-xs font-bold"
+                      : "text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"
+                  )}
+                >
+                  <span>Create Account</span>
+                </button>
+              </div>
+
+              {/* Headline */}
+              <div>
+                <h1 className="text-base font-bold text-neutral-900 dark:text-white tracking-tight">
+                  {merchantAuthTab === 'signin' ? 'Merchant Sign In' : 'Register Account'}
+                </h1>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+                  {merchantAuthTab === 'signin'
+                    ? 'Enter your registered phone, email, or firm name.'
+                    : 'Create a wholesale account to order rice and view live rates.'}
+                </p>
+              </div>
+
+              {/* MERCHANT SIGN IN FORM */}
+              {merchantAuthTab === 'signin' && (
+                <form onSubmit={handleMerchantSignIn} className="space-y-3">
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-neutral-700 dark:text-neutral-300 flex items-center justify-between">
+                      <span>Phone, Email, or Firm Name</span>
+                      <span className="text-[10px] text-[#C22424] font-medium">
+                        {/^[0-9+\s-]{8,15}$/.test(identifier) ? '📱 Mobile' : identifier.includes('@') ? '✉️ Email' : '🏢 Firm'}
+                      </span>
+                    </label>
+                    <div className="relative flex items-center">
+                      <input
+                        type="text"
+                        required
+                        value={identifier}
+                        onChange={(e) => setIdentifier(e.target.value)}
+                        placeholder="e.g. 9845012345 or Firm Name"
+                        className="w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-[#1A1A1A] border border-neutral-200 dark:border-[#2A2A2A] text-xs text-neutral-900 dark:text-white outline-none focus:border-[#C22424] focus:ring-1 focus:ring-[#C22424] transition-all placeholder:text-neutral-400"
+                      />
+                      <div className="absolute left-3 text-neutral-400 pointer-events-none">
+                        {/^[0-9+\s-]{8,15}$/.test(identifier) ? (
+                          <Phone className="w-3.5 h-3.5 text-[#C22424]" />
+                        ) : identifier.includes('@') ? (
+                          <Mail className="w-3.5 h-3.5 text-[#C22424]" />
+                        ) : (
+                          <Building2 className="w-3.5 h-3.5 text-[#C22424]" />
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-bold text-neutral-700 dark:text-neutral-300">
+                        Password
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => alert("Password reset instructions will be sent to your registered contact.")}
+                        className="text-[10px] font-semibold text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 cursor-pointer"
+                      >
+                        Forgot password?
+                      </button>
+                    </div>
+                    <div className="relative flex items-center">
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        required
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="••••••••"
+                        className="w-full pl-3.5 pr-9 py-2.5 rounded-xl bg-neutral-50 dark:bg-[#1A1A1A] border border-neutral-200 dark:border-[#2A2A2A] text-xs text-neutral-900 dark:text-white outline-none focus:border-[#C22424] focus:ring-1 focus:ring-[#C22424] transition-all placeholder:text-neutral-400"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 cursor-pointer"
+                      >
+                        {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Demo fill shortcut */}
+                  <div className="pt-0.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIdentifier('9845012345');
+                        setPassword('wholesale2026');
+                      }}
+                      className="text-[10px] font-semibold text-[#C22424] hover:underline cursor-pointer flex items-center gap-1"
+                    >
+                      <Sparkles className="w-3 h-3 text-[#C22424]" />
+                      <span>Fill demo credentials</span>
+                    </button>
+                  </div>
+
+                  {/* Sign In CTA */}
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full py-2.5 rounded-xl bg-[#C22424] hover:bg-[#A81C1C] text-white font-bold text-xs shadow-xs transition-all cursor-pointer active:scale-[0.98] flex items-center justify-center gap-2 mt-1"
+                  >
+                    {loading ? (
+                      <div className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                    ) : (
+                      <span>Sign In</span>
+                    )}
+                  </button>
+                </form>
+              )}
+
+              {/* MERCHANT SIGN UP FORM */}
+              {merchantAuthTab === 'signup' && (
+                <form onSubmit={handleMerchantSignUp} className="space-y-2.5">
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-neutral-700 dark:text-neutral-300">
+                      Firm / Trader Name *
+                    </label>
+                    <div className="relative flex items-center">
+                      <Building2 className="w-3.5 h-3.5 text-neutral-400 absolute left-3" />
+                      <input
+                        type="text"
+                        required
+                        value={signupName}
+                        onChange={(e) => setSignupName(e.target.value)}
+                        placeholder="e.g. BALAJI RICE TRADERS"
+                        className="w-full pl-9 pr-3.5 py-2 rounded-xl bg-neutral-50 dark:bg-[#1A1A1A] border border-neutral-200 dark:border-[#2A2A2A] text-xs text-neutral-900 dark:text-white outline-none focus:border-[#C22424] focus:ring-1 focus:ring-[#C22424]"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-neutral-700 dark:text-neutral-300">
+                      Mobile Number *
+                    </label>
+                    <div className="relative flex items-center">
+                      <Phone className="w-3.5 h-3.5 text-neutral-400 absolute left-3" />
+                      <input
+                        type="tel"
+                        required
+                        value={signupPhone}
+                        onChange={(e) => setSignupPhone(e.target.value)}
+                        placeholder="10-digit mobile number"
+                        className="w-full pl-9 pr-3.5 py-2 rounded-xl bg-neutral-50 dark:bg-[#1A1A1A] border border-neutral-200 dark:border-[#2A2A2A] text-xs text-neutral-900 dark:text-white outline-none focus:border-[#C22424] focus:ring-1 focus:ring-[#C22424]"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-neutral-700 dark:text-neutral-300">
+                        Email (Optional)
+                      </label>
+                      <input
+                        type="email"
+                        value={signupEmail}
+                        onChange={(e) => setSignupEmail(e.target.value)}
+                        placeholder="firm@trade.com"
+                        className="w-full px-3 py-2 rounded-xl bg-neutral-50 dark:bg-[#1A1A1A] border border-neutral-200 dark:border-[#2A2A2A] text-xs text-neutral-900 dark:text-white outline-none focus:border-[#C22424]"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-neutral-700 dark:text-neutral-300">
+                        GSTIN (Optional)
+                      </label>
+                      <input
+                        type="text"
+                        value={signupGstin}
+                        onChange={(e) => setSignupGstin(e.target.value.toUpperCase())}
+                        placeholder="29AAAAA0000A1Z5"
+                        className="w-full px-3 py-2 rounded-xl bg-neutral-50 dark:bg-[#1A1A1A] border border-neutral-200 dark:border-[#2A2A2A] text-xs text-neutral-900 dark:text-white outline-none focus:border-[#C22424] uppercase"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-neutral-700 dark:text-neutral-300">
+                      Set Password *
+                    </label>
+                    <div className="relative flex items-center">
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        required
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="••••••••"
+                        className="w-full pl-3.5 pr-9 py-2 rounded-xl bg-neutral-50 dark:bg-[#1A1A1A] border border-neutral-200 dark:border-[#2A2A2A] text-xs text-neutral-900 dark:text-white outline-none focus:border-[#C22424] focus:ring-1 focus:ring-[#C22424]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 cursor-pointer"
+                      >
+                        {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full py-2.5 rounded-xl bg-[#C22424] hover:bg-[#A81C1C] text-white font-bold text-xs shadow-xs transition-all cursor-pointer active:scale-[0.98] flex items-center justify-center gap-2 mt-1"
+                  >
+                    {loading ? (
+                      <div className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                    ) : (
+                      <span>Register Account</span>
+                    )}
+                  </button>
+                </form>
+              )}
+
+              {/* Divider */}
+              <div className="relative py-0.5 text-center">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-neutral-200 dark:border-[#262626]" />
+                </div>
+                <span className="relative px-3 bg-white dark:bg-[#141414] text-[10px] text-neutral-400 font-semibold uppercase tracking-wider">
+                  or
+                </span>
+              </div>
+
+              {/* Google Sign In for Merchants */}
+              <button
+                type="button"
+                onClick={handleGoogleSignIn}
+                disabled={loading}
+                className="w-full py-2.5 px-4 rounded-xl bg-neutral-50 hover:bg-neutral-100 dark:bg-[#1A1A1A] dark:hover:bg-[#222222] border border-neutral-200 dark:border-[#2A2A2A] text-neutral-800 dark:text-neutral-200 font-semibold text-xs transition-all cursor-pointer flex items-center justify-center gap-2.5 active:scale-[0.98]"
+              >
+                <GoogleGIcon className="w-4 h-4" />
+                <span>Continue with Google</span>
+              </button>
+            </div>
+          )}
+
+          {/* ============================================================== */}
+          {/* TAB 2: EMPLOYEE PORTAL                                         */}
+          {/* ============================================================== */}
+          {activePortal === 'employee' && (
+            <div className="space-y-3.5 text-left">
+              <div>
+                <h1 className="text-base font-bold text-neutral-900 dark:text-white tracking-tight">
+                  Employee Login
+                </h1>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+                  Sign in to view your schedule and benchmark rates.
+                </p>
+              </div>
+
+              <form onSubmit={(e) => handleStaffSignIn(e, 'employee')} className="space-y-3">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-neutral-700 dark:text-neutral-300">
+                    Username
+                  </label>
+                  <div className="relative flex items-center">
+                    <Warehouse className="absolute left-3 w-3.5 h-3.5 text-[#C22424]" />
+                    <input
+                      type="text"
+                      required
+                      value={staffUsername}
+                      onChange={(e) => setStaffUsername(e.target.value)}
+                      placeholder="e.g. employee"
+                      className="w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-[#1A1A1A] border border-neutral-200 dark:border-[#2A2A2A] text-xs text-neutral-900 dark:text-white outline-none focus:border-[#C22424] focus:ring-1 focus:ring-[#C22424] transition-all placeholder:text-neutral-400"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-neutral-700 dark:text-neutral-300">
+                    Password
+                  </label>
+                  <div className="relative flex items-center">
+                    <Lock className="absolute left-3 w-3.5 h-3.5 text-[#C22424]" />
+                    <input
+                      type={showStaffPassword ? "text" : "password"}
+                      required
+                      value={staffPassword}
+                      onChange={(e) => setStaffPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full pl-9 pr-9 py-2.5 rounded-xl bg-neutral-50 dark:bg-[#1A1A1A] border border-neutral-200 dark:border-[#2A2A2A] text-xs text-neutral-900 dark:text-white outline-none focus:border-[#C22424] focus:ring-1 focus:ring-[#C22424] transition-all placeholder:text-neutral-400"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowStaffPassword(!showStaffPassword)}
+                      className="absolute right-3 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 cursor-pointer"
+                    >
+                      {showStaffPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Demo Employee Fill */}
+                <div className="pt-0.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStaffUsername('employee');
+                      setStaffPassword('wholesale2026');
+                    }}
+                    className="text-[10px] font-semibold text-[#C22424] hover:underline cursor-pointer flex items-center gap-1"
+                  >
+                    <Sparkles className="w-3 h-3 text-[#C22424]" />
+                    <span>Fill demo credentials</span>
+                  </button>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-2.5 rounded-xl bg-[#C22424] hover:bg-[#A81C1C] text-white font-bold text-xs shadow-xs transition-all cursor-pointer active:scale-[0.98] flex items-center justify-center gap-2 mt-1"
+                >
+                  {loading ? (
+                    <div className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                  ) : (
+                    <span>Sign In</span>
+                  )}
+                </button>
+              </form>
+
+              <div className="text-center pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowEmployeeRequestModal(true)}
+                  className="text-xs font-semibold text-neutral-500 hover:text-neutral-900 dark:hover:text-white hover:underline cursor-pointer inline-flex items-center gap-1"
+                >
+                  <span>Need an employee account? Request Admin</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ============================================================== */}
+          {/* TAB 3: ADMIN PORTAL                                            */}
+          {/* ============================================================== */}
+          {activePortal === 'admin' && (
+            <div className="space-y-3.5 text-left">
+              <div>
+                <h1 className="text-base font-bold text-neutral-900 dark:text-white tracking-tight">
+                  Admin Sign In
+                </h1>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+                  Sign in with your authorized administrator credentials.
+                </p>
+              </div>
+
+              {/* Primary Google Sign In for Admin */}
+              <button
+                type="button"
+                id="btn-admin-google-signin"
+                onClick={handleAdminGoogleSignIn}
+                disabled={loading}
+                className="w-full py-2.5 px-4 rounded-xl bg-neutral-50 hover:bg-neutral-100 dark:bg-[#1A1A1A] dark:hover:bg-[#222222] border border-neutral-200 dark:border-[#2A2A2A] text-neutral-900 dark:text-white font-semibold text-xs shadow-xs transition-all cursor-pointer flex items-center justify-center gap-2.5 active:scale-[0.98]"
+              >
+                <GoogleGIcon className="w-4 h-4" />
+                <span>{loading ? 'Verifying...' : 'Sign In with Google'}</span>
+              </button>
+
+              {/* Divider */}
+              <div className="relative py-0.5 text-center">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-neutral-200 dark:border-[#262626]" />
+                </div>
+                <span className="relative px-3 bg-white dark:bg-[#141414] text-[10px] text-neutral-400 font-semibold uppercase tracking-wider">
+                  or with password
+                </span>
+              </div>
+
+              {/* Direct Username / Password Form for Admin */}
+              <form onSubmit={(e) => handleStaffSignIn(e, 'admin')} className="space-y-3">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-neutral-700 dark:text-neutral-300">
+                    Admin Username
+                  </label>
+                  <div className="relative flex items-center">
+                    <ShieldCheck className="absolute left-3 w-3.5 h-3.5 text-[#C22424]" />
+                    <input
+                      type="text"
+                      required
+                      value={staffUsername}
+                      onChange={(e) => setStaffUsername(e.target.value)}
+                      placeholder="Username"
+                      className="w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-[#1A1A1A] border border-neutral-200 dark:border-[#2A2A2A] text-xs text-neutral-900 dark:text-white outline-none focus:border-[#C22424] focus:ring-1 focus:ring-[#C22424] transition-all placeholder:text-neutral-400"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-neutral-700 dark:text-neutral-300">
+                    Password
+                  </label>
+                  <div className="relative flex items-center">
+                    <Lock className="absolute left-3 w-3.5 h-3.5 text-[#C22424]" />
+                    <input
+                      type={showStaffPassword ? "text" : "password"}
+                      required
+                      value={staffPassword}
+                      onChange={(e) => setStaffPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full pl-9 pr-9 py-2.5 rounded-xl bg-neutral-50 dark:bg-[#1A1A1A] border border-neutral-200 dark:border-[#2A2A2A] text-xs text-neutral-900 dark:text-white outline-none focus:border-[#C22424] focus:ring-1 focus:ring-[#C22424] transition-all placeholder:text-neutral-400"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowStaffPassword(!showStaffPassword)}
+                      className="absolute right-3 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 cursor-pointer"
+                    >
+                      {showStaffPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Demo Admin Fill */}
+                <div className="pt-0.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStaffUsername('admintejas1679');
+                      setStaffPassword('wholesale2026');
+                    }}
+                    className="text-[10px] font-semibold text-[#C22424] hover:underline cursor-pointer flex items-center gap-1"
+                  >
+                    <Sparkles className="w-3 h-3 text-[#C22424]" />
+                    <span>Fill demo credentials</span>
+                  </button>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-2.5 rounded-xl bg-[#C22424] hover:bg-[#A81C1C] text-white font-bold text-xs shadow-xs transition-all cursor-pointer active:scale-[0.98] flex items-center justify-center gap-2 mt-1"
+                >
+                  {loading ? (
+                    <div className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                  ) : (
+                    <span>Sign In as Admin</span>
+                  )}
+                </button>
+              </form>
+            </div>
+          )}
+
+          {/* Footer Note */}
+          <div className="text-center pt-4 pb-0.5 border-t border-neutral-100 dark:border-[#1E1E1E] mt-3">
+            <p className="text-[10.5px] text-neutral-400 dark:text-neutral-500 font-medium">
+              Tejas Canvassing • APMC Yard Bangalore
+            </p>
+          </div>
+
+        </div>
       </div>
 
-    {/* Employee Credential Request Modal */}
+      {/* Employee Credential Request Modal */}
       {showEmployeeRequestModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-[#07130e] border border-slate-200 dark:border-neutral-800 rounded-3xl p-5 max-w-sm w-full shadow-2xl space-y-4 text-left relative">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#141414] border border-neutral-200 dark:border-[#262626] rounded-2xl p-5 max-w-sm w-full shadow-xl space-y-3.5 text-left relative">
             <button
               type="button"
               onClick={() => { setShowEmployeeRequestModal(false); setEmpRequestSuccess(false); }}
-              className="absolute top-4 right-4 p-1.5 rounded-full bg-slate-100 dark:bg-neutral-800 text-slate-400 hover:text-slate-700 dark:hover:text-white"
+              className="absolute top-4 right-4 p-1.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-400 hover:text-neutral-700 dark:hover:text-white"
             >
               <X className="w-4 h-4" />
             </button>
 
-            <div className="space-y-1">
-              <span className="text-[9px] font-extrabold uppercase tracking-wider text-amber-700 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
-                Staff Credential Request
+            <div className="space-y-0.5">
+              <span className="text-[9px] font-bold uppercase tracking-wider text-[#C22424] dark:text-red-300 bg-[#FEF2F2] dark:bg-red-950/40 px-2 py-0.5 rounded-full border border-[#FECACA] dark:border-red-900/40">
+                Staff Request
               </span>
-              <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+              <h3 className="text-base font-bold text-neutral-900 dark:text-white pt-1">
                 Request Employee Login
               </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Send your details to Admin Tejas Adinarayan to issue your official Employee Username and Password.
+              <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                Submit your details to request login credentials.
               </p>
             </div>
 
             {empRequestSuccess ? (
-              <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl text-center space-y-2">
-                <Check className="w-8 h-8 text-emerald-500 mx-auto" />
+              <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-center space-y-2">
+                <Check className="w-7 h-7 text-emerald-600 dark:text-emerald-400 mx-auto" />
                 <p className="text-xs font-bold text-emerald-800 dark:text-emerald-300">
-                  Request Submitted Successfully!
+                  Request Submitted Successfully
                 </p>
-                <p className="text-[11px] text-slate-600 dark:text-slate-300">
-                  Admin Tejas Adinarayan has been notified. Contact HQ desk or wait for credential issue.
+                <p className="text-[11px] text-neutral-600 dark:text-neutral-300">
+                  Your request has been submitted to Admin.
                 </p>
                 <button
                   type="button"
                   onClick={() => { setShowEmployeeRequestModal(false); setEmpRequestSuccess(false); }}
-                  className="w-full py-2 bg-[#143e2e] text-white font-bold text-xs rounded-xl mt-2 cursor-pointer"
+                  className="w-full py-2 bg-[#C22424] hover:bg-[#A81C1C] text-white font-bold text-xs rounded-xl mt-2 cursor-pointer"
                 >
                   Close Window
                 </button>
@@ -1289,8 +1244,8 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
                 className="space-y-3"
               >
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block">
-                    Full Name
+                  <label className="text-[11px] font-bold text-neutral-700 dark:text-neutral-300 block">
+                    Full Name *
                   </label>
                   <input
                     type="text"
@@ -1298,13 +1253,13 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
                     value={empRequestName}
                     onChange={(e) => setEmpRequestName(e.target.value)}
                     placeholder="e.g. Ramesh Kumar"
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-[#0c1813] border border-slate-200 dark:border-neutral-800 rounded-xl text-xs font-medium text-slate-900 dark:text-white"
+                    className="w-full px-3 py-2 bg-neutral-50 dark:bg-[#1A1A1A] border border-neutral-200 dark:border-[#2A2A2A] rounded-xl text-xs font-medium text-neutral-900 dark:text-white outline-none focus:border-[#C22424] focus:ring-1 focus:ring-[#C22424]"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block">
-                    Mobile Phone Number
+                  <label className="text-[11px] font-bold text-neutral-700 dark:text-neutral-300 block">
+                    Mobile Phone Number *
                   </label>
                   <input
                     type="tel"
@@ -1312,21 +1267,22 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
                     value={empRequestPhone}
                     onChange={(e) => setEmpRequestPhone(e.target.value)}
                     placeholder="e.g. 9845012345"
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-[#0c1813] border border-slate-200 dark:border-neutral-800 rounded-xl text-xs font-medium text-slate-900 dark:text-white"
+                    className="w-full px-3 py-2 bg-neutral-50 dark:bg-[#1A1A1A] border border-neutral-200 dark:border-[#2A2A2A] rounded-xl text-xs font-medium text-neutral-900 dark:text-white outline-none focus:border-[#C22424] focus:ring-1 focus:ring-[#C22424]"
                   />
                 </div>
 
                 <button
                   type="submit"
-                  className="w-full py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-xs rounded-xl shadow-sm transition-all cursor-pointer"
+                  className="w-full py-2.5 bg-[#C22424] hover:bg-[#A81C1C] text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer"
                 >
-                  Send Request to Admin
+                  Send Request
                 </button>
               </form>
             )}
           </div>
         </div>
       )}
+
     </div>
   );
 }

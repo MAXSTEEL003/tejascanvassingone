@@ -25,6 +25,7 @@ import PendingLoadings from './views/PendingLoadings';
 import BrokerageView from './views/BrokerageView';
 import BagView from './views/BagView';
 import ProfileView from './views/ProfileView';
+import EmployeePortalView from './views/EmployeePortalView';
 import MainLayout from './layout/MainLayout';
 
 
@@ -74,7 +75,7 @@ function AdminPortalRoute() {
   }
 
   if (role === 'employee') {
-    return <Navigate to="/inventory" replace />;
+    return <Navigate to="/employee/dashboard" replace />;
   }
 
   if (role === 'merchant') {
@@ -141,16 +142,23 @@ export default function App() {
                 <Route path="/patti" element={<PattiView />} />
                 <Route path="/ledger" element={<LedgerManagement />} />
                 <Route path="/pending-loadings" element={<PendingLoadings />} />
+                <Route path="/arrival-entry" element={<ArrivalEntry />} />
               </Route>
             </Route>
 
             {/* Operations Staff Routes (Staff + Admin supervisor) */}
             <Route element={<StaffRoute />}>
               <Route element={<MainLayout />}>
+                <Route path="/employee" element={<EmployeePortalView defaultTab="schedule" />} />
+                <Route path="/employee/dashboard" element={<EmployeePortalView defaultTab="schedule" />} />
+                <Route path="/employee/schedule" element={<EmployeePortalView defaultTab="schedule" />} />
+                <Route path="/employee/rates" element={<EmployeePortalView defaultTab="rates" />} />
+                <Route path="/employee/profile" element={<EmployeePortalView defaultTab="profile" />} />
+                <Route path="/employee/orders" element={<Navigate to="/employee/schedule" replace />} />
+                <Route path="/employee/dispatch" element={<Navigate to="/employee/schedule" replace />} />
                 <Route path="/inventory" element={<ProductInventory />} />
                 <Route path="/tasks" element={<TasksManagement />} />
                 <Route path="/schedule" element={<TasksManagement />} />
-                <Route path="/arrival-entry" element={<ArrivalEntry />} />
               </Route>
             </Route>
 

@@ -266,7 +266,7 @@ const PaymentRow = memo(function PaymentRow({
                   onOpenPayment(txn); 
                 }}
                 className={cn(
-                  "px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-sm hover:shadow",
+                  "btn-tactile px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-sm hover:shadow cursor-pointer",
                   isShipmentArrived 
                     ? "bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white shadow-emerald-500/10" 
                     : "bg-neutral-100 dark:bg-neutral-800 text-neutral-400 dark:text-neutral-500 border border-neutral-200 dark:border-neutral-700/50 cursor-not-allowed"
@@ -278,7 +278,7 @@ const PaymentRow = memo(function PaymentRow({
             ) : (
               <button 
                 onClick={(e) => { e.stopPropagation(); onReversePayment(txn); }}
-                className="px-2.5 py-1.5 bg-neutral-50 dark:bg-neutral-800 text-neutral-500 hover:text-rose-500 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all border border-neutral-200/50 dark:border-neutral-700/50 inline-flex items-center gap-1"
+                className="btn-tactile px-2.5 py-1.5 bg-neutral-50 dark:bg-neutral-800 text-neutral-500 hover:text-rose-500 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all border border-neutral-200/50 dark:border-neutral-700/50 inline-flex items-center gap-1 cursor-pointer"
                 title="Mark this transaction back as outstanding"
               >
                 <Undo2 className="w-3.5 h-3.5" />
@@ -294,7 +294,7 @@ const PaymentRow = memo(function PaymentRow({
                 const waUrl = `https://api.whatsapp.com/send?phone=91${buyerProfile.phone}&text=${encodeURIComponent(text)}`;
                 window.open(waUrl, '_blank');
               }}
-              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white dark:bg-emerald-600 dark:hover:bg-emerald-700 dark:text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-sm shadow-emerald-500/10 cursor-pointer border border-transparent"
+              className="btn-tactile px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white dark:bg-emerald-600 dark:hover:bg-emerald-700 dark:text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-sm shadow-emerald-500/10 cursor-pointer border border-transparent"
               title="Send pending payment details via WhatsApp to buyer"
             >
               <MessageSquare className="w-3.5 h-3.5" />
@@ -306,10 +306,10 @@ const PaymentRow = memo(function PaymentRow({
                 onSelect(txn); 
               }}
               className={cn(
-                "px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-sm",
+                "btn-tactile px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-sm cursor-pointer",
                 isSelected
                   ? "bg-stone-800 text-white dark:bg-stone-200 dark:text-stone-900"
-                  : "bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white shadow-amber-500/10 cursor-pointer"
+                  : "bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white shadow-amber-500/10"
               )}
               title={isSelected ? "Collapse calculated Patti slip" : "Calculate and expand Patti slip"}
             >
@@ -323,8 +323,8 @@ const PaymentRow = memo(function PaymentRow({
       {/* Expandable Calculated Patti Statement Slip */}
       <AnimatePresence>
         {isSelected && (
-          <tr>
-            <td colSpan={6} className="p-0 bg-neutral-50/50 dark:bg-neutral-950/10">
+          <tr className="table-dropdown-drawer">
+            <td colSpan={6} className="p-0 bg-neutral-50/50 dark:bg-neutral-950/40">
               <motion.div 
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
@@ -544,10 +544,19 @@ export default function PaymentTracking() {
         } catch {}
       }
 
-      const cloudArrival = await getCollectionDocs('arrival_entries').catch(() => []);
+      const [cloudArrival, cloudSheetsMeta] = await Promise.all([
+        getCollectionDocs('arrival_entries').catch(() => []),
+        getCollectionDocs('arrival_sheets').catch(() => [])
+      ]);
 
       // Organize all arrival records into month sheets using the official organizeArrivalSheetsByMonth
-      const organized = organizeArrivalSheetsByMonth(rawLocalSheets, cloudArrival);
+      const organized = organizeArrivalSheetsByMonth(
+        rawLocalSheets, 
+        cloudArrival, 
+        40, 
+        undefined, 
+        cloudSheetsMeta
+      );
       const sheetsList = organized.sheets;
       setAllSheets(sheetsList);
 
@@ -1667,21 +1676,23 @@ export default function PaymentTracking() {
             key={i}
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
+            whileHover={{ y: -4, transition: { duration: 0.2, ease: "easeOut" } }}
             transition={{ delay: i * 0.08 }}
             onClick={() => setStatusFilter(card.filterKey)}
             className={cn(
-              "border border-neutral-200 dark:border-neutral-800 flex flex-col justify-between h-[175px] p-5 rounded-3xl shadow-sm relative overflow-hidden group interactive-card bg-white dark:bg-neutral-900/40 cursor-pointer",
+              "floating-card liquid-glass border border-neutral-200 dark:border-neutral-800/80 flex flex-col justify-between h-[178px] p-5 rounded-3xl shadow-sm relative overflow-hidden group interactive-card cursor-pointer transition-all duration-300",
               card.border,
-              statusFilter === card.filterKey && "ring-2 ring-purple-500/30 border-purple-500"
+              statusFilter === card.filterKey && "ring-2 ring-primary/40 border-primary"
             )}
           >
-            <div className="flex justify-between items-start">
+            <div className="absolute -right-6 -bottom-6 w-24 h-24 rounded-full blur-2xl pointer-events-none opacity-20 transition-opacity group-hover:opacity-40 bg-amber-500/80 dark:bg-primary/40" />
+            <div className="flex justify-between items-start relative z-10">
                <div className={cn("p-2.5 rounded-xl transition-transform group-hover:scale-105 duration-200", card.bg)}>
                   <card.icon className={cn("w-5 h-5", card.color)} />
                </div>
                <span className="text-[9px] font-black tracking-widest uppercase text-neutral-400 dark:text-neutral-500">Ledger</span>
             </div>
-            <div className="text-left mt-2">
+            <div className="text-left mt-2 relative z-10">
                <p className="text-[10px] font-black text-neutral-400 dark:text-neutral-500 uppercase tracking-widest mb-1">{card.label}</p>
                <h3 className="text-xl font-black text-neutral-900 dark:text-white font-mono leading-none">{card.value}</h3>
                <p className="text-[10px] font-semibold text-neutral-500 dark:text-neutral-400 mt-1.5">{card.sub}</p>

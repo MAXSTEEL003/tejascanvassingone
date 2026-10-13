@@ -549,54 +549,58 @@ export default function NotificationSettings() {
   };
 
   return (
-    <div className="px-4 py-6 sm:p-8 space-y-6 sm:space-y-8 max-w-4xl mx-auto pb-24">
+    <div className="px-4 py-6 sm:p-8 space-y-6 sm:space-y-8 max-w-5xl mx-auto pb-28">
       {/* Title & Description Header */}
-      <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6 pb-2 border-b border-outline-variant/30">
+      <div className="space-y-4 pb-3 border-b border-outline-variant/30">
         <div className="space-y-1">
-          <h1 className="text-3xl font-black tracking-tight flex items-center gap-2">
-            <Settings className={cn("w-8 h-8", isMerchant ? "text-emerald-600 dark:text-emerald-400" : "text-primary")} />
-            Control Hub
+          <h1 className="text-2xl sm:text-3xl font-black tracking-tight flex items-center gap-2.5">
+            <Settings className={cn("w-7 h-7 sm:w-8 sm:h-8 shrink-0", isMerchant ? "text-emerald-600 dark:text-emerald-400" : "text-primary")} />
+            <span>Control Hub</span>
           </h1>
-          <p className="text-secondary text-sm font-medium">Configure commercial stakeholder accounts and transaction pipes.</p>
+          <p className="text-secondary text-xs sm:text-sm font-medium">Configure commercial stakeholder accounts and transaction pipes.</p>
         </div>
         
-        {/* Navigation Tabs */}
-        <div className="flex bg-surface-container-low p-1 rounded-xl border border-outline-variant/30 self-start md:self-end overflow-x-auto w-full sm:w-auto scrollbar-none">
+        {/* Navigation Tabs - Full width dedicated bar with no clipping */}
+        <div className="flex bg-surface-container-low dark:bg-surface-container p-1 rounded-2xl border border-outline-variant/30 overflow-x-auto w-full sm:w-fit gap-1 no-scrollbar">
           <button
+            type="button"
             onClick={() => setActiveTab('dispatch_test')}
             className={cn(
-              "flex-1 sm:flex-none justify-center whitespace-nowrap px-4 py-2.5 sm:px-5 sm:py-2 rounded-lg text-[10px] sm:text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 sm:gap-2",
+              "flex-1 sm:flex-none justify-center whitespace-nowrap px-3.5 py-2.5 sm:px-5 sm:py-2 rounded-xl text-[11px] sm:text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 sm:gap-2 cursor-pointer select-none",
               activeTab === 'dispatch_test' 
-                ? cn("bg-white dark:bg-surface-container shadow-sm text-emerald-600 dark:text-emerald-400 font-black")
-                : "text-secondary hover:text-on-surface"
+                ? "bg-white dark:bg-neutral-800 shadow-sm text-emerald-600 dark:text-emerald-400 font-black ring-1 ring-emerald-500/20"
+                : "text-secondary hover:text-on-surface hover:bg-black/5 dark:hover:bg-white/5"
             )}
           >
             <MessageSquare className="w-3.5 h-3.5 text-current shrink-0" />
-            PO & WhatsApp Dispatcher
+            <span className="hidden sm:inline">PO & WhatsApp Dispatcher</span>
+            <span className="sm:hidden">PO & Dispatcher</span>
           </button>
           <button
+            type="button"
             onClick={() => setActiveTab('profile')}
             className={cn(
-              "flex-1 sm:flex-none justify-center whitespace-nowrap px-4 py-2.5 sm:px-5 sm:py-2 rounded-lg text-[10px] sm:text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 sm:gap-2",
+              "flex-1 sm:flex-none justify-center whitespace-nowrap px-3.5 py-2.5 sm:px-5 sm:py-2 rounded-xl text-[11px] sm:text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 sm:gap-2 cursor-pointer select-none",
               activeTab === 'profile' 
-                ? cn("bg-white dark:bg-surface-container shadow-sm", isMerchant ? "text-emerald-600 dark:text-emerald-400" : "text-primary")
-                : "text-secondary hover:text-on-surface"
+                ? cn("bg-white dark:bg-neutral-800 shadow-sm font-black ring-1", isMerchant ? "text-emerald-600 dark:text-emerald-400 ring-emerald-500/20" : "text-primary ring-primary/20")
+                : "text-secondary hover:text-on-surface hover:bg-black/5 dark:hover:bg-white/5"
             )}
           >
             <Building2 className="w-3.5 h-3.5 text-current shrink-0" />
-            Profile Specs
+            <span>Profile Specs</span>
           </button>
           <button
+            type="button"
             onClick={() => setActiveTab('notifications')}
             className={cn(
-              "flex-1 sm:flex-none justify-center whitespace-nowrap px-4 py-2.5 sm:px-5 sm:py-2 rounded-lg text-[10px] sm:text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 sm:gap-2",
+              "flex-1 sm:flex-none justify-center whitespace-nowrap px-3.5 py-2.5 sm:px-5 sm:py-2 rounded-xl text-[11px] sm:text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 sm:gap-2 cursor-pointer select-none",
               activeTab === 'notifications' 
-                ? cn("bg-white dark:bg-surface-container shadow-sm", isMerchant ? "text-emerald-600 dark:text-emerald-400" : "text-primary")
-                : "text-secondary hover:text-on-surface"
+                ? cn("bg-white dark:bg-neutral-800 shadow-sm font-black ring-1", isMerchant ? "text-emerald-600 dark:text-emerald-400 ring-emerald-500/20" : "text-primary ring-primary/20")
+                : "text-secondary hover:text-on-surface hover:bg-black/5 dark:hover:bg-white/5"
             )}
           >
             <Bell className="w-3.5 h-3.5 text-current shrink-0" />
-            Alerts Settings
+            <span>Alerts Settings</span>
           </button>
         </div>
       </div>

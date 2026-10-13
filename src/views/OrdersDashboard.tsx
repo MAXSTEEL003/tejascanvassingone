@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { ShoppingCart, TrendingUp, Activity, ChevronRight, MoreVertical, Package, Truck, AlertCircle, Search, Filter, CheckCircle2, ChevronDown, ChevronUp, Plus, X, Lock, CreditCard, RefreshCw, Trash2, Loader2, Clock, History, Eye, ArrowUpRight, Archive, Copy } from 'lucide-react';
+import { ShoppingCart, TrendingUp, Activity, ChevronRight, MoreVertical, Package, Truck, AlertCircle, Search, Filter, CheckCircle2, ChevronDown, ChevronUp, Plus, X, Lock, CreditCard, RefreshCw, Trash2, Loader2, Clock, History, Eye, ArrowUpRight, Archive, Copy, MessageSquare, User, Inbox, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { AreaChart, Area, XAxis, ResponsiveContainer, Tooltip, CartesianGrid } from 'recharts';
 import { cn, formatINR, getRegisteredSuppliers, getPrimaryRegisteredSupplier, sanitizeSupplierName } from '../lib/utils';
@@ -226,6 +226,9 @@ export default function OrdersDashboard() {
   } | null>(null);
 
   const [arrivalEntries, setArrivalEntries] = useState<any[]>([]);
+  const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadArrivalEntries() {
@@ -851,10 +854,12 @@ export default function OrdersDashboard() {
   }, [currentOrders, searchQuery, filterSupplier, filterProduct]);
 
   const handleAction = async (id: string, action: 'accept' | 'reject') => {
+    setActionLoadingId(id);
     try {
+      const nextStatus = action === 'accept' ? 'Approved' : 'Rejected';
       const nextOrders = currentOrders.map(o => {
         if (o.id === id) {
-          return { ...o, status: action === 'accept' ? 'Awaiting Grouping' : 'Rejected' };
+          return { ...o, status: nextStatus };
         }
         return o;
       }).filter(o => o.status !== 'Rejected');
@@ -870,15 +875,43 @@ export default function OrdersDashboard() {
       } else {
         const orderToUpdate = currentOrders.find(o => o.id === id);
         if (orderToUpdate) {
-          await setCollectionDoc('procurement_requests', id, { ...orderToUpdate, status: 'Awaiting Grouping' });
+          const approvedObj = { ...orderToUpdate, status: 'Approved', approvedAt: new Date().toISOString() };
+          await setCollectionDoc('procurement_requests', id, approvedObj);
+
+          // Sync directly to placed_orders so it shows in Placed Orders / My Orders immediately once approved
+          try {
+            const existingPlaced = JSON.parse(localStorage.getItem('placed_orders') || '[]');
+            const normId = String(id).trim().toLowerCase().replace(/^#/, '');
+            const alreadyInPlaced = existingPlaced.some((p: any) => String(p.id).trim().toLowerCase().replace(/^#/, '') === normId);
+            if (!alreadyInPlaced) {
+              const placedRecord = {
+                ...approvedObj,
+                items: approvedObj.product || approvedObj.items || 'Rice Variety',
+                total: approvedObj.total || `₹ ${formatINR((Number(approvedObj.qty) || 0) * (Number(approvedObj.rate) || 0))}`,
+                origin: approvedObj.origin || 'Mill Dispatch Hub',
+                destination: approvedObj.destination || 'APMC Yard, Bangalore',
+                progress: 25,
+                status: 'Approved',
+                originalOrders: [approvedObj],
+                date: approvedObj.date || new Date().toISOString()
+              };
+              localStorage.setItem('placed_orders', JSON.stringify([placedRecord, ...existingPlaced]));
+              await setCollectionDoc('placed_orders', id, placedRecord);
+            }
+          } catch (e) {
+            console.warn('Sync to placed_orders on approve notice:', e);
+          }
         }
       }
     } catch (err) {
       console.error('Failed to update action in database:', err);
+    } finally {
+      setActionLoadingId(null);
     }
   };
 
   const handleDeleteOrder = async (id: string) => {
+    setActionLoadingId(id);
     const normKey = String(id).trim().toLowerCase().replace(/^#/, '');
 
     addDeletedProcurementIds([id]);
@@ -904,6 +937,8 @@ export default function OrdersDashboard() {
       await deleteCollectionDoc('procurement_requests', id);
     } catch (err) {
       console.error("Failed to delete order from Firestore:", err);
+    } finally {
+      setActionLoadingId(null);
     }
   };
 
@@ -1538,13 +1573,21 @@ export default function OrdersDashboard() {
                 }
               }}
               className={cn(
-                "liquid-glass p-6 rounded-3xl premium-border space-y-4 group interactive-card",
+                "floating-card liquid-glass p-6 rounded-3xl premium-border space-y-4 group interactive-card relative overflow-hidden transition-all duration-300",
                 glowColor,
                 isPaymentCard && "cursor-pointer hover:border-blue-500/40 hover:shadow-lg active:scale-95"
               )}
               title={isPaymentCard ? "Click to navigate to Payment Tracking" : undefined}
             >
-              <div className="flex justify-between items-start">
+              {/* Ambient radial accent glow */}
+              <div className={cn(
+                "absolute -right-6 -bottom-6 w-24 h-24 rounded-full blur-2xl pointer-events-none opacity-20 transition-opacity group-hover:opacity-40",
+                i === 0 ? "bg-amber-500" :
+                i === 1 ? "bg-amber-400" :
+                i === 2 ? "bg-emerald-500" :
+                          "bg-blue-500"
+              )} />
+              <div className="flex justify-between items-start relative z-10">
                 <div className={cn("p-2.5 rounded-2xl w-fit border transition-all duration-300 group-hover:scale-110", iconBgClass)}>
                    <stat.icon className="w-5 h-5" />
                 </div>
@@ -1687,21 +1730,23 @@ export default function OrdersDashboard() {
                 {filteredOrders.map((order, idx) => {
                   const firstSelectedOrder = currentOrders.find(o => selectedOrders.includes(o.id));
                   const selectedSupplier = firstSelectedOrder ? sanitizeSupplierName(firstSelectedOrder.supplier, '') : null;
-                  const isAccepted = order.status === 'Awaiting Grouping';
+                  const isAccepted = order.status === 'Awaiting Grouping' || order.status === 'Approved' || order.status === 'Accepted';
                   const isSelectionDisabled = selectedSupplier && sanitizeSupplierName(order.supplier, '') !== selectedSupplier;
                   const canBeTicked = isAccepted && !isSelectionDisabled;
+                  const isExpanded = expandedOrderId === order.id;
 
                   return (
-                    <motion.tr 
-                      key={order.id} 
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: idx * 0.04 }}
-                      className={cn(
-                        "interactive-tr group cursor-pointer",
-                        selectedOrders.includes(order.id) && "bg-primary/[0.04] dark:bg-primary/[0.08]",
-                        isSelectionDisabled && "opacity-45 select-none hover:bg-transparent pointer-events-none"
-                      )}
+                    <React.Fragment key={order.id}>
+                      <motion.tr 
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: idx * 0.04 }}
+                        className={cn(
+                          "interactive-tr group cursor-pointer",
+                          selectedOrders.includes(order.id) && "bg-primary/[0.04] dark:bg-primary/[0.08]",
+                          isExpanded && "bg-primary/[0.03] dark:bg-primary/[0.06] border-b border-primary/20",
+                          isSelectionDisabled && "opacity-45 select-none hover:bg-transparent pointer-events-none"
+                        )}
                       onClick={() => {
                         if (isSelectionDisabled) return;
                         handleOpenMerchantModal(order.buyer);
@@ -1729,7 +1774,18 @@ export default function OrdersDashboard() {
                         />
                       </td>
                     <td className="px-6 py-4.5">
-                      <div className="flex items-center gap-3.5">
+                      <div className="flex items-center gap-3">
+                         <button
+                           type="button"
+                           onClick={(e) => {
+                             e.stopPropagation();
+                             setExpandedOrderId(prev => prev === order.id ? null : order.id);
+                           }}
+                           className="p-1 rounded-lg text-slate-400 hover:text-primary hover:bg-primary/10 transition-colors cursor-pointer"
+                           title={expandedOrderId === order.id ? "Collapse specifications" : "Expand specifications"}
+                         >
+                           <ChevronDown className={cn("w-4 h-4 transition-transform duration-200", expandedOrderId === order.id && "rotate-180 text-primary")} />
+                         </button>
                          <div className={cn(
                            "w-10 h-10 rounded-2xl flex items-center justify-center font-black text-[11px] transition-all duration-300 shadow-sm border",
                            selectedOrders.includes(order.id) 
@@ -1794,40 +1850,239 @@ export default function OrdersDashboard() {
                            <>
                               <button 
                                 onClick={() => handleAction(order.id, 'accept')}
-                                className="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-600 text-emerald-600 dark:text-emerald-400 hover:text-white border border-emerald-500/20 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all shadow-sm cursor-pointer"
+                                disabled={actionLoadingId === order.id}
+                                className="btn-tactile px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-600 text-emerald-600 dark:text-emerald-400 hover:text-white border border-emerald-500/20 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all shadow-sm cursor-pointer disabled:opacity-50 flex items-center gap-1"
                               >
-                                Accept
+                                {actionLoadingId === order.id && <Loader2 className="w-3 h-3 animate-spin" />}
+                                Approve
                               </button>
                               <button 
                                 onClick={() => handleAction(order.id, 'reject')}
-                                className="px-3 py-1.5 bg-rose-500/10 hover:bg-rose-600 text-rose-600 dark:text-rose-400 hover:text-white border border-rose-500/20 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all shadow-sm cursor-pointer"
+                                disabled={actionLoadingId === order.id}
+                                className="btn-tactile px-3 py-1.5 bg-rose-500/10 hover:bg-rose-600 text-rose-600 dark:text-rose-400 hover:text-white border border-rose-500/20 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all shadow-sm cursor-pointer disabled:opacity-50 flex items-center gap-1"
                               >
+                                {actionLoadingId === order.id && <Loader2 className="w-3 h-3 animate-spin" />}
                                 Reject
                               </button>
                            </>
                          ) : (
                            <div className="flex items-center gap-1.5">
-                             <span className="text-[9px] font-black uppercase tracking-widest px-2.5 py-1 bg-neutral-100 dark:bg-neutral-800 text-neutral-500 rounded-xl border border-outline-variant/30">
+                             <span className={cn(
+                               "text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-xl border",
+                               order.status === 'Approved' || order.status === 'Accepted'
+                                 ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border-emerald-300/30"
+                                 : "bg-neutral-100 dark:bg-neutral-800 text-neutral-500 border-outline-variant/30"
+                             )}>
                                 {order.status}
                              </span>
                            </div>
                          )}
                          <button
                            onClick={() => handleDeleteOrder(order.id)}
+                           disabled={actionLoadingId === order.id}
                            title="Remove Order"
-                           className="p-1.5 bg-rose-500/10 hover:bg-rose-600 text-rose-600 dark:text-rose-400 hover:text-white border border-rose-500/20 rounded-xl transition-all shadow-sm cursor-pointer"
+                           className="btn-tactile p-1.5 bg-rose-500/10 hover:bg-rose-600 text-rose-600 dark:text-rose-400 hover:text-white border border-rose-500/20 rounded-xl transition-all shadow-sm cursor-pointer disabled:opacity-50"
                          >
-                           <Trash2 className="w-3.5 h-3.5" />
+                           {actionLoadingId === order.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
                          </button>
                       </div>
                     </td>
                   </motion.tr>
-                );
+
+                  {/* Expandable Dropdown Drawer Row */}
+                  {isExpanded && (
+                    <tr className="table-dropdown-drawer">
+                      <td colSpan={7} className="p-0">
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.25, ease: "easeInOut" }}
+                          className="overflow-hidden border-y border-amber-500/20 dark:border-primary/20 bg-slate-900/60 dark:bg-black/60 p-6 backdrop-blur-md"
+                        >
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                            <div className="p-4 rounded-2xl bg-white/5 dark:bg-white/[0.03] border border-white/10 space-y-1.5">
+                              <div className="flex items-center gap-2 text-xs font-bold text-amber-500">
+                                <User className="w-4 h-4" />
+                                <span>Buyer Entity</span>
+                              </div>
+                              <p className="text-sm font-bold text-on-surface uppercase">{order.buyer}</p>
+                              <p className="text-[10px] text-secondary/70 font-mono">PO: {getOrderBillNo(order.id)}</p>
+                              <p className="text-[10px] text-secondary/70 font-mono">Date: {order.date}</p>
+                            </div>
+
+                            <div className="p-4 rounded-2xl bg-white/5 dark:bg-white/[0.03] border border-white/10 space-y-1.5">
+                              <div className="flex items-center gap-2 text-xs font-bold text-primary">
+                                <Package className="w-4 h-4" />
+                                <span>Product & Supplier</span>
+                              </div>
+                              <p className="text-sm font-bold text-on-surface">{(order as any).product || 'Standard Rice'}</p>
+                              <p className="text-[10px] text-secondary/70">Mill: {order.supplier || 'DIRECT MILL'}</p>
+                              <span className="inline-block px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-primary/10 text-primary border border-primary/20">
+                                Tier: {order.urgency}
+                              </span>
+                            </div>
+
+                            <div className="p-4 rounded-2xl bg-white/5 dark:bg-white/[0.03] border border-white/10 space-y-1.5">
+                              <div className="flex items-center gap-2 text-xs font-bold text-emerald-500">
+                                <TrendingUp className="w-4 h-4" />
+                                <span>Volume & Valuation</span>
+                              </div>
+                              <p className="text-sm font-black font-mono text-on-surface">
+                                {(Number(order.qty) || 0).toFixed(2)} QTLS @ ₹{formatINR(order.rate)}
+                              </p>
+                              <p className="text-xs font-bold text-emerald-400 font-mono">
+                                Gross: ₹ {formatINR((Number(order.qty) || 0) * (Number(order.rate) || 0))}
+                              </p>
+                              <p className="text-[9px] text-secondary/60">Estimated cargo value</p>
+                            </div>
+
+                            <div className="p-4 rounded-2xl bg-white/5 dark:bg-white/[0.03] border border-white/10 space-y-1.5">
+                              <div className="flex items-center gap-2 text-xs font-bold text-blue-400">
+                                <Activity className="w-4 h-4" />
+                                <span>Status Workflow</span>
+                              </div>
+                              <p className="text-xs font-black uppercase tracking-wider text-on-surface">{order.status}</p>
+                              <p className="text-[10px] text-secondary/70">
+                                {isAccepted ? 'Ready for purchase order grouping' : 'Pending verification review'}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-white/10">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-[10px] font-bold text-secondary uppercase tracking-wider">Quick Actions:</span>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenMerchantModal(order.buyer)}
+                                className="btn-tactile px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-on-surface text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 border border-white/10 cursor-pointer"
+                              >
+                                <User className="w-3.5 h-3.5 text-primary" />
+                                Merchant History
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const buyerProf = resolveBuyerProfile(order.buyer);
+                                  const phone = buyerProf?.phone || '919845000000';
+                                  const cleanPhone = phone.replace(/[^0-9]/g, '');
+                                  const msg = encodeURIComponent(`Hello ${order.buyer}, regarding your order for ${(order as any).product || 'Rice'} (${order.qty} Qtl @ Rs.${order.rate}) on Tejas Canvassing.`);
+                                  window.open(`https://wa.me/${cleanPhone}?text=${msg}`, '_blank');
+                                }}
+                                className="btn-tactile px-3 py-1.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 border border-emerald-500/20 cursor-pointer"
+                              >
+                                <MessageSquare className="w-3.5 h-3.5" />
+                                WhatsApp Buyer
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(order.id);
+                                  setCopiedId(order.id);
+                                  setTimeout(() => setCopiedId(null), 2000);
+                                }}
+                                className="btn-tactile px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-secondary text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 border border-white/10 cursor-pointer"
+                              >
+                                {copiedId === order.id ? (
+                                  <>
+                                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                    <span className="text-emerald-400">Copied</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Copy className="w-3.5 h-3.5" />
+                                    <span>Copy ID</span>
+                                  </>
+                                )}
+                              </button>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              {order.status === 'Pending Approval' && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAction(order.id, 'accept')}
+                                    disabled={actionLoadingId === order.id}
+                                    className="btn-tactile px-4 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 shadow-sm disabled:opacity-50 cursor-pointer"
+                                  >
+                                    {actionLoadingId === order.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                                    Approve Indent
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAction(order.id, 'reject')}
+                                    disabled={actionLoadingId === order.id}
+                                    className="btn-tactile px-4 py-1.5 bg-rose-500/20 hover:bg-rose-500 text-rose-400 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 border border-rose-500/30 disabled:opacity-50 cursor-pointer"
+                                  >
+                                    {actionLoadingId === order.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
+                                    Reject Indent
+                                  </button>
+                                </>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteOrder(order.id)}
+                                disabled={actionLoadingId === order.id}
+                                className="btn-tactile p-2 rounded-xl bg-rose-500/10 hover:bg-rose-600 text-rose-400 hover:text-white border border-rose-500/20 transition-colors disabled:opacity-50 cursor-pointer"
+                                title="Delete this order"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        </motion.div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              );
                 })}
                 {filteredOrders.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-6 py-12 text-center text-secondary/60 text-xs font-semibold uppercase tracking-wider italic">
-                      No active procurement intents matched your filters
+                    <td colSpan={7} className="px-6 py-16 text-center">
+                      <div className="flex flex-col items-center justify-center max-w-sm mx-auto space-y-3">
+                        <div className="w-14 h-14 rounded-2xl bg-amber-500/10 dark:bg-primary/10 border border-amber-500/20 dark:border-primary/20 flex items-center justify-center text-primary">
+                          <Inbox className="w-7 h-7" />
+                        </div>
+                        <div className="space-y-1 text-center">
+                          <h4 className="text-sm font-bold text-on-surface uppercase tracking-wide">
+                            {searchQuery || filterSupplier || filterProduct ? "No matching procurement requests" : "No active procurement intents"}
+                          </h4>
+                          <p className="text-xs text-secondary/60">
+                            {searchQuery || filterSupplier || filterProduct
+                              ? "Try clearing your search query or adjusting the supplier/product filter criteria."
+                              : "All current trade indents have either been batched into purchase orders or cleared."}
+                          </p>
+                        </div>
+                        <div className="pt-2 flex items-center gap-2">
+                          {(searchQuery || filterSupplier || filterProduct) ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSearchQuery('');
+                                setFilterSupplier('');
+                                setFilterProduct('');
+                              }}
+                              className="btn-tactile px-4 py-2 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-2 cursor-pointer"
+                            >
+                              <RefreshCw className="w-3.5 h-3.5" />
+                              Reset Filters
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setIsCreateModalOpen(true)}
+                              className="btn-tactile px-4 py-2 bg-primary hover:bg-primary/90 text-on-primary rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-2 shadow-sm cursor-pointer"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              Create Manual Order
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </td>
                   </tr>
                 )}

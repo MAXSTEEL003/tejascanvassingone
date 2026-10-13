@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { 
@@ -13,11 +13,25 @@ import {
   Layers,
   Building,
   Mail,
-  MessageSquare
+  MessageSquare,
+  Check,
+  Copy,
+  Calendar,
+  Store,
+  Warehouse,
+  Plus,
+  X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, formatINR, sanitizeSupplierName } from '../lib/utils';
 import { setCollectionDoc } from '../lib/firebase';
+import { 
+  getDeliveryLocations, 
+  getSelectedDeliveryLocationId, 
+  setSelectedDeliveryLocationId, 
+  DeliveryLocation,
+  addDeliveryLocation
+} from '../utils/deliveryLocations';
 import { generateSupplierPOEmailHtml, generateBuyerConfirmationEmailHtml } from '../utils/poEmailTemplate';
 
 const BUYER_PROFILES_LOOKUP: Record<string, { email: string; phone: string }> = {
@@ -119,7 +133,7 @@ const resolveSupplierProfile = (supplierName: string) => {
 };
 
 export default function CheckoutView() {
-  const { items, total, setIsOpen, clearCart } = useCart();
+  const { items, total, clearCart } = useCart();
   const navigate = useNavigate();
   const location = useLocation();
   const bulkData = location.state as { bulkOrder?: boolean, count?: number, totalQty?: number } | null;
@@ -129,26 +143,79 @@ export default function CheckoutView() {
   const [createdOrderRef, setCreatedOrderRef] = useState<string>('');
   const [directWaLink, setDirectWaLink] = useState<string>('');
   const [directSmsLink, setDirectSmsLink] = useState<string>('');
+  const [preferredLoadingDays, setPreferredLoadingDays] = useState<number>(5);
 
-  // Cart total is derived from useCart, but we'll add some dummy taxes/shipping
+  // Delivery Locations state for in-place address change
+  const [deliveryLocations, setDeliveryLocations] = useState<DeliveryLocation[]>(() => getDeliveryLocations());
+  const [selectedLocationId, setSelectedLocationId] = useState<string>(() => getSelectedDeliveryLocationId());
+  const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
+  const [isAddingNewLoc, setIsAddingNewLoc] = useState(false);
+  const [newLocName, setNewLocName] = useState('');
+  const [newLocType, setNewLocType] = useState<'Shop' | 'Godown'>('Shop');
+  const [newLocAddress, setNewLocAddress] = useState('');
+  const [newLocPhone, setNewLocPhone] = useState('');
+
+  // Active delivery location
+  const activeLocation: DeliveryLocation = deliveryLocations.find(l => l.id === selectedLocationId) || deliveryLocations[0] || {
+    id: 'default-shop',
+    name: localStorage.getItem('userStoreName') || localStorage.getItem('userName') || 'Main Shop',
+    type: 'Shop',
+    address: localStorage.getItem('userAddress') || 'Shop #14, APMC Yard, Yeshwanthpur, Bangalore, Karnataka - 560022',
+    phone: localStorage.getItem('userPhone') || '9342380981',
+    isDefault: true
+  };
+
+  const handleSelectLocation = (loc: DeliveryLocation) => {
+    setSelectedLocationId(loc.id);
+    setSelectedDeliveryLocationId(loc.id);
+    localStorage.setItem('userAddress', loc.address);
+    if (loc.phone) {
+      localStorage.setItem('userPhone', loc.phone);
+    }
+    setIsAddressModalOpen(false);
+  };
+
+  const handleAddNewLocation = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newLocName.trim() || !newLocAddress.trim()) return;
+
+    const created = addDeliveryLocation({
+      name: newLocName.trim(),
+      type: newLocType,
+      address: newLocAddress.trim(),
+      phone: newLocPhone.trim() || undefined,
+    });
+
+    const updated = getDeliveryLocations();
+    setDeliveryLocations(updated);
+    setSelectedLocationId(created.id);
+    setSelectedDeliveryLocationId(created.id);
+    localStorage.setItem('userAddress', created.address);
+    if (created.phone) {
+      localStorage.setItem('userPhone', created.phone);
+    }
+
+    setNewLocName('');
+    setNewLocAddress('');
+    setNewLocPhone('');
+    setIsAddingNewLoc(false);
+    setIsAddressModalOpen(false);
+  };
+
+  // Cart total is derived from useCart, with wholesale ex-mill taxes
   const activeItemsCount = bulkData?.bulkOrder ? bulkData.count || 0 : items.length;
-  const activeTotal = bulkData?.bulkOrder ? (bulkData.totalQty || 0) * 4200 : total; // Using $4200 as proxy rate for bulk
-
-  const shipping = activeItemsCount > 0 ? 1200 : 0;
+  const activeTotal = bulkData?.bulkOrder ? (bulkData.totalQty || 0) * 4200 : total;
+  const shipping = 0; // Ex-mill standard direct settlement
   const tax = activeTotal * 0.05;
   const grandTotal = activeTotal + shipping + tax;
 
   const handlePlaceOrder = () => {
     setIsProcessing(true);
-    // Simulate API call
     setTimeout(() => {
       setIsProcessing(false);
       setIsSuccess(true);
       
-      // Save order to history for Dashboard
       const existing = JSON.parse(localStorage.getItem('procurement_requests') || '[]');
-      
-      // Calculate next sequential ONI- index for buyer store orders
       const storeOrders = existing.filter((o: any) => o.id && o.id.includes('ONI-'));
       let maxIdx = 0;
       storeOrders.forEach((o: any) => {
@@ -165,7 +232,7 @@ export default function CheckoutView() {
       
       const buyerText = bulkData?.bulkOrder 
         ? 'Consolidated Batch' 
-        : (localStorage.getItem('userName') || 'Authorized Merchant');
+        : (localStorage.getItem('userName') || activeLocation.name || 'Authorized Merchant');
 
       const initials = buyerText
         .split(' ')
@@ -173,13 +240,15 @@ export default function CheckoutView() {
         .map(n => n[0])
         .join('')
         .toUpperCase()
-        .slice(0, 2) || 'VK';
+        .slice(0, 2) || 'TC';
 
       const orderQty = bulkData?.bulkOrder ? (bulkData.totalQty || 0) : items.reduce((acc, i) => acc + (i.qty || 10), 0);
       const firstItemPrice = items[0]?.price || 4200;
       const orderRate = bulkData?.bulkOrder ? 4200 : firstItemPrice;
       const orderTotalAmt = orderQty * orderRate;
       const supplierVal = sanitizeSupplierName(items[0]?.supplier, 'DIRECT MILL');
+
+      const destinationFull = `${activeLocation.name} (${activeLocation.type}) - ${activeLocation.address}`;
 
       const newOrder = {
         id: finalOrderId,
@@ -204,18 +273,21 @@ export default function CheckoutView() {
         color: 'zinc',
         product: items[0]?.name || 'Premium Rice',
         supplier: supplierVal,
-        address: localStorage.getItem('userAddress') || 'No. 15, APMC Yard, Yeshwanthpur, Bangalore, Karnataka - 560022',
-        phone: localStorage.getItem('userPhone') || '9342380981',
-        gstin: localStorage.getItem('userGstin') || '29AAGCV7712M1ZP'
+        address: activeLocation.address,
+        destination: destinationFull,
+        deliveryLocationId: activeLocation.id,
+        deliveryLocationName: activeLocation.name,
+        deliveryLocationType: activeLocation.type,
+        phone: activeLocation.phone || localStorage.getItem('userPhone') || '9342380981',
+        gstin: localStorage.getItem('userGstin') || '29AAGCV7712M1ZP',
+        loadingDays: preferredLoadingDays,
+        paymentMethod: 'Pay on Delivery / Mill Settlement'
       };
 
       localStorage.setItem('procurement_requests', JSON.stringify([newOrder, ...existing]));
       setCollectionDoc('procurement_requests', newOrder.id, newOrder);
       
-      // Clear cart on successful order
       clearCart();
-
-      // Trigger actual back-end notifications (with graceful fallback logs)
       setEmailStatus('sending');
 
       const supplierProf = resolveSupplierProfile(supplierVal);
@@ -223,403 +295,624 @@ export default function CheckoutView() {
 
       const emailHtml = `
 <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px; color: #1e293b;">
-  <h2 style="color: #0f766e; margin-top: 0; border-bottom: 2px solid #0f766e; padding-bottom: 8px;">OFFICIAL PURCHASE ORDER</h2>
+  <h2 style="color: #C22424; margin-top: 0; border-bottom: 2px solid #C22424; padding-bottom: 8px;">OFFICIAL PURCHASE ORDER</h2>
   <p><strong>PO Number:</strong> ${newOrder.id}</p>
   <p><strong>Date of Issue:</strong> ${newOrder.date}</p>
-  <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 16px 0;" />
-  <h3 style="color: #0f766e;">Supplier Details</h3>
-  <p><strong>Name:</strong> ${supplierVal}</p>
-  <p><strong>Email:</strong> ${supplierProf.email}</p>
-  <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 16px 0;" />
-  <h3 style="color: #0f766e;">Billing & Delivery Destination</h3>
-  <p><strong>Authorized Broker Agency:</strong> Tejas Canvassing</p>
   <p><strong>Deliver To:</strong> ${newOrder.buyer}</p>
-  <p><strong>Delivery Address:</strong> ${newOrder.address}</p>
-  <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 16px 0;" />
-  <table style="width: 100%; border-collapse: collapse; margin-top: 16px;">
-    <thead>
-      <tr style="background-color: #f8fafc; text-align: left;">
-        <th style="padding: 12px; border-bottom: 2px solid #e2e8f0;">Product Specification</th>
-        <th style="padding: 12px; border-bottom: 2px solid #e2e8f0; text-align: right;">Quantity</th>
-        <th style="padding: 12px; border-bottom: 2px solid #e2e8f0; text-align: right;">Rate (Per QTL)</th>
-        <th style="padding: 12px; border-bottom: 2px solid #e2e8f0; text-align: right;">Total Amount</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td style="padding: 12px; border-bottom: 1px solid #e2e8f0;">${newOrder.product}</td>
-        <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; text-align: right;">${newOrder.qty} QTLS</td>
-        <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; text-align: right;">₹ ${formatINR(newOrder.rate)}</td>
-        <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: bold; color: #0f766e;">${newOrder.total}</td>
-      </tr>
-    </tbody>
-  </table>
-  <div style="margin-top: 24px; font-size: 11px; color: #64748b; text-align: center;">
-    This is an automatically generated purchase order from Tejas Canvassing.
-  </div>
-</div>`;
+  <p><strong>Delivery Destination:</strong> ${newOrder.destination}</p>
+  <p><strong>Loading Limit:</strong> ${preferredLoadingDays} Days Ex-Mill</p>
+  <p><strong>Total Amount:</strong> ${newOrder.total}</p>
+</div>
+`;
 
-      const whatsappText = `Hello ${buyerText},\n\nYour active procurement indent ${newOrder.id} has been successfully registered on the Tejas Canvassing platform!\n\n📋 *Indent Details*:\n🌾 Brand Specification: ${newOrder.product}\n⚖️ Requested Qty: ${newOrder.qty} QTLS\n🏢 Targeted Supplier: ${supplierVal}\n\nOur brokerage desk will group your request into a consolidated Purchase Order shortly.\n\nThank you for working with Tejas Canvassing!\nFor quick updates, use our mobile portal.`;
+      const subject = `[OFFICIAL PO] Purchase Order ${newOrder.id} - ${newOrder.buyer} (${orderQty} QTL)`;
+      const encodedSubject = encodeURIComponent(subject);
+      const encodedBody = encodeURIComponent(
+        `Official Purchase Order Details:\n` +
+        `-----------------------------------------\n` +
+        `PO Number: ${newOrder.id}\n` +
+        `Date: ${newOrder.date}\n` +
+        `Buyer: ${newOrder.buyer}\n` +
+        `Destination: ${newOrder.destination}\n` +
+        `Quantity: ${orderQty} QTL\n` +
+        `Rate: ₹${orderRate}/QTL\n` +
+        `Total: ${newOrder.total}\n` +
+        `Loading Limit: ${preferredLoadingDays} Days\n` +
+        `Settlement: Direct Mill Payment on Delivery\n\n` +
+        `--\nTejas Canvassing Grain Brokerage`
+      );
 
-      // 1. Dispatch PO Email to Supplier
-      const supplierEmailHtml = generateSupplierPOEmailHtml(supplierVal, newOrder, [{
-        id: newOrder.id,
-        buyer: buyerText,
-        product: newOrder.product,
-        qty: newOrder.qty,
-        rate: newOrder.rate,
-        date: new Date(),
-        loadingDays: 5,
-        unloadingPoint: 'shop'
-      }]);
+      const waMsg = encodeURIComponent(
+        `*NEW ORDER PLACED*\n` +
+        `*PO:* ${newOrder.id}\n` +
+        `*Buyer:* ${newOrder.buyer}\n` +
+        `*Qty:* ${orderQty} QTL\n` +
+        `*Destination:* ${newOrder.destination}\n` +
+        `*Loading:* ${preferredLoadingDays} Days\n` +
+        `*Total:* ${newOrder.total}\n` +
+        `*Terms:* Pay on Delivery (No Advance)`
+      );
 
-      fetch('/api/dispatch-po', {
+      setDirectWaLink(`https://wa.me/91${supplierProf.phone}?text=${waMsg}`);
+      setDirectSmsLink(`sms:+91${supplierProf.phone}?body=${waMsg}`);
+
+      fetch('/api/send-po-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          to: supplierProfile.email,
-          supplierName: supplierVal,
-          subject: `PURCHASE ORDER - ${newOrder.id} - Tejas Canvassing`,
-          html: supplierEmailHtml,
-          htmlContent: supplierEmailHtml,
-          textContent: `Purchase Order ${newOrder.id} for ${supplierVal} (${newOrder.qty} QTLS ${newOrder.product}). Total: ${newOrder.total}.`
-        })
+          to: supplierProf.email,
+          subject,
+          html: emailHtml,
+          orderDetails: newOrder,
+        }),
       })
-      .then(res => res.json())
-      .then(data => console.log(`Checkout PO Email dispatched to ${supplierVal}:`, data))
-      .catch(err => console.warn(`Checkout PO Email dispatch error:`, err?.message || err));
-
-      // 2. Dispatch Confirmation Email to Buyer
-      if (buyerProf.email) {
-        const buyerEmailHtml = generateBuyerConfirmationEmailHtml(buyerText, newOrder, [{
-          product: newOrder.product,
-          qty: newOrder.qty,
-          rate: newOrder.rate,
-          total: newOrder.total
-        }]);
-
-        fetch('/api/dispatch-po', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            to: buyerProf.email,
-            recipientName: buyerText,
-            subject: `ORDER CONFIRMATION - ${newOrder.id} - Tejas Canvassing`,
-            html: buyerEmailHtml,
-            htmlContent: buyerEmailHtml,
-            textContent: `Hello ${buyerText}, your order ${newOrder.id} for ${newOrder.qty} QTLS ${newOrder.product} has been registered.`
-          })
-        })
-        .then(res => res.json())
-        .then(data => console.log(`Checkout Buyer Email dispatched to ${buyerProf.email}:`, data))
-        .catch(err => console.warn(`Checkout Buyer Email dispatch error:`, err?.message || err));
-      }
-
-      // Set fallback direct URLs
-      const cleanPhoneDigits = (buyerProf.phone || '9342380981').replace(/[^0-9]/g, '');
-      const waDigits = cleanPhoneDigits.length === 10 ? `91${cleanPhoneDigits}` : cleanPhoneDigits;
-      setDirectWaLink(`https://api.whatsapp.com/send?phone=${waDigits}&text=${encodeURIComponent(whatsappText)}`);
-      setDirectSmsLink(`sms:+${waDigits}?body=${encodeURIComponent(whatsappText)}`);
-
-      // 1. Dispatch WhatsApp confirmation to buyer via backend
-      fetch('/api/dispatch-whatsapp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          to: buyerProf.phone,
-          buyerName: buyerText,
-          message: whatsappText
-        })
+      .then((res) => {
+        if (res.ok) setEmailStatus('sent');
+        else setEmailStatus('idle');
       })
-      .then(res => res.json())
-      .then(data => {
-        console.log('WhatsApp response:', data);
-        if (data.directUrl) setDirectWaLink(data.directUrl);
-        setEmailStatus('sent');
-      })
-      .catch(err => {
-        console.warn('WhatsApp dispatch note:', err?.message || err);
+      .catch((err) => {
+        console.warn('Silent fallback for PO email:', err);
         setEmailStatus('sent');
       });
-
-      // 2. Dispatch SMS confirmation to buyer via backend
-      fetch('/api/dispatch-sms', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          to: buyerProf.phone,
-          recipientName: buyerText,
-          message: `Tejas Canvassing: Your Indent ${newOrder.id} for ${newOrder.qty} QTLS ${newOrder.product} has been registered successfully.`
-        })
-      }).catch(err => console.warn('SMS dispatch note:', err?.message || err));
-    }, 1000);
+    }, 1200);
   };
 
-  const supplierName = sanitizeSupplierName(items[0]?.supplier, 'DIRECT MILL');
-  const supplierProfile = resolveSupplierProfile(supplierName);
+  const [isCopiedRef, setIsCopiedRef] = useState(false);
+  const copyOrderRef = () => {
+    if (!createdOrderRef) return;
+    navigator.clipboard.writeText(createdOrderRef);
+    setIsCopiedRef(true);
+    setTimeout(() => setIsCopiedRef(false), 2000);
+  };
 
-  const buyerName = bulkData?.bulkOrder ? 'Consolidated Batch' : (localStorage.getItem('userName') || 'Authorized Merchant');
-  const buyerProfile = resolveBuyerProfile(buyerName);
-
+  // ----------------------------------------------------
+  // RENDER: SCREEN 6 ORDER SUCCESS
+  // ----------------------------------------------------
   if (isSuccess) {
+    const totalOrderQty = bulkData?.bulkOrder ? (bulkData.totalQty || 0) : items.reduce((acc, i) => acc + (i.qty || 10), 0);
+    const estDeliveryDate = (() => {
+      const d = new Date();
+      d.setDate(d.getDate() + preferredLoadingDays + 1);
+      return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    })();
+
     return (
-      <div className="h-[calc(100vh-64px)] flex items-center justify-center p-8 bg-[#faf8f5] dark:bg-[#040f0c] text-emerald-950 dark:text-emerald-50">
+      <div className="min-h-[82vh] flex items-center justify-center p-4 sm:p-6 bg-[#FAFBFA] dark:bg-[#0A0A0A] text-[#111827] dark:text-neutral-100 font-sans">
         <motion.div 
-          initial={{ opacity: 0, scale: 0.9 }}
+          initial={{ opacity: 0, scale: 0.96 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="bg-white dark:bg-[#051310] border border-emerald-900/10 dark:border-emerald-950/40 p-12 rounded-3xl text-center max-w-lg space-y-6 shadow-xl"
+          transition={{ duration: 0.25 }}
+          className="bg-white dark:bg-[#141414] border border-[#E5E7EB] dark:border-[#262626] p-6 sm:p-8 rounded-2xl text-center max-w-md w-full space-y-5 shadow-sm"
         >
-          <div className="w-20 h-20 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 rounded-full flex items-center justify-center mx-auto border border-emerald-100 dark:border-emerald-900/30 shadow-inner">
-            <CheckCircle2 className="w-10 h-10 animate-bounce" />
+          {/* Circular Red Checkmark matching Screen 6 */}
+          <div className="w-16 h-16 bg-[#C22424] text-white rounded-full flex items-center justify-center mx-auto shadow-md">
+            <Check className="w-9 h-9 stroke-[3]" />
           </div>
-          <div className="space-y-2">
-            <h1 className="text-2xl font-black tracking-tight text-emerald-950 dark:text-emerald-50">Order Grouped & Placed!</h1>
-            <p className="text-emerald-900/60 dark:text-emerald-300/60 font-medium text-xs">
-              Your consolidated purchase order (PO) is being dispatched automatically.
+
+          <div className="space-y-1">
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[#111827] dark:text-white">
+              Order Placed Successfully!
+            </h1>
+            <p className="text-xs text-[#6B7280] dark:text-neutral-400 font-normal max-w-xs mx-auto">
+              Your order has been registered and transmitted to the mill for dispatch.
             </p>
           </div>
 
-          <AnimatePresence mode="wait">
-            {emailStatus === 'sending' ? (
-              <motion.div 
-                key="sending"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="bg-emerald-500/[0.03] p-4 rounded-2xl border border-emerald-500/20 flex flex-col items-center justify-center gap-2"
+          {/* Screen 6 Order Details Card */}
+          <div className="bg-[#FAFBFA] dark:bg-[#1C1C1C] p-4 rounded-xl border border-[#E5E7EB] dark:border-[#262626] space-y-3 text-left">
+            <div className="flex items-center justify-between pb-2.5 border-b border-[#E5E7EB] dark:border-[#262626]">
+              <span className="text-xs text-[#6B7280] dark:text-neutral-400">Order ID</span>
+              <button 
+                type="button"
+                onClick={copyOrderRef}
+                className="flex items-center gap-1.5 font-mono font-bold text-xs text-[#C22424] hover:underline cursor-pointer"
+                title="Copy Order ID"
               >
-                <div className="w-5 h-5 border-2 border-emerald-500/30 border-t-emerald-600 rounded-full animate-spin" />
-                <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600">Kicking off system dispatch routers...</span>
-              </motion.div>
-            ) : emailStatus === 'sent' ? (
-              <motion.div 
-                key="sent"
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="space-y-3"
-              >
-                {/* Brokerage Queue indicator */}
-                <div className="bg-emerald-500/[0.04] p-3.5 rounded-2xl border border-emerald-500/25 flex items-start gap-3 text-left">
-                  <div className="w-8 h-8 rounded-full bg-emerald-500/15 flex items-center justify-center text-emerald-600 shrink-0 border border-emerald-500/20">
-                    <PackageCheck className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700">Brokerage Pool Registered</p>
-                    <p className="text-xs font-semibold text-emerald-950 dark:text-emerald-100 mt-0.5">
-                      Indent queued for bulk batch grouping with:
-                    </p>
-                    <p className="text-[11px] font-bold text-emerald-900 dark:text-emerald-200 font-sans uppercase tracking-wider">{supplierName}</p>
-                  </div>
-                </div>
+                <span>{createdOrderRef || (bulkData?.bulkOrder ? '#BATCH-TC-9104' : '#ONI-0001')}</span>
+                {isCopiedRef ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+              </button>
+            </div>
 
-                {/* WhatsApp dispatch indicator */}
-                <div className="bg-orange-500/[0.04] p-3.5 rounded-2xl border border-orange-500/25 flex items-start gap-3 text-left">
-                  <div className="w-8 h-8 rounded-full bg-orange-500/15 flex items-center justify-center text-orange-600 shrink-0 border border-orange-500/20">
-                    <MessageSquare className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-widest text-orange-700">WhatsApp Confirmation to Buyer</p>
-                    <p className="text-xs font-semibold text-emerald-950 dark:text-emerald-100 mt-0.5">
-                      Registration confirmation transmitted to:
-                    </p>
-                    <p className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 font-mono select-all">+91 {buyerProfile.phone}</p>
-                  </div>
-                </div>
-              </motion.div>
-            ) : null}
-          </AnimatePresence>
+            <div className="flex items-center justify-between pb-2.5 border-b border-[#E5E7EB] dark:border-[#262626]">
+              <span className="text-xs text-[#6B7280] dark:text-neutral-400">Total Amount</span>
+              <span className="font-bold text-xs text-[#111827] dark:text-white font-mono">
+                ₹{formatINR(grandTotal)}
+              </span>
+            </div>
 
-          <div className="bg-[#faf8f5] dark:bg-[#071612] p-4 rounded-xl text-left border border-emerald-900/10 dark:border-emerald-950/40 flex items-center gap-4">
-             <div className="w-10 h-10 bg-white dark:bg-emerald-950/20 rounded-lg flex items-center justify-center shadow-sm">
-                <PackageCheck className="w-6 h-6 text-emerald-600" />
-             </div>
-             <div>
-                <p className="text-[10px] font-black text-emerald-900/60 dark:text-emerald-200/50 uppercase tracking-widest">Order Reference</p>
-                <p className="text-sm font-bold text-emerald-950 dark:text-emerald-50">{createdOrderRef || (bulkData?.bulkOrder ? '#BATCH-TC-9104' : '#ONI-0001')}</p>
-             </div>
+            <div className="flex items-center justify-between pb-2.5 border-b border-[#E5E7EB] dark:border-[#262626]">
+              <span className="text-xs text-[#6B7280] dark:text-neutral-400">Total Quantity</span>
+              <span className="font-bold text-xs text-[#111827] dark:text-white">
+                {totalOrderQty} QTL ({totalOrderQty * 100} kg)
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between pb-2.5 border-b border-[#E5E7EB] dark:border-[#262626]">
+              <span className="text-xs text-[#6B7280] dark:text-neutral-400">Estimated Delivery</span>
+              <span className="font-bold text-xs text-[#111827] dark:text-white">
+                {estDeliveryDate}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between pb-2.5 border-b border-[#E5E7EB] dark:border-[#262626]">
+              <span className="text-xs text-[#6B7280] dark:text-neutral-400">Deliver To</span>
+              <span className="font-bold text-xs text-[#111827] dark:text-white truncate max-w-[200px]">
+                {activeLocation.name} ({activeLocation.type})
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-[#6B7280] dark:text-neutral-400">Status</span>
+              <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 font-bold text-[10px] border border-emerald-200 dark:border-emerald-800">
+                Pending Mill Confirmation
+              </span>
+            </div>
           </div>
 
-          {/* Real Phone Actions & WhatsApp Launcher */}
-          <div className="grid grid-cols-2 gap-2.5">
+          {/* Quick Communication Actions */}
+          <div className="grid grid-cols-2 gap-2">
             <a
               href={directWaLink}
               target="_blank"
               rel="noopener noreferrer"
-              className="py-3 px-3 rounded-xl bg-emerald-600/10 hover:bg-emerald-600/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-xs font-bold flex items-center justify-center gap-1.5 transition-all text-center no-underline"
+              className="py-2.5 px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-bold flex items-center justify-center gap-1.5 transition-all no-underline cursor-pointer"
             >
-              <MessageSquare className="w-4 h-4 text-emerald-600" />
-              Open in WhatsApp
+              <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
+              <span>WhatsApp Copy</span>
             </a>
             <a
               href={directSmsLink}
-              className="py-3 px-3 rounded-xl bg-blue-600/10 hover:bg-blue-600/20 text-blue-700 dark:text-blue-300 border border-blue-500/30 text-xs font-bold flex items-center justify-center gap-1.5 transition-all text-center no-underline"
+              className="py-2.5 px-3 rounded-xl bg-neutral-50 hover:bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 border border-[#E5E7EB] dark:border-neutral-700 text-xs font-bold flex items-center justify-center gap-1.5 transition-all no-underline cursor-pointer"
             >
-              <Mail className="w-4 h-4 text-blue-600" />
-              Send Direct SMS
+              <Mail className="w-3.5 h-3.5 text-neutral-500" />
+              <span>Direct SMS</span>
             </a>
           </div>
 
-          <button 
-            onClick={() => navigate('/my-orders')}
-            className="w-full py-4 bg-gradient-to-r from-emerald-600 to-teal-700 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:opacity-95 transition-all shadow-lg shadow-emerald-500/20 cursor-pointer"
-          >
-            Track My Orders
-            <ArrowRight className="w-4 h-4" />
-          </button>
+          {/* Screen 6 Action Buttons */}
+          <div className="space-y-2 pt-1">
+            <button 
+              type="button"
+              onClick={() => navigate('/my-orders')}
+              className="w-full py-3.5 bg-[#C22424] hover:bg-[#B91C1C] text-white rounded-xl font-bold text-sm transition-all shadow-sm cursor-pointer active:scale-98"
+            >
+              View Order
+            </button>
+            <button 
+              type="button"
+              onClick={() => navigate('/store')}
+              className="w-full py-3 bg-white dark:bg-[#141414] hover:bg-neutral-50 dark:hover:bg-neutral-800 text-[#111827] dark:text-neutral-200 border border-[#E5E7EB] dark:border-neutral-700 rounded-xl font-bold text-sm transition-all cursor-pointer"
+            >
+              Continue Shopping
+            </button>
+          </div>
         </motion.div>
       </div>
     );
   }
 
+  // ----------------------------------------------------
+  // RENDER: SCREEN 5 CHECKOUT VIEW
+  // ----------------------------------------------------
   return (
-    <div className="min-h-screen bg-[#faf8f5] dark:bg-[#040f0c] p-4 sm:p-8 pb-32 max-w-7xl mx-auto space-y-8 text-emerald-950 dark:text-emerald-50">
-      <header className="flex items-center gap-4">
+    <div className="min-h-screen bg-[#FAFBFA] dark:bg-[#0A0A0A] p-3 sm:p-6 pb-28 max-w-4xl mx-auto space-y-4 font-sans text-[#111827] dark:text-neutral-100 animate-fadeIn">
+      {/* Top Header matching Screen 5: < Checkout */}
+      <header className="flex items-center gap-2.5 pb-2 border-b border-[#E5E7EB] dark:border-[#262626]">
         <button 
+          type="button"
           onClick={() => navigate(-1)}
-          className="p-2 hover:bg-emerald-500/10 dark:hover:bg-emerald-500/20 rounded-full transition-colors border-0 bg-transparent cursor-pointer text-emerald-950 dark:text-emerald-50"
+          className="p-1.5 -ml-1 text-[#111827] dark:text-white hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors cursor-pointer"
+          title="Back"
         >
           <ChevronLeft className="w-6 h-6" />
         </button>
-        <div>
-          <h1 className="text-3xl font-black tracking-tight">{bulkData?.bulkOrder ? 'Consolidated Procurement' : 'Finalize Procurement'}</h1>
-          <p className="text-emerald-900/60 dark:text-emerald-300/60 text-sm font-medium">{bulkData?.bulkOrder ? 'Reviewing batch shipment requirements.' : 'Review your items and select delivery terms.'}</p>
-        </div>
+        <h1 className="text-lg sm:text-xl font-bold tracking-tight text-[#111827] dark:text-white">
+          Checkout
+        </h1>
       </header>
 
-      <div className="grid grid-cols-12 gap-8">
-        <div className="col-span-12 lg:col-span-8 space-y-8">
-          {/* Items Review */}
-          <section className="bg-white dark:bg-[#051310] border border-emerald-900/10 dark:border-emerald-950/40 rounded-2xl overflow-hidden shadow-sm">
-            <div className="p-6 border-b border-emerald-950/10 dark:border-emerald-950/40 bg-emerald-500/[0.02] flex justify-between items-center">
-              <h3 className="font-black flex items-center gap-2 uppercase tracking-widest text-xs text-emerald-900/65 dark:text-emerald-400">
-                {bulkData?.bulkOrder ? <Layers className="w-4 h-4" /> : <PackageCheck className="w-4 h-4" />}
-                {bulkData?.bulkOrder ? `Grouped Batch (${bulkData.count} Entities)` : `Cart Items (${items.length})`}
-              </h3>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        {/* Main Content: Delivery Details, Dispatch Info, Order Summary */}
+        <div className="lg:col-span-8 space-y-3.5">
+          {/* 1. Delivery Details Card (Screen 5) */}
+          <section className="bg-white dark:bg-[#141414] border border-[#E5E7EB] dark:border-[#262626] rounded-2xl p-4 sm:p-5 shadow-xs space-y-3 text-left">
+            <div className="flex items-center justify-between pb-2 border-b border-[#E5E7EB] dark:border-[#262626]">
+              <div className="flex items-center gap-2 font-bold text-sm text-[#111827] dark:text-white">
+                <MapPin className="w-4 h-4 text-[#C22424]" />
+                <span>Delivery Details</span>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setIsAddressModalOpen(true)}
+                className="text-xs font-bold text-[#C22424] hover:underline cursor-pointer flex items-center gap-1"
+              >
+                <span>Change</span>
+              </button>
             </div>
-            <div className="p-6 space-y-6">
-              {bulkData?.bulkOrder ? (
-                 <div className="p-8 bg-emerald-500/5 rounded-2xl border border-dashed border-emerald-500/20 space-y-4">
-                    <div className="flex items-center gap-4">
-                       <div className="w-12 h-12 bg-white dark:bg-[#071d19] rounded-full flex items-center justify-center shadow-sm border border-emerald-500/25">
-                          <Layers className="w-6 h-6 text-emerald-600" />
-                       </div>
-                       <div>
-                          <p className="text-sm font-black text-emerald-950 dark:text-emerald-100">Consolidated Batch Request</p>
-                          <p className="text-xs text-emerald-900/60 dark:text-emerald-300/60">Merging {bulkData.count} individual procurement intents into a single shipment line.</p>
-                       </div>
-                    </div>
-                    <div className="flex justify-between items-center py-4 border-t border-emerald-500/10">
-                       <span className="text-[10px] font-black uppercase tracking-widest opacity-45 text-emerald-900/50 dark:text-emerald-300/60">Cumulative Volume</span>
-                       <span className="text-sm font-black text-emerald-950 dark:text-emerald-50">{bulkData.totalQty?.toFixed(2)} QTLS</span>
-                    </div>
-                 </div>
-              ) : items.length === 0 ? (
-                <p className="p-8 text-center text-emerald-900/60 dark:text-emerald-300/60 text-sm italic">No items selected for procurement.</p>
+
+            <div className="space-y-1.5 text-xs text-[#111827] dark:text-neutral-200">
+              <div className="flex items-center gap-2">
+                <p className="font-bold text-sm text-[#111827] dark:text-white">
+                  {activeLocation.name}
+                </p>
+                <span className="px-2 py-0.5 rounded-md bg-neutral-100 dark:bg-neutral-800 text-[10px] font-bold text-neutral-600 dark:text-neutral-300 border border-neutral-200 dark:border-neutral-700">
+                  {activeLocation.type}
+                </span>
+                {activeLocation.isDefault && (
+                  <span className="px-1.5 py-0.2 rounded-full bg-red-50 dark:bg-red-950/60 text-[#C22424] text-[9px] font-bold">
+                    Default
+                  </span>
+                )}
+              </div>
+              <p className="text-[#6B7280] dark:text-neutral-400 leading-relaxed">
+                {activeLocation.address}
+              </p>
+              <div className="pt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[#6B7280] dark:text-neutral-400 font-sans">
+                <span>GSTIN: <span className="font-sans font-bold text-[#111827] dark:text-neutral-200">{localStorage.getItem('userGstin') || '29AAGCV7712M1ZP'}</span></span>
+                <span>Phone: <span className="font-sans font-bold text-[#111827] dark:text-neutral-200">+91 {activeLocation.phone || localStorage.getItem('userPhone') || '9342380981'}</span></span>
+              </div>
+            </div>
+          </section>
+
+          {/* 2. Dispatch Information Card (Screen 5) */}
+          <section className="bg-white dark:bg-[#141414] border border-[#E5E7EB] dark:border-[#262626] rounded-2xl p-4 sm:p-5 shadow-xs space-y-3 text-left">
+            <div className="flex items-center justify-between pb-2 border-b border-[#E5E7EB] dark:border-[#262626]">
+              <div className="flex items-center gap-2 font-bold text-sm text-[#111827] dark:text-white">
+                <Truck className="w-4 h-4 text-[#C22424]" />
+                <span>Dispatch Information</span>
+              </div>
+              <span className="text-xs font-bold text-[#C22424]">
+                {preferredLoadingDays} Days Loading
+              </span>
+            </div>
+
+            <p className="text-xs text-[#6B7280] dark:text-neutral-400">
+              Preferred Ex-Mill Loading Timeline:
+            </p>
+
+            <div className="grid grid-cols-4 gap-2">
+              {[2, 3, 5, 7].map((days) => (
+                <button
+                  key={days}
+                  type="button"
+                  onClick={() => setPreferredLoadingDays(days)}
+                  className={cn(
+                    "py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer text-center",
+                    preferredLoadingDays === days
+                      ? "bg-[#C22424] text-white shadow-xs font-black ring-2 ring-red-400/30"
+                      : "bg-[#FAFBFA] dark:bg-neutral-800 text-[#111827] dark:text-neutral-300 border border-[#E5E7EB] dark:border-neutral-700 hover:bg-neutral-100"
+                  )}
+                >
+                  <span className="block text-[13px]">{days} Days</span>
+                  <span className="block text-[9px] opacity-75 font-normal">Ex-Mill</span>
+                </button>
+              ))}
+            </div>
+
+            <p className="text-[11px] text-[#6B7280] dark:text-neutral-400 pt-1">
+              Direct mill transport • Standard delivery to destination yard
+            </p>
+          </section>
+
+          {/* 3. Product-wise Order Summary (Screen 5) */}
+          <section className="bg-white dark:bg-[#141414] border border-[#E5E7EB] dark:border-[#262626] rounded-2xl p-4 sm:p-5 shadow-xs space-y-3 text-left">
+            <h3 className="font-bold text-sm text-[#111827] dark:text-white pb-2 border-b border-[#E5E7EB] dark:border-[#262626]">
+              Order Summary ({items.length} items)
+            </h3>
+
+            <div className="divide-y divide-[#E5E7EB] dark:divide-[#262626] space-y-3">
+              {items.length === 0 ? (
+                <div className="py-6 text-center text-xs text-[#6B7280]">
+                  No items in cart to review. Return to the store to add rice varieties.
+                </div>
               ) : (
                 items.map((item) => (
-                  <div key={item.id} className="flex gap-6 items-center">
-                    <div className="w-16 h-16 rounded-xl bg-emerald-500/5 overflow-hidden shrink-0 border border-emerald-900/10">
-                      <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+                  <div key={item.id} className="pt-3 first:pt-0 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <div className="w-12 h-12 rounded-xl bg-neutral-50 dark:bg-neutral-900 overflow-hidden shrink-0 border border-[#E5E7EB] dark:border-neutral-800 p-1 flex items-center justify-center">
+                        <img 
+                          src={item.image || (item.name?.toLowerCase().includes('madhuram') ? '/images/keshar_madhuram.png' : item.name?.toLowerCase().includes('simha') ? '/images/simha.png' : '/images/keshar_kali.png')} 
+                          alt={item.name} 
+                          className="w-full h-full object-contain"
+                          onError={(e) => {
+                            (e.currentTarget as HTMLImageElement).src = '/images/keshar_kali.png';
+                          }}
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h4 className="font-bold text-xs text-[#111827] dark:text-white truncate">{item.name}</h4>
+                        <p className="text-[11px] text-[#6B7280] dark:text-neutral-400 mt-0.5">
+                          {item.qty} QTL • ₹{formatINR(item.price)} / QTL
+                        </p>
+                      </div>
                     </div>
-                    <div className="flex-1">
-                      <h4 className="font-bold text-sm text-emerald-950 dark:text-emerald-100">{item.name}</h4>
-                      <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider font-mono flex items-center gap-1.5 mt-0.5 mb-1">
-                        <Building className="w-3 h-3" />
-                        {sanitizeSupplierName(item.supplier, 'Direct Mill')}
-                      </p>
-                      <p className="text-xs text-emerald-900/60 dark:text-emerald-300/60 font-medium">{item.qty} QTLS × ₹{formatINR(item.price)}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-black text-emerald-950 dark:text-emerald-50">₹{formatINR(item.price * item.qty)}</p>
+
+                    <div className="text-right shrink-0">
+                      <span className="font-mono font-bold text-xs text-[#111827] dark:text-white">
+                        ₹{formatINR(item.price * item.qty)}
+                      </span>
                     </div>
                   </div>
                 ))
               )}
             </div>
           </section>
-
-          {/* Delivery Details */}
-          <div>
-            <section className="bg-white dark:bg-[#051310] border border-emerald-900/10 dark:border-emerald-950/40 p-6 rounded-2xl space-y-4 shadow-sm">
-              <h3 className="font-black flex items-center gap-2 text-sm uppercase tracking-widest text-emerald-950 dark:text-emerald-100">
-                <MapPin className="w-4 h-4 text-emerald-600" />
-                Delivery Destination
-              </h3>
-              <div className="p-4 bg-emerald-500/5 border border-emerald-500/20 rounded-xl relative">
-                <CheckCircle2 className="absolute top-4 right-4 w-5 h-5 text-emerald-600" />
-                <p className="font-bold text-sm text-emerald-950 dark:text-emerald-100">
-                  {localStorage.getItem('userStoreName') || localStorage.getItem('userName') || 'Merchant Store'}
-                </p>
-                <p className="text-xs text-emerald-900/60 dark:text-emerald-300/60 mt-1 leading-relaxed">
-                  {localStorage.getItem('userAddress') || 'No. 15, APMC Yard, Yeshwanthpur, Bangalore, Karnataka - 560022'}
-                </p>
-              </div>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                Direct trade terms apply. No payment required at time of order. Settlement is handled directly on delivery invoice terms.
-              </p>
-            </section>
-          </div>
         </div>
 
-        {/* Order Summary Sidebar */}
-        <div className="col-span-12 lg:col-span-4">
-          <div className="bg-white dark:bg-[#051310] border border-emerald-900/10 dark:border-emerald-950/40 p-8 rounded-3xl space-y-8 sticky top-24 shadow-sm">
-            <h3 className="text-xl font-black text-emerald-950 dark:text-emerald-50">Order Summary</h3>
+        {/* Right Sticky Summary Sidebar */}
+        <div className="lg:col-span-4">
+          <div className="bg-white dark:bg-[#141414] border border-[#E5E7EB] dark:border-[#262626] p-5 rounded-2xl space-y-4 lg:sticky lg:top-20 shadow-xs text-left">
+            <h3 className="text-sm font-bold text-[#111827] dark:text-white border-b border-[#E5E7EB] dark:border-[#262626] pb-2">
+              Price Breakdown
+            </h3>
             
-            <div className="space-y-4">
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-emerald-900/60 dark:text-emerald-300/60 font-medium uppercase tracking-wider text-[10px]">Net Value</span>
-                <span className="font-bold">₹{formatINR(total)}</span>
+            <div className="space-y-2.5 text-xs">
+              <div className="flex justify-between items-center">
+                <span className="text-[#6B7280] dark:text-neutral-400 font-medium">Total Volume</span>
+                <span className="font-bold text-[#111827] dark:text-white">
+                  {bulkData?.bulkOrder ? `${bulkData.totalQty?.toFixed(2)} QTL` : `${items.reduce((s, i) => s + i.qty, 0)} QTL (${items.reduce((s, i) => s + i.qty, 0) * 100} kg)`}
+                </span>
               </div>
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-emerald-900/60 dark:text-emerald-300/60 font-medium uppercase tracking-wider text-[10px]">Logistics Fee</span>
-                <span className="font-bold">₹{formatINR(shipping)}</span>
+              <div className="flex justify-between items-center">
+                <span className="text-[#6B7280] dark:text-neutral-400 font-medium">Subtotal</span>
+                <span className="font-mono font-bold text-[#111827] dark:text-white">₹{formatINR(activeTotal)}</span>
               </div>
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-emerald-900/60 dark:text-emerald-300/60 font-medium uppercase tracking-wider text-[10px]">IGST / Taxes</span>
-                <span className="font-bold">₹{formatINR(tax)}</span>
+              <div className="flex justify-between items-center">
+                <span className="text-[#6B7280] dark:text-neutral-400 font-medium">Delivery Fee</span>
+                <span className="font-bold text-emerald-600">FREE</span>
               </div>
-              <div className="h-px bg-emerald-900/10 dark:bg-emerald-950/40 my-4" />
-              <div className="flex justify-between items-end">
-                <span className="font-black text-emerald-900/65 dark:text-emerald-400 uppercase tracking-widest text-xs">Total Amount</span>
-                <span className="text-2xl font-black text-emerald-700 dark:text-emerald-400">₹{formatINR(grandTotal)}</span>
+              <div className="flex justify-between items-center">
+                <span className="text-[#6B7280] dark:text-neutral-400 font-medium">Applicable Taxes (5%)</span>
+                <span className="font-mono font-bold text-[#111827] dark:text-white">₹{formatINR(tax)}</span>
+              </div>
+              
+              <div className="h-px bg-[#E5E7EB] dark:border-[#262626] my-2" />
+              
+              <div className="flex justify-between items-baseline pt-1">
+                <span className="font-bold text-sm text-[#111827] dark:text-white">Total Amount</span>
+                <span className="text-xl font-mono font-bold text-[#C22424]">
+                  ₹{formatINR(grandTotal)}
+                </span>
               </div>
             </div>
 
-            <div className="bg-emerald-500/5 p-3.5 rounded-xl flex items-start gap-2.5 border border-emerald-500/20">
-               <ShieldCheck className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
-               <p className="text-[10px] text-emerald-900/60 dark:text-emerald-300/60 font-medium leading-relaxed">
-                  Direct Mill Trade PO. Payment is settled on delivery invoice as per standard APMC terms.
-               </p>
+            {/* Direct Trade Terms */}
+            <div className="bg-neutral-50 dark:bg-neutral-900/60 p-3 rounded-xl flex items-start gap-2 border border-[#E5E7EB] dark:border-neutral-800 text-[11px] text-[#6B7280] dark:text-neutral-300">
+              <ShieldCheck className="w-4 h-4 text-[#C22424] shrink-0 mt-0.5" />
+              <span>
+                Standard APMC mill invoice terms. Direct settlement on delivery at destination yard.
+              </span>
             </div>
 
+            {/* Place Order CTA matching Screen 5 */}
             <button 
+              type="button"
               onClick={handlePlaceOrder}
               disabled={items.length === 0 || isProcessing}
               className={cn(
-                "w-full py-4 rounded-2xl font-black text-sm relative overflow-hidden transition-all duration-300 cursor-pointer border-0",
-                "bg-gradient-to-r from-emerald-600 to-teal-700 text-white shadow-xl shadow-emerald-500/20 hover:shadow-emerald-550/30",
-                "disabled:opacity-50 disabled:grayscale disabled:cursor-not-allowed",
-                isProcessing && "text-transparent"
+                "w-full py-3.5 rounded-xl font-bold text-sm tracking-wide text-white transition-all cursor-pointer shadow-md flex items-center justify-center gap-2",
+                "bg-[#C22424] hover:bg-[#B91C1C] active:scale-98 disabled:opacity-50 disabled:cursor-not-allowed"
               )}
             >
-              Confirm & Place Order
-              {isProcessing && (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                </div>
+              {isProcessing ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span>Placing Order...</span>
+                </>
+              ) : (
+                <>
+                  <span>Place Order • ₹{formatINR(grandTotal)}</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
               )}
             </button>
-
-            <div className="text-center">
-               <p className="text-[10px] text-emerald-900/60 dark:text-emerald-350/50 font-black uppercase tracking-widest flex items-center justify-center gap-1">
-                  <Truck className="w-3 h-3" />
-                  Average Delivery: 12-14 Days
-               </p>
-            </div>
           </div>
         </div>
       </div>
+
+      {/* ======================================================== */}
+      {/* IN-PLACE ADDRESS SELECTION MODAL (DOES NOT GO TO PROFILE) */}
+      {/* ======================================================== */}
+      {isAddressModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 font-sans animate-fadeIn">
+          <div className="bg-white dark:bg-[#141414] border border-[#E5E7EB] dark:border-[#262626] rounded-2xl p-4 sm:p-5 max-w-md w-full shadow-2xl space-y-3.5 text-xs text-left max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-2 border-b border-[#E5E7EB] dark:border-[#262626]">
+              <h3 className="font-bold text-sm text-[#111827] dark:text-white flex items-center gap-1.5">
+                <MapPin className="w-4 h-4 text-[#C22424]" />
+                <span>Select Delivery Destination</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAddressModalOpen(false);
+                  setIsAddingNewLoc(false);
+                }}
+                className="p-1 rounded-lg text-neutral-400 hover:text-neutral-700 dark:hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Saved Locations List */}
+            <div className="space-y-2">
+              {deliveryLocations.map((loc) => {
+                const isSelected = loc.id === activeLocation.id;
+                return (
+                  <div
+                    key={loc.id}
+                    onClick={() => handleSelectLocation(loc)}
+                    className={cn(
+                      "p-3 rounded-xl border transition-all cursor-pointer flex items-start justify-between gap-3 text-left",
+                      isSelected
+                        ? "bg-red-50/50 dark:bg-red-950/30 border-[#C22424] shadow-xs"
+                        : "bg-white dark:bg-neutral-900 border-[#E5E7EB] dark:border-neutral-800 hover:border-neutral-300"
+                    )}
+                  >
+                    <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                      <div className="w-7 h-7 rounded-lg bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 flex items-center justify-center shrink-0 mt-0.5">
+                        {loc.type === 'Godown' ? <Warehouse className="w-3.5 h-3.5" /> : <Store className="w-3.5 h-3.5" />}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-neutral-900 dark:text-white text-xs truncate">
+                            {loc.name}
+                          </span>
+                          <span className="px-1.5 py-0.2 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 text-[9px] font-bold">
+                            {loc.type}
+                          </span>
+                          {loc.isDefault && (
+                            <span className="px-1.5 py-0.2 rounded-full bg-red-100 dark:bg-red-950 text-[#C22424] text-[8.5px] font-bold">
+                              Default
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-neutral-500 dark:text-neutral-400 leading-normal mt-0.5">
+                          {loc.address}
+                        </p>
+                        {loc.phone && (
+                          <p className="text-[10px] text-neutral-400 mt-0.5">
+                            Phone: +91 {loc.phone}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="pt-1">
+                      <div className={cn(
+                        "w-5 h-5 rounded-full border flex items-center justify-center transition-all",
+                        isSelected 
+                          ? "bg-[#C22424] border-[#C22424] text-white shadow-2xs" 
+                          : "border-neutral-300 dark:border-neutral-600 bg-transparent"
+                      )}>
+                        {isSelected && <Check className="w-3 h-3 stroke-[2.5]" />}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Toggle Add New Address */}
+            {!isAddingNewLoc ? (
+              <button
+                type="button"
+                onClick={() => setIsAddingNewLoc(true)}
+                className="w-full py-2.5 px-3 rounded-xl border border-dashed border-[#C22424]/40 hover:border-[#C22424] bg-red-50/30 dark:bg-red-950/20 text-[#C22424] font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-all"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add New Delivery Address</span>
+              </button>
+            ) : (
+              <form onSubmit={handleAddNewLocation} className="p-3.5 bg-neutral-50 dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 space-y-2.5 animate-fadeIn">
+                <div className="flex items-center justify-between pb-1 border-b border-neutral-200 dark:border-neutral-800">
+                  <span className="font-bold text-neutral-900 dark:text-white text-xs">
+                    New Address Details
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setIsAddingNewLoc(false)}
+                    className="text-neutral-400 hover:text-neutral-600 text-xs cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                </div>
+
+                <div>
+                  <label className="font-semibold text-neutral-700 dark:text-neutral-300 block mb-0.5">
+                    Location Name
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Yeshwanthpur Godown #3"
+                    value={newLocName}
+                    onChange={(e) => setNewLocName(e.target.value)}
+                    required
+                    className="w-full p-2 rounded-lg bg-white dark:bg-[#141414] border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-xs outline-none focus:border-[#C22424]"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-semibold text-neutral-700 dark:text-neutral-300 block mb-0.5">
+                    Destination Type
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setNewLocType('Shop')}
+                      className={cn(
+                        "p-2 rounded-lg border text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer",
+                        newLocType === 'Shop'
+                          ? "bg-red-50 border-[#C22424] text-[#C22424] dark:bg-red-950/40"
+                          : "bg-white dark:bg-[#141414] border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300"
+                      )}
+                    >
+                      <Store className="w-3.5 h-3.5" />
+                      <span>Shop</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNewLocType('Godown')}
+                      className={cn(
+                        "p-2 rounded-lg border text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer",
+                        newLocType === 'Godown'
+                          ? "bg-red-50 border-[#C22424] text-[#C22424] dark:bg-red-950/40"
+                          : "bg-white dark:bg-[#141414] border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300"
+                      )}
+                    >
+                      <Warehouse className="w-3.5 h-3.5" />
+                      <span>Godown</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="font-semibold text-neutral-700 dark:text-neutral-300 block mb-0.5">
+                    Full Destination Address
+                  </label>
+                  <textarea
+                    placeholder="Plot / Shed No, APMC Yard / Industrial Area, City, Pin"
+                    value={newLocAddress}
+                    onChange={(e) => setNewLocAddress(e.target.value)}
+                    rows={2}
+                    required
+                    className="w-full p-2 rounded-lg bg-white dark:bg-[#141414] border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-xs outline-none focus:border-[#C22424] resize-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-semibold text-neutral-700 dark:text-neutral-300 block mb-0.5">
+                    Gate / Receiving Phone (Optional)
+                  </label>
+                  <input
+                    type="tel"
+                    placeholder="e.g. 9876543210"
+                    value={newLocPhone}
+                    onChange={(e) => setNewLocPhone(e.target.value)}
+                    className="w-full p-2 rounded-lg bg-white dark:bg-[#141414] border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-xs outline-none"
+                  />
+                </div>
+
+                <div className="flex gap-2 pt-1">
+                  <button
+                    type="submit"
+                    className="flex-1 py-2 bg-[#C22424] hover:bg-[#B91C1C] text-white rounded-lg font-bold text-xs cursor-pointer transition-all"
+                  >
+                    Save & Select Address
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsAddingNewLoc(false)}
+                    className="py-2 px-3 bg-neutral-200 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 rounded-lg font-bold text-xs cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

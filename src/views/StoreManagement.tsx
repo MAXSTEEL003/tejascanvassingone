@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   Store, 
   ArrowRight, 
@@ -12,6 +12,7 @@ import {
   Eye, 
   Sparkles, 
   Plus, 
+  Minus,
   CheckCircle2, 
   Check, 
   X, 
@@ -21,7 +22,10 @@ import {
   ChevronLeft, 
   ChevronRight, 
   ChevronDown,
-  ShoppingBag
+  ShoppingBag,
+  SlidersHorizontal,
+  Share2,
+  Filter
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, formatINR } from '../lib/utils';
@@ -33,6 +37,52 @@ import { getDeliveryLocations, getSelectedDeliveryLocationId, setSelectedDeliver
 // Products in the store are strictly driven by Firebase Firestore (product_inventory).
 // No mock or hardcoded products are used.
 const BASE_PRODUCTS: any[] = [];
+
+// Curated Rice Categories with High Quality Imagery (matching mobile app reference Screen 2)
+export const POPULAR_CATEGORIES = [
+  {
+    id: 'Basmati',
+    name: 'Basmati Rice',
+    description: 'Long grain aromatic rice',
+    image: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?auto=format&fit=crop&w=300&q=80',
+    count: '12 Varieties'
+  },
+  {
+    id: 'Sona Masoori',
+    name: 'Sona Masoori',
+    description: 'Medium grain everyday staple',
+    image: 'https://images.unsplash.com/photo-1536304993881-ff6e9eefa2a6?auto=format&fit=crop&w=300&q=80',
+    count: '8 Varieties'
+  },
+  {
+    id: 'IR64',
+    name: 'IR64 Rice',
+    description: 'Long grain parboiled & raw',
+    image: 'https://images.unsplash.com/photo-1626082927389-6cd097cdc6ec?auto=format&fit=crop&w=300&q=80',
+    count: '6 Varieties'
+  },
+  {
+    id: 'Ponni',
+    name: 'Ponni Rice',
+    description: 'South Indian favorite staple',
+    image: 'https://images.unsplash.com/photo-1574323347407-f5e1ad6d020b?auto=format&fit=crop&w=300&q=80',
+    count: '5 Varieties'
+  },
+  {
+    id: 'Parboiled',
+    name: 'Parboiled Rice',
+    description: 'Nutritious processed rice',
+    image: 'https://images.unsplash.com/photo-1610444319455-802521c750dc?auto=format&fit=crop&w=300&q=80',
+    count: '7 Varieties'
+  },
+  {
+    id: 'Broken',
+    name: 'Broken Rice',
+    description: 'Economical commercial grade',
+    image: 'https://images.unsplash.com/photo-1596704017254-9b121068fb31?auto=format&fit=crop&w=300&q=80',
+    count: '4 Varieties'
+  }
+];
 
 // Helper to provide commercial-grade grain specifications for B2B buyers
 const getProductSpecs = (product: any) => {
@@ -142,6 +192,22 @@ function ProductCardMedia({ product }: { product: any }) {
   );
 }
 
+function cleanMerchantDisplayName(name: string): string {
+  if (!name) return 'Merchant';
+  let s = name.trim();
+  if (s.includes('@')) {
+    const prefix = s.split('@')[0];
+    if (/^\d{10,}$/.test(prefix)) {
+      return `+91 ${prefix.slice(-10)}`;
+    }
+    return prefix.charAt(0).toUpperCase() + prefix.slice(1);
+  }
+  if (/^\d{10,}$/.test(s)) {
+    return `+91 ${s.slice(-10)}`;
+  }
+  return s;
+}
+
 export default function StoreManagement() {
   const navigate = useNavigate();
   const [userRole, setUserRole] = useState(() => {
@@ -168,8 +234,28 @@ export default function StoreManagement() {
 
   const isLoggedIn = !!auth.currentUser || !!userRole;
   const isMerchant = userRole === 'merchant';
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTabParam = searchParams.get('tab') || 'home';
+  const categoryParam = searchParams.get('category');
+
+  const [searchQuery, setSearchQuery] = useState(() => searchParams.get('search') || '');
+  const [selectedCategory, setSelectedCategory] = useState(categoryParam || 'All');
+
+  useEffect(() => {
+    const searchParamVal = searchParams.get('search');
+    if (searchParamVal !== null) {
+      setSearchQuery(searchParamVal);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (categoryParam) {
+      setSelectedCategory(categoryParam);
+    } else if (activeTabParam !== 'categories') {
+      setSelectedCategory('All');
+    }
+  }, [categoryParam, activeTabParam]);
+
   const [sortBy, setSortBy] = useState<'featured' | 'price-asc' | 'price-desc' | 'name'>('featured');
   const [dbOrders, setDbOrders] = useState<any[]>([]);
   const [dbProcurements, setDbProcurements] = useState<any[]>([]);
@@ -412,6 +498,13 @@ export default function StoreManagement() {
 
   const [qtyModalProduct, setQtyModalProduct] = useState<any | null>(null);
   const [modalQtyValue, setModalQtyValue] = useState<number>(10);
+  const [selectedProductDetails, setSelectedProductDetails] = useState<any | null>(null);
+  const [detailQtyValue, setDetailQtyValue] = useState<number>(25);
+
+  const openProductDetails = (product: any) => {
+    setSelectedProductDetails(product);
+    setDetailQtyValue(getProductQty(product.id) || 25);
+  };
 
   const getProductQty = (productId: string): number => {
     return productQuantities[productId] ?? 10;
@@ -1044,7 +1137,7 @@ export default function StoreManagement() {
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-      className="w-full bg-[#fafaf9] dark:bg-[#07100c] font-sans overflow-x-hidden p-0 relative transition-colors duration-300 text-slate-900 dark:text-slate-100 pb-28 sm:pb-32"
+      className="w-full bg-[#FAFBFA] dark:bg-[#0A0A0A] font-sans overflow-x-hidden p-0 relative transition-colors duration-300 text-neutral-900 dark:text-neutral-100 pb-28 sm:pb-32"
     >
       {/* Admin/Staff Store Preview Banner */}
       {isAdminOrStaff && (
@@ -1068,753 +1161,313 @@ export default function StoreManagement() {
 
         {/* --- COMPACT USER GREETING & STATUS ROW --- */}
         <div className="space-y-2">
-          {/* Greeting: "Hi, Company Name" */}
-          <div className="flex items-center justify-between gap-2 px-0.5">
-            <h1 className="text-xs sm:text-sm font-extrabold tracking-tight text-slate-900 dark:text-white flex items-center gap-1">
-              <span className="text-slate-500 dark:text-slate-400 font-medium">Hi,</span>
-              <span className="text-emerald-700 dark:text-emerald-400">{buyerName || 'TEJAS CANVASSING'}</span>
-            </h1>
-            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-400 dark:text-slate-500">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              Live Trade Hub
-            </span>
-          </div>
+          {/* Greeting: "Hi, Company Name", Selected Location & Compact View Rates Button */}
+          <div className="flex items-center justify-between gap-1.5 px-0.5">
+            <div className="flex items-center gap-1.5 min-w-0 flex-1">
+              <h1 className="text-xs sm:text-sm font-extrabold tracking-tight text-neutral-900 dark:text-white flex items-center gap-1 min-w-0 truncate shrink-0">
+                <span className="text-neutral-500 dark:text-neutral-400 font-medium">Hi,</span>
+                <span className="text-[#C22424] dark:text-[#E03131] truncate max-w-[110px] xs:max-w-[150px] sm:max-w-[200px]">
+                  {cleanMerchantDisplayName(buyerName)}
+                </span>
+              </h1>
 
-          {/* Controls: Destination Selector & Search Bar */}
-          <div className="flex flex-row items-center gap-2">
-            {/* Dispatch Destination Selector Button */}
-            <div className="relative shrink-0">
+              {/* Location selected badge directly next to merchant name */}
               <button
                 type="button"
-                onClick={() => setIsDispatchSelectorOpen(prev => !prev)}
-                className="group inline-flex items-center gap-1.5 bg-white dark:bg-[#0c1813] hover:bg-slate-50 dark:hover:bg-[#11221b] border border-slate-200/90 dark:border-neutral-800 px-2 py-1.5 rounded-xl text-xs shadow-2xs transition-all cursor-pointer text-left"
-                title="Change Delivery Destination"
+                onClick={() => window.dispatchEvent(new CustomEvent('open-location-picker'))}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800/90 hover:bg-red-50 dark:hover:bg-red-950/40 border border-neutral-200 dark:border-neutral-700/80 text-[10px] sm:text-[11px] font-bold text-neutral-700 dark:text-neutral-300 hover:text-[#C22424] dark:hover:text-red-400 truncate max-w-[130px] xs:max-w-[180px] sm:max-w-[240px] cursor-pointer transition-all active:scale-95 shrink-0"
+                title={`Selected Delivery Destination: ${activeDeliveryLocation?.name || 'Main Shop'}. Click to switch.`}
               >
-                <div className="w-5 h-5 rounded-lg bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 flex items-center justify-center shrink-0">
-                  {activeDeliveryLocation?.type === 'Godown' ? (
-                    <Warehouse className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                  ) : (
-                    <MapPin className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                  )}
-                </div>
-                <div className="flex flex-col text-left min-w-0 pr-0.5">
-                  <span className="text-[8px] font-bold uppercase tracking-wider text-slate-400 leading-none">
-                    Dispatch To
-                  </span>
-                  <span className="font-bold text-[11px] text-slate-900 dark:text-white truncate max-w-[85px] xs:max-w-[110px] mt-0.5">
-                    {activeDeliveryLocation?.name || 'Main Delivery Hub'}
-                  </span>
-                </div>
-                <ChevronDown className={cn(
-                  "w-3 h-3 text-slate-400 group-hover:text-emerald-600 transition-transform duration-200 shrink-0",
-                  isDispatchSelectorOpen ? "rotate-180 text-emerald-600" : ""
-                )} />
+                <MapPin className="w-2.5 h-2.5 text-[#C22424] shrink-0" />
+                <span className="truncate">{activeDeliveryLocation?.name || 'Main Shop'}</span>
               </button>
-
-              {/* Dropdown Menu for Saved Destinations */}
-              <AnimatePresence>
-                {isDispatchSelectorOpen && (
-                  <>
-                    <div
-                      className="fixed inset-0 z-40"
-                      onClick={() => {
-                        setIsDispatchSelectorOpen(false);
-                        setIsAddingHeaderLocation(false);
-                      }}
-                    />
-                    <motion.div
-                      initial={{ opacity: 0, y: 6, scale: 0.98 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: 4, scale: 0.98 }}
-                      transition={{ duration: 0.15 }}
-                      className="absolute left-0 mt-1.5 w-72 xs:w-80 bg-white dark:bg-[#071510] border border-slate-200 dark:border-neutral-800 rounded-2xl shadow-xl p-2.5 z-50 space-y-2 text-left"
-                    >
-                      <div className="px-1 py-0.5 border-b border-slate-100 dark:border-neutral-800/80 flex items-center justify-between">
-                        <div className="flex items-center gap-1.5">
-                          <Store className="w-3.5 h-3.5 text-emerald-600" />
-                          <span className="text-[9px] font-black uppercase tracking-wider text-slate-500">
-                            Dispatch Destinations
-                          </span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setIsAddingHeaderLocation(p => !p)}
-                          className="text-[8.5px] font-bold text-emerald-700 dark:text-emerald-400 hover:text-emerald-800 flex items-center gap-0.5 cursor-pointer bg-emerald-500/10 hover:bg-emerald-500/20 px-2 py-0.5 rounded-lg border border-emerald-500/20 transition-all"
-                        >
-                          <Plus className="w-2.5 h-2.5" />
-                          <span>{isAddingHeaderLocation ? 'Cancel' : 'Add Shop'}</span>
-                        </button>
-                      </div>
-
-                      {/* Inline Add Destination Shop Form */}
-                      {isAddingHeaderLocation && (
-                        <form onSubmit={handleCreateHeaderLocation} className="p-2 bg-emerald-500/[0.06] border border-emerald-500/20 rounded-xl space-y-1.5">
-                          <div className="flex items-center justify-between text-[8px] font-black uppercase text-emerald-900 dark:text-emerald-200">
-                            <span>Register New Location</span>
-                            <div className="flex items-center gap-1 bg-white/80 dark:bg-black/40 p-0.5 rounded border border-emerald-500/20">
-                              <button
-                                type="button"
-                                onClick={() => setHeaderLocType('Shop')}
-                                className={cn(
-                                  "px-1.5 py-0.5 rounded text-[7.5px] font-bold cursor-pointer transition-all",
-                                  headerLocType === 'Shop' ? "bg-[#0e4835] text-white" : "text-slate-600 dark:text-slate-300"
-                                )}
-                              >
-                                🏬 Shop
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setHeaderLocType('Godown')}
-                                className={cn(
-                                  "px-1.5 py-0.5 rounded text-[7.5px] font-bold cursor-pointer transition-all",
-                                  headerLocType === 'Godown' ? "bg-amber-700 text-white" : "text-slate-600 dark:text-slate-300"
-                                )}
-                              >
-                                🏭 Godown
-                              </button>
-                            </div>
-                          </div>
-                          <input
-                            type="text"
-                            placeholder="Destination Shop Name (e.g. City Branch 2)"
-                            value={headerLocName}
-                            onChange={(e) => setHeaderLocName(e.target.value)}
-                            className="w-full px-2 py-1 text-xs bg-white dark:bg-[#07130e] border border-emerald-500/25 rounded-lg outline-none font-bold text-slate-900 dark:text-white"
-                            required
-                          />
-                          <input
-                            type="text"
-                            placeholder="Delivery Address / APMC Yard Shed"
-                            value={headerLocAddress}
-                            onChange={(e) => setHeaderLocAddress(e.target.value)}
-                            className="w-full px-2 py-1 text-xs bg-white dark:bg-[#07130e] border border-emerald-500/25 rounded-lg outline-none font-medium text-slate-900 dark:text-white"
-                            required
-                          />
-                          <div className="flex justify-end gap-1.5 pt-0.5">
-                            <button
-                              type="button"
-                              onClick={() => setIsAddingHeaderLocation(false)}
-                              className="px-2 py-0.5 text-[8.5px] text-slate-500 hover:text-slate-700 cursor-pointer"
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              type="submit"
-                              className="px-2.5 py-0.5 bg-[#0e4835] hover:bg-[#093526] text-white text-[8.5px] font-black rounded-lg cursor-pointer shadow-2xs active:scale-95 transition-all"
-                            >
-                              Save & Select
-                            </button>
-                          </div>
-                        </form>
-                      )}
-
-                      <div className="max-h-52 overflow-y-auto space-y-1 py-0.5 no-scrollbar scrollbar-none">
-                        {deliveryLocations.map((loc) => {
-                          const isSelected = loc.id === (activeDeliveryLocation?.id || selectedLocationId);
-                          return (
-                            <button
-                              key={loc.id}
-                              type="button"
-                              onClick={() => {
-                                setSelectedLocationId(loc.id);
-                                setSelectedDeliveryLocationId(loc.id);
-                                setIsDispatchSelectorOpen(false);
-                              }}
-                              className={cn(
-                                "w-full text-left p-2 rounded-xl transition-all flex items-start justify-between gap-1.5 cursor-pointer border",
-                                isSelected
-                                  ? "bg-emerald-500/10 dark:bg-emerald-950/40 border-emerald-500/30 text-emerald-950 dark:text-white"
-                                  : "hover:bg-slate-50 dark:hover:bg-neutral-800/60 border-transparent text-slate-700 dark:text-slate-300"
-                              )}
-                            >
-                              <div className="space-y-0.5 min-w-0 flex-1">
-                                <div className="flex items-center gap-1">
-                                  <span className="font-bold text-xs truncate">{loc.name}</span>
-                                  <span className={cn(
-                                    "text-[8px] font-extrabold uppercase px-1 py-0.5 rounded font-mono",
-                                    loc.type === 'Godown' ? "bg-amber-500/10 text-amber-700 dark:text-amber-400" : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-                                  )}>
-                                    {loc.type}
-                                  </span>
-                                </div>
-                                <p className="text-[10px] text-slate-500 dark:text-slate-400 line-clamp-1 leading-snug">
-                                  {loc.address}
-                                </p>
-                              </div>
-                              {isSelected && (
-                                <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </motion.div>
-                  </>
-                )}
-              </AnimatePresence>
-            </div>
-
-            {/* Integrated Full-Width Search Bar (Single View Rates is featured on Daily Market Banner below) */}
-            <div className="relative flex-1 min-w-0 flex items-center">
-              <Search className="absolute left-2.5 w-3.5 h-3.5 text-slate-400 shrink-0" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search Basmati, Sona, Rice varieties..."
-                className="w-full pl-8 pr-7 py-1.5 bg-white dark:bg-[#0c1813] border border-slate-200/90 dark:border-neutral-800 rounded-xl text-xs font-medium text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/25 shadow-2xs transition-all placeholder:text-slate-400"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-2 w-4 h-4 flex items-center justify-center text-[9px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 font-bold cursor-pointer rounded-full bg-slate-100 dark:bg-neutral-800"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* --- LIVE SCROLLING ANNOUNCEMENT TICKER BAR (Controlled by Admin) --- */}
-        {tickerMessages.some((t: any) => t.active !== false) && (
-          <div className="w-full bg-[#143e2e] text-white rounded-lg px-2.5 py-1 shadow-xs flex items-center gap-2 overflow-hidden border border-emerald-800/50">
-            <span className="shrink-0 text-[8px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded-full border border-emerald-400/20 flex items-center gap-1">
-              <Sparkles className="w-2 h-2 text-emerald-400 animate-spin" />
-              Live Alert
-            </span>
-            <div className="flex-1 overflow-hidden relative">
-              <div className="animate-marquee whitespace-nowrap inline-flex items-center gap-6 text-[10px] font-medium text-emerald-100">
-                {tickerMessages.filter((t: any) => t.active !== false).map((t: any, idx: number) => (
-                  <span key={t.id || idx} className="inline-flex items-center gap-1.5">
-                    <span>{t.text}</span>
-                    <span className="text-emerald-500 font-mono">•</span>
-                  </span>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* --- DAILY MARKET RATE SHEET BANNER (Controlled by Admin) --- */}
-        {rateListGraphic && rateListGraphic.imageUrl && (
-          <div
-            onClick={() => setShowRateChartModal(true)}
-            className="w-full bg-amber-50 dark:bg-[#15120a] hover:bg-amber-100/60 dark:hover:bg-[#1c180e] border border-amber-200/80 dark:border-amber-900/40 rounded-xl p-2 flex items-center justify-between gap-2.5 shadow-2xs transition-all cursor-pointer group active:scale-[0.99]"
-          >
-            <div className="flex items-center gap-2 min-w-0">
-              <div className="w-8 h-8 rounded-lg overflow-hidden shrink-0 border border-amber-300/60 shadow-xs">
-                <img
-                  src={rateListGraphic.imageUrl}
-                  alt={rateListGraphic.title || 'Rate Chart'}
-                  className="w-full h-full object-cover"
-                  referrerPolicy="no-referrer"
-                />
-              </div>
-              <div className="min-w-0 space-y-0.5 text-left">
-                <div className="flex items-center gap-1">
-                  <span className="text-[7.5px] font-black uppercase tracking-widest text-amber-800 dark:text-amber-400 bg-amber-200/60 dark:bg-amber-950/80 px-1 py-0.5 rounded font-mono">
-                    Daily Rates
-                  </span>
-                  <span className="text-[8.5px] text-amber-700/80 dark:text-amber-300/80 font-medium">
-                    Updated Today
-                  </span>
-                </div>
-                <h3 className="text-[11px] font-bold text-slate-900 dark:text-amber-100 truncate">
-                  {rateListGraphic.title || 'Daily Market Rate Sheet'}
-                </h3>
-              </div>
             </div>
 
             <button
               type="button"
               onClick={() => setShowRateChartModal(true)}
-              className="shrink-0 px-2 py-1 bg-amber-800 hover:bg-amber-900 text-white rounded-lg text-[9px] font-bold shadow-2xs transition-all cursor-pointer flex items-center gap-1 active:scale-95"
+              className="px-2.5 py-1 rounded-full bg-[#C22424] hover:bg-[#A81F1F] text-white text-[10.5px] font-bold flex items-center gap-1 shadow-2xs cursor-pointer active:scale-95 transition-all shrink-0"
+              title="View Daily Market Rates"
             >
-              <Eye className="w-2.5 h-2.5" />
+              <Eye className="w-3 h-3" />
               <span>View Rates</span>
             </button>
           </div>
-        )}
 
-        {/* --- COMPACT FEATURED HERO CAROUSEL (Controlled by Admin) --- */}
-        {heroSlides && heroSlides.length > 0 && (
-          <div className={cn(
-            "relative w-full rounded-xl overflow-hidden shadow-xs border border-emerald-900/10 dark:border-emerald-900/30 transition-all duration-500 bg-gradient-to-r",
-            (heroSlides[activeSlide % heroSlides.length] || HERO_SLIDES[0]).bgGradient || "from-[#ebf5ef] via-[#d7edd9] to-[#c1e2cb]"
-          )}>
-            <div className="relative z-10 p-2.5 flex flex-row items-center justify-between gap-2">
-              {/* Left Editorial Copy */}
-              <div className="space-y-0.5 text-left flex-1 min-w-0">
-                <span className="text-[7.5px] font-extrabold tracking-wider text-[#0e4835] dark:text-emerald-400 uppercase block truncate">
-                  {(heroSlides[activeSlide % heroSlides.length] || HERO_SLIDES[0]).tagline}
-                </span>
-
-                <h2 className="font-serif italic text-sm sm:text-base font-normal text-[#0a3526] dark:text-emerald-50 tracking-tight leading-tight line-clamp-1">
-                  {(heroSlides[activeSlide % heroSlides.length] || HERO_SLIDES[0]).title}
-                </h2>
-
-                <p className="text-[9.5px] text-slate-700 dark:text-emerald-200/80 font-medium line-clamp-1 leading-snug">
-                  {(heroSlides[activeSlide % heroSlides.length] || HERO_SLIDES[0]).subtitle}
-                </p>
-
-                <div className="pt-0.5 flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const el = document.getElementById('rice-collection');
-                      if (el) el.scrollIntoView({ behavior: 'smooth' });
-                    }}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#0e4835] hover:bg-[#093526] active:scale-95 text-white font-bold text-[8.5px] rounded-full shadow-2xs transition-all cursor-pointer whitespace-nowrap"
-                  >
-                    <span>Shop</span>
-                    <ArrowRight className="w-2.5 h-2.5" />
-                  </button>
-
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => setActiveSlide(prev => (prev - 1 + heroSlides.length) % heroSlides.length)}
-                      className="p-0.5 rounded-full bg-white/70 dark:bg-black/30 text-slate-700 dark:text-slate-200 transition-colors shadow-2xs cursor-pointer"
-                      title="Previous Slide"
-                    >
-                      <ChevronLeft className="w-2.5 h-2.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setActiveSlide(prev => (prev + 1) % heroSlides.length)}
-                      className="p-0.5 rounded-full bg-white/70 dark:bg-black/30 text-slate-700 dark:text-slate-200 transition-colors shadow-2xs cursor-pointer"
-                      title="Next Slide"
-                    >
-                      <ChevronRight className="w-2.5 h-2.5" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Right Cycling Image */}
-              <div className="flex flex-col items-center justify-center shrink-0">
-                <div className="relative w-14 h-14 sm:w-16 sm:h-16 aspect-square flex items-center justify-center">
-                  <AnimatePresence mode="wait">
-                    <motion.img
-                      key={activeSlide}
-                      src={(heroSlides[activeSlide % heroSlides.length] || HERO_SLIDES[0]).image}
-                      alt={(heroSlides[activeSlide % heroSlides.length] || HERO_SLIDES[0]).title}
-                      initial={{ opacity: 0, scale: 0.92 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 1.05 }}
-                      transition={{ duration: 0.3 }}
-                      className="w-full h-full object-cover rounded-full shadow-md border-2 border-white/90 dark:border-emerald-950/80"
-                      referrerPolicy="no-referrer"
-                    />
-                  </AnimatePresence>
-                </div>
-
-                {/* Dots */}
-                <div className="flex items-center gap-1 mt-1">
-                  {heroSlides.map((_: any, idx: number) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => setActiveSlide(idx)}
-                      className={cn(
-                        "h-1 rounded-full transition-all cursor-pointer",
-                        (activeSlide % heroSlides.length) === idx 
-                          ? "w-3 bg-[#0e4835] dark:bg-emerald-400" 
-                          : "w-1 bg-slate-300 dark:bg-neutral-700"
-                      )}
-                      title={`Slide ${idx + 1}`}
-                    />
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* --- HORIZONTAL CATEGORY CHIPS (Mobile App Native: smooth horizontal swipe, no side lines) --- */}
-        <div className="w-full overflow-hidden">
-          <div className="flex items-center gap-1.5 overflow-x-auto py-0.5 no-scrollbar scrollbar-none scroll-smooth select-none">
-            {STORE_CATEGORIES.map((cat) => {
-              const isSelected = selectedCategory === cat.id;
-              return (
-                <button
-                  key={cat.id}
-                  type="button"
-                  onClick={() => setSelectedCategory(cat.id)}
-                  className={cn(
-                    "px-3 py-1.5 rounded-full text-[11px] font-bold transition-all duration-150 cursor-pointer whitespace-nowrap shadow-2xs flex items-center gap-1 active:scale-95 shrink-0",
-                    isSelected
-                      ? "bg-[#0e4835] dark:bg-emerald-600 text-white shadow-xs"
-                      : "bg-white dark:bg-[#0c1813] text-slate-700 dark:text-slate-300 border border-slate-200/90 dark:border-neutral-800 hover:bg-slate-50 dark:hover:bg-neutral-800"
-                  )}
-                >
-                  <span>{cat.label}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* --- SECTION HEADER: OUR RICE COLLECTION --- */}
-        <div id="rice-collection" className="flex items-center justify-between pt-1">
-          <div>
-            <h2 className="font-serif text-lg sm:text-xl font-normal text-slate-900 dark:text-white tracking-tight leading-tight">
-              Our Rice Collection
-            </h2>
-            <p className="text-[10px] text-slate-400 dark:text-slate-500">
-              {filteredProducts.length} Premium Wholesale Varieties
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              setSelectedCategory('All');
-              setSearchQuery('');
-            }}
-            className="inline-flex items-center gap-0.5 text-[11px] font-bold text-[#0e4835] dark:text-emerald-400 hover:underline cursor-pointer"
-          >
-            <span>All</span>
-            <ChevronRight className="w-3 h-3" />
-          </button>
-        </div>
-
-        {/* --- MOBILE PRODUCT CARDS (2-Column Phone App Layout) --- */}
-        {filteredProducts.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-14 text-center space-y-3 bg-white dark:bg-[#0c1813] rounded-3xl border border-dashed border-slate-200 dark:border-neutral-800 p-8 shadow-xs">
-            <div className="w-12 h-12 bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-2xl flex items-center justify-center border border-amber-500/20 shadow-xs">
-              <Store className="w-6 h-6" />
-            </div>
-            <div className="space-y-1 max-w-sm">
-              <p className="text-sm font-black text-slate-900 dark:text-white tracking-tight">No Products Available</p>
-              <p className="text-slate-500 dark:text-slate-400 text-xs leading-relaxed">
-                Currently, there are no grain products listed in the store catalog. Products added by the administrator in Product Inventory will appear here for purchase.
-              </p>
-            </div>
-            {selectedCategory !== 'All' || searchQuery.trim() !== '' ? (
+          {/* Integrated Clean Full-Width Search Bar */}
+          <div className="relative w-full flex items-center">
+            <Search className="absolute left-3 w-3.5 h-3.5 text-neutral-400 shrink-0" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search rice varieties..."
+              className="w-full pl-8 pr-8 py-1.5 bg-neutral-100 dark:bg-neutral-800/80 border-0 rounded-full text-[11px] font-medium text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#C22424]/30 shadow-2xs transition-all placeholder:text-[11px] placeholder:text-neutral-400"
+            />
+            {searchQuery && (
               <button
-                onClick={() => { setSearchQuery(''); setSelectedCategory('All'); }}
-                className="mt-1 px-4 py-2 bg-[#0e4835] hover:bg-[#0a3526] text-white rounded-xl text-xs font-bold cursor-pointer transition-all active:scale-95 shadow-2xs"
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 cursor-pointer"
+                title="Clear search"
               >
-                Reset Search Filters
+                <X className="w-3.5 h-3.5" />
               </button>
-            ) : null}
+            )}
+          </div>
+        </div>
+
+        {/* --- VIEW SWITCHER: SCREEN 2 (CATEGORIES) VS SCREEN 1 & 10 (HOME & PRODUCTS) --- */}
+        {activeTabParam === 'categories' ? (
+          /* ============================================================== */
+          /* SCREEN 2: CATEGORIES SCREEN (Matching Reference Screen 2)      */
+          /* ============================================================== */
+          <div className="space-y-3 pt-1">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-base sm:text-lg font-black tracking-tight text-neutral-900 dark:text-white">
+                  Categories
+                </h1>
+                <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                  Select a category to view wholesale varieties
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSearchParams({})}
+                className="w-9 h-9 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 flex items-center justify-center cursor-pointer hover:bg-neutral-200 transition-colors"
+                title="Search rice catalog"
+              >
+                <Search className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-2.5">
+              {POPULAR_CATEGORIES.map((cat) => (
+                <div
+                  key={cat.id}
+                  onClick={() => {
+                    setSelectedCategory(cat.id);
+                    setSearchParams({ category: cat.id });
+                  }}
+                  className="p-3 bg-white dark:bg-[#141414] rounded-2xl border border-[#E5E7EB] dark:border-[#262626] flex items-center justify-between gap-3 shadow-xs hover:border-[#C22424]/50 hover:shadow-sm transition-all cursor-pointer group active:scale-[0.99]"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-14 h-14 rounded-xl overflow-hidden shrink-0 bg-neutral-100 dark:bg-neutral-800 border border-neutral-200/80 dark:border-neutral-700">
+                      <img src={cat.image} alt={cat.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                    </div>
+                    <div className="min-w-0 text-left">
+                      <h3 className="font-extrabold text-sm text-neutral-900 dark:text-white truncate group-hover:text-[#C22424] transition-colors">
+                        {cat.name}
+                      </h3>
+                      <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5 truncate">
+                        {cat.description}
+                      </p>
+                      <span className="text-[10px] font-bold text-[#C22424] mt-0.5 inline-block">
+                        {cat.count}
+                      </span>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-neutral-400 group-hover:text-[#C22424] group-hover:translate-x-0.5 transition-all shrink-0" />
+                </div>
+              ))}
+            </div>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-2 sm:gap-2.5">
-            {filteredProducts.map((product) => {
-              const currentQty = getProductQty(product.id);
-              const unitPrice = product.price || 3850;
-              const isFavorited = wishlist.includes(product.id);
-              const inCartItem = items.find(i => i.id === product.id);
+          /* ============================================================== */
+          /* SCREEN 1 & SCREEN 10: HOME STOREFRONT & CATEGORY PRODUCTS      */
+          /* ============================================================== */
+          <>
 
-              return (
-                <div
-                  key={product.id}
-                  className="bg-white dark:bg-[#0c1813] rounded-2xl border border-slate-200/80 dark:border-neutral-800/80 shadow-2xs hover:shadow-sm transition-all duration-200 flex flex-col justify-between overflow-hidden relative group"
-                >
-                  {/* Top Image Graphic Area */}
-                  <div className="relative w-full overflow-hidden bg-[#fbfbfa] dark:bg-[#12221b]">
-                    {/* Hero Product of the Day Badge (Set by Admin) */}
-                    {(product.id === heroProductId || String(product.id).toLowerCase() === String(heroProductId).toLowerCase()) && (
-                      <span className="absolute top-2 left-2 z-20 bg-amber-500 text-slate-950 font-black text-[8px] uppercase tracking-wider px-2 py-0.5 rounded-full shadow-md flex items-center gap-1 border border-amber-300 animate-pulse">
-                        <Sparkles className="w-2.5 h-2.5 fill-slate-950" />
-                        Hero Product
-                      </span>
-                    )}
 
-                    {/* Best Seller Pill Badge (If not Hero) */}
-                    {product.isBestSeller && !(product.id === heroProductId || String(product.id).toLowerCase() === String(heroProductId).toLowerCase()) && (
-                      <span className="absolute top-2 left-2 z-20 bg-[#0e4835] text-white text-[7.5px] font-bold px-1.5 py-0.5 rounded-full shadow-xs">
-                        Best Seller
-                      </span>
-                    )}
 
-                    {/* Wishlist Heart Button */}
+
+            {/* --- SCREEN 10: HORIZONTAL CATEGORY CHIPS --- */}
+            <div className="w-full overflow-hidden">
+              <div className="flex items-center gap-1.5 overflow-x-auto py-0.5 no-scrollbar scrollbar-none scroll-smooth select-none">
+                {['All', 'Basmati', 'Sona Masoori', 'IR64', 'Ponni', 'Parboiled', 'Broken'].map((catName) => {
+                  const isSelected = (selectedCategory === catName) || (catName === 'All' && selectedCategory === 'All');
+                  return (
                     <button
+                      key={catName}
                       type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleWishlist(product.id);
+                      onClick={() => {
+                        setSelectedCategory(catName);
+                        if (catName === 'All') {
+                          searchParams.delete('category');
+                          setSearchParams(searchParams);
+                        } else {
+                          setSearchParams({ category: catName });
+                        }
                       }}
-                      className="absolute top-2 right-2 z-20 p-1.5 rounded-full bg-white/85 dark:bg-black/40 backdrop-blur-xs text-slate-400 hover:text-rose-500 transition-colors shadow-xs cursor-pointer"
-                      title={isFavorited ? 'Remove from wishlist' : 'Save to wishlist'}
+                      className={cn(
+                        "px-3 py-1 rounded-full text-xs font-semibold transition-all duration-150 cursor-pointer whitespace-nowrap shadow-2xs flex items-center gap-1 active:scale-95 shrink-0",
+                        isSelected
+                          ? "bg-[#C22424] text-white shadow-xs font-bold"
+                          : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                      )}
                     >
-                      <Heart className={cn("w-3.5 h-3.5 transition-transform active:scale-125", isFavorited ? "fill-rose-500 text-rose-500" : "")} />
+                      <span>{catName}</span>
                     </button>
+                  );
+                })}
+              </div>
+            </div>
 
-                    {/* Product Photo / Bag Image with procedural pouch fallback */}
-                    <ProductCardMedia product={product} />
-                  </div>
+            <div id="rice-collection" />
 
-                  {/* Card Editorial Content */}
-                  <div className="p-2 sm:p-2.5 flex-1 flex flex-col justify-between space-y-1">
-                    <div>
-                      {/* Mill Name toggling card expansion */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setExpandedCardIds(prev => ({ ...prev, [product.id]: !prev[product.id] }));
-                        }}
-                        className="w-full flex items-center justify-between gap-1 text-left cursor-pointer mb-0.5 pb-0.5 border-b border-dashed border-slate-200/80 dark:border-neutral-800"
-                        title="Click to view full grain specifications"
+            {/* --- RESPONSIVE PRODUCT CARDS (2-Col Mobile, 3-Col Tablet, 4-Col Desktop) --- */}
+            {filteredProducts.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center space-y-3 bg-white dark:bg-[#141414] rounded-2xl border border-dashed border-[#E5E7EB] dark:border-[#262626] p-6 shadow-xs">
+                <div className="w-10 h-10 bg-red-50 dark:bg-red-950/40 text-[#C22424] rounded-xl flex items-center justify-center border border-red-200 shadow-xs">
+                  <Store className="w-5 h-5" />
+                </div>
+                <div className="space-y-0.5 max-w-sm">
+                  <p className="text-xs font-bold text-neutral-900 dark:text-white tracking-tight">No Products Available</p>
+                  <p className="text-neutral-500 dark:text-neutral-400 text-[11px] leading-relaxed">
+                    Currently, there are no grain products matching your selection.
+                  </p>
+                </div>
+                {selectedCategory !== 'All' || searchQuery.trim() !== '' ? (
+                  <button
+                    onClick={() => { setSearchQuery(''); setSelectedCategory('All'); setSearchParams({}); }}
+                    className="mt-1 px-3.5 py-1.5 bg-[#C22424] hover:bg-[#A81C1C] text-white rounded-lg text-xs font-bold cursor-pointer transition-all active:scale-95 shadow-2xs"
+                  >
+                    Reset Filters
+                  </button>
+                ) : null}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 sm:gap-2.5">
+                {filteredProducts.map((product) => {
+                  const unitPrice = product.price || 3850;
+                  const isFavorited = wishlist.includes(product.id);
+                  const inCartItem = items.find(i => i.id === product.id);
+
+                  return (
+                    <div
+                      key={product.id}
+                      className="bg-white dark:bg-[#141414] rounded-xl sm:rounded-2xl border border-[#E5E7EB] dark:border-[#262626] shadow-2xs hover:shadow-xs transition-all duration-200 flex flex-col justify-between overflow-hidden relative group"
+                    >
+                      {/* Top Image Graphic Area - Click to open product details */}
+                      <div 
+                        onClick={() => openProductDetails(product)}
+                        className="relative w-full aspect-[4/3] sm:aspect-square overflow-hidden bg-neutral-50 dark:bg-neutral-800/60 cursor-pointer flex items-center justify-center"
                       >
-                        <span className="text-[8.5px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 truncate">
-                          {product.supplier || registeredSuppliers[0]?.name || 'DIRECT MILL'}
-                        </span>
-                        <span className="inline-flex items-center gap-0.5 text-[8px] font-bold text-slate-400 shrink-0">
-                          {expandedCardIds[product.id] ? 'Hide' : 'Specs'}
-                          <ChevronDown className={cn("w-2 h-2 transition-transform duration-200", expandedCardIds[product.id] ? "rotate-180 text-emerald-600" : "")} />
-                        </span>
-                      </button>
-
-                      <h3 
-                        onClick={() => {
-                          setExpandedCardIds(prev => ({ ...prev, [product.id]: !prev[product.id] }));
-                        }}
-                        className="font-bold text-xs text-slate-900 dark:text-white line-clamp-1 leading-snug cursor-pointer hover:text-emerald-700 dark:hover:text-emerald-400 transition-colors"
-                      >
-                        {product.name}
-                      </h3>
-                      
-                      {/* 5-Star Rating */}
-                      <div className="flex items-center gap-0.5 mt-0.5 text-amber-400">
-                        <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-400" />
-                        <span className="text-[9.5px] text-slate-600 dark:text-slate-300 font-bold ml-0.5">
-                          5.0
-                        </span>
-                        <span className="text-[8.5px] text-slate-400 dark:text-slate-500 font-medium ml-0.5">
-                          ({product.reviewsCount || 210})
-                        </span>
-                      </div>
-
-                      {/* Price Display */}
-                      <div className="flex items-baseline gap-1 mt-0.5">
-                        <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white tracking-tight">
-                          ₹{formatINR(unitPrice)}
-                        </span>
-                        <span className="text-[8.5px] text-slate-400 dark:text-slate-500 font-medium">
-                          / Qty
-                        </span>
-                      </div>
-
-                      {/* Expanded Grain Specifications */}
-                      <AnimatePresence>
-                        {expandedCardIds[product.id] && (
-                          <motion.div
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: 'auto' }}
-                            exit={{ opacity: 0, height: 0 }}
-                            transition={{ duration: 0.2 }}
-                            className="overflow-hidden mt-1.5 pt-1.5 border-t border-slate-100 dark:border-neutral-800 text-left space-y-1"
-                          >
-                            <div className="bg-emerald-50/70 dark:bg-emerald-950/40 rounded-xl p-2 border border-emerald-500/20 space-y-1 text-[8.5px]">
-                              <div className="flex items-center justify-between font-bold text-emerald-900 dark:text-emerald-300">
-                                <span className="flex items-center gap-1">
-                                  <BadgeCheck className="w-2.5 h-2.5 text-emerald-600" />
-                                  Grade
-                                </span>
-                                <span className="bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 px-1 py-0.5 rounded font-mono text-[7.5px] font-bold">
-                                  LOT-A+
-                                </span>
-                              </div>
-
-                              <div className="grid grid-cols-2 gap-1 pt-0.5 text-slate-600 dark:text-slate-300">
-                                <div>
-                                  <span className="text-slate-400 block text-[7.5px]">Grain</span>
-                                  <span className="font-bold text-slate-800 dark:text-slate-200">
-                                    {product.variant === 'basmati' ? '8.35 mm' : product.variant === 'jasmine' ? '7.15 mm' : '5.40 mm'}
-                                  </span>
-                                </div>
-                                <div>
-                                  <span className="text-slate-400 block text-[7.5px]">Moisture</span>
-                                  <span className="font-bold text-slate-800 dark:text-slate-200">&lt; 12%</span>
-                                </div>
-                              </div>
-                            </div>
-                          </motion.div>
+                        {/* Best Seller Pill Badge */}
+                        {product.isBestSeller && (
+                          <span className="absolute top-1.5 left-1.5 z-20 bg-[#C22424] text-white text-[7.5px] font-bold px-1.5 py-0.5 rounded-full shadow-2xs">
+                            Best Seller
+                          </span>
                         )}
-                      </AnimatePresence>
-                    </div>
 
-                    {/* Mobile App Cart Action: Interactive Stepper or + ADD button with Quantity Selector */}
-                    <div className="pt-1">
-                      {inCartItem ? (
-                        <div className="flex items-center justify-between bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-500/40 rounded-xl p-0.5 h-7 shadow-2xs">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (inCartItem.qty <= 5) {
-                                removeItem(product.id);
-                              } else {
-                                updateQty(product.id, inCartItem.qty - 5);
-                              }
-                            }}
-                            className="w-6.5 h-full flex items-center justify-center font-black text-emerald-800 dark:text-emerald-300 hover:bg-emerald-200/50 dark:hover:bg-emerald-900/50 rounded-lg active:scale-95 text-xs select-none cursor-pointer"
-                            title="Decrease quantity"
+                        {/* Wishlist Heart Button */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleWishlist(product.id);
+                          }}
+                          className="absolute top-1.5 right-1.5 z-20 p-1 rounded-full bg-white/80 dark:bg-black/50 backdrop-blur-xs text-neutral-400 hover:text-rose-500 transition-colors shadow-2xs cursor-pointer"
+                          title={isFavorited ? 'Remove from wishlist' : 'Save to wishlist'}
+                        >
+                          <Heart className={cn("w-3 h-3 transition-transform active:scale-125", isFavorited ? "fill-rose-500 text-rose-500" : "")} />
+                        </button>
+
+                        {/* Product Photo */}
+                        <ProductCardMedia product={product} />
+                      </div>
+
+                      {/* Card Content */}
+                      <div className="p-2 sm:p-2.5 flex-1 flex flex-col justify-between space-y-1">
+                        <div>
+                          <h3 
+                            onClick={() => openProductDetails(product)}
+                            className="font-bold text-xs text-neutral-900 dark:text-white line-clamp-1 leading-snug cursor-pointer hover:text-[#C22424] transition-colors text-left"
+                            title={product.name}
                           >
-                            -
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => openQtyModal(product, inCartItem.qty)}
-                            className="font-mono font-black text-[10.5px] text-emerald-900 dark:text-emerald-200 px-1 hover:underline cursor-pointer"
-                            title="Click to edit quantity"
-                          >
-                            {inCartItem.qty} QTLS
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => updateQty(product.id, inCartItem.qty + 5)}
-                            className="w-6.5 h-full flex items-center justify-center font-black text-emerald-800 dark:text-emerald-300 hover:bg-emerald-200/50 dark:hover:bg-emerald-900/50 rounded-lg active:scale-95 text-xs select-none cursor-pointer"
-                            title="Increase quantity"
-                          >
-                            +
-                          </button>
+                            {product.name}
+                          </h3>
+                          
+                          {/* Grade Subtitle */}
+                          <p className="text-[10px] text-neutral-500 dark:text-neutral-400 line-clamp-1 text-left mt-0.5">
+                            {product.variant ? `Grade A • ${product.variant}` : product.category || 'Premium Sortex'}
+                          </p>
+
+                          {/* In Stock Indicator */}
+                          <div className="flex items-center gap-1 mt-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                            <span className="text-[9.5px] font-semibold text-emerald-600 dark:text-emerald-400">
+                              In Stock
+                            </span>
+                          </div>
                         </div>
-                      ) : (
-                        <div className="flex items-center gap-1 w-full">
-                          {/* Compact inline quantity adjuster */}
-                          <div className="flex items-center bg-slate-100 dark:bg-[#081510] border border-slate-200/90 dark:border-emerald-950/60 rounded-lg p-0.5 h-7">
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const current = getProductQty(product.id);
-                                const next = Math.max(1, current - (current > 10 ? 5 : 1));
-                                setProductQty(product.id, next);
-                              }}
-                              className="w-4 sm:w-4.5 h-full flex items-center justify-center font-black text-slate-500 hover:text-emerald-700 dark:hover:text-emerald-300 text-xs cursor-pointer select-none"
-                              title="Decrease quantity"
-                            >
-                              -
-                            </button>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                openQtyModal(product, getProductQty(product.id));
-                              }}
-                              className="px-1 font-mono font-black text-[10px] text-slate-800 dark:text-slate-100 hover:text-emerald-600 dark:hover:text-emerald-300 cursor-pointer"
-                              title="Click to select exact quantity"
-                            >
-                              {getProductQty(product.id)}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const current = getProductQty(product.id);
-                                const next = current + (current >= 10 ? 5 : 1);
-                                setProductQty(product.id, next);
-                              }}
-                              className="w-4 sm:w-4.5 h-full flex items-center justify-center font-black text-slate-500 hover:text-emerald-700 dark:hover:text-emerald-300 text-xs cursor-pointer select-none"
-                              title="Increase quantity"
-                            >
-                              +
-                            </button>
+
+                        {/* Price & Add to Cart Action */}
+                        <div className="flex items-center justify-between pt-1 mt-1 border-t border-neutral-100 dark:border-neutral-800">
+                          <div className="text-left">
+                            <span className="text-xs sm:text-sm font-extrabold text-neutral-900 dark:text-white tracking-tight">
+                              ₹{formatINR(unitPrice)}
+                            </span>
+                            <span className="text-[8.5px] text-neutral-400 dark:text-neutral-500 font-medium block leading-none mt-0.5">
+                              / QTL
+                            </span>
                           </div>
 
-                          {/* ADD Button with chosen quantity */}
-                          <button
-                            type="button"
-                            onClick={() => handleAddToCartProduct(product)}
-                            className="flex-1 py-1 px-1 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-black text-[10.5px] flex items-center justify-center gap-0.5 shadow-2xs transition-all cursor-pointer active:scale-95 h-7"
-                            title={`Add ${getProductQty(product.id)} QTLS`}
-                          >
-                            <Plus className="w-3 h-3 shrink-0" />
-                            <span>ADD</span>
-                          </button>
+                          {/* Red Plus Button or Mini Stepper */}
+                          {inCartItem ? (
+                            <div className="flex items-center bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-full px-1 py-0.5 gap-1">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (inCartItem.qty <= 5) removeItem(product.id);
+                                  else updateQty(product.id, inCartItem.qty - 5);
+                                }}
+                                className="text-[#C22424] font-black text-xs px-0.5 cursor-pointer hover:scale-110 active:scale-90"
+                                title="Decrease"
+                              >
+                                -
+                              </button>
+                              <span className="text-[9.5px] font-bold text-[#C22424] font-mono">
+                                {inCartItem.qty}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  updateQty(product.id, inCartItem.qty + 5);
+                                }}
+                                className="text-[#C22424] font-black text-xs px-0.5 cursor-pointer hover:scale-110 active:scale-90"
+                                title="Increase"
+                              >
+                                +
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleAddToCartProduct(product, 5);
+                              }}
+                              className="w-7 h-7 sm:w-7.5 sm:h-7.5 rounded-full bg-[#C22424] hover:bg-[#A81C1C] text-white flex items-center justify-center shadow-2xs cursor-pointer active:scale-90 transition-transform"
+                              title="Add to Cart"
+                            >
+                              <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                            </button>
+                          )}
                         </div>
-                      )}
+                      </div>
                     </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
         )}
 
-        {/* --- COLLAPSIBLE SUPPORT DESK CARD --- */}
-        {isMerchant && (
-          <div className="bg-white dark:bg-[#0c1813] rounded-2xl border border-slate-200/80 dark:border-neutral-800 shadow-2xs overflow-hidden text-left mt-3">
-            <button
-              type="button"
-              onClick={() => setIsSupportOpen(prev => !prev)}
-              className="w-full p-3 flex items-center justify-between cursor-pointer hover:bg-slate-50 dark:hover:bg-neutral-800/50 transition-colors"
-            >
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                <span className="text-xs font-bold text-slate-900 dark:text-white">
-                  Direct Procurement Desk
-                </span>
-              </div>
-              <div className="flex items-center gap-1 text-[10px] text-emerald-700 dark:text-emerald-400 font-bold">
-                <span>{isSupportOpen ? 'Close' : 'Need Help?'}</span>
-                <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-200", isSupportOpen ? "rotate-180" : "")} />
-              </div>
-            </button>
 
-            <AnimatePresence>
-              {isSupportOpen && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  className="px-3 pb-3 pt-1 border-t border-slate-100 dark:border-neutral-800/80 space-y-2.5"
-                >
-                  {compSuccessMsg && (
-                    <div className="p-2 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 text-xs font-semibold rounded-xl flex items-center gap-2">
-                      <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-emerald-600" />
-                      <span>{compSuccessMsg}</span>
-                    </div>
-                  )}
-
-                  <form onSubmit={handleSendComplaint} className="space-y-2">
-                    <div className="space-y-0.5">
-                      <label className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
-                        Subject / Concern
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={compSubject}
-                        onChange={(e) => setCompSubject(e.target.value)}
-                        placeholder="e.g. Bulk dispatch request, rate inquiry"
-                        className="w-full bg-slate-50 dark:bg-neutral-800 border border-slate-200 dark:border-neutral-700 rounded-xl px-2.5 py-1.5 text-xs font-medium text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-emerald-500"
-                      />
-                    </div>
-
-                    <div className="space-y-0.5">
-                      <label className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
-                        Message
-                      </label>
-                      <textarea
-                        required
-                        rows={2}
-                        value={compMessage}
-                        onChange={(e) => setCompMessage(e.target.value)}
-                        placeholder="Write your note or question..."
-                        className="w-full bg-slate-50 dark:bg-neutral-800 border border-slate-200 dark:border-neutral-700 rounded-xl px-2.5 py-1.5 text-xs font-medium text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-emerald-500 leading-relaxed"
-                      />
-                    </div>
-
-                    <div className="flex justify-end pt-0.5">
-                      <button
-                        type="submit"
-                        disabled={isSubmittingComp}
-                        className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs flex items-center gap-1 shadow-2xs transition-all cursor-pointer disabled:opacity-50"
-                      >
-                        {isSubmittingComp ? "Sending..." : "Submit Inquiry"}
-                      </button>
-                    </div>
-                  </form>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        )}
 
         {/* Minimal App Footer */}
         <footer className="w-full py-4 text-center text-slate-400 dark:text-slate-500 text-[10px] font-medium space-y-0.5">
@@ -1837,34 +1490,34 @@ export default function StoreManagement() {
           <motion.div 
             initial={{ scale: 0.92, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="relative w-full max-w-2xl bg-[#fafdfb] dark:bg-[#06140d] border border-emerald-500/15 dark:border-emerald-950/60 rounded-3xl shadow-2xl p-6 sm:p-8 space-y-6 overflow-hidden z-10"
+            className="relative w-full max-w-2xl bg-[#fafdfb] dark:bg-[#141414] border border-[#E5E7EB] dark:border-[#262626] rounded-3xl shadow-2xl p-6 sm:p-8 space-y-6 overflow-hidden z-10"
           >
             {/* Top Confetti Ambient glow */}
-            <div className="absolute top-[-30%] left-[-10%] w-[120%] h-[50%] bg-gradient-to-b from-emerald-500/10 to-transparent pointer-events-none" />
+            <div className="absolute top-[-30%] left-[-10%] w-[120%] h-[50%] bg-gradient-to-b from-red-500/10 to-transparent pointer-events-none" />
 
             <div className="text-center space-y-2 relative z-10">
-              <div className="w-14 h-14 bg-emerald-100 dark:bg-emerald-950/80 rounded-full flex items-center justify-center text-emerald-600 dark:text-emerald-400 mx-auto border border-emerald-200 dark:border-emerald-800 shadow-sm">
-                <Check className="w-7 h-7 text-emerald-600 dark:text-emerald-400" />
+              <div className="w-14 h-14 bg-red-100 dark:bg-red-950/80 rounded-full flex items-center justify-center text-[#C22424] mx-auto border border-red-200 dark:border-red-900 shadow-sm">
+                <Check className="w-7 h-7 text-[#C22424]" />
               </div>
-              <h2 className="font-serif text-2xl sm:text-3xl font-normal text-slate-900 dark:text-white tracking-tight">
+              <h2 className="font-serif text-2xl sm:text-3xl font-normal text-neutral-900 dark:text-white tracking-tight">
                 Thank You For Your Order!
               </h2>
-              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 max-w-md mx-auto leading-relaxed">
+              <p className="text-xs sm:text-sm text-neutral-600 dark:text-neutral-400 max-w-md mx-auto leading-relaxed">
                 Your B2B procurement order has been partitioned and routed to the corresponding rice mills:
               </p>
             </div>
 
             {/* Split Orders details */}
             <div className="space-y-4 relative z-10 max-h-[320px] overflow-y-auto pr-2">
-              <p className="text-[10px] font-black uppercase tracking-widest text-emerald-900/70 dark:text-emerald-300/60 border-b border-emerald-500/15 dark:border-emerald-950/30 pb-2">
+              <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500 dark:text-neutral-400 border-b border-[#E5E7EB] dark:border-[#262626] pb-2">
                 Partitioned Split Grouping Logs ({orderSuccess.length} Separate Purchases)
               </p>
 
               {orderSuccess.map((order) => (
-                <div key={order.id} className="p-4 bg-white dark:bg-[#071911] border border-emerald-500/10 dark:border-emerald-950/45 rounded-2xl shadow-sm space-y-3">
+                <div key={order.id} className="p-4 bg-white dark:bg-[#1C1C1C] border border-[#E5E7EB] dark:border-[#262626] rounded-2xl shadow-sm space-y-3">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <span className="text-[10px] font-black text-emerald-900/80 dark:text-emerald-300/80 bg-emerald-500/10 border border-emerald-500/15 px-2.5 py-1 rounded-lg">
-                      ORDER ID: <span className="text-emerald-600 font-mono">{order.id}</span>
+                    <span className="text-[10px] font-black text-neutral-900 dark:text-white bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 px-2.5 py-1 rounded-lg">
+                      ORDER ID: <span className="text-[#C22424] font-mono">{order.id}</span>
                     </span>
                     <span className="text-[9px] font-black text-emerald-700 bg-emerald-500/10 px-2.5 py-1 rounded-full uppercase tracking-wider">
                       Awaiting Settlement
@@ -1927,25 +1580,25 @@ export default function StoreManagement() {
           <motion.div 
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-[#0b1c12] dark:bg-[#071911] text-[#fafdfb] dark:text-[#ebfdf5] p-4 rounded-2xl shadow-2xl border border-emerald-500/20 dark:border-emerald-950/20 flex items-center gap-3 max-w-sm"
+            className="bg-[#141414] text-white p-3.5 rounded-2xl shadow-2xl border border-[#262626] flex items-center gap-3 max-w-sm"
           >
-            <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-500 shrink-0 border border-emerald-500/20">
-              <Check className="w-4 h-4" />
+            <div className="w-8 h-8 rounded-full bg-red-500/20 flex items-center justify-center text-[#C22424] shrink-0 border border-red-500/30">
+              <Check className="w-4 h-4 text-[#C22424]" />
             </div>
             <div className="text-left font-sans min-w-0 pr-1">
-              <p className="text-[9px] font-black uppercase tracking-widest text-emerald-450 dark:text-emerald-400 leading-none mb-1">Successfully Added</p>
+              <p className="text-[9px] font-black uppercase tracking-widest text-[#C22424] leading-none mb-1">Successfully Added</p>
               <p className="text-xs font-black leading-tight truncate">
                 {addedProduct.qty} QTLS of {addedProduct.name}
               </p>
-              <p className="text-[10px] text-emerald-200/50 dark:text-emerald-100/50 mt-0.5 leading-normal">
-                Review inside bag when ready.
+              <p className="text-[10px] text-neutral-400 mt-0.5 leading-normal">
+                Review inside cart when ready.
               </p>
             </div>
             <button 
               onClick={() => navigate('/bag')}
-              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-600 text-white text-[9px] font-black uppercase tracking-widest rounded-lg transition-all shrink-0 cursor-pointer font-sans"
+              className="px-3 py-1.5 bg-[#C22424] hover:bg-[#B91C1C] text-white text-[9px] font-black uppercase tracking-widest rounded-lg transition-all shrink-0 cursor-pointer font-sans"
             >
-              Open Bag
+              Open Cart
             </button>
           </motion.div>
         </div>
@@ -1968,20 +1621,20 @@ export default function StoreManagement() {
             whileTap={{ scale: 0.95 }}
             onClick={() => navigate('/bag')}
             className={cn(
-              "fixed bottom-20 right-3.5 sm:right-6 z-40 bg-[#143e2e] dark:bg-emerald-600 text-white rounded-full p-2.5 pl-3 pr-3.5 shadow-[0_12px_32px_rgba(20,62,46,0.38)] dark:shadow-[0_12px_32px_rgba(16,185,129,0.38)] border border-emerald-400/30 flex items-center gap-2 cursor-pointer font-sans select-none backdrop-blur-md transition-all",
-              justAddedId && "ring-4 ring-emerald-400/60 scale-105"
+              "fixed bottom-20 right-3.5 sm:right-6 z-40 bg-[#C22424] hover:bg-[#B91C1C] text-white rounded-full p-2.5 pl-3 pr-3.5 shadow-[0_12px_32px_rgba(194,36,36,0.38)] border border-red-400/30 flex items-center gap-2 cursor-pointer font-sans select-none backdrop-blur-md transition-all",
+              justAddedId && "ring-4 ring-red-400/60 scale-105"
             )}
             title="Open Bag & Review Order"
           >
             <div className="relative">
-              <ShoppingBag className="w-4 h-4 text-emerald-100" />
-              <span className="absolute -top-2 -right-2.5 bg-rose-500 text-white text-[8.5px] font-black min-w-4 h-4 px-1 rounded-full flex items-center justify-center shadow-xs">
+              <ShoppingBag className="w-4 h-4 text-white" />
+              <span className="absolute -top-2 -right-2.5 bg-neutral-900 dark:bg-black text-white text-[8.5px] font-black min-w-4 h-4 px-1 rounded-full flex items-center justify-center shadow-xs">
                 {items.reduce((sum, item) => sum + item.qty, 0)}
               </span>
             </div>
             <div className="text-left flex flex-col leading-none">
-              <span className="text-[10px] font-bold text-white tracking-tight">Open Bag</span>
-              <span className="text-[8px] font-mono font-medium text-emerald-200">
+              <span className="text-[10px] font-bold text-white tracking-tight">Open Cart</span>
+              <span className="text-[8px] font-mono font-medium text-red-100">
                 ₹{formatINR(items.reduce((acc, item) => acc + item.price * item.qty, 0))}
               </span>
             </div>
@@ -2005,23 +1658,23 @@ export default function StoreManagement() {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 15 }}
               transition={{ type: "spring", stiffness: 350, damping: 25 }}
-              className="relative w-full max-w-sm bg-white dark:bg-[#07130e] border border-slate-200 dark:border-emerald-950/80 rounded-2xl p-4 shadow-2xl space-y-3.5 font-sans z-10"
+              className="relative w-full max-w-sm bg-white dark:bg-[#141414] border border-[#E5E7EB] dark:border-[#262626] rounded-2xl p-4 shadow-2xl space-y-3.5 font-sans z-10"
             >
               <div className="flex items-start justify-between gap-2.5">
                 <div className="flex items-center gap-2.5 min-w-0">
                   {qtyModalProduct.image && (
-                    <div className="w-11 h-11 rounded-xl overflow-hidden shrink-0 border border-slate-200 dark:border-emerald-950/80 bg-slate-50 dark:bg-neutral-900 p-1 flex items-center justify-center">
+                    <div className="w-11 h-11 rounded-xl overflow-hidden shrink-0 border border-[#E5E7EB] dark:border-[#262626] bg-neutral-50 dark:bg-neutral-900 p-1 flex items-center justify-center">
                       <img src={qtyModalProduct.image} alt={qtyModalProduct.name} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
                     </div>
                   )}
                   <div className="min-w-0">
-                    <span className="text-[9.5px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 block truncate">
+                    <span className="text-[9.5px] font-bold uppercase tracking-wider text-[#C22424] block truncate">
                       Wholesale Order Quantity
                     </span>
-                    <h3 className="text-sm font-black text-slate-900 dark:text-white leading-tight mt-0.5 truncate">
+                    <h3 className="text-sm font-black text-neutral-900 dark:text-white leading-tight mt-0.5 truncate">
                       {qtyModalProduct.name}
                     </h3>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono mt-0.5">
+                    <p className="text-[11px] text-neutral-500 dark:text-neutral-400 font-mono mt-0.5">
                       ₹{formatINR(qtyModalProduct.price || 3850)} / Quintal
                     </p>
                   </div>
@@ -2029,7 +1682,7 @@ export default function StoreManagement() {
                 <button
                   type="button"
                   onClick={() => setQtyModalProduct(null)}
-                  className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg cursor-pointer text-xs shrink-0"
+                  className="w-7 h-7 flex items-center justify-center text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 rounded-lg cursor-pointer text-xs shrink-0"
                 >
                   ✕
                 </button>
@@ -2037,7 +1690,7 @@ export default function StoreManagement() {
 
               {/* Quick preset chips */}
               <div className="space-y-1">
-                <label className="text-[9.5px] font-bold text-slate-500 dark:text-slate-400 uppercase">
+                <label className="text-[9.5px] font-bold text-neutral-500 dark:text-neutral-400 uppercase">
                   Quick Select Preset (Quintals)
                 </label>
                 <div className="grid grid-cols-5 gap-1.5">
@@ -2049,8 +1702,8 @@ export default function StoreManagement() {
                       className={cn(
                         "py-1.5 text-[11px] font-bold rounded-xl border transition-all cursor-pointer select-none",
                         modalQtyValue === preset
-                          ? "bg-[#143e2e] dark:bg-emerald-600 text-white border-transparent shadow-xs"
-                          : "bg-slate-50 dark:bg-neutral-900 border-slate-200 dark:border-neutral-800 text-slate-700 dark:text-slate-300 hover:border-emerald-500"
+                          ? "bg-[#C22424] text-white border-transparent shadow-xs"
+                          : "bg-neutral-50 dark:bg-neutral-900 border-[#E5E7EB] dark:border-[#262626] text-neutral-700 dark:text-neutral-300 hover:border-[#C22424]"
                       )}
                     >
                       {preset} Q
@@ -2061,21 +1714,21 @@ export default function StoreManagement() {
 
               {/* Custom interactive Stepper */}
               <div className="space-y-1">
-                <label className="text-[9.5px] font-bold text-slate-500 dark:text-slate-400 uppercase">
+                <label className="text-[9.5px] font-bold text-neutral-500 dark:text-neutral-400 uppercase">
                   Adjust Quantity (Quintals)
                 </label>
-                <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 rounded-xl p-1.5">
+                <div className="flex items-center gap-1.5 bg-neutral-50 dark:bg-neutral-900 border border-[#E5E7EB] dark:border-[#262626] rounded-xl p-1.5">
                   <button
                     type="button"
                     onClick={() => setModalQtyValue(prev => Math.max(1, prev - 10))}
-                    className="px-2 py-1 text-[10px] font-black text-slate-600 dark:text-slate-300 bg-white dark:bg-neutral-800 border border-slate-200 dark:border-neutral-700 rounded-lg hover:text-emerald-600 cursor-pointer active:scale-95"
+                    className="px-2 py-1 text-[10px] font-black text-neutral-600 dark:text-neutral-300 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg hover:text-[#C22424] cursor-pointer active:scale-95"
                   >
                     -10
                   </button>
                   <button
                     type="button"
                     onClick={() => setModalQtyValue(prev => Math.max(1, prev - 1))}
-                    className="w-7 h-7 flex items-center justify-center text-xs font-black text-slate-600 dark:text-slate-300 bg-white dark:bg-neutral-800 border border-slate-200 dark:border-neutral-700 rounded-lg hover:text-emerald-600 cursor-pointer active:scale-95"
+                    className="w-7 h-7 flex items-center justify-center text-xs font-black text-neutral-600 dark:text-neutral-300 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg hover:text-[#C22424] cursor-pointer active:scale-95"
                   >
                     -
                   </button>
@@ -2089,20 +1742,20 @@ export default function StoreManagement() {
                       const v = parseInt(e.target.value, 10);
                       setModalQtyValue(isNaN(v) ? 1 : Math.max(1, v));
                     }}
-                    className="flex-1 text-center font-mono font-black text-base bg-transparent text-slate-900 dark:text-white outline-none"
+                    className="flex-1 text-center font-mono font-black text-base bg-transparent text-neutral-900 dark:text-white outline-none"
                   />
 
                   <button
                     type="button"
                     onClick={() => setModalQtyValue(prev => prev + 1)}
-                    className="w-7 h-7 flex items-center justify-center text-xs font-black text-slate-600 dark:text-slate-300 bg-white dark:bg-neutral-800 border border-slate-200 dark:border-neutral-700 rounded-lg hover:text-emerald-600 cursor-pointer active:scale-95"
+                    className="w-7 h-7 flex items-center justify-center text-xs font-black text-neutral-600 dark:text-neutral-300 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg hover:text-[#C22424] cursor-pointer active:scale-95"
                   >
                     +
                   </button>
                   <button
                     type="button"
                     onClick={() => setModalQtyValue(prev => prev + 10)}
-                    className="px-2 py-1 text-[10px] font-black text-slate-600 dark:text-slate-300 bg-white dark:bg-neutral-800 border border-slate-200 dark:border-neutral-700 rounded-lg hover:text-emerald-600 cursor-pointer active:scale-95"
+                    className="px-2 py-1 text-[10px] font-black text-neutral-600 dark:text-neutral-300 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg hover:text-[#C22424] cursor-pointer active:scale-95"
                   >
                     +10
                   </button>
@@ -2110,14 +1763,14 @@ export default function StoreManagement() {
               </div>
 
               {/* Subtotal preview */}
-              <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center justify-between">
+              <div className="p-2.5 bg-red-50/50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/40 rounded-xl flex items-center justify-between">
                 <div>
-                  <span className="text-[9px] uppercase font-bold text-slate-500 dark:text-slate-400">Order Estimation</span>
-                  <p className="text-[11px] font-semibold text-emerald-950 dark:text-emerald-200">
+                  <span className="text-[9px] uppercase font-bold text-neutral-500 dark:text-neutral-400">Order Estimation</span>
+                  <p className="text-[11px] font-semibold text-neutral-900 dark:text-neutral-200">
                     {modalQtyValue} Quintals × ₹{formatINR(qtyModalProduct.price || 3850)}
                   </p>
                 </div>
-                <span className="text-sm font-black font-mono text-emerald-800 dark:text-emerald-300">
+                <span className="text-sm font-black font-mono text-[#C22424] dark:text-red-400">
                   ₹{formatINR(modalQtyValue * (qtyModalProduct.price || 3850))}
                 </span>
               </div>
@@ -2135,7 +1788,7 @@ export default function StoreManagement() {
                   }
                   setQtyModalProduct(null);
                 }}
-                className="w-full py-2.5 bg-[#143e2e] dark:bg-emerald-600 hover:bg-[#0e2c20] text-white font-black text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-md cursor-pointer active:scale-98 transition-all"
+                className="w-full py-2.5 bg-[#C22424] hover:bg-[#B91C1C] text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-md cursor-pointer active:scale-98 transition-all"
               >
                 <Check className="w-3.5 h-3.5" />
                 <span>Confirm {modalQtyValue} QTLS (₹{formatINR(modalQtyValue * (qtyModalProduct.price || 3850))})</span>
@@ -2144,60 +1797,236 @@ export default function StoreManagement() {
           </div>
         )}
 
+        {/* ============================================================== */}
+        {/* SCREEN 3: PRODUCT DETAILS MODAL (Matching Reference Screen 3)   */}
+        {/* ============================================================== */}
+        <AnimatePresence>
+          {selectedProductDetails && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setSelectedProductDetails(null)}
+                className="absolute inset-0 bg-black/60 backdrop-blur-xs cursor-pointer"
+              />
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 16 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 16 }}
+                transition={{ type: "spring", stiffness: 350, damping: 28 }}
+                className="relative w-full max-w-md bg-white dark:bg-[#141414] border border-[#E5E7EB] dark:border-[#262626] rounded-3xl p-4 sm:p-5 shadow-2xl space-y-3.5 font-sans z-10 text-left max-h-[92vh] overflow-y-auto no-scrollbar"
+              >
+                {/* Modal Top Action Bar */}
+                <div className="flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedProductDetails(null)}
+                    className="w-8 h-8 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 flex items-center justify-center hover:bg-neutral-200 transition-colors cursor-pointer"
+                    title="Back"
+                  >
+                    <ChevronLeft className="w-5 h-5" />
+                  </button>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (navigator.share) {
+                          navigator.share({
+                            title: selectedProductDetails.name,
+                            text: `Wholesale Rice: ${selectedProductDetails.name} at ₹${selectedProductDetails.price || 3850}/QTL`,
+                            url: window.location.href,
+                          }).catch(() => {});
+                        } else {
+                          navigator.clipboard.writeText(window.location.href);
+                          alert('Product link copied to clipboard!');
+                        }
+                      }}
+                      className="w-8 h-8 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 flex items-center justify-center hover:bg-neutral-200 transition-colors cursor-pointer"
+                      title="Share product"
+                    >
+                      <Share2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => toggleWishlist(selectedProductDetails.id)}
+                      className="w-8 h-8 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 flex items-center justify-center hover:bg-neutral-200 transition-colors cursor-pointer"
+                      title="Wishlist"
+                    >
+                      <Heart className={cn("w-4 h-4 transition-transform active:scale-125", wishlist.includes(selectedProductDetails.id) ? "fill-rose-500 text-rose-500" : "")} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Hero Product Image with Carousel Dots */}
+                <div className="w-full flex flex-col items-center">
+                  <div className="w-full h-44 sm:h-52 rounded-2xl bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-200/80 dark:border-neutral-700 flex items-center justify-center overflow-hidden p-2 relative">
+                    <ProductCardMedia product={selectedProductDetails} />
+                  </div>
+                  {/* Dot Indicators */}
+                  <div className="flex items-center gap-1.5 mt-2">
+                    <span className="w-4 h-1.5 rounded-full bg-[#C22424]" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-neutral-300 dark:bg-neutral-700" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-neutral-300 dark:bg-neutral-700" />
+                  </div>
+                </div>
+
+                {/* Title & Pill Badge & Price */}
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <h2 className="text-base sm:text-lg font-black text-neutral-900 dark:text-white leading-tight">
+                      {selectedProductDetails.name}
+                    </h2>
+                    <span className="bg-red-50 text-[#C22424] border border-red-200 text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0">
+                      Best Seller
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400 font-medium">
+                    {selectedProductDetails.variant ? `Grade A • ${selectedProductDetails.variant}` : selectedProductDetails.category || 'Sortex Milling'}
+                  </p>
+
+                  <div className="pt-1">
+                    <span className="text-base sm:text-lg font-black text-neutral-900 dark:text-white">
+                      ₹{formatINR(selectedProductDetails.price || 11200)}
+                    </span>
+                    <span className="text-xs text-neutral-500 dark:text-neutral-400 ml-1 font-medium">
+                      / QTL (100 kg)
+                    </span>
+                  </div>
+                </div>
+
+                {/* Specifications 2x2 Grid */}
+                <div className="space-y-1.5 pt-1">
+                  <h3 className="text-xs font-black uppercase tracking-wider text-neutral-900 dark:text-white">
+                    Specifications
+                  </h3>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="p-2.5 bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-200/80 dark:border-neutral-700 rounded-xl">
+                      <span className="text-[9.5px] uppercase font-bold text-neutral-400 block">Origin</span>
+                      <span className="font-bold text-neutral-900 dark:text-white mt-0.5 block">
+                        {selectedProductDetails.origin || 'Punjab / APMC Yard'}
+                      </span>
+                    </div>
+
+                    <div className="p-2.5 bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-200/80 dark:border-neutral-700 rounded-xl">
+                      <span className="text-[9.5px] uppercase font-bold text-neutral-400 block">Grain Length</span>
+                      <span className="font-bold text-neutral-900 dark:text-white mt-0.5 block">
+                        {selectedProductDetails.variant === 'basmati' ? '8.35 mm' : '6.40 mm'}
+                      </span>
+                    </div>
+
+                    <div className="p-2.5 bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-200/80 dark:border-neutral-700 rounded-xl">
+                      <span className="text-[9.5px] uppercase font-bold text-neutral-400 block">Purity</span>
+                      <span className="font-bold text-neutral-900 dark:text-white mt-0.5 block">
+                        95% Sortex Clean
+                      </span>
+                    </div>
+
+                    <div className="p-2.5 bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-200/80 dark:border-neutral-700 rounded-xl">
+                      <span className="text-[9.5px] uppercase font-bold text-neutral-400 block">Moisture</span>
+                      <span className="font-bold text-neutral-900 dark:text-white mt-0.5 block">
+                        &lt; 12% Max
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Description */}
+                <div className="space-y-1 pt-1">
+                  <h3 className="text-xs font-black uppercase tracking-wider text-neutral-900 dark:text-white">
+                    Description
+                  </h3>
+                  <p className="text-xs text-neutral-600 dark:text-neutral-300 leading-relaxed font-normal">
+                    {selectedProductDetails.about || "Premium aged 1121 Basmati Rice with exceptional grain elongation, exquisite aroma, and fluffy non-sticky texture after cooking. Sourced directly from verified milling hubs."}
+                  </p>
+                </div>
+
+                {/* Sticky Bottom Actions: Stepper and Red Add to Cart Button */}
+                <div className="pt-2 border-t border-neutral-200/80 dark:border-neutral-800 flex items-center gap-3">
+                  {/* Stepper */}
+                  <div className="flex items-center bg-neutral-100 dark:bg-neutral-800 rounded-xl p-1 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setDetailQtyValue(prev => Math.max(1, prev - (prev > 10 ? 5 : 1)))}
+                      className="w-8 h-8 rounded-lg bg-white dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 font-black text-sm flex items-center justify-center hover:bg-neutral-50 active:scale-95 cursor-pointer shadow-xs"
+                    >
+                      -
+                    </button>
+                    <span className="font-mono font-black text-xs text-neutral-900 dark:text-white min-w-10 text-center">
+                      {detailQtyValue} QTL
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setDetailQtyValue(prev => prev + (prev >= 10 ? 5 : 1))}
+                      className="w-8 h-8 rounded-lg bg-white dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 font-black text-sm flex items-center justify-center hover:bg-neutral-50 active:scale-95 cursor-pointer shadow-xs"
+                    >
+                      +
+                    </button>
+                  </div>
+
+                  {/* Add to Cart Button */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProductQty(selectedProductDetails.id, detailQtyValue);
+                      const inCart = items.find(i => i.id === selectedProductDetails.id);
+                      if (inCart) {
+                        updateQty(selectedProductDetails.id, detailQtyValue);
+                      } else {
+                        handleAddToCartProduct(selectedProductDetails, detailQtyValue);
+                      }
+                      setSelectedProductDetails(null);
+                    }}
+                    className="flex-1 py-3 bg-[#C22424] hover:bg-[#A81C1C] text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-md cursor-pointer active:scale-98 transition-all"
+                  >
+                    <ShoppingBag className="w-4 h-4" />
+                    <span>Add to Cart</span>
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
         {/* Old Rates vs New Rates Comparison Modal */}
         {showRateChartModal && (
-          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
+              initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white dark:bg-[#07130e] border border-slate-200 dark:border-neutral-800 rounded-3xl p-4 sm:p-6 max-w-2xl w-full shadow-2xl space-y-4 text-left relative max-h-[90vh] flex flex-col"
+              exit={{ opacity: 0, scale: 0.96 }}
+              transition={{ duration: 0.15 }}
+              className="bg-white dark:bg-[#141414] border border-[#E5E7EB] dark:border-[#262626] rounded-2xl p-3.5 sm:p-4 max-w-lg w-full shadow-2xl text-left relative max-h-[85vh] flex flex-col font-sans"
             >
-              <button
-                type="button"
-                onClick={() => setShowRateChartModal(false)}
-                className="absolute top-4 right-4 p-2 rounded-full bg-slate-100 dark:bg-neutral-800 text-slate-500 hover:text-slate-900 dark:hover:text-white cursor-pointer transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
-
-              <div className="space-y-1 pr-8">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-[9px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
-                    Wholesale Rate Board
-                  </span>
-                  <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
-                    Market Rate Movement
-                  </span>
-                </div>
-                <h3 className="font-serif text-xl sm:text-2xl font-normal text-slate-900 dark:text-white tracking-tight">
-                  Product Rate Comparison
-                </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Old Rates vs New Rates ex-mill & wholesale market prices per Quintal.
-                </p>
+              {/* Header: Minimal Title + Close */}
+              <div className="flex items-center justify-between pb-2 border-b border-neutral-100 dark:border-neutral-800">
+                <span className="text-xs font-black uppercase tracking-wider text-[#C22424]">
+                  Market Rates (₹/Qtl)
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowRateChartModal(false)}
+                  className="w-7 h-7 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 hover:text-neutral-900 dark:hover:text-white flex items-center justify-center cursor-pointer transition-colors"
+                  aria-label="Close"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
 
-              {/* Date Legend Pills */}
-              <div className="flex items-center gap-2 text-[11px] font-bold py-1 border-b border-slate-200/80 dark:border-neutral-800">
-                <span className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-neutral-800 text-slate-600 dark:text-slate-300">
-                  Old Rates: {new Date(Date.now() - 86400000).toLocaleDateString('default', { month: 'short', day: 'numeric', year: 'numeric' })}
-                </span>
-                <span className="text-slate-400">→</span>
-                <span className="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
-                  New Rates: {new Date().toLocaleDateString('default', { month: 'short', day: 'numeric', year: 'numeric' })}
-                </span>
+              {/* Table Column Labels for Instant 1-Second Glance */}
+              <div className="grid grid-cols-12 gap-1 px-2.5 py-1.5 text-[10px] font-black uppercase tracking-wider text-neutral-400 dark:text-neutral-500 bg-neutral-50 dark:bg-neutral-900/60 rounded-lg">
+                <span className="col-span-6">Variety</span>
+                <span className="col-span-3 text-right">Old</span>
+                <span className="col-span-3 text-right text-neutral-700 dark:text-neutral-200">New</span>
               </div>
 
-              {/* Product Rate Comparison List */}
-              <div className="overflow-y-auto flex-1 space-y-2 pr-1 max-h-[50vh]">
+              {/* Ultra-Clean Rates List */}
+              <div className="overflow-y-auto flex-1 divide-y divide-neutral-100 dark:divide-neutral-800/60 pr-0.5 max-h-[55vh] no-scrollbar">
                 {productsList.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-10 text-center space-y-2 bg-slate-50 dark:bg-neutral-900/50 rounded-2xl p-6 border border-dashed border-slate-200 dark:border-neutral-800">
-                    <Store className="w-8 h-8 text-amber-500/80" />
-                    <p className="text-xs font-bold text-slate-800 dark:text-slate-200">No Products in Inventory</p>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-sm">
-                      There are currently no active products in the inventory to display rate comparisons. Products added by admin in Product Inventory will appear here with rate trends.
-                    </p>
+                  <div className="py-8 text-center text-xs text-neutral-400 font-medium">
+                    No rates available
                   </div>
                 ) : (
                   productsList.map((product, idx) => {
@@ -2210,66 +2039,35 @@ export default function StoreManagement() {
                     return (
                       <div 
                         key={product.id || idx}
-                        className="p-3 sm:p-3.5 bg-slate-50 dark:bg-[#0c1a14] border border-slate-200/80 dark:border-emerald-950/70 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-left shadow-2xs hover:border-emerald-500/30 transition-all"
+                        className="grid grid-cols-12 gap-1 items-center px-2.5 py-2 hover:bg-neutral-50 dark:hover:bg-neutral-900/40 rounded-lg transition-colors text-left"
                       >
-                        {/* Left Info */}
-                        <div className="space-y-0.5 min-w-0 flex-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-white truncate">
-                              {product.name}
-                            </span>
-                            <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
-                              {product.category || 'Standard'}
-                            </span>
-                          </div>
-                          <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
-                            Supplier: {product.supplier || 'Direct Mill'}
-                          </p>
+                        {/* Variety Name */}
+                        <div className="col-span-6 min-w-0 pr-1">
+                          <span className="text-xs font-bold text-neutral-900 dark:text-white truncate block">
+                            {product.name}
+                          </span>
                         </div>
 
-                        {/* Right Comparison Grid */}
-                        <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4 border-t sm:border-t-0 border-slate-200/60 dark:border-neutral-800/80 pt-2 sm:pt-0 shrink-0">
-                          {/* Old Rate */}
-                          <div className="text-right">
-                            <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
-                              Old Rates
-                            </span>
-                            <span className="text-xs font-mono font-bold text-slate-600 dark:text-slate-300">
-                              ₹ {formatINR(yesterdayRate)} / Qtl
-                            </span>
-                          </div>
+                        {/* Old Rate */}
+                        <div className="col-span-3 text-right">
+                          <span className="text-xs font-mono font-bold text-neutral-400 dark:text-neutral-500 line-through">
+                            ₹{formatINR(yesterdayRate)}
+                          </span>
+                        </div>
 
-                          {/* Arrow */}
-                          <ArrowRight className="w-3.5 h-3.5 text-slate-300 dark:text-neutral-700 shrink-0" />
-
-                          {/* New Rate */}
-                          <div className="text-right">
-                            <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 block">
-                              New Rates
+                        {/* New Rate + Diff */}
+                        <div className="col-span-3 text-right flex flex-col items-end leading-none">
+                          <span className="text-xs sm:text-[13px] font-mono font-black text-neutral-900 dark:text-white">
+                            ₹{formatINR(todayRate)}
+                          </span>
+                          {diff !== 0 && (
+                            <span className={cn(
+                              "text-[9.5px] font-mono font-black mt-0.5",
+                              diff > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
+                            )}>
+                              {diff > 0 ? `+₹${diff}` : `-₹${Math.abs(diff)}`}
                             </span>
-                            <span className="text-xs sm:text-sm font-mono font-black text-slate-900 dark:text-white">
-                              ₹ {formatINR(todayRate)} / Qtl
-                            </span>
-                          </div>
-
-                          {/* Trend Pill */}
-                          <div className="min-w-[75px] text-right">
-                            {diff > 0 ? (
-                              <span className="inline-flex items-center gap-0.5 text-[9.5px] font-black text-emerald-800 dark:text-emerald-300 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-lg">
-                                <TrendingUp className="w-3 h-3 text-emerald-500" />
-                                +₹{diff}
-                              </span>
-                            ) : diff < 0 ? (
-                              <span className="inline-flex items-center gap-0.5 text-[9.5px] font-black text-rose-800 dark:text-rose-300 bg-rose-500/15 border border-rose-500/30 px-2 py-0.5 rounded-lg">
-                                <TrendingDown className="w-3 h-3 text-rose-500" />
-                                -₹{Math.abs(diff)}
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-0.5 text-[9.5px] font-bold text-slate-600 dark:text-slate-400 bg-slate-200/60 dark:bg-neutral-800 px-2 py-0.5 rounded-lg">
-                                Stable
-                              </span>
-                            )}
-                          </div>
+                          )}
                         </div>
                       </div>
                     );
@@ -2277,13 +2075,14 @@ export default function StoreManagement() {
                 )}
               </div>
 
-              <div className="flex justify-end pt-2">
+              {/* Minimal Dismiss */}
+              <div className="pt-2 border-t border-neutral-100 dark:border-neutral-800 flex justify-end">
                 <button
                   type="button"
                   onClick={() => setShowRateChartModal(false)}
-                  className="px-5 py-2 bg-[#143e2e] text-white rounded-xl text-xs font-bold shadow-sm hover:bg-[#0d2b20] cursor-pointer transition-all active:scale-95"
+                  className="px-4 py-1.5 bg-[#C22424] hover:bg-[#A81F1F] text-white rounded-xl text-xs font-bold cursor-pointer transition-all active:scale-95"
                 >
-                  Close Rate Board
+                  Close
                 </button>
               </div>
             </motion.div>

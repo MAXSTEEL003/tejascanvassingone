@@ -12,7 +12,16 @@ import {
   FileText, 
   Package, 
   Truck,
-  ArrowRight
+  ArrowRight,
+  ChevronDown,
+  ChevronUp,
+  Copy,
+  Check,
+  MessageSquare,
+  ExternalLink,
+  Coins,
+  Phone,
+  ArrowUpRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, formatINR } from '../lib/utils';
@@ -36,9 +45,11 @@ export default function PendingLoadings() {
   const [selectedSupplier, setSelectedSupplier] = useState<string>('all');
   const [selectedBrand, setSelectedBrand] = useState<string>('all');
 
-  // Modals
+  // Modals & Expansion State
   const [selectedBuyerForModal, setSelectedBuyerForModal] = useState<string | null>(null);
   const [selectedPoForModal, setSelectedPoForModal] = useState<OperationalPO | null>(null);
+  const [expandedPoId, setExpandedPoId] = useState<string | null>(null);
+  const [copiedPoNumber, setCopiedPoNumber] = useState<string | null>(null);
 
   // Load orders from canonical operational order service
   const loadOrdersData = async () => {
@@ -173,6 +184,7 @@ export default function PendingLoadings() {
   // Operational Metrics
   const metrics = useMemo(() => {
     const totalPendingQtl = filteredOrders.reduce((sum, o) => sum + o.poQtl, 0);
+    const totalEstimatedValue = filteredOrders.reduce((sum, o) => sum + (o.poQtl * (o.rate || 0)), 0);
     const buyersSet = new Set<string>();
     const suppliersSet = new Set<string>();
 
@@ -184,6 +196,7 @@ export default function PendingLoadings() {
     return {
       totalOrders: filteredOrders.length,
       totalPendingQtl,
+      totalEstimatedValue,
       uniqueBuyers: buyersSet.size,
       uniqueSuppliers: suppliersSet.size
     };
@@ -271,7 +284,7 @@ export default function PendingLoadings() {
             <button
               onClick={loadOrdersData}
               disabled={isLoading}
-              className="px-3.5 py-2 rounded-xl bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 text-xs font-bold text-slate-700 dark:text-slate-200 hover:border-rose-500/40 hover:text-rose-600 transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs disabled:opacity-50"
+              className="px-3.5 py-2 rounded-xl bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 text-xs font-bold text-slate-700 dark:text-slate-200 hover:border-rose-500/40 hover:text-rose-600 transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs disabled:opacity-50 btn-tactile"
               title="Refresh pending loadings"
             >
               <RefreshCw className={cn("w-3.5 h-3.5", isLoading && "animate-spin text-rose-500")} />
@@ -284,59 +297,87 @@ export default function PendingLoadings() {
       {/* Main Content Area */}
       <div className="flex-1 p-4 md:p-8 space-y-6 max-w-7xl w-full mx-auto">
 
-        {/* 2. Compact Operational Metrics */}
+        {/* 2. Compact Operational Metrics - Premium Floating Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="p-4 rounded-2xl bg-white dark:bg-[#0a1610] border border-slate-200/80 dark:border-white/10 shadow-2xs space-y-1">
+          <motion.div 
+            whileHover={{ y: -3, scale: 1.01 }}
+            transition={{ duration: 0.2 }}
+            className="floating-card p-4 rounded-2xl border border-rose-200/60 dark:border-rose-900/30 shadow-2xs space-y-1 relative overflow-hidden group"
+          >
+            <div className="absolute -right-4 -bottom-4 w-16 h-16 bg-rose-500/10 rounded-full blur-xl pointer-events-none group-hover:scale-125 transition-transform" />
             <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
               Pending Orders
             </span>
-            <div className="flex items-baseline justify-between">
+            <div className="flex items-baseline justify-between relative z-10">
               <span className="text-2xl font-black text-rose-600 dark:text-rose-400 font-mono">
                 {metrics.totalOrders}
               </span>
-              <Clock className="w-4 h-4 text-rose-500 opacity-60" />
+              <div className="p-1.5 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400">
+                <Clock className="w-4 h-4" />
+              </div>
             </div>
-            <span className="text-[10px] text-slate-500 font-medium">Awaiting Arrival</span>
-          </div>
+            <span className="text-[10px] text-slate-500 font-medium block">Awaiting Physical Arrival</span>
+          </motion.div>
 
-          <div className="p-4 rounded-2xl bg-white dark:bg-[#0a1610] border border-slate-200/80 dark:border-white/10 shadow-2xs space-y-1">
+          <motion.div 
+            whileHover={{ y: -3, scale: 1.01 }}
+            transition={{ duration: 0.2 }}
+            className="floating-card p-4 rounded-2xl border border-amber-200/60 dark:border-amber-900/30 shadow-2xs space-y-1 relative overflow-hidden group"
+          >
+            <div className="absolute -right-4 -bottom-4 w-16 h-16 bg-amber-500/10 rounded-full blur-xl pointer-events-none group-hover:scale-125 transition-transform" />
             <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
-              Total Pending QTL
+              Volume in Transit
             </span>
-            <div className="flex items-baseline justify-between">
+            <div className="flex items-baseline justify-between relative z-10">
               <span className="text-2xl font-black text-slate-900 dark:text-white font-mono">
                 {metrics.totalPendingQtl.toLocaleString('en-IN', { maximumFractionDigits: 1 })}
               </span>
-              <span className="text-[10px] font-bold text-amber-600">QTL</span>
+              <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                <Truck className="w-4 h-4" />
+              </div>
             </div>
-            <span className="text-[10px] text-slate-500 font-medium">Volume in Transit</span>
-          </div>
+            <span className="text-[10px] text-slate-500 font-medium block">Total Contracted QTL</span>
+          </motion.div>
 
-          <div className="p-4 rounded-2xl bg-white dark:bg-[#0a1610] border border-slate-200/80 dark:border-white/10 shadow-2xs space-y-1">
+          <motion.div 
+            whileHover={{ y: -3, scale: 1.01 }}
+            transition={{ duration: 0.2 }}
+            className="floating-card p-4 rounded-2xl border border-emerald-200/60 dark:border-emerald-900/30 shadow-2xs space-y-1 relative overflow-hidden group"
+          >
+            <div className="absolute -right-4 -bottom-4 w-16 h-16 bg-emerald-500/10 rounded-full blur-xl pointer-events-none group-hover:scale-125 transition-transform" />
             <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
-              Buyers Waiting
+              Estimated Pipeline
             </span>
-            <div className="flex items-baseline justify-between">
-              <span className="text-2xl font-black text-slate-900 dark:text-white font-mono">
-                {metrics.uniqueBuyers}
+            <div className="flex items-baseline justify-between relative z-10">
+              <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                ₹{formatINR(metrics.totalEstimatedValue)}
               </span>
-              <User className="w-4 h-4 text-slate-400 opacity-60" />
+              <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                <Coins className="w-4 h-4" />
+              </div>
             </div>
-            <span className="text-[10px] text-slate-500 font-medium">Consignees</span>
-          </div>
+            <span className="text-[10px] text-slate-500 font-medium block">Cargo Value in Movement</span>
+          </motion.div>
 
-          <div className="p-4 rounded-2xl bg-white dark:bg-[#0a1610] border border-slate-200/80 dark:border-white/10 shadow-2xs space-y-1">
+          <motion.div 
+            whileHover={{ y: -3, scale: 1.01 }}
+            transition={{ duration: 0.2 }}
+            className="floating-card p-4 rounded-2xl border border-sky-200/60 dark:border-sky-900/30 shadow-2xs space-y-1 relative overflow-hidden group"
+          >
+            <div className="absolute -right-4 -bottom-4 w-16 h-16 bg-sky-500/10 rounded-full blur-xl pointer-events-none group-hover:scale-125 transition-transform" />
             <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
-              Suppliers / Millers
+              Consignees & Mills
             </span>
-            <div className="flex items-baseline justify-between">
+            <div className="flex items-baseline justify-between relative z-10">
               <span className="text-2xl font-black text-slate-900 dark:text-white font-mono">
-                {metrics.uniqueSuppliers}
+                {metrics.uniqueBuyers} <span className="text-xs font-normal text-slate-400">/ {metrics.uniqueSuppliers} Mills</span>
               </span>
-              <Building2 className="w-4 h-4 text-slate-400 opacity-60" />
+              <div className="p-1.5 rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-400">
+                <Building2 className="w-4 h-4" />
+              </div>
             </div>
-            <span className="text-[10px] text-slate-500 font-medium">Dispatch Origins</span>
-          </div>
+            <span className="text-[10px] text-slate-500 font-medium block">Active Trade Counterparts</span>
+          </motion.div>
         </div>
 
         {/* 3. Search & Filter Bar */}
@@ -514,71 +555,259 @@ export default function PendingLoadings() {
                     <table className="w-full text-left text-xs border-collapse">
                       <thead>
                         <tr className="border-b border-slate-200/80 dark:border-white/10 bg-slate-50/75 dark:bg-neutral-900/60 text-[10px] font-black uppercase tracking-wider text-slate-500">
-                          <th className="py-3 px-4">Date</th>
-                          <th className="py-3 px-4">PO No.</th>
-                          <th className="py-3 px-4">Buyer</th>
-                          <th className="py-3 px-4">Supplier / Miller</th>
-                          <th className="py-3 px-4">Brand</th>
-                          <th className="py-3 px-4 text-right">PO QTL</th>
-                          <th className="py-3 px-4 text-right">Rate / QTL</th>
+                          <th className="w-9 py-3 px-2 text-center"></th>
+                          <th className="py-3 px-3.5">Date</th>
+                          <th className="py-3 px-3.5">PO No.</th>
+                          <th className="py-3 px-3.5">Buyer</th>
+                          <th className="py-3 px-3.5">Supplier / Miller</th>
+                          <th className="py-3 px-3.5">Brand</th>
+                          <th className="py-3 px-3.5 text-right">PO QTL</th>
+                          <th className="py-3 px-3.5 text-right">Rate / QTL</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 dark:divide-white/5 font-medium">
-                        {group.items.map(po => (
-                          <tr 
-                            key={po.id}
-                            className="hover:bg-slate-50/60 dark:hover:bg-white/[0.02] transition-colors"
-                          >
-                            {/* Date (Short: e.g. 30 Sep) */}
-                            <td className="py-3 px-4 whitespace-nowrap text-slate-600 dark:text-slate-400 font-mono text-[11px]">
-                              {po.dateShort}
-                            </td>
+                        {group.items.map(po => {
+                          const isExpanded = expandedPoId === po.id;
+                          const estVal = po.poQtl * (po.rate || 0);
 
-                            {/* PO No (Clickable for PO details) */}
-                            <td className="py-3 px-4 whitespace-nowrap">
-                              <button
-                                onClick={() => setSelectedPoForModal(po)}
-                                className="font-mono font-black text-rose-600 dark:text-rose-400 hover:underline hover:text-rose-700 inline-flex items-center gap-1 cursor-pointer"
-                                title="Click to view PO details"
+                          return (
+                            <React.Fragment key={po.id}>
+                              <tr 
+                                className={cn(
+                                  "hover:bg-slate-50/60 dark:hover:bg-white/[0.02] transition-colors cursor-pointer",
+                                  isExpanded && "bg-rose-500/5 dark:bg-rose-500/10"
+                                )}
+                                onClick={() => setExpandedPoId(isExpanded ? null : po.id)}
                               >
-                                <span>{po.poNumber}</span>
-                              </button>
-                            </td>
+                                {/* Dropdown Chevron Toggle */}
+                                <td className="w-9 py-3 px-2 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setExpandedPoId(isExpanded ? null : po.id);
+                                    }}
+                                    className="p-1 rounded-lg hover:bg-slate-200/60 dark:hover:bg-white/10 text-slate-400 hover:text-slate-700 dark:hover:text-white transition-all btn-tactile cursor-pointer"
+                                    title={isExpanded ? "Collapse row" : "Expand order details"}
+                                  >
+                                    <ChevronDown className={cn("w-4 h-4 transition-transform duration-200", isExpanded && "rotate-180 text-rose-500")} />
+                                  </button>
+                                </td>
 
-                            {/* Buyer (Clickable for Buyer Mini Profile) */}
-                            <td className="py-3 px-4">
-                              <button
-                                onClick={() => setSelectedBuyerForModal(po.buyer)}
-                                className="font-bold text-slate-900 dark:text-white hover:text-rose-600 dark:hover:text-rose-400 hover:underline text-left cursor-pointer transition-colors"
-                                title={`View buyer profile for ${po.buyer}`}
-                              >
-                                {po.buyer}
-                              </button>
-                            </td>
+                                {/* Date (Short: e.g. 30 Sep) */}
+                                <td className="py-3 px-3.5 whitespace-nowrap text-slate-600 dark:text-slate-400 font-mono text-[11px]">
+                                  {po.dateShort}
+                                </td>
 
-                            {/* Supplier / Miller */}
-                            <td className="py-3 px-4 text-slate-700 dark:text-slate-300">
-                              {po.supplier}
-                            </td>
+                                {/* PO No (Clickable for PO details) */}
+                                <td className="py-3 px-3.5 whitespace-nowrap">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedPoForModal(po);
+                                    }}
+                                    className="font-mono font-black text-rose-600 dark:text-rose-400 hover:underline hover:text-rose-700 inline-flex items-center gap-1 cursor-pointer btn-tactile"
+                                    title="Click to view PO details"
+                                  >
+                                    <span>{po.poNumber}</span>
+                                  </button>
+                                </td>
 
-                            {/* Brand */}
-                            <td className="py-3 px-4">
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-slate-100 dark:bg-neutral-800 text-slate-800 dark:text-slate-200 text-[11px] font-bold border border-slate-200/60 dark:border-white/10">
-                                {po.brand}
-                              </span>
-                            </td>
+                                {/* Buyer (Clickable for Buyer Mini Profile) */}
+                                <td className="py-3 px-3.5">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedBuyerForModal(po.buyer);
+                                    }}
+                                    className="font-bold text-slate-900 dark:text-white hover:text-rose-600 dark:hover:text-rose-400 hover:underline text-left cursor-pointer transition-colors btn-tactile"
+                                    title={`View buyer profile for ${po.buyer}`}
+                                  >
+                                    {po.buyer}
+                                  </button>
+                                </td>
 
-                            {/* PO QTL */}
-                            <td className="py-3 px-4 text-right font-mono font-black text-slate-900 dark:text-white whitespace-nowrap">
-                              {po.poQtl.toLocaleString('en-IN', { maximumFractionDigits: 1 })}
-                            </td>
+                                {/* Supplier / Miller */}
+                                <td className="py-3 px-3.5 text-slate-700 dark:text-slate-300">
+                                  {po.supplier}
+                                </td>
 
-                            {/* Rate / QTL */}
-                            <td className="py-3 px-4 text-right font-mono font-bold text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                              {po.rate > 0 ? `₹ ${formatINR(po.rate)}` : '—'}
-                            </td>
-                          </tr>
-                        ))}
+                                {/* Brand */}
+                                <td className="py-3 px-3.5">
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-slate-100 dark:bg-neutral-800 text-slate-800 dark:text-slate-200 text-[11px] font-bold border border-slate-200/60 dark:border-white/10">
+                                    {po.brand}
+                                  </span>
+                                </td>
+
+                                {/* PO QTL */}
+                                <td className="py-3 px-3.5 text-right font-mono font-black text-slate-900 dark:text-white whitespace-nowrap">
+                                  {po.poQtl.toLocaleString('en-IN', { maximumFractionDigits: 1 })}
+                                </td>
+
+                                {/* Rate / QTL */}
+                                <td className="py-3 px-3.5 text-right font-mono font-bold text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                                  {po.rate > 0 ? `₹ ${formatINR(po.rate)}` : '—'}
+                                </td>
+                              </tr>
+
+                              {/* Dropdown Drawer Bento Row */}
+                              <AnimatePresence>
+                                {isExpanded && (
+                                  <tr className="table-dropdown-drawer">
+                                    <td colSpan={8} className="p-0">
+                                      <motion.div
+                                        initial={{ opacity: 0, height: 0 }}
+                                        animate={{ opacity: 1, height: 'auto' }}
+                                        exit={{ opacity: 0, height: 0 }}
+                                        transition={{ duration: 0.22, ease: "easeInOut" }}
+                                        className="overflow-hidden p-4 sm:p-5"
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                                          {/* Card 1: PO & Valuation Snapshot */}
+                                          <div className="p-4 rounded-2xl bg-white/60 dark:bg-neutral-900/60 border border-slate-200/80 dark:border-white/10 space-y-2 text-left shadow-2xs">
+                                            <div className="flex items-center justify-between">
+                                              <span className="text-[10px] font-black uppercase tracking-wider text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
+                                                <FileText className="w-3.5 h-3.5" />
+                                                Order Contract
+                                              </span>
+                                              <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/20">
+                                                Awaiting Arrival
+                                              </span>
+                                            </div>
+                                            <div>
+                                              <p className="text-xs font-mono font-black text-slate-900 dark:text-white">{po.poNumber}</p>
+                                              <p className="text-[11px] text-slate-500">Contract Date: {po.date}</p>
+                                            </div>
+                                            <div className="pt-2 border-t border-slate-100 dark:border-white/5 space-y-1">
+                                              <div className="flex justify-between items-center text-xs">
+                                                <span className="text-slate-500">Weight:</span>
+                                                <span className="font-mono font-bold text-slate-900 dark:text-white">{po.poQtl} QTL</span>
+                                              </div>
+                                              <div className="flex justify-between items-center text-xs">
+                                                <span className="text-slate-500">Agreed Rate:</span>
+                                                <span className="font-mono font-bold text-slate-900 dark:text-white">{po.rate > 0 ? `₹ ${formatINR(po.rate)} / QTL` : 'Market'}</span>
+                                              </div>
+                                              <div className="flex justify-between items-center text-xs pt-1 border-t border-dashed border-slate-200 dark:border-white/10">
+                                                <span className="text-slate-500 font-bold">Est. Value:</span>
+                                                <span className="font-mono font-black text-rose-600 dark:text-rose-400">₹ {formatINR(estVal)}</span>
+                                              </div>
+                                            </div>
+                                          </div>
+
+                                          {/* Card 2: Consignee & Direct Contact */}
+                                          <div className="p-4 rounded-2xl bg-white/60 dark:bg-neutral-900/60 border border-slate-200/80 dark:border-white/10 space-y-2 text-left shadow-2xs">
+                                            <div className="flex items-center justify-between">
+                                              <span className="text-[10px] font-black uppercase tracking-wider text-sky-600 dark:text-sky-400 flex items-center gap-1.5">
+                                                <User className="w-3.5 h-3.5" />
+                                                Consignee Buyer
+                                              </span>
+                                              <button
+                                                type="button"
+                                                onClick={() => setSelectedBuyerForModal(po.buyer)}
+                                                className="text-[10px] font-bold text-sky-600 hover:underline cursor-pointer btn-tactile"
+                                              >
+                                                Mini Profile
+                                              </button>
+                                            </div>
+                                            <p className="text-sm font-black text-slate-900 dark:text-white uppercase leading-snug">{po.buyer}</p>
+                                            <p className="text-[11px] text-slate-500">Destination APMC Market Yard</p>
+                                            <div className="pt-2 border-t border-slate-100 dark:border-white/5">
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  const text = `Hello *${po.buyer}*,\n\nUpdate from *Tejas Canvassing* regarding PO *${po.poNumber}*:\n🌾 Brand: *${po.brand}*\n⚖️ Quantity: *${po.poQtl} QTL*\n🏢 Supplier Mill: *${po.supplier}*\n\nYour shipment is in transit and awaiting physical arrival at the hub. We will notify you immediately once unloaded.\n\nThank you,\n*Tejas Canvassing*`;
+                                                  const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+                                                  window.open(waUrl, '_blank');
+                                                }}
+                                                className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm btn-tactile cursor-pointer"
+                                              >
+                                                <MessageSquare className="w-3.5 h-3.5" />
+                                                <span>WhatsApp Dispatch Notice</span>
+                                              </button>
+                                            </div>
+                                          </div>
+
+                                          {/* Card 3: Mill Origin & Grain Specs */}
+                                          <div className="p-4 rounded-2xl bg-white/60 dark:bg-neutral-900/60 border border-slate-200/80 dark:border-white/10 space-y-2 text-left shadow-2xs">
+                                            <span className="text-[10px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                                              <Building2 className="w-3.5 h-3.5" />
+                                              Mill & Grain Specs
+                                            </span>
+                                            <div>
+                                              <p className="text-xs font-black text-slate-900 dark:text-white uppercase line-clamp-2">{po.supplier}</p>
+                                              <p className="text-[11px] text-slate-500 font-medium mt-0.5">Mill Origin Dispatch</p>
+                                            </div>
+                                            <div className="pt-2 border-t border-slate-100 dark:border-white/5 space-y-1 text-xs">
+                                              <div className="flex justify-between items-center">
+                                                <span className="text-slate-500">Variety Brand:</span>
+                                                <span className="font-bold text-slate-800 dark:text-slate-200">{po.brand}</span>
+                                              </div>
+                                              <div className="flex justify-between items-center">
+                                                <span className="text-slate-500">Lorry / Bill Ref:</span>
+                                                <span className="font-mono text-slate-600 dark:text-slate-400">{po.billNo || 'Assigned on Arrival'}</span>
+                                              </div>
+                                            </div>
+                                          </div>
+
+                                          {/* Card 4: Operations Shortcuts */}
+                                          <div className="p-4 rounded-2xl bg-white/60 dark:bg-neutral-900/60 border border-slate-200/80 dark:border-white/10 space-y-2 text-left shadow-2xs flex flex-col justify-between">
+                                            <span className="text-[10px] font-black uppercase tracking-wider text-purple-600 dark:text-purple-400 flex items-center gap-1.5">
+                                              <Package className="w-3.5 h-3.5" />
+                                              Hub Operations
+                                            </span>
+                                            <div className="space-y-2">
+                                              <button
+                                                type="button"
+                                                onClick={() => navigate(`/arrival-entry?po=${encodeURIComponent(po.poNumber)}`)}
+                                                className="w-full flex items-center justify-between px-3 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm btn-tactile cursor-pointer"
+                                              >
+                                                <span>Record in Arrival Entry</span>
+                                                <ArrowUpRight className="w-3.5 h-3.5" />
+                                              </button>
+                                              <div className="grid grid-cols-2 gap-2">
+                                                <button
+                                                  type="button"
+                                                  onClick={() => setSelectedPoForModal(po)}
+                                                  className="px-2 py-1.5 rounded-xl border border-slate-200 dark:border-neutral-700 hover:bg-slate-100 dark:hover:bg-neutral-800 text-[10px] font-bold text-slate-700 dark:text-slate-300 transition-all btn-tactile cursor-pointer text-center"
+                                                >
+                                                  PO Summary
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    navigator.clipboard.writeText(po.poNumber);
+                                                    setCopiedPoNumber(po.poNumber);
+                                                    setTimeout(() => setCopiedPoNumber(null), 2000);
+                                                  }}
+                                                  className="px-2 py-1.5 rounded-xl border border-slate-200 dark:border-neutral-700 hover:bg-slate-100 dark:hover:bg-neutral-800 text-[10px] font-bold text-slate-700 dark:text-slate-300 transition-all btn-tactile cursor-pointer flex items-center justify-center gap-1"
+                                                >
+                                                  {copiedPoNumber === po.poNumber ? (
+                                                    <>
+                                                      <Check className="w-3 h-3 text-emerald-600" />
+                                                      <span className="text-emerald-600">Copied</span>
+                                                    </>
+                                                  ) : (
+                                                    <>
+                                                      <Copy className="w-3 h-3" />
+                                                      <span>Copy PO</span>
+                                                    </>
+                                                  )}
+                                                </button>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </motion.div>
+                                    </td>
+                                  </tr>
+                                )}
+                              </AnimatePresence>
+                            </React.Fragment>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>

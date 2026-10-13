@@ -17,7 +17,10 @@ import {
   Key,
   Eye,
   EyeOff,
-  Lock
+  Lock,
+  Users,
+  Sparkles,
+  TrendingUp
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import React, { useState, useEffect } from 'react';
@@ -589,6 +592,23 @@ export default function UsersManagement() {
     (b: any) => b && (b.status === 'Pending Approval' || b.status === 'pending')
   ).length;
 
+  const stakeholderStats = React.useMemo(() => {
+    const buyers = stakeholders.buyers || [];
+    const suppliers = stakeholders.suppliers || [];
+    const employees = stakeholders.employees || [];
+    const total = buyers.length + suppliers.length + employees.length;
+    const activeBuyers = buyers.filter((b: any) => b && b.status !== 'Pending Approval' && b.status !== 'pending').length;
+    const pending = buyers.filter((b: any) => b && (b.status === 'Pending Approval' || b.status === 'pending')).length;
+    return {
+      total,
+      buyersCount: buyers.length,
+      activeBuyers,
+      pendingBuyers: pending,
+      suppliersCount: suppliers.length,
+      employeesCount: employees.length
+    };
+  }, [stakeholders]);
+
   const tabs = [
     { 
       id: 'buyers', 
@@ -634,11 +654,88 @@ export default function UsersManagement() {
         <div className="flex gap-3">
           <button 
             onClick={() => { setNewUser(prev => ({ ...prev, category: activeTab })); setIsAddModalOpen(true); }}
-            className="flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-xl shadow-lg shadow-primary/20 hover:opacity-90 active:scale-95 transition-all text-xs font-black uppercase tracking-widest"
+            className="flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-xl shadow-lg shadow-primary/20 hover:opacity-90 active:scale-95 transition-all text-xs font-black uppercase tracking-widest cursor-pointer btn-tactile"
           >
             <UserPlus className="w-4 h-4" />
             Add Stakeholder
           </button>
+        </div>
+      </div>
+
+      {/* 4 Floating Hero Metric Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-5">
+        <div className="floating-card liquid-glass rounded-2xl p-4 md:p-5 relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-primary/10 rounded-full blur-2xl group-hover:bg-primary/20 transition-all pointer-events-none" />
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[10px] font-black uppercase tracking-wider text-secondary">Total Stakeholders</span>
+            <div className="w-8 h-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+              <Users className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className="text-2xl md:text-3xl font-black text-on-surface">{stakeholderStats.total}</span>
+            <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+              Full Network
+            </span>
+          </div>
+          <p className="text-[11px] text-secondary mt-1">Institutional rice ecosystem</p>
+        </div>
+
+        <div className="floating-card liquid-glass rounded-2xl p-4 md:p-5 relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/10 rounded-full blur-2xl group-hover:bg-emerald-500/20 transition-all pointer-events-none" />
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[10px] font-black uppercase tracking-wider text-secondary">Registered Buyers</span>
+            <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
+              <UserCircle className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className="text-2xl md:text-3xl font-black text-on-surface">{stakeholderStats.buyersCount}</span>
+            {stakeholderStats.pendingBuyers > 0 ? (
+              <span className="text-[10px] font-bold text-amber-700 dark:text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full animate-pulse">
+                {stakeholderStats.pendingBuyers} Pending
+              </span>
+            ) : (
+              <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                All Verified
+              </span>
+            )}
+          </div>
+          <p className="text-[11px] text-secondary mt-1">Wholesale trading entities</p>
+        </div>
+
+        <div className="floating-card liquid-glass rounded-2xl p-4 md:p-5 relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/10 rounded-full blur-2xl group-hover:bg-amber-500/20 transition-all pointer-events-none" />
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[10px] font-black uppercase tracking-wider text-secondary">Suppliers & Mills</span>
+            <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center">
+              <Building2 className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className="text-2xl md:text-3xl font-black text-on-surface">{stakeholderStats.suppliersCount}</span>
+            <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full">
+              Ex-Mill Partners
+            </span>
+          </div>
+          <p className="text-[11px] text-secondary mt-1">Verified APMC milling units</p>
+        </div>
+
+        <div className="floating-card liquid-glass rounded-2xl p-4 md:p-5 relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/10 rounded-full blur-2xl group-hover:bg-blue-500/20 transition-all pointer-events-none" />
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[10px] font-black uppercase tracking-wider text-secondary">Operations Team</span>
+            <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center">
+              <Briefcase className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className="text-2xl md:text-3xl font-black text-on-surface">{stakeholderStats.employeesCount}</span>
+            <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-full">
+              On Duty
+            </span>
+          </div>
+          <p className="text-[11px] text-secondary mt-1">Logistics & admin staff</p>
         </div>
       </div>
 
@@ -653,7 +750,7 @@ export default function UsersManagement() {
               setIsEditing(false);
             }}
             className={cn(
-              "flex items-center gap-2 px-6 py-3 border-b-2 font-black text-xs uppercase tracking-wider transition-all",
+              "flex items-center gap-2 px-6 py-3 border-b-2 font-black text-xs uppercase tracking-wider transition-all btn-tactile cursor-pointer",
               activeTab === tab.id 
                 ? "border-primary text-primary" 
                 : "border-transparent text-secondary hover:text-on-surface"
@@ -764,7 +861,7 @@ export default function UsersManagement() {
           "col-span-12 transition-all duration-300",
           selectedUser ? "lg:col-span-7" : "lg:col-span-9"
         )}>
-          <div className="liquid-glass rounded-3xl overflow-hidden border border-outline-variant/30 shadow-sm">
+          <div className="floating-card liquid-glass rounded-3xl overflow-hidden border border-outline-variant/30 shadow-sm">
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
@@ -893,7 +990,7 @@ export default function UsersManagement() {
                               setSelectedUser(item);
                               setIsEditing(true);
                             }}
-                            className="p-2 hover:bg-surface-container rounded-lg transition-colors flex items-center justify-center text-secondary hover:text-primary cursor-pointer"
+                            className="p-2 hover:bg-surface-container rounded-lg transition-colors flex items-center justify-center text-secondary hover:text-primary cursor-pointer btn-tactile"
                             title="Edit User"
                           >
                             <Edit2 className="w-4 h-4" />
@@ -903,7 +1000,7 @@ export default function UsersManagement() {
                               e.stopPropagation();
                               setUserToDelete({ id: item.id, name: item.name, category: activeTab });
                             }}
-                            className="p-2 hover:bg-rose-500/10 rounded-lg transition-colors flex items-center justify-center text-secondary hover:text-rose-600 cursor-pointer"
+                            className="p-2 hover:bg-rose-500/10 rounded-lg transition-colors flex items-center justify-center text-secondary hover:text-rose-600 cursor-pointer btn-tactile"
                             title="Delete User"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -930,7 +1027,7 @@ export default function UsersManagement() {
             <motion.div 
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
-              className="panel-card bg-surface border border-outline-variant/30 rounded-3xl shadow-xl overflow-hidden flex flex-col max-h-[85vh]"
+              className="floating-card bg-surface border border-outline-variant/30 rounded-3xl shadow-xl overflow-hidden flex flex-col max-h-[85vh]"
             >
               <div className="p-6 border-b border-outline-variant bg-surface-container-low/50 flex items-center justify-between">
                 <div className="flex items-center gap-2">

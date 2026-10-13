@@ -102,7 +102,7 @@ export default function OrderDetails() {
         <div className="flex gap-3">
           <button 
             onClick={() => navigate('/ledger')}
-            className="flex items-center gap-2 px-6 py-3 bg-white dark:bg-surface-container-low border border-outline-variant/30 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-surface-container transition-all active:scale-95"
+            className="flex items-center gap-2 px-6 py-3 bg-white dark:bg-surface-container-low border border-outline-variant/30 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-surface-container transition-all active:scale-95 btn-tactile cursor-pointer"
           >
             <History className="w-4 h-4" />
             Audit Log
@@ -110,7 +110,7 @@ export default function OrderDetails() {
           <button 
             onClick={handleNotifySupplier}
             className={cn(
-              "flex items-center gap-2 px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest shadow-lg transition-all active:scale-95",
+              "flex items-center gap-2 px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest shadow-lg transition-all active:scale-95 btn-tactile cursor-pointer",
               notified 
                 ? "bg-white dark:bg-surface-container text-secondary border border-outline-variant/30 opacity-50 cursor-not-allowed" 
                 : "bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-100"
@@ -126,7 +126,7 @@ export default function OrderDetails() {
       <div className="grid grid-cols-12 gap-8">
         <div className="col-span-12 lg:col-span-8 space-y-8">
            {/* Payment Reconciliation Module */}
-           <section className="liquid-glass p-8 rounded-3xl premium-border space-y-8">
+           <section className="floating-card liquid-glass p-8 rounded-3xl premium-border space-y-8">
               <div className="flex items-center justify-between">
                  <div className="space-y-1">
                     <h3 className="text-xl font-black uppercase tracking-tight">Financial Reconciliation</h3>
@@ -325,7 +325,7 @@ export default function OrderDetails() {
            </section>
 
            {/* Logistics & Tracking Progress */}
-           <section className="liquid-glass p-8 rounded-3xl premium-border space-y-10">
+           <section className="floating-card liquid-glass p-8 rounded-3xl premium-border space-y-10">
               <div className="flex items-center justify-between">
                  <h3 className="text-xl font-black uppercase tracking-tight">Logistics Pipeline</h3>
                  <button className="flex items-center gap-1.5 text-[10px] font-black text-primary uppercase tracking-widest hover:underline">
@@ -395,7 +395,7 @@ export default function OrderDetails() {
            </section>
 
            {/* Items Table */}
-           <section className="liquid-glass rounded-2xl overflow-hidden">
+           <section className="floating-card liquid-glass rounded-2xl overflow-hidden border border-outline-variant/30">
               <div className="p-8 border-b border-outline-variant">
                  <h3 className="text-lg font-black">Consignment Manifest</h3>
               </div>
@@ -438,7 +438,7 @@ export default function OrderDetails() {
         </div>
 
         <div className="col-span-12 lg:col-span-4 space-y-8">
-           <div className="liquid-glass p-8 rounded-2xl flex flex-col gap-6">
+           <div className="floating-card liquid-glass p-8 rounded-2xl flex flex-col gap-6 border border-outline-variant/30">
               <h3 className="text-lg font-black">Counterparties</h3>
               <div className="space-y-6">
                  <div>
@@ -465,7 +465,7 @@ export default function OrderDetails() {
               </div>
            </div>
 
-           <div className="bg-on-background p-8 rounded-2xl text-white space-y-6">
+           <div className="floating-card bg-[#0b1510] p-8 rounded-2xl text-white space-y-6 border border-emerald-900/40 shadow-xl">
               <h3 className="text-lg font-black">Documentation</h3>
               <div className="space-y-4">
                  {[
@@ -474,7 +474,7 @@ export default function OrderDetails() {
                     { label: 'Phytosanitary Certificate', size: '2.1 MB' },
                     { label: 'Commercial Invoice', size: '0.5 MB' },
                  ].map((doc, i) => (
-                    <button key={i} className="w-full flex items-center justify-between p-4 bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 transition-all text-left">
+                    <button key={i} className="w-full flex items-center justify-between p-4 bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 transition-all text-left cursor-pointer btn-tactile">
                        <div className="flex items-center gap-3">
                           <FileText className="w-5 h-5 opacity-40" />
                           <div>
@@ -486,7 +486,7 @@ export default function OrderDetails() {
                     </button>
                  ))}
               </div>
-              <button className="w-full py-4 bg-primary text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-xl shadow-black/20">
+              <button className="w-full py-4 bg-primary text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-xl shadow-black/20 btn-tactile cursor-pointer">
                  Request Additional Logs
               </button>
            </div>

@@ -252,7 +252,7 @@ export default function Navbar({
           {/* PWA Download / Add to Home Screen Button */}
           <button
             onClick={() => window.dispatchEvent(new Event('open-pwa-install-modal'))}
-            className="px-2.5 py-1.5 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 text-xs font-bold shadow-2xs"
+            className="btn-tactile px-2.5 py-1.5 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 text-xs font-bold shadow-2xs"
             title="Download App / Add to Home Screen"
           >
             <Download className="w-4 h-4" />
@@ -262,7 +262,7 @@ export default function Navbar({
           {/* Dark / Light Mode Toggle */}
           <button 
             onClick={toggleTheme}
-            className="p-2 text-secondary hover:bg-surface-container rounded-lg transition-colors cursor-pointer"
+            className="btn-tactile p-2 text-secondary hover:bg-surface-container rounded-lg transition-colors cursor-pointer"
             title={isDark ? "Switch to Light Mode" : "Switch to Night Mode"}
           >
             {isDark ? <Sun className="w-5 h-5 text-primary" /> : <Moon className="w-5 h-5" />}
@@ -276,7 +276,7 @@ export default function Navbar({
                 setIsSettingsMenuOpen(false);
               }}
               className={cn(
-                "p-2 rounded-lg transition-all relative cursor-pointer",
+                "btn-tactile p-2 rounded-lg transition-all relative cursor-pointer",
                 isNotifOpen 
                   ? "bg-primary/10 text-primary ring-2 ring-primary/20" 
                   : "text-secondary hover:bg-surface-container hover:text-on-surface"
@@ -411,47 +411,67 @@ export default function Navbar({
                   </div>
 
                   <div className="p-2 space-y-1">
-                    <button
-                      onClick={() => {
-                        setIsSettingsMenuOpen(false);
-                        navigate('/settings');
-                      }}
-                      className="w-full px-3 py-2.5 text-left text-xs font-bold rounded-xl hover:bg-surface-container flex items-center justify-between transition-colors cursor-pointer"
-                    >
-                      <span className="flex items-center gap-2.5">
-                        <Sliders className="w-4 h-4 text-primary" />
-                        PO & Notification Settings
-                      </span>
-                      <ArrowRight className="w-3.5 h-3.5 text-secondary" />
-                    </button>
+                    {role !== 'employee' && (
+                      <>
+                        <button
+                          onClick={() => {
+                            setIsSettingsMenuOpen(false);
+                            navigate('/settings');
+                          }}
+                          className="w-full px-3 py-2.5 text-left text-xs font-bold rounded-xl hover:bg-surface-container flex items-center justify-between transition-colors cursor-pointer"
+                        >
+                          <span className="flex items-center gap-2.5">
+                            <Sliders className="w-4 h-4 text-primary" />
+                            PO & Notification Settings
+                          </span>
+                          <ArrowRight className="w-3.5 h-3.5 text-secondary" />
+                        </button>
 
-                    <button
-                      onClick={() => {
-                        setIsSettingsMenuOpen(false);
-                        navigate('/users');
-                      }}
-                      className="w-full px-3 py-2.5 text-left text-xs font-bold rounded-xl hover:bg-surface-container flex items-center justify-between transition-colors cursor-pointer"
-                    >
-                      <span className="flex items-center gap-2.5">
-                        <User className="w-4 h-4 text-emerald-500" />
-                        Stakeholders & Buyers
-                      </span>
-                      <ArrowRight className="w-3.5 h-3.5 text-secondary" />
-                    </button>
+                        <button
+                          onClick={() => {
+                            setIsSettingsMenuOpen(false);
+                            navigate('/users');
+                          }}
+                          className="w-full px-3 py-2.5 text-left text-xs font-bold rounded-xl hover:bg-surface-container flex items-center justify-between transition-colors cursor-pointer"
+                        >
+                          <span className="flex items-center gap-2.5">
+                            <User className="w-4 h-4 text-emerald-500" />
+                            Stakeholders & Buyers
+                          </span>
+                          <ArrowRight className="w-3.5 h-3.5 text-secondary" />
+                        </button>
 
-                    <button
-                      onClick={() => {
-                        setIsSettingsMenuOpen(false);
-                        navigate('/patti');
-                      }}
-                      className="w-full px-3 py-2.5 text-left text-xs font-bold rounded-xl hover:bg-surface-container flex items-center justify-between transition-colors cursor-pointer"
-                    >
-                      <span className="flex items-center gap-2.5">
-                        <ShieldCheck className="w-4 h-4 text-teal-500" />
-                        Patti Ledger & Print Setup
-                      </span>
-                      <ArrowRight className="w-3.5 h-3.5 text-secondary" />
-                    </button>
+                        <button
+                          onClick={() => {
+                            setIsSettingsMenuOpen(false);
+                            navigate('/patti');
+                          }}
+                          className="w-full px-3 py-2.5 text-left text-xs font-bold rounded-xl hover:bg-surface-container flex items-center justify-between transition-colors cursor-pointer"
+                        >
+                          <span className="flex items-center gap-2.5">
+                            <ShieldCheck className="w-4 h-4 text-teal-500" />
+                            Patti Ledger & Print Setup
+                          </span>
+                          <ArrowRight className="w-3.5 h-3.5 text-secondary" />
+                        </button>
+                      </>
+                    )}
+
+                    {role === 'employee' && (
+                      <button
+                        onClick={() => {
+                          setIsSettingsMenuOpen(false);
+                          navigate('/employee/profile');
+                        }}
+                        className="w-full px-3 py-2.5 text-left text-xs font-bold rounded-xl hover:bg-surface-container flex items-center justify-between transition-colors cursor-pointer"
+                      >
+                        <span className="flex items-center gap-2.5">
+                          <User className="w-4 h-4 text-emerald-500" />
+                          Operations Staff Profile
+                        </span>
+                        <ArrowRight className="w-3.5 h-3.5 text-secondary" />
+                      </button>
+                    )}
 
                     <button
                       onClick={() => {
@@ -469,21 +489,23 @@ export default function Navbar({
                   </div>
 
                   <div className="p-2.5 bg-surface-container border-t border-outline-variant/50 space-y-1.5">
-                    <button
-                      onClick={() => {
-                        setIsSettingsMenuOpen(false);
-                        navigate('/settings');
-                      }}
-                      className="w-full py-2 bg-primary text-on-primary text-xs font-bold rounded-xl hover:opacity-90 transition-opacity flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
-                    >
-                      Open Full Settings
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </button>
+                    {role !== 'employee' && (
+                      <button
+                        onClick={() => {
+                          setIsSettingsMenuOpen(false);
+                          navigate('/settings');
+                        }}
+                        className="w-full py-2 bg-primary text-on-primary text-xs font-bold rounded-xl hover:opacity-90 transition-opacity flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                      >
+                        Open Full Settings
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                     <button
                       onClick={async () => {
                         setIsSettingsMenuOpen(false);
                         await performSecureLogout();
-                        navigate('/login?portal=admin');
+                        navigate(role === 'employee' ? '/login?portal=employee' : '/login?portal=admin');
                       }}
                       className="w-full py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer border border-rose-500/20"
                     >
@@ -500,7 +522,11 @@ export default function Navbar({
 
           {/* User Profile Info */}
           <div 
-            onClick={() => navigate('/settings')}
+            onClick={() => {
+              if (role === 'employee') navigate('/employee/profile');
+              else if (role === 'merchant') navigate('/profile');
+              else navigate('/settings');
+            }}
             className="flex items-center gap-3 cursor-pointer p-1 rounded-xl hover:bg-surface-container transition-colors"
             title="Account & Profile Settings"
           >

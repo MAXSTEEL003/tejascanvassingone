@@ -106,3 +106,20 @@ export function formatDateToDDMMYYYY(val: any): string {
   }
   return String(val);
 }
+
+export function cleanMerchantDisplayName(name: string): string {
+  if (!name) return 'Merchant';
+  let s = name.trim();
+  if (s.includes('@')) {
+    const prefix = s.split('@')[0];
+    if (/^\d{10,}$/.test(prefix)) {
+      return `+91 ${prefix.slice(-10)}`;
+    }
+    return prefix.charAt(0).toUpperCase() + prefix.slice(1);
+  }
+  if (/^\d{10,}$/.test(s)) {
+    return `+91 ${s.slice(-10)}`;
+  }
+  return s;
+}
+

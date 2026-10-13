@@ -14,7 +14,9 @@ import {
   Palette,
   CheckCircle2,
   BookOpen,
-  Copy
+  Copy,
+  Loader2,
+  Image as ImageIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, formatINR } from '../lib/utils';
@@ -73,7 +75,8 @@ const InputCell: React.FC<{
   readOnly?: boolean,
   borderClass?: string,
   activeTextClass?: string,
-  readOnlyBgClass?: string
+  readOnlyBgClass?: string,
+  placeholder?: string
 }> = ({ 
   value, 
   onChange, 
@@ -81,16 +84,18 @@ const InputCell: React.FC<{
   readOnly,
   borderClass = "border-neutral-300 dark:border-neutral-800",
   activeTextClass = "text-neutral-900 dark:text-neutral-100",
-  readOnlyBgClass = "bg-neutral-50/50 dark:bg-neutral-900/50 text-primary"
+  readOnlyBgClass = "bg-neutral-50/50 dark:bg-neutral-900/50 text-primary",
+  placeholder
 }) => (
-  <div className={cn("border-r border-b h-full", borderClass, className)}>
+  <div className={cn("border-r border-b h-full flex items-center justify-center", borderClass, className)}>
     <input 
       type="text" 
       value={value}
       onChange={(e) => !readOnly && onChange(e.target.value)}
       readOnly={readOnly}
+      placeholder={placeholder}
       className={cn(
-        "w-full h-full bg-transparent p-2 text-sm font-semibold outline-none text-center placeholder:text-neutral-400",
+        "w-full h-full bg-transparent px-1.5 py-1 text-xs font-mono font-bold tabular-nums outline-none text-center placeholder:text-neutral-400 truncate tracking-tight",
         readOnly ? readOnlyBgClass : activeTextClass
       )}
     />
@@ -126,6 +131,9 @@ export default function PattiView() {
   const [isManualDiscount, setIsManualDiscount] = useState(false);
   const [copied, setCopied] = useState(false);
   const [copiedImage, setCopiedImage] = useState(false);
+  const [isCapturingImage, setIsCapturingImage] = useState(false);
+  const [imageScale, setImageScale] = useState<2 | 3>(3);
+  const [copyNotification, setCopyNotification] = useState<{ type: 'success' | 'fallback' | 'error'; message: string } | null>(null);
 
   // Print Configuration Options
   const [printColorMode, setPrintColorMode] = useState<'classic' | 'sapphire' | 'mono'>('classic');
@@ -527,332 +535,427 @@ Generated via GrainMart B2B Depot Terminal.`;
     };
   };
 
-  const exportPDF = async () => {
+  const generatePattiCanvas = async (scale: number = imageScale): Promise<HTMLCanvasElement | null> => {
     const element = document.getElementById('patti-ledger-form');
-    if (element) {
-      const originalGetComputedStyle = window.getComputedStyle;
+    if (!element) return null;
 
-      // Patch the window computed style temporarily
-      window.getComputedStyle = createComputedStyleProxy(window) as any;
-
+    // 1. Wait for document fonts to finish loading
+    if (document.fonts && document.fonts.ready) {
       try {
-        const canvas = await html2canvas(element, {
-          scale: 4, 
-          useCORS: true,
-          logging: false,
-          backgroundColor: '#ffffff',
-          onclone: (clonedDoc) => {
-            // Also patch cloned document window computed style
-            if (clonedDoc.defaultView) {
-              clonedDoc.defaultView.getComputedStyle = createComputedStyleProxy(clonedDoc.defaultView) as any;
+        await document.fonts.ready;
+      } catch (e) {
+        console.warn('Font loading wait warning:', e);
+      }
+    }
+
+    // 2. Short RAF delay to ensure any pending React layout or input paint completes
+    await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 60)));
+
+    const originalGetComputedStyle = window.getComputedStyle;
+    window.getComputedStyle = createComputedStyleProxy(window) as any;
+
+    try {
+      const canvas = await html2canvas(element, {
+        scale: scale, 
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+        onclone: (clonedDoc) => {
+          // Force light mode on cloned document for clean print/image output
+          clonedDoc.documentElement.classList.remove('dark');
+          clonedDoc.body.classList.remove('dark');
+          clonedDoc.documentElement.style.colorScheme = 'light';
+          clonedDoc.body.style.backgroundColor = '#ffffff';
+
+          if (clonedDoc.defaultView) {
+            clonedDoc.defaultView.getComputedStyle = createComputedStyleProxy(clonedDoc.defaultView) as any;
+          }
+
+          // Sanitize OKLCH in style tags
+          clonedDoc.querySelectorAll('style').forEach(styleTag => {
+            if (styleTag.textContent) {
+              styleTag.textContent = convertOklchAndOklabColorInString(styleTag.textContent);
             }
+          });
 
-            // Convert OKLCH/OKLAB in style elements
-            clonedDoc.querySelectorAll('style').forEach(styleTag => {
-              if (styleTag.textContent) {
-                styleTag.textContent = convertOklchAndOklabColorInString(styleTag.textContent);
-              }
-            });
-
-            // Convert OKLCH/OKLAB in stylesheets rules
-            try {
-              const sheets = Array.from(clonedDoc.styleSheets);
-              sheets.forEach((sheet: any) => {
-                try {
-                  const rules = sheet.cssRules || sheet.rules;
-                  if (rules) {
-                    for (let i = 0; i < rules.length; i++) {
-                      const rule = rules[i];
-                      if (rule.style) {
-                        for (let j = 0; j < rule.style.length; j++) {
-                          const propName = rule.style[j];
-                          const propVal = rule.style.getPropertyValue(propName);
-                          if (propVal && (propVal.includes('oklch') || propVal.includes('oklab'))) {
-                            rule.style.setProperty(propName, convertOklchAndOklabColorInString(propVal));
-                          }
+          // Sanitize stylesheets rules
+          try {
+            const sheets = Array.from(clonedDoc.styleSheets);
+            sheets.forEach((sheet: any) => {
+              try {
+                const rules = sheet.cssRules || sheet.rules;
+                if (rules) {
+                  for (let i = 0; i < rules.length; i++) {
+                    const rule = rules[i];
+                    if (rule.style) {
+                      for (let j = 0; j < rule.style.length; j++) {
+                        const propName = rule.style[j];
+                        const propVal = rule.style.getPropertyValue(propName);
+                        if (propVal && (propVal.includes('oklch') || propVal.includes('oklab'))) {
+                          rule.style.setProperty(propName, convertOklchAndOklabColorInString(propVal));
                         }
                       }
                     }
                   }
-                } catch (err) {}
-              });
-            } catch (e) {}
+                }
+              } catch (err) {}
+            });
+          } catch (e) {}
 
-            const clonedEl = clonedDoc.getElementById('patti-ledger-form');
-            if (clonedEl) {
-              const originalElContainer = document.getElementById('patti-ledger-form')!;
-              
-              clonedEl.style.fontFamily = 'Arial, sans-serif';
-              clonedEl.style.color = '#000000';
-              clonedEl.style.backgroundColor = '#ffffff';
+          const clonedEl = clonedDoc.getElementById('patti-ledger-form');
+          if (clonedEl) {
+            const originalElContainer = document.getElementById('patti-ledger-form')!;
+            
+            // Standardize container dimensions to landscape desktop A4 proportion
+            clonedEl.style.width = '1040px';
+            clonedEl.style.minWidth = '1040px';
+            clonedEl.style.maxWidth = '1040px';
+            clonedEl.style.margin = '0 auto';
+            clonedEl.style.padding = '28px';
+            clonedEl.style.boxShadow = 'none';
+            clonedEl.style.borderRadius = '12px';
+            clonedEl.style.border = `2px solid ${colors.borderExact || '#d4d4d4'}`;
+            clonedEl.style.backgroundColor = '#ffffff';
+            clonedEl.style.color = '#000000';
+            clonedEl.style.fontFamily = '"Geist", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
 
-              // Map all colors to inline RGB properties recursively to guarantee no oklch/oklab leak
-              const propsToConvert = [
-                'color',
-                'backgroundColor',
-                'borderColor',
-                'borderTopColor',
-                'borderBottomColor',
-                'borderLeftColor',
-                'borderRightColor',
-                'boxShadow',
-                'outlineColor',
-                'fill',
-                'stroke'
-              ];
+            // Ensure inner grid is completely expanded without horizontal scrolling
+            const scrollContainer = clonedEl.querySelector('.overflow-x-auto');
+            if (scrollContainer && scrollContainer instanceof HTMLElement) {
+              scrollContainer.style.overflow = 'visible';
+              scrollContainer.style.padding = '0';
+              scrollContainer.style.margin = '0';
+            }
 
-              const convertTree = (originalNode: HTMLElement, clonedNode: HTMLElement) => {
-                const style = originalGetComputedStyle(originalNode);
-                if (style) {
-                  for (const prop of propsToConvert) {
-                    const val = style[prop as any];
-                    if (typeof val === 'string' && (val.includes('oklch') || val.includes('oklab'))) {
-                      clonedNode.style[prop as any] = convertOklchAndOklabColorInString(val);
+            const propsToConvert = [
+              'color',
+              'backgroundColor',
+              'borderColor',
+              'borderTopColor',
+              'borderBottomColor',
+              'borderLeftColor',
+              'borderRightColor',
+              'boxShadow',
+              'outlineColor',
+              'fill',
+              'stroke'
+            ];
+
+            const convertTree = (originalNode: HTMLElement, clonedNode: HTMLElement) => {
+              const style = originalGetComputedStyle(originalNode);
+              if (style) {
+                for (const prop of propsToConvert) {
+                  const val = style[prop as any];
+                  if (typeof val === 'string' && (val.includes('oklch') || val.includes('oklab'))) {
+                    clonedNode.style[prop as any] = convertOklchAndOklabColorInString(val);
+                  }
+                }
+              }
+
+              // Replace input elements with clean text divs to eliminate native form clipping
+              if (originalNode instanceof HTMLInputElement && clonedNode instanceof HTMLInputElement) {
+                const parent = clonedNode.parentNode;
+                if (parent) {
+                  const textDiv = clonedDoc.createElement('div');
+                  let displayText = originalNode.value || '';
+                  
+                  if (originalNode.type === 'date' && displayText) {
+                    const parts = displayText.split('-');
+                    if (parts.length === 3) {
+                      displayText = `${parts[2]}/${parts[1]}/${parts[0]}`;
                     }
                   }
-                }
 
-                if (originalNode instanceof HTMLInputElement && clonedNode instanceof HTMLInputElement) {
-                  clonedNode.value = originalNode.value;
-                  clonedNode.style.color = '#000000';
-                  clonedNode.style.fontWeight = 'bold';
-                  clonedNode.style.backgroundColor = 'transparent';
-                  clonedNode.style.border = 'none';
-                  clonedNode.style.opacity = '1';
-                }
-                if (originalNode instanceof HTMLSelectElement && clonedNode instanceof HTMLSelectElement) {
-                  clonedNode.value = originalNode.value;
-                  clonedNode.style.color = '#000000';
-                  clonedNode.style.fontWeight = 'bold';
-                  clonedNode.style.backgroundColor = 'transparent';
-                  clonedNode.style.border = 'none';
-                  clonedNode.style.opacity = '1';
-                }
-
-                // Tailwind backup utilities
-                const classList = clonedNode.classList;
-                if (classList) {
-                  if (classList.contains('text-rose-600')) clonedNode.style.color = '#e11d48';
-                  if (classList.contains('text-emerald-600')) clonedNode.style.color = '#059669';
-                  if (classList.contains('text-sky-600')) clonedNode.style.color = '#0284c7';
-                  if (classList.contains('text-blue-600')) clonedNode.style.color = '#2563eb';
-                  if (classList.contains('text-indigo-600')) clonedNode.style.color = '#4f46e5';
-                  if (classList.contains('text-amber-600')) clonedNode.style.color = '#ea580c';
+                  const isCentered = originalNode.classList.contains('text-center') || style?.textAlign === 'center';
+                  const isNumeric = originalNode.classList.contains('font-mono') ||
+                                    originalNode.classList.contains('tabular-nums') ||
+                                    (!isNaN(Number(displayText.replace(/[,₹ \-]/g, ''))) && displayText.length > 0);
                   
-                  if (classList.contains('bg-rose-500/[0.03]') || classList.contains('bg-rose-50')) {
-                    clonedNode.style.backgroundColor = '#fff1f2';
-                  }
-                  if (classList.contains('bg-emerald-500/[0.04]') || classList.contains('bg-emerald-50')) {
-                    clonedNode.style.backgroundColor = '#ecfdf5';
-                  }
-                  if (classList.contains('bg-sky-500/[0.04]') || classList.contains('bg-sky-50')) {
-                    clonedNode.style.backgroundColor = '#f0f9ff';
-                  }
-                  if (classList.contains('bg-neutral-100')) {
-                    clonedNode.style.backgroundColor = '#f5f5f5';
-                  }
-                }
+                  const isLong = displayText.length > 13;
 
-                const originalChildren = Array.from(originalNode.children) as HTMLElement[];
-                const clonedChildren = Array.from(clonedNode.children) as HTMLElement[];
-                for (let i = 0; i < originalChildren.length; i++) {
-                  if (clonedChildren[i]) {
-                    convertTree(originalChildren[i], clonedChildren[i]);
-                  }
-                }
-              };
+                  textDiv.style.width = '100%';
+                  textDiv.style.height = '100%';
+                  textDiv.style.display = 'flex';
+                  textDiv.style.alignItems = 'center';
+                  textDiv.style.justifyContent = isLong ? 'flex-start' : (isCentered ? 'center' : 'flex-start');
+                  textDiv.style.textAlign = isLong ? 'left' : (isCentered ? 'center' : 'left');
+                  textDiv.style.padding = isLong ? '0 4px' : (isCentered ? '0 4px' : (style?.padding || '0 12px'));
+                  textDiv.style.boxSizing = 'border-box';
+                  textDiv.style.color = '#000000';
+                  textDiv.style.backgroundColor = 'transparent';
+                  textDiv.style.fontWeight = style?.fontWeight || '700';
+                  textDiv.style.lineHeight = '1';
+                  textDiv.style.overflow = 'hidden';
 
-              convertTree(originalElContainer, clonedEl);
-            }
+                  textDiv.style.fontFamily = isNumeric 
+                    ? '"Geist Mono", SFMono-Regular, Consolas, monospace' 
+                    : '"Geist", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+                  textDiv.style.fontVariantNumeric = 'tabular-nums';
+
+                  // Dynamic sizing to prevent clipping of long bill numbers, bank names, or notes
+                  let baseFontSize = parseFloat(style?.fontSize || '12');
+                  if (isNaN(baseFontSize) || baseFontSize <= 0) baseFontSize = 12;
+
+                  if (displayText.length > 24) {
+                    textDiv.style.fontSize = '8.5px';
+                    textDiv.style.letterSpacing = '-0.025em';
+                  } else if (displayText.length > 18) {
+                    textDiv.style.fontSize = '9.5px';
+                    textDiv.style.letterSpacing = '-0.02em';
+                  } else if (displayText.length > 13) {
+                    textDiv.style.fontSize = '10.5px';
+                    textDiv.style.letterSpacing = '-0.015em';
+                  } else {
+                    textDiv.style.fontSize = `${baseFontSize}px`;
+                  }
+
+                  const span = clonedDoc.createElement('span');
+                  span.textContent = displayText;
+                  span.style.display = 'block';
+                  span.style.width = '100%';
+                  span.style.overflow = 'hidden';
+                  span.style.whiteSpace = 'nowrap';
+                  span.style.textOverflow = 'ellipsis';
+                  span.style.textAlign = isLong ? 'left' : (isCentered ? 'center' : 'left');
+
+                  if (!displayText) {
+                    if (originalNode.placeholder && (originalNode.placeholder.includes('MILLER') || originalNode.placeholder.includes('PARTY'))) {
+                      span.textContent = originalNode.placeholder;
+                      textDiv.style.color = '#a3a3a3';
+                      textDiv.style.fontWeight = '500';
+                    } else {
+                      span.textContent = '—';
+                      textDiv.style.color = '#d4d4d4';
+                    }
+                  }
+
+                  textDiv.appendChild(span);
+                  parent.replaceChild(textDiv, clonedNode);
+                  return;
+                }
+              }
+
+              // Replace select elements with clean percentage text
+              if (originalNode instanceof HTMLSelectElement && clonedNode instanceof HTMLSelectElement) {
+                const parent = clonedNode.parentNode;
+                if (parent) {
+                  const textDiv = clonedDoc.createElement('div');
+                  const opt = originalNode.options[originalNode.selectedIndex];
+                  const optText = opt ? opt.text : `${(parseFloat(originalNode.value || '0') * 100).toFixed(0)}%`;
+
+                  textDiv.textContent = optText;
+                  textDiv.style.width = '100%';
+                  textDiv.style.height = '100%';
+                  textDiv.style.display = 'flex';
+                  textDiv.style.alignItems = 'center';
+                  textDiv.style.justifyContent = 'center';
+                  textDiv.style.textAlign = 'center';
+                  textDiv.style.color = '#000000';
+                  textDiv.style.fontFamily = '"Geist Mono", monospace';
+                  textDiv.style.fontVariantNumeric = 'tabular-nums';
+                  textDiv.style.fontSize = '11px';
+                  textDiv.style.fontWeight = '900';
+                  textDiv.style.boxSizing = 'border-box';
+
+                  parent.replaceChild(textDiv, clonedNode);
+                  return;
+                }
+              }
+
+              // Numeric formatting optimization for high-density amount cells
+              if (clonedNode.classList && (clonedNode.classList.contains('font-mono') || clonedNode.classList.contains('tabular-nums'))) {
+                const text = (clonedNode.textContent || '').trim();
+                if (text.length > 13) {
+                  clonedNode.style.fontSize = '10.5px';
+                  clonedNode.style.letterSpacing = '-0.025em';
+                } else if (text.length > 10) {
+                  clonedNode.style.fontSize = '11.5px';
+                  clonedNode.style.letterSpacing = '-0.015em';
+                }
+              }
+
+              // Tailwind utility color mapping for reliable contrast in cloned canvas
+              const classList = clonedNode.classList;
+              if (classList) {
+                if (classList.contains('text-rose-600') || classList.contains('text-rose-500')) clonedNode.style.color = '#dc2626';
+                if (classList.contains('text-emerald-600') || classList.contains('text-emerald-500')) clonedNode.style.color = '#059669';
+                if (classList.contains('text-sky-600') || classList.contains('text-sky-500')) clonedNode.style.color = '#0284c7';
+                if (classList.contains('text-blue-600') || classList.contains('text-blue-500')) clonedNode.style.color = '#2563eb';
+                if (classList.contains('text-indigo-600')) clonedNode.style.color = '#4f46e5';
+                if (classList.contains('text-amber-600') || classList.contains('text-amber-500')) clonedNode.style.color = '#d97706';
+                
+                if (classList.contains('bg-rose-500/[0.03]') || classList.contains('bg-rose-50')) {
+                  clonedNode.style.backgroundColor = '#fff1f2';
+                }
+                if (classList.contains('bg-emerald-500/[0.04]') || classList.contains('bg-emerald-50')) {
+                  clonedNode.style.backgroundColor = '#ecfdf5';
+                }
+                if (classList.contains('bg-sky-500/[0.04]') || classList.contains('bg-sky-50')) {
+                  clonedNode.style.backgroundColor = '#f0f9ff';
+                }
+                if (classList.contains('bg-blue-500/[0.02]')) {
+                  clonedNode.style.backgroundColor = '#eff6ff';
+                }
+                if (classList.contains('bg-neutral-100')) {
+                  clonedNode.style.backgroundColor = '#f5f5f5';
+                }
+              }
+
+              const originalChildren = Array.from(originalNode.children) as HTMLElement[];
+              const clonedChildren = Array.from(clonedNode.children) as HTMLElement[];
+              for (let i = 0; i < originalChildren.length; i++) {
+                if (clonedChildren[i]) {
+                  convertTree(originalChildren[i], clonedChildren[i]);
+                }
+              }
+            };
+
+            convertTree(originalElContainer, clonedEl);
           }
-        });
-        
-        const imgData = canvas.toDataURL('image/png', 1.0);
-        
-        // A4 Dimensions in landscape: 297mm x 210mm
-        const pdf = new jsPDF('l', 'mm', 'a4');
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const pdfHeight = pdf.internal.pageSize.getHeight();
-        
-        const imgProps = pdf.getImageProperties(imgData);
-        const margin = 8;
-        const width = pdfWidth - (margin * 2);
-        const height = (imgProps.height * width) / imgProps.width;
-        
-        let finalHeight = height;
-        let finalWidth = width;
-        if (finalHeight > (pdfHeight - margin * 2)) {
-          finalHeight = pdfHeight - margin * 2;
-          finalWidth = (imgProps.width * finalHeight) / imgProps.height;
         }
+      });
+      return canvas;
+    } finally {
+      window.getComputedStyle = originalGetComputedStyle;
+    }
+  };
 
-        const x = (pdfWidth - finalWidth) / 2;
-        const y = (pdfHeight - finalHeight) / 2;
-        
-        pdf.addImage(imgData, 'PNG', x, y, finalWidth, finalHeight, undefined, 'FAST');
-        pdf.save(`Patti_Receipt_${formData.partyName || 'Trade'}_${printConfig.pattiNo}.pdf`);
-      } catch (error) {
-        console.error('PDF Export Error:', error);
-        alert('Export failed due to browser canvas constraints. Use the print (Ctrl+P) option as a high-fidelity alternative.');
-      } finally {
-        window.getComputedStyle = originalGetComputedStyle;
+  const exportPDF = async () => {
+    try {
+      const canvas = await generatePattiCanvas(3);
+      if (!canvas) {
+        alert('Export failed to render canvas.');
+        return;
       }
+      const imgData = canvas.toDataURL('image/png', 1.0);
+      
+      // A4 Dimensions in landscape: 297mm x 210mm
+      const pdf = new jsPDF('l', 'mm', 'a4');
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      
+      const imgProps = pdf.getImageProperties(imgData);
+      const margin = 8;
+      const width = pdfWidth - (margin * 2);
+      const height = (imgProps.height * width) / imgProps.width;
+      
+      let finalHeight = height;
+      let finalWidth = width;
+      if (finalHeight > (pdfHeight - margin * 2)) {
+        finalHeight = pdfHeight - margin * 2;
+        finalWidth = (imgProps.width * finalHeight) / imgProps.height;
+      }
+
+      const x = (pdfWidth - finalWidth) / 2;
+      const y = (pdfHeight - finalHeight) / 2;
+      
+      pdf.addImage(imgData, 'PNG', x, y, finalWidth, finalHeight, undefined, 'FAST');
+      pdf.save(`Patti_Receipt_${formData.partyName || 'Trade'}_${printConfig.pattiNo}.pdf`);
+    } catch (error) {
+      console.error('PDF Export Error:', error);
+      alert('Export failed due to browser constraints. Use the print (Ctrl+P) option as a high-fidelity alternative.');
+    }
+  };
+
+  const downloadPattiAsImage = async () => {
+    if (isCapturingImage) return;
+    setIsCapturingImage(true);
+    try {
+      const canvas = await generatePattiCanvas(imageScale);
+      if (!canvas) {
+        alert('Could not render document canvas. Please try again.');
+        return;
+      }
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+      if (!blob) {
+        alert('Failed to encode PNG image.');
+        return;
+      }
+      const filename = `Patti_Ledger_${(formData.partyName || 'Statement').replace(/[^a-zA-Z0-9_-]/g, '_')}_${printConfig.pattiNo}.png`;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+      setCopyNotification({
+        type: 'success',
+        message: `Downloaded ${imageScale}× Ultra-HD PNG (${filename})!`
+      });
+      setTimeout(() => setCopyNotification(null), 3500);
+    } catch (err) {
+      console.error('Download PNG Error:', err);
+      alert('Failed to download image. Try web print or PDF export instead.');
+    } finally {
+      setIsCapturingImage(false);
     }
   };
 
   const copyPattiAsImage = async () => {
-    const element = document.getElementById('patti-ledger-form');
-    if (element) {
-      const originalGetComputedStyle = window.getComputedStyle;
-
-      // Patch the window computed style temporarily
-      window.getComputedStyle = createComputedStyleProxy(window) as any;
-
-      try {
-        const canvas = await html2canvas(element, {
-          scale: 4, 
-          useCORS: true,
-          logging: false,
-          backgroundColor: '#ffffff',
-          onclone: (clonedDoc) => {
-            if (clonedDoc.defaultView) {
-              clonedDoc.defaultView.getComputedStyle = createComputedStyleProxy(clonedDoc.defaultView) as any;
-            }
-
-            clonedDoc.querySelectorAll('style').forEach(styleTag => {
-              if (styleTag.textContent) {
-                styleTag.textContent = convertOklchAndOklabColorInString(styleTag.textContent);
-              }
-            });
-
-            try {
-              const sheets = Array.from(clonedDoc.styleSheets);
-              sheets.forEach((sheet: any) => {
-                try {
-                  const rules = sheet.cssRules || sheet.rules;
-                  if (rules) {
-                    for (let i = 0; i < rules.length; i++) {
-                      const rule = rules[i];
-                      if (rule.style) {
-                        for (let j = 0; j < rule.style.length; j++) {
-                          const propName = rule.style[j];
-                          const propVal = rule.style.getPropertyValue(propName);
-                          if (propVal && (propVal.includes('oklch') || propVal.includes('oklab'))) {
-                            rule.style.setProperty(propName, convertOklchAndOklabColorInString(propVal));
-                          }
-                        }
-                      }
-                    }
-                  }
-                } catch (err) {}
-              });
-            } catch (e) {}
-
-            const clonedEl = clonedDoc.getElementById('patti-ledger-form');
-            if (clonedEl) {
-              const originalElContainer = document.getElementById('patti-ledger-form')!;
-              
-              clonedEl.style.fontFamily = 'Arial, sans-serif';
-              clonedEl.style.color = '#000000';
-              clonedEl.style.backgroundColor = '#ffffff';
-
-              const propsToConvert = [
-                'color',
-                'backgroundColor',
-                'borderColor',
-                'borderTopColor',
-                'borderBottomColor',
-                'borderLeftColor',
-                'borderRightColor',
-                'boxShadow',
-                'outlineColor',
-                'fill',
-                'stroke'
-              ];
-
-              const convertTree = (originalNode: HTMLElement, clonedNode: HTMLElement) => {
-                const style = originalGetComputedStyle(originalNode);
-                if (style) {
-                  for (const prop of propsToConvert) {
-                    const val = style[prop as any];
-                    if (typeof val === 'string' && (val.includes('oklch') || val.includes('oklab'))) {
-                      clonedNode.style[prop as any] = convertOklchAndOklabColorInString(val);
-                    }
-                  }
-                }
-
-                if (originalNode instanceof HTMLInputElement && clonedNode instanceof HTMLInputElement) {
-                  clonedNode.value = originalNode.value;
-                  clonedNode.style.color = '#000000';
-                  clonedNode.style.fontWeight = 'bold';
-                  clonedNode.style.backgroundColor = 'transparent';
-                  clonedNode.style.border = 'none';
-                  clonedNode.style.opacity = '1';
-                }
-                if (originalNode instanceof HTMLSelectElement && clonedNode instanceof HTMLSelectElement) {
-                  clonedNode.value = originalNode.value;
-                  clonedNode.style.color = '#000000';
-                  clonedNode.style.fontWeight = 'bold';
-                  clonedNode.style.backgroundColor = 'transparent';
-                  clonedNode.style.border = 'none';
-                  clonedNode.style.opacity = '1';
-                }
-
-                const classList = clonedNode.classList;
-                if (classList) {
-                  if (classList.contains('text-rose-600')) clonedNode.style.color = '#e11d48';
-                  if (classList.contains('text-emerald-600')) clonedNode.style.color = '#059669';
-                  if (classList.contains('text-sky-600')) clonedNode.style.color = '#0284c7';
-                  if (classList.contains('text-blue-600')) clonedNode.style.color = '#2563eb';
-                  if (classList.contains('text-indigo-600')) clonedNode.style.color = '#4f46e5';
-                  if (classList.contains('text-amber-600')) clonedNode.style.color = '#ea580c';
-                  
-                  if (classList.contains('bg-rose-500/[0.03]') || classList.contains('bg-rose-50')) {
-                    clonedNode.style.backgroundColor = '#fff1f2';
-                  }
-                  if (classList.contains('bg-emerald-500/[0.04]') || classList.contains('bg-emerald-50')) {
-                    clonedNode.style.backgroundColor = '#ecfdf5';
-                  }
-                  if (classList.contains('bg-sky-500/[0.04]') || classList.contains('bg-sky-50')) {
-                    clonedNode.style.backgroundColor = '#f0f9ff';
-                  }
-                  if (classList.contains('bg-neutral-100')) {
-                    clonedNode.style.backgroundColor = '#f5f5f5';
-                  }
-                }
-
-                const originalChildren = Array.from(originalNode.children) as HTMLElement[];
-                const clonedChildren = Array.from(clonedNode.children) as HTMLElement[];
-                for (let i = 0; i < originalChildren.length; i++) {
-                  if (clonedChildren[i]) {
-                    convertTree(originalChildren[i], clonedChildren[i]);
-                  }
-                }
-              };
-
-              convertTree(originalElContainer, clonedEl);
-            }
-          }
-        });
-
-        canvas.toBlob((blob) => {
-          if (blob) {
-            const item = new ClipboardItem({ 'image/png': blob });
-            navigator.clipboard.write([item]).then(() => {
-              setCopiedImage(true);
-              setTimeout(() => setCopiedImage(false), 2050);
-            }).catch(err => {
-              console.error('Clipboard write error:', err);
-              alert('Could not copy image automatically. Use secure backup download or web print option!');
-            });
-          }
-        }, 'image/png');
-      } catch (error) {
-        console.error('Copy Image Error:', error);
-        alert('Failed to copy. Use secure backup download or print instead.');
-      } finally {
-        window.getComputedStyle = originalGetComputedStyle;
+    if (isCapturingImage) return;
+    setIsCapturingImage(true);
+    try {
+      const canvas = await generatePattiCanvas(imageScale);
+      if (!canvas) {
+        alert('Could not render document canvas. Please try again.');
+        return;
       }
+
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+      if (!blob) {
+        alert('Failed to encode PNG image.');
+        return;
+      }
+
+      let copiedToClipboard = false;
+
+      // Attempt high-fidelity Clipboard Item write
+      if (navigator.clipboard && typeof ClipboardItem !== 'undefined') {
+        try {
+          const item = new ClipboardItem({ 'image/png': blob });
+          await navigator.clipboard.write([item]);
+          copiedToClipboard = true;
+        } catch (clipErr) {
+          console.warn('Direct clipboard write failed, utilizing automatic download fallback:', clipErr);
+        }
+      }
+
+      if (copiedToClipboard) {
+        setCopiedImage(true);
+        setCopyNotification({
+          type: 'success',
+          message: `Copied ${imageScale}× Ultra-HD image to clipboard! Ready to paste into WhatsApp, Email, or Slack.`
+        });
+        setTimeout(() => {
+          setCopiedImage(false);
+          setCopyNotification(null);
+        }, 3500);
+      } else {
+        // Fallback: download PNG directly
+        const filename = `Patti_Ledger_${(formData.partyName || 'Statement').replace(/[^a-zA-Z0-9_-]/g, '_')}_${printConfig.pattiNo}.png`;
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+        setCopyNotification({
+          type: 'fallback',
+          message: 'Clipboard write restricted by browser. High-resolution PNG saved to Downloads!'
+        });
+        setTimeout(() => setCopyNotification(null), 4000);
+      }
+    } catch (error) {
+      console.error('Copy Image Error:', error);
+      alert('Failed to generate image. Please use web print (Ctrl+P) or PDF export.');
+    } finally {
+      setIsCapturingImage(false);
     }
   };
 
@@ -1011,18 +1114,33 @@ Generated via GrainMart B2B Depot Terminal.`;
           </button>
           <button 
             onClick={copyPattiAsImage}
-            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl shadow-lg transition-all font-black uppercase text-[10px] tracking-widest cursor-pointer ${
-              copiedImage 
-                ? 'bg-emerald-600 text-white shadow-emerald-500/20 animate-pulse' 
-                : 'bg-teal-600 text-white shadow-teal-500/20 hover:opacity-95'
+            disabled={isCapturingImage}
+            title="Copy crisp lossless PNG image to clipboard for WhatsApp/Email"
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl shadow-lg transition-all font-black uppercase text-[10px] tracking-widest cursor-pointer btn-tactile ${
+              isCapturingImage
+                ? 'bg-teal-700 text-white cursor-wait opacity-80'
+                : copiedImage 
+                  ? 'bg-emerald-600 text-white shadow-emerald-500/20 animate-pulse' 
+                  : 'bg-teal-600 text-white shadow-teal-500/20 hover:opacity-95'
             }`}
           >
-            {copiedImage ? (
-              <CheckCircle2 className="w-4 h-4 animate-bounce" />
+            {isCapturingImage ? (
+              <Loader2 className="w-4 h-4 animate-spin text-teal-200" />
+            ) : copiedImage ? (
+              <CheckCircle2 className="w-4 h-4 animate-bounce text-emerald-200" />
             ) : (
               <Copy className="w-4 h-4" />
             )}
-            {copiedImage ? 'Copied Image!' : 'Copy as Image'}
+            {isCapturingImage ? `Capturing ${imageScale}× HD...` : copiedImage ? 'Copied Image!' : 'Copy as Image'}
+          </button>
+          <button 
+            onClick={downloadPattiAsImage}
+            disabled={isCapturingImage}
+            title="Download lossless PNG directly to your computer"
+            className="flex items-center gap-2 px-5 py-2.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl shadow-lg shadow-sky-500/20 transition-all font-black uppercase text-[10px] tracking-widest cursor-pointer btn-tactile disabled:opacity-50"
+          >
+            <ImageIcon className="w-4 h-4" />
+            Download PNG
           </button>
           <button 
             onClick={() => window.print()}
@@ -1058,22 +1176,41 @@ Generated via GrainMart B2B Depot Terminal.`;
                   <p className="text-secondary text-[11px] font-semibold">Tweak receipt templates, billing metadata, and verify layout properties.</p>
                 </div>
               </div>
-              <div className="flex items-center gap-2 bg-surface-container rounded-xl p-1 border border-outline-variant/20">
-                <span className="text-[9px] font-black text-secondary px-2 uppercase tracking-wide">COLOR THEME:</span>
-                {(['classic', 'sapphire', 'mono'] as const).map((mode) => (
-                  <button
-                    key={mode}
-                    onClick={() => setPrintColorMode(mode)}
-                    className={cn(
-                      "px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer",
-                      printColorMode === mode 
-                        ? "bg-primary text-white shadow-sm" 
-                        : "text-secondary hover:text-on-surface"
-                    )}
-                  >
-                    {mode}
-                  </button>
-                ))}
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-1.5 bg-surface-container rounded-xl p-1 border border-outline-variant/20">
+                  <span className="text-[9px] font-black text-secondary px-2 uppercase tracking-wide">IMAGE DPI:</span>
+                  {([2, 3] as const).map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => setImageScale(s)}
+                      className={cn(
+                        "px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer",
+                        imageScale === s 
+                          ? "bg-teal-600 text-white shadow-sm" 
+                          : "text-secondary hover:text-on-surface"
+                      )}
+                    >
+                      {s}× {s === 3 ? '(300 DPI Ultra)' : '(Standard)'}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2 bg-surface-container rounded-xl p-1 border border-outline-variant/20">
+                  <span className="text-[9px] font-black text-secondary px-2 uppercase tracking-wide">COLOR THEME:</span>
+                  {(['classic', 'sapphire', 'mono'] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      onClick={() => setPrintColorMode(mode)}
+                      className={cn(
+                        "px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer",
+                        printColorMode === mode 
+                          ? "bg-primary text-white shadow-sm" 
+                          : "text-secondary hover:text-on-surface"
+                      )}
+                    >
+                      {mode}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -1291,7 +1428,7 @@ Generated via GrainMart B2B Depot Terminal.`;
               type="date" 
               value={formData.arrivalDt}
               onChange={(e) => updateField('arrivalDt', e.target.value)}
-              className="w-full h-full bg-transparent p-2 text-xs font-bold outline-none text-center"
+              className="w-full h-full bg-transparent px-2 py-1 text-xs font-mono font-bold tabular-nums outline-none text-center"
             />
           </div>
           <div className={cn("col-span-6 border-r border-b h-10", colors.border)} />
@@ -1309,7 +1446,7 @@ Generated via GrainMart B2B Depot Terminal.`;
           <InputCell value={formData.lorrySmall} onChange={(v) => updateField('lorrySmall', v)} className="col-span-1" borderClass={colors.border} activeTextClass={colors.textMain} />
           <div className={cn("col-span-1 border-r border-b", colors.border)} />
           <div className={cn("col-span-1 border-r border-b", colors.border)} />
-          <div className={cn("col-span-1 border-r border-b flex items-center justify-center text-xs font-black", colors.border, colors.dedBg)}>
+          <div className={cn("col-span-1 border-r border-b flex items-center justify-center text-xs font-mono font-black tabular-nums tracking-tight px-1 truncate", colors.border, colors.dedBg)}>
             {formatINR(formData.expensesSum)}
           </div>
           <div className={cn("col-span-2 border-r border-b", colors.border)} />
@@ -1322,7 +1459,7 @@ Generated via GrainMart B2B Depot Terminal.`;
             <select 
               value={formData.discountPct}
               onChange={(e) => { setIsManualDiscount(true); updateField('discountPct', e.target.value); }}
-              className="w-full h-full bg-transparent p-1 text-[10px] font-black outline-none border-none appearance-none text-center"
+              className="w-full h-full bg-transparent p-1 text-[11px] font-mono font-black tabular-nums outline-none border-none appearance-none text-center cursor-pointer"
             >
               <option value="0">0%</option>
               <option value="0.01">1%</option>
@@ -1335,11 +1472,11 @@ Generated via GrainMart B2B Depot Terminal.`;
             </select>
             {!isManualDiscount && <span className="absolute -top-1 -right-1 w-2 h-2 bg-emerald-500 rounded-full" title="Auto-calculated" />}
           </div>
-          <div className={cn("col-span-1 border-r border-b flex items-center justify-center text-xs font-black text-rose-600 dark:text-rose-400", colors.border)}>
+          <div className={cn("col-span-1 border-r border-b flex items-center justify-center text-xs font-mono font-black tabular-nums tracking-tight px-1 truncate text-rose-600 dark:text-rose-400", colors.border)}>
             {formatINR(formData.discountAmount)}
           </div>
           <div className={cn("col-span-1 border-r border-b", colors.border)} />
-          <div className={cn("col-span-1 border-r border-b flex items-center justify-center text-sm font-black", colors.border, colors.netBg)}>
+          <div className={cn("col-span-1 border-r border-b flex items-center justify-center text-xs font-mono font-black tabular-nums tracking-tighter px-0.5 truncate", colors.border, colors.netBg)}>
             {formatINR(formData.netAmount)}
           </div>
           <div className={cn("col-span-2 border-r border-b", colors.border)} />
@@ -1350,7 +1487,7 @@ Generated via GrainMart B2B Depot Terminal.`;
           <LabelCell borderClass={colors.border} bgClass={colors.labelBg} className="col-span-2 h-10 underline font-medium">SELLERCOM</LabelCell>
           <InputCell value={formData.sellerCom} onChange={(v) => updateField('sellerCom', v)} className="col-span-1" borderClass={colors.border} activeTextClass={colors.textMain} />
           <div className={cn("col-span-2 border-r border-b", colors.border)} />
-          <div className={cn("col-span-1 border-r border-b flex items-center justify-center text-xs font-bold text-blue-600 dark:text-blue-400", colors.border)}>
+          <div className={cn("col-span-1 border-r border-b flex items-center justify-center text-xs font-mono font-bold tabular-nums tracking-tight px-1 truncate text-blue-600 dark:text-blue-400", colors.border)}>
             {formatINR(formData.chqAm)}
           </div>
           <div className={cn("col-span-2 border-r border-b", colors.border)} />
@@ -1360,7 +1497,7 @@ Generated via GrainMart B2B Depot Terminal.`;
               type="date" 
               value={formData.chqDt}
               onChange={(e) => updateField('chqDt', e.target.value)}
-              className="w-full h-full bg-transparent p-2 text-xs font-bold outline-none text-center"
+              className="w-full h-full bg-transparent px-1 text-[11px] font-mono font-bold tabular-nums outline-none text-center"
             />
           </div>
 
@@ -1369,7 +1506,7 @@ Generated via GrainMart B2B Depot Terminal.`;
           <InputCell value={formData.manualShortage} onChange={(v) => updateField('manualShortage', v)} className="col-span-1" borderClass={colors.border} activeTextClass={colors.textMain} />
           <div className={cn("col-span-2 border-r border-b", colors.border)} />
           <div className={cn(
-            "col-span-1 border-r border-b flex items-center justify-center text-sm font-black",
+            "col-span-1 border-r border-b flex items-center justify-center text-xs font-mono font-black tabular-nums tracking-tighter px-0.5 truncate",
             colors.border,
             parseFloat(formData.shortageDelta) >= 0 ? "text-emerald-600 bg-emerald-500/[0.04]" : "text-rose-600 bg-rose-500/[0.04]"
           )}>
@@ -1386,7 +1523,7 @@ Generated via GrainMart B2B Depot Terminal.`;
 
           {/* Row 11: TOTAL / REMARKS */}
           <LabelCell borderClass={colors.border} bgClass={colors.labelBg} className="col-span-2 h-12 font-black uppercase tracking-tighter">TOTAL DEDUCTIBLES</LabelCell>
-          <div className={cn("col-span-1 border-r border-b text-sm font-black flex items-center justify-center", colors.border, colors.dedBg)}>
+          <div className={cn("col-span-1 border-r border-b text-xs font-mono font-black tabular-nums tracking-tighter px-0.5 truncate flex items-center justify-center", colors.border, colors.dedBg)}>
             {formatINR(formData.expensesSum)}
           </div>
           <div className={cn("col-span-1 border-r border-b px-2 flex items-center text-[8px] font-black uppercase text-neutral-400 border-r", colors.border)}>
@@ -1397,7 +1534,7 @@ Generated via GrainMart B2B Depot Terminal.`;
               type="text" 
               value={formData.remarks}
               onChange={(e) => updateField('remarks', e.target.value)}
-              className="w-full h-full px-4 text-xs font-semibold outline-none bg-transparent"
+              className="w-full h-full px-3 text-xs font-semibold outline-none bg-transparent placeholder:text-neutral-400"
               placeholder="WRITE ARBITRAGE NOTES OR REMARK ENTRY..."
             />
           </div>
@@ -1458,14 +1595,25 @@ Generated via GrainMart B2B Depot Terminal.`;
             </button>
             <button 
               onClick={copyPattiAsImage}
-              className={`flex items-center gap-2 px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all active:scale-95 cursor-pointer ${
-                copiedImage 
-                  ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/20 animate-pulse' 
-                  : 'bg-teal-600 text-white shadow-lg shadow-teal-500/20 hover:opacity-95'
+              disabled={isCapturingImage}
+              className={`flex items-center gap-2 px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all active:scale-95 cursor-pointer btn-tactile ${
+                isCapturingImage
+                  ? 'bg-teal-700 text-white cursor-wait opacity-80'
+                  : copiedImage 
+                    ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/20 animate-pulse' 
+                    : 'bg-teal-600 text-white shadow-lg shadow-teal-500/20 hover:opacity-95'
               }`}
             >
-               {copiedImage ? <CheckCircle2 className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-               {copiedImage ? 'Copied Image' : 'Copy as Image'}
+               {isCapturingImage ? <Loader2 className="w-4 h-4 animate-spin text-teal-200" /> : copiedImage ? <CheckCircle2 className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+               {isCapturingImage ? `Capturing ${imageScale}×...` : copiedImage ? 'Copied Image' : 'Copy as Image'}
+            </button>
+            <button 
+              onClick={downloadPattiAsImage}
+              disabled={isCapturingImage}
+              className="flex items-center gap-2 px-6 py-3 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all active:scale-95 shadow-lg shadow-sky-500/20 cursor-pointer btn-tactile disabled:opacity-50"
+            >
+               <ImageIcon className="w-4 h-4" />
+               Download PNG
             </button>
             <button 
               onClick={commitEntry}
@@ -1557,6 +1705,26 @@ Generated via GrainMart B2B Depot Terminal.`;
           </div>
         )}
       </div>
+
+      {/* Floating Notification Toast */}
+      <AnimatePresence>
+        {copyNotification && (
+          <motion.div
+            initial={{ opacity: 0, y: 30, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.95 }}
+            className={cn(
+              "fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-6 py-3.5 rounded-2xl shadow-2xl border text-xs sm:text-sm font-black backdrop-blur-xl select-none",
+              copyNotification.type === 'success' 
+                ? "bg-neutral-900/95 dark:bg-neutral-100/95 text-white dark:text-neutral-900 border-emerald-500/50 shadow-emerald-500/20"
+                : "bg-neutral-900/95 dark:bg-neutral-100/95 text-white dark:text-neutral-900 border-amber-500/50 shadow-amber-500/20"
+            )}
+          >
+            <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+            <span>{copyNotification.message}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

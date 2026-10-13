@@ -5,6 +5,7 @@ import {
   ShoppingCart, 
   Package, 
   Users, 
+  User,
   HelpCircle, 
   LogOut,
   Calendar,
@@ -34,6 +35,7 @@ const navItems = [
   { icon: Users, label: 'Users', path: '/users', roles: ['admin', 'officer'] },
   { icon: BarChart3, label: 'Analytics', path: '/analytics', roles: ['admin', 'officer'] },
   { icon: Calendar, label: 'Schedule', path: '/schedule', roles: ['admin', 'officer', 'employee'] },
+  { icon: User, label: 'Profile', path: '/employee/profile', roles: ['employee'] },
   { icon: Bell, label: 'Settings', path: '/settings', roles: ['admin', 'officer'] },
 ];
 
@@ -67,7 +69,13 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
     };
   }, []);
 
-  const filteredNavItems = navItems.filter(item => item.roles.includes(role));
+  const filteredNavItems = navItems.filter(item => item.roles.includes(role)).map(item => {
+    if (role === 'employee') {
+      if (item.path === '/inventory') return { ...item, label: 'Brand Rates' };
+      if (item.path === '/schedule') return { ...item, label: 'Assigned Work' };
+    }
+    return item;
+  });
 
   const handleLogout = async () => {
     try {
@@ -75,7 +83,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
     } catch (err) {
       console.error('Logout error:', err);
     }
-    navigate('/login?portal=admin');
+    navigate(role === 'employee' ? '/login?portal=employee' : '/login?portal=admin');
   };
 
   return (
@@ -102,7 +110,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
         onClick={() => {
           const r = localStorage.getItem('userRole');
           if (r === 'merchant') navigate('/store');
-          else if (r === 'employee') navigate('/inventory');
+          else if (r === 'employee') navigate('/employee/dashboard');
           else navigate('/admin');
         }}
       >
@@ -131,10 +139,10 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
               to={item.path}
               title={isCollapsed ? item.label : undefined}
               className={({ isActive }) => cn(
-                "flex items-center rounded-xl transition-all duration-200 relative group overflow-hidden text-xs font-semibold",
+                "btn-tactile flex items-center rounded-xl transition-all duration-200 relative group overflow-hidden text-xs font-semibold cursor-pointer",
                 isCollapsed ? "justify-center px-0 py-3" : "gap-3 px-3.5 py-2.5",
                 isItemActive(item.path, isActive)
-                  ? "bg-amber-500/15 text-amber-900 dark:text-amber-400 font-bold border border-amber-500/20 shadow-2xs nav-active-glow" 
+                  ? "bg-amber-500/15 text-amber-900 dark:text-amber-400 font-bold border border-amber-500/30 shadow-sm nav-active-glow" 
                   : "text-slate-600 dark:text-secondary hover:bg-slate-100/80 dark:hover:bg-white/[0.05] hover:text-slate-900 dark:hover:text-on-surface"
               )}
             >
@@ -148,12 +156,12 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
         })}
       </nav>
 
-      <div className="px-3 mt-auto pt-4 border-t border-outline-variant space-y-1">
+      <div className="px-3 mt-auto pt-4 border-t border-slate-200/80 dark:border-white/10 space-y-1.5">
         <button
           onClick={() => window.dispatchEvent(new Event('open-pwa-install-modal'))}
           title={isCollapsed ? "Download App" : undefined}
           className={cn(
-            "w-full flex items-center text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-xl transition-all cursor-pointer font-bold",
+            "btn-tactile w-full flex items-center text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-xl transition-all cursor-pointer font-bold",
             isCollapsed ? "justify-center px-0 py-3" : "gap-3 px-3.5 py-2.5"
           )}
         >
@@ -164,7 +172,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
         <button 
           title={isCollapsed ? "Support" : undefined}
           className={cn(
-            "w-full flex items-center text-secondary hover:bg-surface-container rounded-lg transition-all cursor-pointer",
+            "btn-tactile w-full flex items-center text-secondary hover:bg-surface-container rounded-lg transition-all cursor-pointer",
             isCollapsed ? "justify-center px-0 py-3" : "gap-3 px-4 py-3"
           )}
         >
@@ -175,7 +183,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
           onClick={handleLogout}
           title={isCollapsed ? "Logout" : undefined}
           className={cn(
-            "w-full flex items-center text-secondary hover:bg-surface-container hover:text-rose-600 rounded-lg transition-all",
+            "btn-tactile w-full flex items-center text-secondary hover:bg-rose-500/10 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg transition-all cursor-pointer",
             isCollapsed ? "justify-center px-0 py-3" : "gap-3 px-4 py-3"
           )}
         >

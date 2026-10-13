@@ -2,6 +2,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 import express from "express";
+import http from "http";
 import path from "path";
 import fs from "fs";
 import app from "./api/index.ts";
@@ -64,17 +65,66 @@ function setupStaticServing() {
   });
 }
 
+function listenWithFallback(
+  server: http.Server,
+  startPort: number,
+  host = "0.0.0.0",
+  maxAttempts = 20
+): Promise<number> {
+  return new Promise((resolve, reject) => {
+    let port = startPort;
+    let attempts = 0;
+
+    function attempt() {
+      const onListening = () => {
+        cleanup();
+        resolve(port);
+      };
+
+      const onError = (err: any) => {
+        cleanup();
+        if (err.code === "EADDRINUSE" && attempts < maxAttempts) {
+          console.warn(`Port ${port} is in use, trying next available port ${port + 1}...`);
+          port++;
+          attempts++;
+          attempt();
+        } else {
+          reject(err);
+        }
+      };
+
+      const cleanup = () => {
+        server.removeListener("listening", onListening);
+        server.removeListener("error", onError);
+      };
+
+      server.once("listening", onListening);
+      server.once("error", onError);
+      server.listen(port, host);
+    }
+
+    attempt();
+  });
+}
+
 async function startServer() {
   const isBundled = typeof __filename !== "undefined" && __filename.endsWith(".cjs");
   const isProduction = process.env.NODE_ENV === "production" || isBundled;
   console.log(`Initializing server (NODE_ENV: ${process.env.NODE_ENV || "development"}, isProduction: ${isProduction})`);
+
+  const httpServer = http.createServer(app);
 
   // Vite middleware setup for development only when not running bundled production
   if (!isProduction) {
     try {
       const { createServer: createViteServer } = await import("vite");
       const vite = await createViteServer({
-        server: { middlewareMode: true },
+        server: {
+          middlewareMode: true,
+          hmr: {
+            server: httpServer,
+          },
+        },
         appType: "spa",
       });
       app.use(vite.middlewares);
@@ -90,50 +140,44 @@ async function startServer() {
   // Port Binding Strategy:
   // - In Cloud Run production deployment (where K_SERVICE or NODE_ENV=production is set),
   //   Cloud Run routes external ingress and container health checks to process.env.PORT (defaults to 8080).
-  // - In AI Studio development sandbox, an internal Nginx reverse proxy routes traffic to port 3000.
-  // We determine the primary port dynamically, and also bind secondary ports (with graceful EADDRINUSE handling)
-  // so the service responds seamlessly in Cloud Run, AI Studio preview, and container deployments.
+  // - In local / AI Studio development sandbox, attempts startPort (default 3000),
+  //   and gracefully auto-increments to the next available port if port 3000 is occupied.
   const isCloudRun = !!(process.env.K_SERVICE || process.env.K_REVISION);
   const configuredPort = process.env.PORT ? parseInt(process.env.PORT, 10) : null;
 
-  // Primary port determination:
-  // In production / Cloud Run: prefer process.env.PORT (8080), fallback to 8080 or 3000
-  // In development: prefer 3000 (as required by AI Studio dev proxy)
-  const primaryPort = (isProduction || isCloudRun)
-    ? (configuredPort || 8080)
-    : 3000;
+  const activeServers: http.Server[] = [httpServer];
 
-  const portsToListen: number[] = [primaryPort];
+  if (isProduction || isCloudRun) {
+    const primaryPort = configuredPort || 8080;
+    httpServer.listen(primaryPort, "0.0.0.0", () => {
+      console.log(`Server successfully listening on http://0.0.0.0:${primaryPort}`);
+    });
 
-  // Also listen on 3000 if primary is different (e.g., in Cloud Run production where primary is 8080)
-  if (!portsToListen.includes(3000)) {
-    portsToListen.push(3000);
-  }
-
-  // If in production and PORT was not 8080, also listen on 8080
-  if ((isProduction || isCloudRun) && configuredPort && configuredPort !== 8080 && !portsToListen.includes(8080)) {
-    portsToListen.push(8080);
-  }
-
-  const activeServers: any[] = [];
-
-  for (const port of portsToListen) {
+    if (primaryPort !== 3000) {
+      try {
+        const secondaryServer = http.createServer(app);
+        secondaryServer.listen(3000, "0.0.0.0", () => {
+          console.log(`Secondary listener ready on http://0.0.0.0:3000`);
+        });
+        secondaryServer.on("error", (err: any) => {
+          if (err.code === "EADDRINUSE") {
+            console.warn(`Secondary port 3000 is in use, skipping.`);
+          }
+        });
+        activeServers.push(secondaryServer);
+      } catch (e) {
+        // Ignore secondary listener failure
+      }
+    }
+  } else {
+    const startPort = configuredPort || 3000;
     try {
-      const s = app.listen(port, "0.0.0.0", () => {
-        console.log(`Server successfully listening on http://0.0.0.0:${port}`);
-      });
-
-      s.on("error", (err: any) => {
-        if (err.code === "EADDRINUSE") {
-          console.warn(`Port ${port} is in use, skipping.`);
-        } else {
-          console.error(`Listen error on port ${port}:`, err);
-        }
-      });
-
-      activeServers.push(s);
-    } catch (bindErr: any) {
-      console.warn(`Failed to bind on port ${port}:`, bindErr);
+      const boundPort = await listenWithFallback(httpServer, startPort, "0.0.0.0");
+      console.log(`\n  ➜  Local:   http://localhost:${boundPort}/`);
+      console.log(`  ➜  Network: http://0.0.0.0:${boundPort}/\n`);
+    } catch (err) {
+      console.error("Failed to bind server to any available port:", err);
+      process.exit(1);
     }
   }
 

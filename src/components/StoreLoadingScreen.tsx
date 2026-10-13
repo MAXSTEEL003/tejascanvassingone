@@ -84,10 +84,10 @@ export default function StoreLoadingScreen({ minDurationMs = 850 }: StoreLoading
   return (
     <div 
       id="store-loading-screen"
-      className="min-h-[78vh] w-full flex items-center justify-center p-5 sm:p-8 relative font-sans select-none bg-[#fafaf9] dark:bg-[#07110c] text-slate-900 dark:text-white transition-colors duration-300"
+      className="min-h-[78vh] w-full flex items-center justify-center p-5 sm:p-8 relative font-sans select-none bg-[#FAFBFA] dark:bg-[#0A0A0A] text-neutral-900 dark:text-white transition-colors duration-300"
     >
       {/* Calm, warm subtle background tint */}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(245,158,11,0.04)_0%,transparent_70%)] pointer-events-none" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(194,36,36,0.03)_0%,transparent_70%)] pointer-events-none" />
 
       {/* Elegant Quiet Card */}
       <motion.div
@@ -95,7 +95,7 @@ export default function StoreLoadingScreen({ minDurationMs = 850 }: StoreLoading
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -6 }}
         transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-        className="relative z-10 max-w-lg w-full bg-white/90 dark:bg-[#0c1611]/90 border border-amber-200/60 dark:border-amber-900/30 rounded-3xl p-7 sm:p-10 shadow-[0_12px_40px_rgba(0,0,0,0.04)] dark:shadow-[0_16px_48px_rgba(0,0,0,0.35)] backdrop-blur-md text-center space-y-7"
+        className="relative z-10 max-w-lg w-full bg-white/90 dark:bg-[#141414]/90 border border-[#E5E7EB] dark:border-[#262626] rounded-3xl p-7 sm:p-10 shadow-[0_12px_40px_rgba(0,0,0,0.04)] dark:shadow-[0_16px_48px_rgba(0,0,0,0.35)] backdrop-blur-md text-center space-y-7"
       >
         {/* Simple, Non-Flashy Clean Logo Header */}
         <div className="flex flex-col items-center gap-3">

@@ -19,13 +19,23 @@ import {
   Image as ImageIcon,
   Trash2,
   AlertTriangle,
-  CheckCircle2
+  CheckCircle2,
+  Megaphone,
+  Bell,
+  ChevronDown,
+  ChevronUp,
+  Copy,
+  Building2,
+  ShoppingBag,
+  ArrowUpRight,
+  Share2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, formatINR } from '../lib/utils';
 import React, { useState, useEffect, useMemo } from 'react';
 import { getCollectionDocs, syncCollection, db, deleteCollectionDoc, setCollectionDoc } from '../lib/firebase';
 import { doc, deleteDoc } from 'firebase/firestore';
+import AdminBroadcastNoticeModal from '../components/AdminBroadcastNoticeModal';
 
 const DEFAULT_SUPPLIERS: string[] = [];
 
@@ -60,12 +70,17 @@ export default function ProductInventory() {
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isBroadcastModalOpen, setIsBroadcastModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<any>(null);
 
   // Delete Confirmation Modal & Toast State
   const [productToDelete, setProductToDelete] = useState<any | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteToast, setDeleteToast] = useState<string | null>(null);
+
+  // Table row dropdown expansion & copy state
+  const [expandedProductId, setExpandedProductId] = useState<string | null>(null);
+  const [copiedProdId, setCopiedProdId] = useState<string | null>(null);
 
   const [suppliersList, setSuppliersList] = useState<string[]>(DEFAULT_SUPPLIERS);
 
@@ -513,7 +528,23 @@ export default function ProductInventory() {
     return Array.from(new Set((products || []).map(p => p?.brand).filter(Boolean)));
   }, [products]);
 
-  // Pricing statistics
+  // Pricing & Catalog statistics
+  const inventoryStats = useMemo(() => {
+    const total = (products || []).length;
+    const active = (products || []).filter(p => p?.status === 'Active').length;
+    const restocking = (products || []).filter(p => p?.status === 'Restocking').length;
+    const suppliers = new Set((products || []).map(p => p?.supplier).filter(Boolean)).size;
+    return { total, active, restocking, suppliers };
+  }, [products]);
+
+  const handleCopyProductSpec = (p: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const text = `🌾 *${p.name}* (${p.brand})\n💰 Ex-Mill Rate: ₹${formatINR(p.price)}/Qtl\n🏭 Mill: ${p.supplier || suppliersList[0] || 'Direct Mill'}\n📦 Status: ${p.status}`;
+    navigator.clipboard.writeText(text);
+    setCopiedProdId(p.id);
+    setTimeout(() => setCopiedProdId(null), 2500);
+  };
+
   const averagePrice = useMemo(() => {
     if (!products || products.length === 0) return 0;
     const valid = products.filter(Boolean);
@@ -696,11 +727,19 @@ export default function ProductInventory() {
           </p>
         </div>
         {!isEmployee && (
-          <div className="flex gap-3">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <button 
+              onClick={() => setIsBroadcastModalOpen(true)}
+              className="flex items-center gap-2 px-5 py-2.5 bg-[#C22424] text-white rounded-xl shadow-md shadow-red-600/20 hover:bg-[#B91C1C] transition-all text-xs font-black uppercase tracking-wider cursor-pointer btn-tactile"
+              title="Broadcast price updates or reminders to all merchants"
+            >
+              <Megaphone className="w-4 h-4" />
+              <span>Broadcast Notice</span>
+            </button>
             <button 
               onClick={() => setShowFilters(prev => !prev)}
               className={cn(
-                "flex items-center gap-2 px-6 py-2.5 rounded-xl border shadow-sm text-xs font-black uppercase tracking-wider transition-all",
+                "flex items-center gap-2 px-5 py-2.5 rounded-xl border shadow-sm text-xs font-black uppercase tracking-wider transition-all cursor-pointer btn-tactile",
                 showFilters 
                   ? "bg-primary/10 text-primary border-primary/20" 
                   : "bg-surface border-outline-variant hover:bg-surface-container"
@@ -711,14 +750,14 @@ export default function ProductInventory() {
             </button>
             <button 
               onClick={() => window.location.href = '/arrival-entry'}
-              className="flex items-center gap-2 px-6 py-2.5 bg-emerald-600 text-white rounded-xl shadow-lg shadow-emerald-600/10 hover:bg-emerald-700 active:scale-95 transition-all text-xs font-black uppercase tracking-wider"
+              className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white rounded-xl shadow-lg shadow-emerald-600/10 hover:bg-emerald-700 transition-all text-xs font-black uppercase tracking-wider cursor-pointer btn-tactile"
             >
               <FileSpreadsheet className="w-4 h-4" />
               Arrival Entry
             </button>
             <button 
               onClick={() => setIsAddModalOpen(true)}
-              className="flex items-center gap-2 px-6 py-2.5 bg-primary text-white rounded-xl shadow-lg shadow-primary/20 hover:opacity-90 active:scale-95 transition-all text-xs font-black uppercase tracking-wider"
+              className="flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-xl shadow-lg shadow-primary/20 hover:opacity-90 transition-all text-xs font-black uppercase tracking-wider cursor-pointer btn-tactile"
             >
               <Plus className="w-4 h-4" />
               Add Product
@@ -734,7 +773,7 @@ export default function ProductInventory() {
             type="button"
             onClick={() => setActiveInventoryTab('inventory')}
             className={cn(
-              "px-4 py-2 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer",
+              "px-4 py-2 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer btn-tactile",
               activeInventoryTab === 'inventory'
                 ? "bg-white dark:bg-neutral-800 text-slate-900 dark:text-white shadow-xs font-bold"
                 : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
@@ -747,7 +786,7 @@ export default function ProductInventory() {
             type="button"
             onClick={() => setActiveInventoryTab('merchant_control')}
             className={cn(
-              "px-4 py-2 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer",
+              "px-4 py-2 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer btn-tactile",
               activeInventoryTab === 'merchant_control'
                 ? "bg-white dark:bg-neutral-800 text-slate-900 dark:text-white shadow-xs font-bold"
                 : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
@@ -762,6 +801,75 @@ export default function ProductInventory() {
       {/* TAB A: PRODUCT INVENTORY & STOCK */}
       {activeInventoryTab === 'inventory' && (
         <>
+          {/* 4 Floating Hero Stat Cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-5">
+            <div className="floating-card liquid-glass rounded-2xl p-4 md:p-5 relative overflow-hidden group">
+              <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/10 rounded-full blur-2xl group-hover:bg-emerald-500/20 transition-all pointer-events-none" />
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[10px] font-black uppercase tracking-wider text-secondary">Catalog Commodities</span>
+                <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
+                  <Package className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-2xl md:text-3xl font-black text-on-surface">{inventoryStats.total}</span>
+                <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                  {inventoryStats.active} Active
+                </span>
+              </div>
+              <p className="text-[11px] text-secondary mt-1">Live active commodities on roster</p>
+            </div>
+
+            <div className="floating-card liquid-glass rounded-2xl p-4 md:p-5 relative overflow-hidden group">
+              <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/10 rounded-full blur-2xl group-hover:bg-amber-500/20 transition-all pointer-events-none" />
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[10px] font-black uppercase tracking-wider text-secondary">Avg Ex-Mill Benchmark</span>
+                <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center">
+                  <TrendingUp className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="flex items-baseline gap-1">
+                <span className="text-2xl md:text-3xl font-black text-on-surface">₹{formatINR(averagePrice)}</span>
+                <span className="text-[11px] font-bold text-secondary">/ Qtl</span>
+              </div>
+              <p className="text-[11px] text-secondary mt-1">Weighted baseline across all grades</p>
+            </div>
+
+            <div className="floating-card liquid-glass rounded-2xl p-4 md:p-5 relative overflow-hidden group">
+              <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/10 rounded-full blur-2xl group-hover:bg-blue-500/20 transition-all pointer-events-none" />
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[10px] font-black uppercase tracking-wider text-secondary">Milling Hubs & Suppliers</span>
+                <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center">
+                  <Building2 className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-2xl md:text-3xl font-black text-on-surface">{inventoryStats.suppliers}</span>
+                <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-full">
+                  {uniqueBrands.length} Varieties
+                </span>
+              </div>
+              <p className="text-[11px] text-secondary mt-1">Direct verified APMC procurement routes</p>
+            </div>
+
+            <div className="floating-card liquid-glass rounded-2xl p-4 md:p-5 relative overflow-hidden group">
+              <div className="absolute top-0 right-0 w-24 h-24 bg-purple-500/10 rounded-full blur-2xl group-hover:bg-purple-500/20 transition-all pointer-events-none" />
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[10px] font-black uppercase tracking-wider text-secondary">Store Visibility</span>
+                <div className="w-8 h-8 rounded-xl bg-purple-500/10 text-purple-500 flex items-center justify-center">
+                  <ShoppingBag className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-2xl md:text-3xl font-black text-on-surface">100%</span>
+                <span className="text-[10px] font-bold text-purple-600 dark:text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded-full">
+                  Live Cloud Sync
+                </span>
+              </div>
+              <p className="text-[11px] text-secondary mt-1">Realtime merchant catalog dispatch</p>
+            </div>
+          </div>
+
           {/* Slide-Down Expandable Filter Panel */}
       <AnimatePresence>
         {showFilters && (
@@ -841,12 +949,13 @@ export default function ProductInventory() {
         initial={{ opacity: 0, y: 22, scale: 0.99 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.5, delay: 0.15, ease: [0.16, 1, 0.3, 1] }}
-        className="hidden md:block liquid-glass rounded-3xl overflow-hidden border border-outline-variant/30 shadow-sm"
+        className="hidden md:block floating-card liquid-glass rounded-3xl overflow-hidden border border-outline-variant/30 shadow-sm"
       >
         <div className="overflow-x-auto">
           <table className="w-full border-separate border-spacing-0">
             <thead>
               <tr className="bg-surface-container-low/50 border-b border-outline-variant">
+                <th className="w-12 px-4 py-4 text-center font-bold text-[10px] text-secondary tracking-widest border-b border-outline-variant/30"></th>
                 <th className="px-8 py-4 text-left font-bold text-[10px] text-secondary tracking-widest border-b border-outline-variant/30">BRAND NAME</th>
                 <th className="px-8 py-4 text-left font-bold text-[10px] text-secondary tracking-widest border-b border-outline-variant/30">TYPE</th>
                 <th className="px-8 py-4 text-left font-bold text-[10px] text-secondary tracking-widest border-b border-outline-variant/30">SUPPLIER</th>
@@ -858,117 +967,326 @@ export default function ProductInventory() {
             <tbody className="divide-y divide-outline-variant/20">
               {processedProducts.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-16 text-center space-y-3">
+                  <td colSpan={isEmployee ? 6 : 7} className="py-16 text-center space-y-3">
                     <Inbox className="w-12 h-12 text-secondary/30 mx-auto" />
                     <p className="text-sm font-bold text-secondary">No products match active filters</p>
                     <p className="text-xs text-secondary/60">Try updating your filters or reset search query.</p>
                   </td>
                 </tr>
               ) : (
-                processedProducts.map((p) => (
-                  <tr key={p.id} className="interactive-tr group border-b border-outline-variant/10 cursor-pointer">
-                    <td 
-                      className={cn("px-8 py-4", !isEmployee && "cursor-pointer hover:bg-primary/[0.01]")}
-                      onClick={() => !isEmployee && handleOpenEditModal(p)}
-                    >
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-xl bg-surface-container overflow-hidden shrink-0 shadow-inner border border-outline-variant/30 relative group/img">
-                          <img src={p.image} alt={p.name} className="w-full h-full object-cover group-hover/img:scale-105 transition-all" referrerPolicy="no-referrer" />
-                        </div>
-                        <div>
-                          <span className="font-extrabold text-sm block text-on-surface uppercase group-hover:text-primary transition-colors flex items-center gap-1.5">
-                            {p.name}
-                            {!isEmployee && <Edit className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity text-secondary" />}
-                          </span>
-                          <span className="text-[10px] font-black text-secondary/60 uppercase font-mono">ID: {p.id}</span>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-8 py-4 text-sm font-bold text-secondary">{p.brand}</td>
-                    <td className="px-8 py-4 text-xs font-semibold text-secondary/80 max-w-[200px] truncate uppercase">{p.supplier || suppliersList[0] || 'DIRECT MILL'}</td>
-                    <td 
-                      className={cn(
-                        "px-8 py-4 text-right",
-                        !isEmployee && "cursor-pointer group/cell"
-                      )}
-                      onClick={() => !isEmployee && startEditing(p.id, 'price', p.price)}
-                    >
-                      {editingCell?.id === p.id && editingCell.field === 'price' ? (
-                        <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
-                          <input 
-                            autoFocus
-                            type="text"
-                            value={editValue}
-                            onChange={(e) => setEditValue(e.target.value)}
-                            onBlur={saveEdit}
-                            onKeyDown={handleKeyDown}
-                            className="w-24 bg-surface dark:bg-black p-1 text-right border border-primary rounded font-black text-sm outline-none"
-                          />
-                        </div>
-                      ) : (
-                        <span className={cn(
-                          "font-black text-sm text-on-surface",
-                          !isEmployee && "group-hover/cell:text-primary transition-colors"
-                        )}>
-                          ₹ {formatINR(p.price)}
-                        </span>
-                      )}
-                    </td>
-                    <td 
-                      className={cn(
-                        "px-8 py-4 text-center",
-                        !isEmployee && "cursor-pointer group/cell"
-                      )}
-                      onClick={() => !isEmployee && startEditing(p.id, 'status', p.status)}
-                    >
-                      {editingCell?.id === p.id && editingCell.field === 'status' ? (
-                        <div className="flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
-                          <select 
-                            autoFocus
-                            value={editValue}
-                            onChange={(e) => setEditValue(e.target.value)}
-                            onBlur={saveEdit}
-                            onKeyDown={handleKeyDown}
-                            className="bg-surface dark:bg-black p-1 border border-primary rounded text-[10px] font-black outline-none"
+                processedProducts.map((p) => {
+                  const isExpanded = expandedProductId === p.id;
+                  return (
+                    <React.Fragment key={p.id}>
+                      <tr 
+                        className={cn(
+                          "interactive-tr group border-b border-outline-variant/10 cursor-pointer transition-colors",
+                          isExpanded && "bg-primary/[0.04] dark:bg-primary/[0.06]"
+                        )}
+                      >
+                        <td className="w-12 px-4 py-4 text-center" onClick={(e) => { e.stopPropagation(); setExpandedProductId(isExpanded ? null : p.id); }}>
+                          <button
+                            type="button"
+                            className={cn(
+                              "w-7 h-7 rounded-lg flex items-center justify-center transition-all cursor-pointer btn-tactile",
+                              isExpanded 
+                                ? "bg-primary text-white shadow-sm" 
+                                : "text-secondary hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                            )}
+                            title={isExpanded ? "Collapse specifications" : "Expand specifications drawer"}
                           >
-                            <option value="Active">Active</option>
-                            <option value="Restocking">Restocking</option>
-                            <option value="Discontinued">Discontinued</option>
-                          </select>
-                        </div>
-                      ) : (
-                        <span className={cn(
-                          "inline-flex items-center px-3 py-1 rounded-full text-[10px] font-black border transition-all",
-                          p.status === 'Active' ? "bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-950/20 dark:border-emerald-900/30" : 
-                          p.status === 'Restocking' ? "bg-amber-50 text-amber-600 border-amber-100 dark:bg-amber-950/20 dark:border-amber-900/30" :
-                          "bg-neutral-50 text-neutral-600 border-neutral-200 dark:bg-neutral-800 dark:text-neutral-400 dark:border-neutral-700"
-                        )}>
-                          {p.status}
-                        </span>
-                      )}
-                    </td>
-                    {!isEmployee && (
-                      <td className="px-8 py-4 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <button 
-                            onClick={() => handleOpenEditModal(p)}
-                            title="Edit Product"
-                            className="p-2 text-secondary hover:text-primary transition-colors hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg cursor-pointer"
-                          >
-                            <Edit className="w-4 h-4" />
+                            <ChevronDown className={cn("w-4 h-4 transition-transform duration-200", isExpanded && "rotate-180")} />
                           </button>
-                          <button 
-                            onClick={(e) => handleRequestDelete(p, e)}
-                            title="Delete Product"
-                            className="p-2 text-secondary hover:text-rose-600 transition-colors hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-lg cursor-pointer"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    )}
-                  </tr>
-                ))
+                        </td>
+                        <td 
+                          className={cn("px-8 py-4", !isEmployee && "cursor-pointer hover:bg-primary/[0.01]")}
+                          onClick={() => !isEmployee && handleOpenEditModal(p)}
+                        >
+                          <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 rounded-xl bg-surface-container overflow-hidden shrink-0 shadow-inner border border-outline-variant/30 relative group/img">
+                              <img src={p.image} alt={p.name} className="w-full h-full object-cover group-hover/img:scale-105 transition-all" referrerPolicy="no-referrer" />
+                            </div>
+                            <div>
+                              <span className="font-extrabold text-sm block text-on-surface uppercase group-hover:text-primary transition-colors flex items-center gap-1.5">
+                                {p.name}
+                                {!isEmployee && <Edit className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity text-secondary" />}
+                              </span>
+                              <span className="text-[10px] font-black text-secondary/60 uppercase font-mono">ID: {p.id}</span>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-8 py-4 text-sm font-bold text-secondary">{p.brand}</td>
+                        <td className="px-8 py-4 text-xs font-semibold text-secondary/80 max-w-[200px] truncate uppercase">{p.supplier || suppliersList[0] || 'DIRECT MILL'}</td>
+                        <td 
+                          className={cn(
+                            "px-8 py-4 text-right",
+                            !isEmployee && "cursor-pointer group/cell"
+                          )}
+                          onClick={() => !isEmployee && startEditing(p.id, 'price', p.price)}
+                        >
+                          {editingCell?.id === p.id && editingCell.field === 'price' ? (
+                            <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+                              <input 
+                                autoFocus
+                                type="text"
+                                value={editValue}
+                                onChange={(e) => setEditValue(e.target.value)}
+                                onBlur={saveEdit}
+                                onKeyDown={handleKeyDown}
+                                className="w-24 bg-surface dark:bg-black p-1 text-right border border-primary rounded font-black text-sm outline-none"
+                              />
+                            </div>
+                          ) : (
+                            <span className={cn(
+                              "font-black text-sm text-on-surface",
+                              !isEmployee && "group-hover/cell:text-primary transition-colors"
+                            )}>
+                              ₹ {formatINR(p.price)}
+                            </span>
+                          )}
+                        </td>
+                        <td 
+                          className={cn(
+                            "px-8 py-4 text-center",
+                            !isEmployee && "cursor-pointer group/cell"
+                          )}
+                          onClick={() => !isEmployee && startEditing(p.id, 'status', p.status)}
+                        >
+                          {editingCell?.id === p.id && editingCell.field === 'status' ? (
+                            <div className="flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+                              <select 
+                                autoFocus
+                                value={editValue}
+                                onChange={(e) => setEditValue(e.target.value)}
+                                onBlur={saveEdit}
+                                onKeyDown={handleKeyDown}
+                                className="bg-surface dark:bg-black p-1 border border-primary rounded text-[10px] font-black outline-none"
+                              >
+                                <option value="Active">Active</option>
+                                <option value="Restocking">Restocking</option>
+                                <option value="Discontinued">Discontinued</option>
+                              </select>
+                            </div>
+                          ) : (
+                            <span className={cn(
+                              "inline-flex items-center px-3 py-1 rounded-full text-[10px] font-black border transition-all",
+                              p.status === 'Active' ? "bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-950/20 dark:border-emerald-900/30" : 
+                              p.status === 'Restocking' ? "bg-amber-50 text-amber-600 border-amber-100 dark:bg-amber-950/20 dark:border-amber-900/30" :
+                              "bg-neutral-50 text-neutral-600 border-neutral-200 dark:bg-neutral-800 dark:text-neutral-400 dark:border-neutral-700"
+                            )}>
+                              {p.status}
+                            </span>
+                          )}
+                        </td>
+                        {!isEmployee && (
+                          <td className="px-8 py-4 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <button 
+                                onClick={() => handleOpenEditModal(p)}
+                                title="Edit Product"
+                                className="p-2 text-secondary hover:text-primary transition-colors hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg cursor-pointer btn-tactile"
+                              >
+                                <Edit className="w-4 h-4" />
+                              </button>
+                              <button 
+                                onClick={(e) => handleRequestDelete(p, e)}
+                                title="Delete Product"
+                                className="p-2 text-secondary hover:text-rose-600 transition-colors hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-lg cursor-pointer btn-tactile"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+
+                      {/* Animated Dropdown Drawer Row */}
+                      <AnimatePresence>
+                        {isExpanded && (
+                          <tr key={`${p.id}-drawer`} className="table-dropdown-drawer">
+                            <td colSpan={isEmployee ? 6 : 7} className="p-0">
+                              <motion.div
+                                initial={{ opacity: 0, height: 0 }}
+                                animate={{ opacity: 1, height: 'auto' }}
+                                exit={{ opacity: 0, height: 0 }}
+                                transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+                                className="p-5 md:p-6 overflow-hidden"
+                              >
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                  {/* Bento 1: Grain Specification & Bag Visual */}
+                                  <div className="p-4 rounded-2xl bg-surface/90 border border-outline-variant/40 shadow-xs flex flex-col justify-between">
+                                    <div>
+                                      <div className="flex items-center justify-between mb-3">
+                                        <span className="text-[10px] font-black uppercase tracking-wider text-secondary flex items-center gap-1.5">
+                                          <Package className="w-3.5 h-3.5 text-primary" />
+                                          Grain Specification
+                                        </span>
+                                        <span className="text-[9px] font-mono font-bold bg-neutral-100 dark:bg-neutral-800 px-2 py-0.5 rounded text-secondary">
+                                          {p.id}
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center gap-3 mb-3">
+                                        <div className="w-16 h-16 rounded-xl bg-surface-container overflow-hidden shrink-0 border border-outline-variant/40 shadow-inner">
+                                          <img src={p.image} alt={p.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                        </div>
+                                        <div>
+                                          <h5 className="font-black text-sm text-on-surface uppercase leading-snug">{p.name}</h5>
+                                          <p className="text-xs text-primary font-bold">{p.brand}</p>
+                                          <p className="text-[11px] text-secondary mt-0.5">50 KG Standard APMC Lot</p>
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div className="pt-2 border-t border-outline-variant/30 flex items-center justify-between">
+                                      <span className="text-[10px] text-secondary font-medium">Standard Trading Lot:</span>
+                                      <span className="text-[10px] font-bold text-on-surface">Quintals (100 KG)</span>
+                                    </div>
+                                  </div>
+
+                                  {/* Bento 2: Procurement Source & Origin */}
+                                  <div className="p-4 rounded-2xl bg-surface/90 border border-outline-variant/40 shadow-xs flex flex-col justify-between">
+                                    <div>
+                                      <div className="flex items-center justify-between mb-3">
+                                        <span className="text-[10px] font-black uppercase tracking-wider text-secondary flex items-center gap-1.5">
+                                          <Building2 className="w-3.5 h-3.5 text-emerald-500" />
+                                          Procurement Source
+                                        </span>
+                                        <span className="text-[9px] font-black bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 px-2 py-0.5 rounded">
+                                          Verified APMC
+                                        </span>
+                                      </div>
+                                      <div className="space-y-2">
+                                        <div>
+                                          <p className="text-[10px] uppercase font-bold text-secondary">Milling Facility / Partner</p>
+                                          <p className="text-xs font-black text-on-surface uppercase truncate">{p.supplier || suppliersList[0] || 'Direct Mill Partner'}</p>
+                                        </div>
+                                        <div>
+                                          <p className="text-[10px] uppercase font-bold text-secondary">Dispatch Origin Cluster</p>
+                                          <p className="text-xs font-semibold text-secondary flex items-center gap-1">
+                                            <MapPin className="w-3 h-3 text-secondary" />
+                                            Karnataka & Andhra Rice Belt
+                                          </p>
+                                        </div>
+                                        <div>
+                                          <p className="text-[10px] uppercase font-bold text-secondary">Grading Protocol</p>
+                                          <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400">Machine Sorted • Moisture &lt; 12.5%</p>
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div className="pt-2 border-t border-outline-variant/30 flex items-center justify-between">
+                                      <span className="text-[10px] text-secondary font-medium">Current Status:</span>
+                                      <span className={cn(
+                                        "text-[10px] font-black uppercase",
+                                        p.status === 'Active' ? "text-emerald-600" : "text-amber-600"
+                                      )}>
+                                        {p.status}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  {/* Bento 3: Pricing Structure Breakdown */}
+                                  <div className="p-4 rounded-2xl bg-surface/90 border border-outline-variant/40 shadow-xs flex flex-col justify-between">
+                                    <div>
+                                      <div className="flex items-center justify-between mb-3">
+                                        <span className="text-[10px] font-black uppercase tracking-wider text-secondary flex items-center gap-1.5">
+                                          <Coins className="w-3.5 h-3.5 text-amber-500" />
+                                          Pricing Structure
+                                        </span>
+                                        <span className="text-[9px] font-black bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 px-2 py-0.5 rounded">
+                                          Ex-Mill Net
+                                        </span>
+                                      </div>
+                                      <div className="space-y-2.5">
+                                        <div className="flex items-baseline justify-between">
+                                          <span className="text-[11px] text-secondary font-medium">Per Quintal (100kg):</span>
+                                          <span className="text-sm font-black text-on-surface">₹ {formatINR(p.price)}</span>
+                                        </div>
+                                        <div className="flex items-baseline justify-between">
+                                          <span className="text-[11px] text-secondary font-medium">Per 50kg Bag (Approx):</span>
+                                          <span className="text-xs font-bold text-on-surface">₹ {formatINR(Math.round(p.price / 2))}</span>
+                                        </div>
+                                        <div className="flex items-baseline justify-between">
+                                          <span className="text-[11px] text-secondary font-medium">Per Metric Ton (10 Qtl):</span>
+                                          <span className="text-xs font-bold text-on-surface">₹ {formatINR(Math.round(p.price * 10))}</span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div className="pt-2 border-t border-outline-variant/30 flex items-center justify-between text-[10px] text-secondary">
+                                      <span>Tax Compliance:</span>
+                                      <span className="font-semibold text-emerald-600 dark:text-emerald-400">APMC Mandi Bylaw</span>
+                                    </div>
+                                  </div>
+
+                                  {/* Bento 4: Quick Action Command Desk */}
+                                  <div className="p-4 rounded-2xl bg-surface/90 border border-outline-variant/40 shadow-xs flex flex-col justify-between">
+                                    <div>
+                                      <div className="flex items-center justify-between mb-3">
+                                        <span className="text-[10px] font-black uppercase tracking-wider text-secondary flex items-center gap-1.5">
+                                          <Sparkles className="w-3.5 h-3.5 text-primary" />
+                                          Operational Actions
+                                        </span>
+                                      </div>
+                                      <div className="space-y-2">
+                                        <button
+                                          type="button"
+                                          onClick={(e) => handleCopyProductSpec(p, e)}
+                                          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-surface-container hover:bg-surface-container-high border border-outline-variant/30 text-xs font-bold text-on-surface transition-all cursor-pointer btn-tactile"
+                                        >
+                                          {copiedProdId === p.id ? (
+                                            <>
+                                              <Check className="w-3.5 h-3.5 text-emerald-500" />
+                                              <span className="text-emerald-500">Spec Copied to Clipboard</span>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <Copy className="w-3.5 h-3.5 text-secondary" />
+                                              <span>Copy Commodity Spec</span>
+                                            </>
+                                          )}
+                                        </button>
+                                        {!isEmployee && (
+                                          <>
+                                            <button
+                                              type="button"
+                                              onClick={(e) => { e.stopPropagation(); handleOpenEditModal(p); }}
+                                              className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 text-xs font-bold transition-all cursor-pointer btn-tactile"
+                                            >
+                                              <Edit className="w-3.5 h-3.5" />
+                                              <span>Edit Commodity Pricing</span>
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => setIsBroadcastModalOpen(true)}
+                                              className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 border border-amber-500/20 text-xs font-bold transition-all cursor-pointer btn-tactile"
+                                            >
+                                              <Megaphone className="w-3.5 h-3.5" />
+                                              <span>Broadcast Rate Update</span>
+                                            </button>
+                                          </>
+                                        )}
+                                      </div>
+                                    </div>
+                                    {!isEmployee && (
+                                      <div className="pt-2 border-t border-outline-variant/30 flex justify-end">
+                                        <button
+                                          type="button"
+                                          onClick={(e) => handleRequestDelete(p, e)}
+                                          className="text-[11px] font-bold text-rose-600 hover:text-rose-700 flex items-center gap-1 cursor-pointer transition-colors"
+                                        >
+                                          <Trash2 className="w-3 h-3" />
+                                          <span>Delete Commodity</span>
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </motion.div>
+                            </td>
+                          </tr>
+                        )}
+                      </AnimatePresence>
+                    </React.Fragment>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -1032,19 +1350,31 @@ export default function ProductInventory() {
 
                 {!isEmployee && (
                   <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={(e) => handleCopyProductSpec(p, e)}
+                      className="px-2.5 py-1.5 border border-outline-variant/30 bg-surface text-secondary hover:text-on-surface rounded-xl text-[10px] font-black uppercase tracking-wider min-h-[38px] flex items-center justify-center gap-1.5 btn-tactile cursor-pointer"
+                      title="Copy Spec"
+                    >
+                      {copiedProdId === p.id ? (
+                        <Check className="w-3.5 h-3.5 text-emerald-500" />
+                      ) : (
+                        <Copy className="w-3.5 h-3.5" />
+                      )}
+                    </button>
                     <button 
                       onClick={(e) => {
                         e.stopPropagation();
                         handleOpenEditModal(p);
                       }}
-                      className="px-3 py-1.5 border border-amber-600/20 bg-amber-650/5 text-amber-600 rounded-xl text-[10px] font-black uppercase tracking-wider min-h-[38px] flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer"
+                      className="px-3 py-1.5 border border-amber-600/20 bg-amber-500/10 text-amber-600 rounded-xl text-[10px] font-black uppercase tracking-wider min-h-[38px] flex items-center justify-center gap-1.5 btn-tactile cursor-pointer"
                     >
                       <Edit className="w-3 h-3" />
                       Modify
                     </button>
                     <button 
                       onClick={(e) => handleRequestDelete(p, e)}
-                      className="px-3 py-1.5 border border-rose-500/20 bg-rose-500/10 text-rose-600 dark:text-rose-400 hover:bg-rose-500/20 rounded-xl text-[10px] font-black uppercase tracking-wider min-h-[38px] flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer"
+                      className="px-3 py-1.5 border border-rose-500/20 bg-rose-500/10 text-rose-600 dark:text-rose-400 hover:bg-rose-500/20 rounded-xl text-[10px] font-black uppercase tracking-wider min-h-[38px] flex items-center justify-center gap-1.5 btn-tactile cursor-pointer"
                       title="Delete Product"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -1058,27 +1388,30 @@ export default function ProductInventory() {
       </div>
 
       {!isEmployee && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {[
-            { label: 'AVERAGE PRICE INDEX', value: `₹ ${formatINR(averagePrice)}`, icon: TrendingUp, delta: '+12% WoW' },
-            { label: 'TOTAL SKU COUNT', value: String(products.length), icon: Package, delta: null },
-            { label: 'REGIONAL HUBS', value: '05', icon: MapPin, delta: null },
+            { label: 'AVERAGE PRICE INDEX', value: `₹ ${formatINR(averagePrice)}`, icon: TrendingUp, delta: '+12% WoW', desc: 'Active procurement weighted price' },
+            { label: 'TOTAL SKU COUNT', value: String(products.length), icon: Package, delta: null, desc: 'Verified catalog varieties' },
+            { label: 'REGIONAL HUBS', value: '05 Milling Zones', icon: MapPin, delta: null, desc: 'KA, AP, PB, HR, TN logistics routes' },
           ].map((stat, i) => (
             <motion.div 
               key={i} 
               initial={{ opacity: 0, y: 20, scale: 0.985 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              whileHover={{ y: -5, transition: { duration: 0.22, ease: "easeOut" } }}
+              whileHover={{ y: -4, transition: { duration: 0.22, ease: "easeOut" } }}
               transition={{ duration: 0.48, delay: i * 0.08, ease: [0.16, 1, 0.3, 1] }}
-              className="liquid-glass p-8 rounded-3xl flex flex-col justify-between h-[160px] border border-outline-variant/30 shadow-sm hover:border-primary/20 transition-all duration-300 interactive-card"
+              className="floating-card liquid-glass p-6 rounded-3xl flex flex-col justify-between border border-outline-variant/30 shadow-sm hover:border-primary/30 transition-all duration-300 interactive-card relative overflow-hidden"
             >
-               <div className="flex items-center justify-between">
-                <stat.icon className="w-8 h-8 text-primary p-2 bg-primary/10 rounded-xl" />
-                {stat.delta && <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full">{stat.delta}</span>}
+              <div className="flex items-center justify-between">
+                <div className="w-10 h-10 rounded-2xl bg-primary/10 text-primary flex items-center justify-center">
+                  <stat.icon className="w-5 h-5" />
+                </div>
+                {stat.delta && <span className="text-[10px] font-black text-emerald-600 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-full">{stat.delta}</span>}
               </div>
-              <div>
+              <div className="mt-4">
                 <p className="text-[10px] font-black text-secondary uppercase tracking-widest">{stat.label}</p>
                 <h3 className="text-2xl font-black text-on-surface mt-1">{stat.value}</h3>
+                <p className="text-[11px] text-secondary mt-0.5">{stat.desc}</p>
               </div>
             </motion.div>
           ))}
@@ -1953,6 +2286,13 @@ export default function ProductInventory() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Admin Broadcast Notice Modal */}
+      <AdminBroadcastNoticeModal
+        isOpen={isBroadcastModalOpen}
+        onClose={() => setIsBroadcastModalOpen(false)}
+        products={products}
+      />
     </div>
   );
 }
