@@ -86,7 +86,7 @@ const InputCell: React.FC<{
   readOnlyBgClass = "bg-neutral-50/50 dark:bg-neutral-900/50 text-primary",
   placeholder
 }) => (
-  <div className={cn("border-r border-b h-full flex items-center justify-center", borderClass, className)}>
+  <div className={cn("border-r border-b h-10 flex items-center justify-center", borderClass, className)}>
     <input 
       type="text" 
       value={value}
@@ -94,7 +94,7 @@ const InputCell: React.FC<{
       readOnly={readOnly}
       placeholder={placeholder}
       className={cn(
-        "w-full h-full bg-transparent px-1.5 py-1 text-xs font-mono font-bold tabular-nums outline-none text-center placeholder:text-neutral-400 truncate tracking-tight",
+        "w-full h-full bg-transparent px-1.5 text-xs font-mono font-black tabular-nums outline-none text-center placeholder:text-neutral-400 tracking-tight leading-normal",
         readOnly ? readOnlyBgClass : activeTextClass
       )}
     />
@@ -137,9 +137,6 @@ export default function PattiView() {
   // Print Configuration Options
   const [printColorMode, setPrintColorMode] = useState<'classic' | 'sapphire' | 'mono'>('classic');
   const [showLetterhead, setShowLetterhead] = useState(true);
-  const [showStamp, setShowStamp] = useState(true);
-  const [showSignatures, setShowSignatures] = useState(true);
-  const [showTerms, setShowTerms] = useState(true);
   const [isPrintPanelVisible, setIsPrintPanelVisible] = useState(true);
 
   const [printConfig, setPrintConfig] = useState({
@@ -670,65 +667,51 @@ Generated via TEJAS CANVASSING Terminal.`;
                                     originalNode.classList.contains('tabular-nums') ||
                                     (!isNaN(Number(displayText.replace(/[,₹ \-]/g, ''))) && displayText.length > 0);
                   
-                  const isLong = displayText.length > 13;
-
                   textDiv.style.width = '100%';
                   textDiv.style.height = '100%';
+                  textDiv.style.minHeight = '38px';
                   textDiv.style.display = 'flex';
                   textDiv.style.alignItems = 'center';
-                  textDiv.style.justifyContent = isLong ? 'flex-start' : (isCentered ? 'center' : 'flex-start');
-                  textDiv.style.textAlign = isLong ? 'left' : (isCentered ? 'center' : 'left');
-                  textDiv.style.padding = isLong ? '0 4px' : (isCentered ? '0 4px' : (style?.padding || '0 12px'));
+                  textDiv.style.justifyContent = isCentered ? 'center' : 'flex-start';
+                  textDiv.style.textAlign = isCentered ? 'center' : 'left';
+                  textDiv.style.padding = isCentered ? '0 4px' : '0 16px';
                   textDiv.style.boxSizing = 'border-box';
                   textDiv.style.color = '#000000';
                   textDiv.style.backgroundColor = 'transparent';
-                  textDiv.style.fontWeight = style?.fontWeight || '700';
-                  textDiv.style.lineHeight = '1';
-                  textDiv.style.overflow = 'hidden';
+                  textDiv.style.fontWeight = style?.fontWeight || '800';
+                  textDiv.style.lineHeight = 'normal';
+                  textDiv.style.overflow = 'visible';
 
                   textDiv.style.fontFamily = isNumeric 
-                    ? '"Geist Mono", SFMono-Regular, Consolas, monospace' 
-                    : '"Geist", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-                  textDiv.style.fontVariantNumeric = 'tabular-nums';
+                    ? '"Consolas", "Courier New", monospace' 
+                    : '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif';
 
-                  // Dynamic sizing to prevent clipping of long bill numbers, bank names, or notes
-                  let baseFontSize = parseFloat(style?.fontSize || '12');
-                  if (isNaN(baseFontSize) || baseFontSize <= 0) baseFontSize = 12;
+                  let baseFontSize = parseFloat(style?.fontSize || '13');
+                  if (isNaN(baseFontSize) || baseFontSize <= 0) baseFontSize = 13;
 
-                  if (displayText.length > 24) {
-                    textDiv.style.fontSize = '8.5px';
-                    textDiv.style.letterSpacing = '-0.025em';
-                  } else if (displayText.length > 18) {
+                  if (displayText.length > 25) {
                     textDiv.style.fontSize = '9.5px';
-                    textDiv.style.letterSpacing = '-0.02em';
+                  } else if (displayText.length > 18) {
+                    textDiv.style.fontSize = '11px';
                   } else if (displayText.length > 13) {
-                    textDiv.style.fontSize = '10.5px';
-                    textDiv.style.letterSpacing = '-0.015em';
+                    textDiv.style.fontSize = '12px';
                   } else {
                     textDiv.style.fontSize = `${baseFontSize}px`;
                   }
 
-                  const span = clonedDoc.createElement('span');
-                  span.textContent = displayText;
-                  span.style.display = 'block';
-                  span.style.width = '100%';
-                  span.style.overflow = 'hidden';
-                  span.style.whiteSpace = 'nowrap';
-                  span.style.textOverflow = 'ellipsis';
-                  span.style.textAlign = isLong ? 'left' : (isCentered ? 'center' : 'left');
-
                   if (!displayText) {
                     if (originalNode.placeholder && (originalNode.placeholder.includes('MILLER') || originalNode.placeholder.includes('PARTY'))) {
-                      span.textContent = originalNode.placeholder;
-                      textDiv.style.color = '#a3a3a3';
+                      textDiv.textContent = originalNode.placeholder;
+                      textDiv.style.color = '#9ca3af';
                       textDiv.style.fontWeight = '500';
                     } else {
-                      span.textContent = '—';
-                      textDiv.style.color = '#d4d4d4';
+                      textDiv.textContent = '—';
+                      textDiv.style.color = '#d1d5db';
                     }
+                  } else {
+                    textDiv.textContent = displayText;
                   }
 
-                  textDiv.appendChild(span);
                   parent.replaceChild(textDiv, clonedNode);
                   return;
                 }
@@ -1165,14 +1148,14 @@ Generated via TEJAS CANVASSING Terminal.`;
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="bg-surface-container-lowest/80 border border-outline-variant/60 rounded-3xl p-6 shadow-xl no-print space-y-6 overflow-hidden text-left"
+            className="bg-surface-container-lowest/80 border border-outline-variant/60 rounded-3xl p-5 shadow-xl no-print overflow-hidden text-left"
           >
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-outline-variant/30 pb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex items-center gap-2.5">
                 <Settings className="w-5 h-5 text-primary" />
                 <div>
                   <h3 className="text-sm font-black uppercase tracking-wider">Patti Print & Receipt customizer</h3>
-                  <p className="text-secondary text-[11px] font-semibold">Tweak receipt templates, color schemes, and layout components.</p>
+                  <p className="text-secondary text-[11px] font-semibold">Tweak color themes and export resolution.</p>
                 </div>
               </div>
               <div className="flex items-center gap-2 flex-wrap">
@@ -1212,58 +1195,6 @@ Generated via TEJAS CANVASSING Terminal.`;
                 </div>
               </div>
             </div>
-
-            {/* Component Visibility Switches */}
-            <div className="bg-surface-container/45 border border-outline-variant/40 rounded-2xl p-4.5 space-y-3.5">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <p className="text-[10px] font-black uppercase tracking-widest text-secondary">Toggle layout nodes</p>
-                <p className="text-[8px] font-black text-secondary uppercase tracking-widest leading-relaxed">
-                  💡 TIP: Set browser print options to <span className="text-primary font-black">Landscape</span> orientation, set margins to <span className="text-primary font-black">None</span>, and check <span className="text-primary font-black">Background graphics</span> for best result.
-                </p>
-              </div>
-              
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5 pt-1">
-                <label className="flex items-center gap-2 cursor-pointer select-none">
-                  <input 
-                    type="checkbox" 
-                    checked={showLetterhead}
-                    onChange={(e) => setShowLetterhead(e.target.checked)}
-                    className="rounded border-outline-variant/60 text-primary focus:ring-primary w-4 h-4 cursor-pointer"
-                  />
-                  <span className="text-[11px] font-semibold text-secondary">Depot Header</span>
-                </label>
-
-                <label className="flex items-center gap-2 cursor-pointer select-none">
-                  <input 
-                    type="checkbox" 
-                    checked={showStamp}
-                    onChange={(e) => setShowStamp(e.target.checked)}
-                    className="rounded border-outline-variant/60 text-primary focus:ring-primary w-4 h-4 cursor-pointer"
-                  />
-                  <span className="text-[11px] font-semibold text-secondary">Audit Stamp</span>
-                </label>
-
-                <label className="flex items-center gap-2 cursor-pointer select-none">
-                  <input 
-                    type="checkbox" 
-                    checked={showSignatures}
-                    onChange={(e) => setShowSignatures(e.target.checked)}
-                    className="rounded border-outline-variant/60 text-primary focus:ring-primary w-4 h-4 cursor-pointer"
-                  />
-                  <span className="text-[11px] font-semibold text-secondary">Signatures Block</span>
-                </label>
-
-                <label className="flex items-center gap-2 cursor-pointer select-none">
-                  <input 
-                    type="checkbox" 
-                    checked={showTerms}
-                    onChange={(e) => setShowTerms(e.target.checked)}
-                    className="rounded border-outline-variant/60 text-primary focus:ring-primary w-4 h-4 cursor-pointer"
-                  />
-                  <span className="text-[11px] font-semibold text-secondary">T&C Footer</span>
-                </label>
-              </div>
-            </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -1299,7 +1230,7 @@ Generated via TEJAS CANVASSING Terminal.`;
           </div>
         )}
 
-        {/* Audit status Ribbon & Verification Stamp */}
+        {/* Ribbon */}
         <div className="flex justify-between items-center mb-4 text-left">
           <div className="flex items-center gap-2">
             <span className={cn("w-2.5 h-2.5 rounded-full animate-pulse", printColorMode === 'mono' ? 'bg-black' : 'bg-amber-500')} />
@@ -1307,19 +1238,6 @@ Generated via TEJAS CANVASSING Terminal.`;
               Physical Patti verification statement & weightment ledger
             </span>
           </div>
-          {showStamp && (
-            <div className={cn(
-              "h-14 w-14 border border-dashed rounded-full flex items-center justify-center shrink-0 rotate-12 transition-transform hover:scale-105 select-none",
-              colors.badgeBorder,
-              colors.accentBg
-            )}>
-              <div className={cn("text-[7.5px] font-black uppercase tracking-tighter text-center leading-none", colors.badgeText)}>
-                verified<br/>
-                &<br/>
-                audited
-              </div>
-            </div>
-          )}
         </div>
 
         {/* The Precise physical matrix form */}
@@ -1328,24 +1246,24 @@ Generated via TEJAS CANVASSING Terminal.`;
           
           {/* Row 1: MILLERNAME */}
           <LabelCell borderClass={colors.border} bgClass={colors.labelBg} className="col-span-2 h-10">MILLERNAME</LabelCell>
-          <div className={cn("col-span-8 border-r border-b h-10", colors.border)}>
+          <div className={cn("col-span-8 border-r border-b h-10 flex items-center", colors.border)}>
             <input 
               type="text" 
               value={formData.millerName}
               onChange={(e) => updateField('millerName', e.target.value)}
-              className="w-full h-full px-4 text-sm font-black uppercase outline-none bg-transparent"
+              className="w-full h-full px-4 text-sm font-black uppercase outline-none bg-transparent leading-normal"
               placeholder="ENTER MILLER TRADE DESIGNATION"
             />
           </div>
 
           {/* Row 2: PARTYNAME */}
           <LabelCell borderClass={colors.border} bgClass={colors.labelBg} className="col-span-2 h-10">PARTYNAME</LabelCell>
-          <div className={cn("col-span-8 border-r border-b h-10", colors.border)}>
+          <div className={cn("col-span-8 border-r border-b h-10 flex items-center", colors.border)}>
             <input 
               type="text" 
               value={formData.partyName}
               onChange={(e) => updateField('partyName', e.target.value)}
-              className="w-full h-full px-4 text-sm font-black uppercase outline-none bg-transparent"
+              className="w-full h-full px-4 text-sm font-black uppercase outline-none bg-transparent leading-normal"
               placeholder="ENTER CO-PARTNER / BUYER PARTY"
             />
           </div>
@@ -1365,12 +1283,12 @@ Generated via TEJAS CANVASSING Terminal.`;
 
           {/* Row 4: ARRIVALDT */}
           <LabelCell borderClass={colors.border} bgClass={colors.labelBg} className="col-span-2 h-10">ARRIVALDT</LabelCell>
-          <div className={cn("col-span-2 border-r border-b", colors.border)}>
+          <div className={cn("col-span-2 border-r border-b h-10 flex items-center justify-center", colors.border)}>
             <input 
               type="date" 
               value={formData.arrivalDt}
               onChange={(e) => updateField('arrivalDt', e.target.value)}
-              className="w-full h-full bg-transparent px-2 py-1 text-xs font-mono font-bold tabular-nums outline-none text-center"
+              className="w-full h-full bg-transparent px-2 text-xs font-mono font-black tabular-nums outline-none text-center leading-normal"
             />
           </div>
           <div className={cn("col-span-6 border-r border-b h-10", colors.border)} />
@@ -1386,22 +1304,22 @@ Generated via TEJAS CANVASSING Terminal.`;
           {/* Row 6: LORRYHIRE / DEDUCT SUM / CHQ AM */}
           <LabelCell borderClass={colors.border} bgClass={colors.labelBg} className="col-span-2 h-10 underline font-medium">LORRYHIRE</LabelCell>
           <InputCell value={formData.lorrySmall} onChange={(v) => updateField('lorrySmall', v)} className="col-span-1" borderClass={colors.border} activeTextClass={colors.textMain} />
-          <div className={cn("col-span-1 border-r border-b", colors.border)} />
-          <div className={cn("col-span-1 border-r border-b", colors.border)} />
+          <div className={cn("col-span-1 border-r border-b h-10", colors.border)} />
+          <div className={cn("col-span-1 border-r border-b h-10", colors.border)} />
           <div className={cn("col-span-1 border-r border-b flex items-center justify-center text-xs font-mono font-black tabular-nums tracking-tight px-1 truncate", colors.border, colors.dedBg)}>
             {formatINR(formData.expensesSum)}
           </div>
-          <div className={cn("col-span-2 border-r border-b", colors.border)} />
+          <div className={cn("col-span-2 border-r border-b h-10", colors.border)} />
           <LabelCell borderClass={colors.border} bgClass={colors.labelBg} className="col-span-1 text-[9px]">CHQ AM</LabelCell>
           <InputCell value={formData.chqAm} onChange={(v) => updateField('chqAm', v)} className="col-span-1" borderClass={colors.border} activeTextClass={colors.textMain} />
 
           {/* Row 7: DISCOUNT / TDS / NET AM / CHQ NO */}
           <LabelCell borderClass={colors.border} bgClass={colors.labelBg} className="col-span-2 h-10 underline font-medium">DISCOUNT / TDS ({(parseFloat(formData.discountPct)*100).toFixed(2)}%)</LabelCell>
-          <div className={cn("col-span-1 border-r border-b flex relative", colors.border)}>
+          <div className={cn("col-span-1 border-r border-b h-10 flex items-center justify-center relative", colors.border)}>
             <select 
               value={formData.discountPct}
               onChange={(e) => { setIsManualDiscount(true); updateField('discountPct', e.target.value); }}
-              className="w-full h-full bg-transparent p-1 text-[11px] font-mono font-black tabular-nums outline-none border-none appearance-none text-center cursor-pointer"
+              className="w-full h-full bg-transparent p-1 text-[11px] font-mono font-black tabular-nums outline-none border-none appearance-none text-center cursor-pointer leading-normal"
             >
               <option value="0">0%</option>
               <option value="0.01">1%</option>
@@ -1414,39 +1332,39 @@ Generated via TEJAS CANVASSING Terminal.`;
             </select>
             {!isManualDiscount && <span className="absolute -top-1 -right-1 w-2 h-2 bg-emerald-500 rounded-full" title="Auto-calculated" />}
           </div>
-          <div className={cn("col-span-1 border-r border-b flex items-center justify-center text-xs font-mono font-black tabular-nums tracking-tight px-1 truncate text-rose-600 dark:text-rose-400", colors.border)}>
+          <div className={cn("col-span-1 border-r border-b h-10 flex items-center justify-center text-xs font-mono font-black tabular-nums tracking-tight px-1 truncate text-rose-600 dark:text-rose-400", colors.border)}>
             {formatINR(formData.discountAmount)}
           </div>
-          <div className={cn("col-span-1 border-r border-b", colors.border)} />
-          <div className={cn("col-span-1 border-r border-b flex items-center justify-center text-xs font-mono font-black tabular-nums tracking-tighter px-0.5 truncate", colors.border, colors.netBg)}>
+          <div className={cn("col-span-1 border-r border-b h-10", colors.border)} />
+          <div className={cn("col-span-1 border-r border-b h-10 flex items-center justify-center text-xs font-mono font-black tabular-nums tracking-tighter px-0.5 truncate", colors.border, colors.netBg)}>
             {formatINR(formData.netAmount)}
           </div>
-          <div className={cn("col-span-2 border-r border-b", colors.border)} />
+          <div className={cn("col-span-2 border-r border-b h-10", colors.border)} />
           <LabelCell borderClass={colors.border} bgClass={colors.labelBg} className="col-span-1 text-[9px]">CHQ NO</LabelCell>
           <InputCell value={formData.chqNo} onChange={(v) => updateField('chqNo', v)} className="col-span-1" borderClass={colors.border} activeTextClass={colors.textMain} />
 
           {/* Row 8: SELLERCOM / CHQ DT */}
           <LabelCell borderClass={colors.border} bgClass={colors.labelBg} className="col-span-2 h-10 underline font-medium">SELLERCOM</LabelCell>
           <InputCell value={formData.sellerCom} onChange={(v) => updateField('sellerCom', v)} className="col-span-1" borderClass={colors.border} activeTextClass={colors.textMain} />
-          <div className={cn("col-span-2 border-r border-b", colors.border)} />
-          <div className={cn("col-span-1 border-r border-b flex items-center justify-center text-xs font-mono font-bold tabular-nums tracking-tight px-1 truncate text-blue-600 dark:text-blue-400", colors.border)}>
+          <div className={cn("col-span-2 border-r border-b h-10", colors.border)} />
+          <div className={cn("col-span-1 border-r border-b h-10 flex items-center justify-center text-xs font-mono font-bold tabular-nums tracking-tight px-1 truncate text-blue-600 dark:text-blue-400", colors.border)}>
             {formatINR(formData.chqAm)}
           </div>
-          <div className={cn("col-span-2 border-r border-b", colors.border)} />
+          <div className={cn("col-span-2 border-r border-b h-10", colors.border)} />
           <LabelCell borderClass={colors.border} bgClass={colors.labelBg} className="col-span-1 text-[9px]">CHQ DT</LabelCell>
-          <div className={cn("col-span-1 border-r border-b", colors.border)}>
+          <div className={cn("col-span-1 border-r border-b h-10 flex items-center justify-center", colors.border)}>
             <input 
               type="date" 
               value={formData.chqDt}
               onChange={(e) => updateField('chqDt', e.target.value)}
-              className="w-full h-full bg-transparent px-1 text-[11px] font-mono font-bold tabular-nums outline-none text-center"
+              className="w-full h-full bg-transparent px-1 text-[11px] font-mono font-bold tabular-nums outline-none text-center leading-normal"
             />
           </div>
 
           {/* Row 9: SHORTAGE / BANK */}
           <LabelCell borderClass={colors.border} bgClass={colors.labelBg} className="col-span-2 h-10 underline font-medium text-rose-600">SHORTAGE</LabelCell>
           <InputCell value={formData.manualShortage} onChange={(v) => updateField('manualShortage', v)} className="col-span-1" borderClass={colors.border} activeTextClass={colors.textMain} />
-          <div className={cn("col-span-2 border-r border-b", colors.border)} />
+          <div className={cn("col-span-2 border-r border-b h-10", colors.border)} />
           <div className={cn(
             "col-span-1 border-r border-b flex items-center justify-center text-xs font-mono font-black tabular-nums tracking-tighter px-0.5 truncate",
             colors.border,
@@ -1454,7 +1372,7 @@ Generated via TEJAS CANVASSING Terminal.`;
           )}>
             {formatINR(formData.shortageDelta)}
           </div>
-          <div className={cn("col-span-2 border-r border-b", colors.border)} />
+          <div className={cn("col-span-2 border-r border-b h-10", colors.border)} />
           <LabelCell borderClass={colors.border} bgClass={colors.labelBg} className="col-span-1 text-[9px]">BANK</LabelCell>
           <InputCell value={formData.bank} onChange={(v) => updateField('bank', v)} className="col-span-1" borderClass={colors.border} activeTextClass={colors.textMain} />
 
@@ -1471,45 +1389,18 @@ Generated via TEJAS CANVASSING Terminal.`;
           <div className={cn("col-span-1 border-r border-b px-2 flex items-center text-[8px] font-black uppercase text-neutral-400 border-r", colors.border)}>
             Remarks:
           </div>
-          <div className={cn("col-span-6 border-r border-b h-12", colors.border)}>
+          <div className={cn("col-span-6 border-r border-b h-12 flex items-center", colors.border)}>
             <input 
               type="text" 
               value={formData.remarks}
               onChange={(e) => updateField('remarks', e.target.value)}
-              className="w-full h-full px-3 text-xs font-semibold outline-none bg-transparent placeholder:text-neutral-400"
+              className="w-full h-full px-3 text-xs font-bold outline-none bg-transparent placeholder:text-neutral-400 leading-normal"
               placeholder="WRITE ARBITRAGE NOTES OR REMARK ENTRY..."
             />
           </div>
 
           </div>
         </div>
-
-        {/* Dynamic Verification Signatures Pad */}
-        {showSignatures && (
-          <div className="mt-8 pt-6 border-t border-dashed border-neutral-300 dark:border-neutral-800 grid grid-cols-1 sm:grid-cols-3 gap-6 text-center">
-            <div className="space-y-1">
-              <div className="h-10 border-b border-dashed border-neutral-300 dark:border-neutral-700 w-3/4 mx-auto" />
-              <span className="text-[9px] font-black text-secondary uppercase tracking-widest block pt-1.5">{printConfig.signatureTitle1}</span>
-            </div>
-            <div className="space-y-1">
-              <div className="h-10 border-b border-dashed border-neutral-300 dark:border-neutral-700 w-3/4 mx-auto" />
-              <span className="text-[9px] font-black text-secondary uppercase tracking-widest block pt-1.5">{printConfig.signatureTitle2}</span>
-            </div>
-            <div className="space-y-1">
-              <div className="h-10 border-b border-dashed border-neutral-300 dark:border-neutral-700 w-3/4 mx-auto" />
-              <span className="text-[9px] font-black text-secondary uppercase tracking-widest block pt-1.5">{printConfig.signatureTitle3}</span>
-            </div>
-          </div>
-        )}
-
-        {/* Dynamic Terms Footer */}
-        {showTerms && (
-          <div className="mt-8 pt-4 border-t border-neutral-200 dark:border-neutral-800 text-center">
-            <p className="text-[8px] text-neutral-400 font-bold tracking-wider uppercase max-w-2xl mx-auto">
-              {printConfig.terms}
-            </p>
-          </div>
-        )}
       </motion.div>
 
       {/* Preservation & Form actions */}
