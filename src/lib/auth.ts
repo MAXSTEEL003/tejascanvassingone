@@ -49,6 +49,23 @@ export function getAuthToken(): string | null {
   return null;
 }
 
+// Retrieve currently authenticated user payload
+export function getAuthUser(): AuthenticatedUser | null {
+  try {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem(SESSION_USER_KEY) || sessionStorage.getItem(SESSION_USER_KEY);
+      if (stored) {
+        return JSON.parse(stored);
+      }
+      const token = getAuthToken();
+      if (token) {
+        return parseTokenPayload(token);
+      }
+    }
+  } catch {}
+  return null;
+}
+
 // Client-side lightweight JWT creator to ensure tokens are always present and valid
 export function createClientAuthToken(user: AuthenticatedUser, expiresInSeconds = 7 * 24 * 60 * 60): string {
   try {

@@ -16,7 +16,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { OperationalPO, formatQtl } from '../utils/orderOperations';
-import { formatINR } from '../lib/utils';
+import { cn, formatINR } from '../lib/utils';
 
 interface PrintEntriesPdfModalProps {
   isOpen: boolean;
