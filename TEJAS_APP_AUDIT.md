@@ -11,7 +11,7 @@
 
 Tejas Canvassing is an operational, specialized rice canvassing and brokerage application built for the South Indian rice trade (primarily Yeshwanthpur APMC Bangalore, Miryalguda, Suryapet, Punjab/Haryana belts). The platform handles the end-to-end lifecycle of rice transactions:
 1. **Merchant Portal:** Catalog browsing, variety specifications (1121 Sella, Sona Masoori, HMT Kolam, IR-64, etc.), cart/bag management, godown/shop delivery coordination, and procurement indent requests.
-2. **Broker / Admin Headquarters:** Reviewing incoming buyer indents, grouping multiple merchant orders into single mill-level Purchase Orders (POs), transacting with millers, dispatching automated PO contracts via SMTP email and WhatsApp (AiSensy), tracking lorry arrivals via an Excel-like 30+ column spreadsheet registry with Gemini AI camera OCR for lorry receipts (Bilty / LR), monitoring credit terms (overdue payments > 60 days), managing dual-entry financial ledgers (Buyer Debit / Miller Credit), generating traditional Indian agricultural settlement vouchers ("Patti"), and viewing business intelligence analytics.
+2. **Broker / Admin Headquarters:** Reviewing incoming buyer indents, grouping multiple merchant orders into single mill-level Purchase Orders (POs), transacting with millers, dispatching automated PO contracts via SMTP email and WhatsApp (Meta WhatsApp Cloud API), tracking lorry arrivals via an Excel-like 30+ column spreadsheet registry with Gemini AI camera OCR for lorry receipts (Bilty / LR), monitoring credit terms (overdue payments > 60 days), managing dual-entry financial ledgers (Buyer Debit / Miller Credit), generating traditional Indian agricultural settlement vouchers ("Patti"), and viewing business intelligence analytics.
 3. **Warehouse / Staff Operations:** Grain inventory status, quality inspections (moisture %, sortex broken %, chalkiness), and field logistics tasks.
 
 ### Key Strengths
@@ -50,12 +50,12 @@ flowchart TD
         AuthRouter[api/auth.ts]
         GenAI[Google GenAI SDK - Gemini 3.8 Flash]
         Mailer[Nodemailer SMTP Relay]
-        AiSensy[AiSensy WhatsApp Gateway]
+        MetaWA[Meta WhatsApp Cloud API Gateway]
         Server --> APIRouter
         APIRouter --> AuthRouter
         APIRouter --> GenAI
         APIRouter --> Mailer
-        APIRouter --> AiSensy
+        APIRouter --> MetaWA
     end
 
     subgraph Cloud["External Services & Database"]
@@ -63,7 +63,7 @@ flowchart TD
         FBAuth[Firebase Authentication]
         GeminiAPI[Google Gemini API]
         SMTPRelay[SMTP Host / Gmail Relay]
-        WhatsAppAPI[AiSensy / WhatsApp Cloud]
+        WhatsAppAPI[Meta WhatsApp Cloud API]
     end
 
     FBClient <--> Firestore
@@ -313,14 +313,14 @@ Defined in `firebase-blueprint.json` and utilized in `src/lib/firebase.ts`:
 
 ### Current Implementation
 - **SMTP Email Dispatch:** `/api/dispatch-po` in `api/index.ts` uses `nodemailer` to transmit stylized HTML Purchase Orders (`generateSupplierPOEmailHtml` in `src/utils/poEmailTemplate.ts`). If SMTP credentials are not set, it records a simulated dispatch and generates a `mailto:` fallback.
-- **WhatsApp Dispatch:** `/api/dispatch-whatsapp` in `api/index.ts` connects to AiSensy's Campaign API v2 when configured, or provides a 1-click `api.whatsapp.com` URL.
+- **WhatsApp Dispatch:** `/api/dispatch-whatsapp` in `api/index.ts` connects to Meta's WhatsApp Cloud API (v21.0 Graph API) when configured, or provides a 1-click `api.whatsapp.com` URL fallback.
 - **SMS Dispatch:** `/api/dispatch-sms` creates native `sms:` protocol links.
 - **In-Memory Logging:** Up to 50 recent dispatches are logged in `dispatchHistory` in `api/index.ts`.
 
 ### Issues Identified
 
 #### Issue 9.1: Runtime .env Mutation from Endpoints
-- **Problem:** `/api/update-smtp-credentials` and `/api/update-aisensy-credentials` write credentials directly into the local `.env` file via `fs.writeFileSync`.
+- **Problem:** `/api/update-smtp-credentials` and `/api/update-meta-whatsapp-credentials` write credentials directly into the local `.env` file via `fs.writeFileSync`.
 - **Evidence/File:** `api/index.ts` (lines 545–548, 619):
   ```ts
   fs.writeFileSync(envPath, envContent.trim() + "\n", "utf-8");

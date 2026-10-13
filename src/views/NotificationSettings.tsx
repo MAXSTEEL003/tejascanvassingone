@@ -142,7 +142,7 @@ export default function NotificationSettings() {
   const [directMailLink, setDirectMailLink] = useState('');
   const [directGmailLink, setDirectGmailLink] = useState('');
   const [dispatchHistory, setDispatchHistory] = useState<DispatchLog[]>([]);
-  const [gatewayStatus, setGatewayStatus] = useState<{ smtp: boolean; aisensy?: boolean }>({ smtp: false, aisensy: false });
+  const [gatewayStatus, setGatewayStatus] = useState<{ smtp: boolean; metaWhatsapp?: boolean; aisensy?: boolean }>({ smtp: false, metaWhatsapp: false });
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
   const role = localStorage.getItem('userRole') || 'admin';
@@ -159,11 +159,17 @@ export default function NotificationSettings() {
         if (data.configured) {
           setGatewayStatus(data.configured);
         }
-        if (data.aisensyApiKeyPrefix) {
-          setAiSensyKeyPrefix(data.aisensyApiKeyPrefix);
+        if (data.metaWhatsappPhoneNumberId) {
+          setCustomMetaPhoneId(data.metaWhatsappPhoneNumberId);
         }
-        if (data.aisensyCampaignName) {
-          setCustomAiSensyCampaign(data.aisensyCampaignName);
+        if (data.metaWhatsappTokenPrefix) {
+          setMetaTokenPrefix(data.metaWhatsappTokenPrefix);
+        }
+        if (data.metaWhatsappTemplateName) {
+          setCustomMetaTemplateName(data.metaWhatsappTemplateName);
+        }
+        if (data.metaWhatsappWabaId) {
+          setCustomMetaWabaId(data.metaWhatsappWabaId);
         }
       }
     } catch (err) {
@@ -258,57 +264,68 @@ export default function NotificationSettings() {
 
   const [lastWaResult, setLastWaResult] = useState<any>(null);
   
-  // AiSensy WhatsApp API State (Primary)
-  const [showAiSensyConfig, setShowAiSensyConfig] = useState<boolean>(true);
-  const [customAiSensyKey, setCustomAiSensyKey] = useState<string>('');
-  const [customAiSensyCampaign, setCustomAiSensyCampaign] = useState<string>('order_notification');
-  const [aiSensyKeyPrefix, setAiSensyKeyPrefix] = useState<string | null>(null);
-  const [isVerifyingAiSensy, setIsVerifyingAiSensy] = useState<boolean>(false);
-  const [aiSensyVerifyFeedback, setAiSensyVerifyFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  // Meta WhatsApp Cloud API State (Primary)
+  const [showMetaConfig, setShowMetaConfig] = useState<boolean>(true);
+  const [customMetaPhoneId, setCustomMetaPhoneId] = useState<string>('');
+  const [customMetaToken, setCustomMetaToken] = useState<string>('');
+  const [customMetaWabaId, setCustomMetaWabaId] = useState<string>('');
+  const [customMetaTemplateName, setCustomMetaTemplateName] = useState<string>('');
+  const [metaTokenPrefix, setMetaTokenPrefix] = useState<string | null>(null);
+  const [isVerifyingMeta, setIsVerifyingMeta] = useState<boolean>(false);
+  const [metaVerifyFeedback, setMetaVerifyFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  const handleVerifyAndSaveAiSensy = async (e?: React.FormEvent) => {
+  const handleVerifyAndSaveMeta = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!customAiSensyKey.trim()) {
-      setAiSensyVerifyFeedback({
+    if (!customMetaPhoneId.trim()) {
+      setMetaVerifyFeedback({
         type: 'error',
-        text: 'Please provide your active AiSensy API Key.'
+        text: 'Please provide your Meta WhatsApp Phone Number ID.'
       });
       return;
     }
-    setIsVerifyingAiSensy(true);
-    setAiSensyVerifyFeedback(null);
+    if (!customMetaToken.trim() && !metaTokenPrefix) {
+      setMetaVerifyFeedback({
+        type: 'error',
+        text: 'Please provide your Meta System User Access Token.'
+      });
+      return;
+    }
+    setIsVerifyingMeta(true);
+    setMetaVerifyFeedback(null);
     try {
-      const res = await fetch('/api/update-aisensy-credentials', {
+      const res = await fetch('/api/update-meta-whatsapp-credentials', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          apiKey: customAiSensyKey.trim(),
-          campaignName: customAiSensyCampaign.trim() || 'order_notification'
+          phoneNumberId: customMetaPhoneId.trim(),
+          accessToken: customMetaToken.trim(),
+          wabaId: customMetaWabaId.trim(),
+          templateName: customMetaTemplateName.trim()
         })
       });
 
       const data = await res.json();
       if (res.ok && data.success) {
-        setAiSensyVerifyFeedback({
+        setMetaVerifyFeedback({
           type: 'success',
-          text: data.message || 'AiSensy credentials connected successfully!'
+          text: data.message || 'Meta WhatsApp Cloud API credentials connected successfully!'
         });
-        setGatewayStatus(prev => ({ ...prev, aisensy: true }));
-        if (data.apiKeyPrefix) setAiSensyKeyPrefix(data.apiKeyPrefix);
+        setGatewayStatus(prev => ({ ...prev, metaWhatsapp: true, aisensy: true }));
+        if (data.tokenPrefix) setMetaTokenPrefix(data.tokenPrefix);
         fetchHistory();
       } else {
-        setAiSensyVerifyFeedback({
+        setMetaVerifyFeedback({
           type: 'error',
-          text: data.error || 'Failed to save AiSensy credentials.'
+          text: data.error || 'Failed to save Meta WhatsApp credentials.'
         });
       }
     } catch (err: any) {
-      setAiSensyVerifyFeedback({
+      setMetaVerifyFeedback({
         type: 'error',
-        text: `Network error connecting to AiSensy: ${err.message || 'Unknown error'}`
+        text: `Network error connecting to Meta WhatsApp API: ${err.message || 'Unknown error'}`
       });
     } finally {
-      setIsVerifyingAiSensy(false);
+      setIsVerifyingMeta(false);
     }
   };
 
@@ -375,10 +392,9 @@ export default function NotificationSettings() {
         message: testMessageText
       };
 
-      if (customAiSensyKey.trim()) {
-        payload.aisensyApiKey = customAiSensyKey.trim();
-        payload.campaignName = customAiSensyCampaign.trim() || 'order_notification';
-      }
+      if (customMetaPhoneId.trim()) payload.phoneNumberId = customMetaPhoneId.trim();
+      if (customMetaToken.trim()) payload.accessToken = customMetaToken.trim();
+      if (customMetaTemplateName.trim()) payload.templateName = customMetaTemplateName.trim();
 
       const res = await fetch('/api/dispatch-whatsapp', {
         method: 'POST',
@@ -389,25 +405,25 @@ export default function NotificationSettings() {
       const data = await res.json();
       setLastWaResult(data);
       if (res.ok && data.success) {
-        if (data.gateway === 'aisensy') {
+        if (data.gateway === 'meta_whatsapp') {
           setTestFeedback({
             type: 'success',
-            text: `WhatsApp Alert Delivered via AiSensy Gateway! (Campaign: ${data.campaignName || 'order_notification'})`
+            text: `WhatsApp Alert Delivered via Meta WhatsApp Cloud API! (Message ID: ${data.messageId || 'Delivered'})`
           });
         } else {
           setTestFeedback({
             type: 'success',
-            text: `WhatsApp dispatch recorded & direct link generated! Save your AiSensy API Key below to transmit live messages automatically.`
+            text: `WhatsApp dispatch recorded & direct link generated! Save your Meta Phone Number ID & Token below to transmit live messages automatically.`
           });
         }
       } else {
         const errorText = data.error || data.message || 'Dispatch failed';
         setTestFeedback({
           type: 'error',
-          text: `${data.gateway === 'aisensy' ? 'AiSensy' : 'WhatsApp'} Error: ${errorText}`
+          text: `${data.gateway === 'meta_whatsapp' ? 'Meta WhatsApp' : 'WhatsApp'} Error: ${errorText}`
         });
-        if (data.gateway === 'aisensy') {
-          setShowAiSensyConfig(true);
+        if (data.gateway === 'meta_whatsapp') {
+          setShowMetaConfig(true);
         }
       }
       if (data.directUrl) setDirectWaLink(data.directUrl);
@@ -901,30 +917,30 @@ export default function NotificationSettings() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className={cn(
                 "p-5 rounded-3xl border flex items-start gap-3.5 transition-all",
-                gatewayStatus.aisensy 
+                (gatewayStatus.metaWhatsapp || gatewayStatus.aisensy)
                   ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-800 dark:text-emerald-300"
                   : "bg-emerald-500/5 border-emerald-500/20 text-emerald-900 dark:text-emerald-300"
               )}>
                 <div className={cn(
                   "p-2.5 rounded-2xl shrink-0 mt-0.5",
-                  gatewayStatus.aisensy ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-300" : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                  (gatewayStatus.metaWhatsapp || gatewayStatus.aisensy) ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-300" : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
                 )}>
                   <MessageSquare className="w-5 h-5" />
                 </div>
                 <div className="space-y-1">
                   <div className="flex items-center justify-between gap-2">
-                    <h4 className="font-black text-xs uppercase tracking-wider">AiSensy WhatsApp API</h4>
+                    <h4 className="font-black text-xs uppercase tracking-wider">Meta WhatsApp Cloud API</h4>
                     <span className={cn(
                       "px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest",
-                      gatewayStatus.aisensy ? "bg-emerald-600 text-white" : "bg-amber-500/20 text-amber-800 dark:text-amber-200"
+                      (gatewayStatus.metaWhatsapp || gatewayStatus.aisensy) ? "bg-emerald-600 text-white" : "bg-amber-500/20 text-amber-800 dark:text-amber-200"
                     )}>
-                      {gatewayStatus.aisensy ? 'Live AiSensy Active' : 'Setup Required'}
+                      {(gatewayStatus.metaWhatsapp || gatewayStatus.aisensy) ? 'Live Meta Cloud API' : 'Setup Required'}
                     </span>
                   </div>
                   <p className="text-[11px] opacity-80 leading-relaxed font-medium">
-                    {gatewayStatus.aisensy 
-                      ? 'Connected to AiSensy. Automated WhatsApp notifications route directly via AiSensy campaign templates.'
-                      : 'AiSensy credentials pending. Enter your AiSensy API Key below to activate automated messaging.'}
+                    {(gatewayStatus.metaWhatsapp || gatewayStatus.aisensy) 
+                      ? 'Connected to Meta WhatsApp Cloud API. Automated order alerts route directly via Meta Graph API.'
+                      : 'Meta Cloud API credentials pending. Enter your Phone Number ID & Token below to activate automated messaging.'}
                   </p>
                 </div>
               </div>
@@ -1066,18 +1082,18 @@ export default function NotificationSettings() {
                   {isSendingTestWa ? (
                     <>
                       <div className="w-3.5 h-3.5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-                      {gatewayStatus.aisensy ? 'Sending via AiSensy...' : 'Dispatching via Gateway...'}
+                      {(gatewayStatus.metaWhatsapp || gatewayStatus.aisensy) ? 'Sending via Meta Cloud API...' : 'Dispatching via Gateway...'}
                     </>
                   ) : (
                     <>
                       <Send className="w-4 h-4 text-emerald-600" />
-                      {gatewayStatus.aisensy ? 'Send via AiSensy Automated API' : 'Send via Automated WhatsApp API'}
+                      {(gatewayStatus.metaWhatsapp || gatewayStatus.aisensy) ? 'Send via Meta WhatsApp Cloud API' : 'Send via Automated WhatsApp API'}
                     </>
                   )}
                 </button>
               </div>
 
-              {/* AiSensy WhatsApp API Configuration Card (Primary) */}
+              {/* Meta WhatsApp Cloud API Configuration Card (Primary) */}
               <div className="p-4 sm:p-5 rounded-2xl bg-surface-container border border-emerald-500/30 space-y-4 shadow-sm">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
@@ -1086,61 +1102,90 @@ export default function NotificationSettings() {
                     </div>
                     <div>
                       <h4 className="text-xs font-black uppercase tracking-wider text-on-surface flex items-center gap-2">
-                        AiSensy WhatsApp API Credentials & Campaign
+                        Meta WhatsApp Cloud API Credentials & Setup
                         <span className={cn(
                           "px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest",
-                          gatewayStatus.aisensy ? "bg-emerald-600 text-white" : "bg-amber-500/20 text-amber-800 dark:text-amber-300"
+                          (gatewayStatus.metaWhatsapp || gatewayStatus.aisensy) ? "bg-emerald-600 text-white" : "bg-amber-500/20 text-amber-800 dark:text-amber-300"
                         )}>
-                          {gatewayStatus.aisensy ? 'Live & Connected' : 'Configuration Required'}
+                          {(gatewayStatus.metaWhatsapp || gatewayStatus.aisensy) ? 'Live & Connected' : 'Configuration Required'}
                         </span>
                       </h4>
                       <p className="text-[10px] text-secondary font-medium">
-                        Primary automated WhatsApp messaging service for order dispatches, trade notes, and buyer alerts.
+                        Official Meta WhatsApp Cloud API for instantaneous buyer order notifications, delivery alerts, and PO confirmations.
                       </p>
                     </div>
                   </div>
                   <button
                     type="button"
-                    onClick={() => setShowAiSensyConfig(!showAiSensyConfig)}
+                    onClick={() => setShowMetaConfig(!showMetaConfig)}
                     className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer"
                   >
-                    {showAiSensyConfig ? 'Hide Credentials' : 'Update Credentials'}
+                    {showMetaConfig ? 'Hide Credentials' : 'Update Credentials'}
                   </button>
                 </div>
 
-                {showAiSensyConfig && (
-                  <form onSubmit={handleVerifyAndSaveAiSensy} className="space-y-3 pt-2 border-t border-outline-variant/30">
+                {showMetaConfig && (
+                  <form onSubmit={handleVerifyAndSaveMeta} className="space-y-3 pt-2 border-t border-outline-variant/30">
                     <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 text-[11px] text-emerald-950 dark:text-emerald-200 space-y-1">
-                      <p className="font-bold">How to connect your AiSensy WhatsApp API:</p>
+                      <p className="font-bold">How to connect your Meta WhatsApp Cloud API:</p>
                       <ol className="list-decimal list-inside space-y-0.5 text-[10px] opacity-90">
-                        <li>Log in to your <strong>AiSensy Dashboard</strong> (<a href="https://app.aisensy.com" target="_blank" rel="noopener noreferrer" className="underline font-bold">app.aisensy.com</a>).</li>
-                        <li>Navigate to <strong>Manage ➔ API Key</strong> and copy your live key.</li>
-                        <li>Paste your API key below and verify your <strong>Campaign Name</strong> (default: <code className="font-mono font-bold">order_notification</code>).</li>
+                        <li>Open <strong>Meta for Developers</strong> (<a href="https://developers.facebook.com" target="_blank" rel="noopener noreferrer" className="underline font-bold">developers.facebook.com</a>) &gt; Your App &gt; <strong>WhatsApp &gt; API Setup</strong>.</li>
+                        <li>Copy your <strong>Phone Number ID</strong> and paste below.</li>
+                        <li>Generate a permanent <strong>System User Access Token</strong> (with <code className="font-mono font-bold">whatsapp_business_messaging</code> permission).</li>
+                        <li>(Optional) Enter your WhatsApp Business Account ID (WABA ID) and Approved Template Name.</li>
                       </ol>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div className="space-y-1">
                         <label className="text-[9px] font-black uppercase tracking-widest text-secondary block">
-                          AiSensy API Key {aiSensyKeyPrefix && <span className="text-emerald-600 font-mono">({aiSensyKeyPrefix})</span>}
+                          Phone Number ID <span className="text-rose-500">*</span>
                         </label>
                         <input
-                          type="password"
-                          value={customAiSensyKey}
-                          onChange={(e) => setCustomAiSensyKey(e.target.value)}
-                          placeholder={aiSensyKeyPrefix ? `Current: ${aiSensyKeyPrefix} (enter new key to replace)` : "Paste AiSensy API Key..."}
+                          type="text"
+                          value={customMetaPhoneId}
+                          onChange={(e) => setCustomMetaPhoneId(e.target.value)}
+                          placeholder="e.g. 104857291827492"
                           className="w-full bg-surface-container-low border border-outline-variant rounded-lg px-3 py-2 text-xs font-mono font-bold outline-none text-on-surface focus:ring-2 focus:ring-emerald-500/20"
                         />
                       </div>
 
                       <div className="space-y-1">
                         <label className="text-[9px] font-black uppercase tracking-widest text-secondary block">
-                          Approved Campaign Name / Template
+                          System User Access Token <span className="text-rose-500">*</span> {metaTokenPrefix && <span className="text-emerald-600 font-mono">({metaTokenPrefix})</span>}
+                        </label>
+                        <input
+                          type="password"
+                          value={customMetaToken}
+                          onChange={(e) => setCustomMetaToken(e.target.value)}
+                          placeholder={metaTokenPrefix ? `Current: ${metaTokenPrefix} (enter new to replace)` : "Paste Meta Bearer Access Token..."}
+                          className="w-full bg-surface-container-low border border-outline-variant rounded-lg px-3 py-2 text-xs font-mono font-bold outline-none text-on-surface focus:ring-2 focus:ring-emerald-500/20"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black uppercase tracking-widest text-secondary block">
+                          WhatsApp Business Account ID (WABA ID) (Optional)
                         </label>
                         <input
                           type="text"
-                          value={customAiSensyCampaign}
-                          onChange={(e) => setCustomAiSensyCampaign(e.target.value)}
+                          value={customMetaWabaId}
+                          onChange={(e) => setCustomMetaWabaId(e.target.value)}
+                          placeholder="e.g. 109847120938472"
+                          className="w-full bg-surface-container-low border border-outline-variant rounded-lg px-3 py-2 text-xs font-mono font-bold outline-none text-on-surface focus:ring-2 focus:ring-emerald-500/20"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black uppercase tracking-widest text-secondary block">
+                          Approved Template Name (Optional, blank = raw text)
+                        </label>
+                        <input
+                          type="text"
+                          value={customMetaTemplateName}
+                          onChange={(e) => setCustomMetaTemplateName(e.target.value)}
                           placeholder="e.g. order_notification"
                           className="w-full bg-surface-container-low border border-outline-variant rounded-lg px-3 py-2 text-xs font-mono font-bold outline-none text-on-surface focus:ring-2 focus:ring-emerald-500/20"
                         />
@@ -1148,20 +1193,20 @@ export default function NotificationSettings() {
                     </div>
 
                     <AnimatePresence>
-                      {aiSensyVerifyFeedback && (
+                      {metaVerifyFeedback && (
                         <motion.div
                           initial={{ opacity: 0, height: 0 }}
                           animate={{ opacity: 1, height: 'auto' }}
                           exit={{ opacity: 0, height: 0 }}
                           className={cn(
                             "p-2.5 rounded-lg text-xs font-bold flex items-center gap-2",
-                            aiSensyVerifyFeedback.type === 'success'
+                            metaVerifyFeedback.type === 'success'
                               ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30"
                               : "bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/30"
                           )}
                         >
-                          {aiSensyVerifyFeedback.type === 'success' ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
-                          <span className="flex-1">{aiSensyVerifyFeedback.text}</span>
+                          {metaVerifyFeedback.type === 'success' ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
+                          <span className="flex-1">{metaVerifyFeedback.text}</span>
                         </motion.div>
                       )}
                     </AnimatePresence>
@@ -1169,18 +1214,18 @@ export default function NotificationSettings() {
                     <div className="flex justify-end pt-1">
                       <button
                         type="submit"
-                        disabled={isVerifyingAiSensy || !customAiSensyKey.trim()}
+                        disabled={isVerifyingMeta || !customMetaPhoneId.trim() || (!customMetaToken.trim() && !metaTokenPrefix)}
                         className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all disabled:opacity-50 flex items-center gap-2 cursor-pointer shadow-md shadow-emerald-600/20"
                       >
-                        {isVerifyingAiSensy ? (
+                        {isVerifyingMeta ? (
                           <>
                             <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                            Connecting to AiSensy...
+                            Connecting to Meta...
                           </>
                         ) : (
                           <>
                             <CheckCircle2 className="w-4 h-4" />
-                            Connect & Save AiSensy Credentials
+                            Connect & Save Meta WhatsApp Credentials
                           </>
                         )}
                       </button>

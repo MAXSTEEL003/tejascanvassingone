@@ -301,9 +301,21 @@ function formatPhoneNumber(phone: string) {
   return { e164: `+${digits}`, digits, national: digits };
 }
 
-// REAL DISPATCH ROUTER: WHATSAPP NOTIFICATIONS via AiSensy or Direct WhatsApp
+// REAL DISPATCH ROUTER: WHATSAPP NOTIFICATIONS via Meta WhatsApp Cloud API or Direct WhatsApp
 app.post("/api/dispatch-whatsapp", async (req, res) => {
-  const { to, buyerName, message, contentSid, contentVariables, aisensyApiKey, campaignName, templateParams } = req.body;
+  const { 
+    to, 
+    buyerName, 
+    message, 
+    contentSid, 
+    phoneNumberId: reqPhoneId, 
+    accessToken: reqToken, 
+    templateName: reqTemplate,
+    templateParams,
+    languageCode,
+    aisensyApiKey, // backward-compat support
+    campaignName   // backward-compat support
+  } = req.body;
 
   if (!to || (!message && !contentSid)) {
     return res.status(400).json({ error: "Recipient phone number ('to') and either 'message' or 'contentSid' are required." });
@@ -314,114 +326,144 @@ app.post("/api/dispatch-whatsapp", async (req, res) => {
 
   dotenv.config({ override: true });
 
-  // 1. Check for AiSensy WhatsApp API
-  const activeAiSensyKey = String(aisensyApiKey || process.env.AISENSY_API_KEY || "").trim().replace(/^["']|["']$/g, '');
-  const activeCampaign = String(campaignName || process.env.AISENSY_CAMPAIGN_NAME || "order_notification").trim();
+  // 1. Check for Meta WhatsApp Cloud API Credentials
+  const activePhoneId = String(reqPhoneId || process.env.META_WHATSAPP_PHONE_NUMBER_ID || "").trim();
+  const activeToken = String(reqToken || process.env.META_WHATSAPP_TOKEN || aisensyApiKey || "").trim().replace(/^["']|["']$/g, '');
+  const activeTemplate = String(reqTemplate || process.env.META_WHATSAPP_TEMPLATE_NAME || (campaignName !== "order_notification" ? campaignName : "") || "").trim();
+  const activeLang = String(languageCode || "en").trim();
 
-  if (activeAiSensyKey) {
-    console.log("[AiSensy WhatsApp Dispatcher] Initiating automated dispatch via AiSensy API:", {
-      destination: e164,
-      campaignName: activeCampaign,
-      keyPrefix: `${activeAiSensyKey.substring(0, 6)}...`
+  if (activePhoneId && activeToken) {
+    console.log("[Meta WhatsApp Cloud API] Initiating dispatch:", {
+      destination: digits,
+      phoneId: activePhoneId,
+      template: activeTemplate || "(raw text)",
+      tokenPrefix: `${activeToken.substring(0, 8)}...`
     });
 
     try {
-      // AiSensy standard v2 campaign API
-      const aisensyPayload = {
-        apiKey: activeAiSensyKey,
-        campaignName: activeCampaign,
-        destination: e164,
-        userName: buyerName || "Valued Merchant",
-        templateParams: Array.isArray(templateParams) && templateParams.length > 0 
-          ? templateParams 
-          : [buyerName || "Merchant", message || "Rice procurement update from Tejas Canvassing."],
-        source: "tejas-canvassing-portal",
-        tags: ["automated-procurement", "dispatch"]
-      };
+      let metaPayload: any;
 
-      const aisensyResponse = await fetch("https://backend.aisensy.com/campaign/t1/api/v2", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(aisensyPayload)
-      });
-
-      const resText = await aisensyResponse.text();
-      let aisensyData: any = {};
-      try {
-        aisensyData = JSON.parse(resText);
-      } catch {
-        aisensyData = { raw: resText };
+      if (activeTemplate) {
+        metaPayload = {
+          messaging_product: "whatsapp",
+          recipient_type: "individual",
+          to: digits,
+          type: "template",
+          template: {
+            name: activeTemplate,
+            language: { code: activeLang },
+            components: [
+              {
+                type: "body",
+                parameters: Array.isArray(templateParams) && templateParams.length > 0
+                  ? templateParams.map((p: any) => ({ type: "text", text: String(p) }))
+                  : [
+                      { type: "text", text: String(buyerName || "Valued Merchant") },
+                      { type: "text", text: String(message || "Rice procurement update from Tejas Canvassing.").substring(0, 1024) }
+                    ]
+              }
+            ]
+          }
+        };
+      } else {
+        metaPayload = {
+          messaging_product: "whatsapp",
+          recipient_type: "individual",
+          to: digits,
+          type: "text",
+          text: {
+            preview_url: false,
+            body: String(message || "Rice procurement update from Tejas Canvassing.")
+          }
+        };
       }
 
-      console.log("[AiSensy API Response]:", {
-        status: aisensyResponse.status,
-        data: aisensyData
+      const metaResponse = await fetch(`https://graph.facebook.com/v21.0/${activePhoneId}/messages`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${activeToken}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(metaPayload)
       });
 
-      if (aisensyResponse.ok && (aisensyData.success !== false && aisensyData.status !== "error")) {
+      const resText = await metaResponse.text();
+      let metaData: any = {};
+      try {
+        metaData = JSON.parse(resText);
+      } catch {
+        metaData = { raw: resText };
+      }
+
+      console.log("[Meta WhatsApp API Response]:", {
+        status: metaResponse.status,
+        data: metaData
+      });
+
+      if (metaResponse.ok && !metaData.error) {
+        const messageId = metaData.messages?.[0]?.id || "sent";
         const logged = recordDispatch({
           type: "whatsapp",
           target: e164,
           recipientName: buyerName || "Buyer",
-          message: message || `AiSensy Campaign: ${activeCampaign}`,
+          message: message || `Meta Template: ${activeTemplate || 'text'}`,
           status: "delivered_real",
-          details: `Successfully dispatched via AiSensy WhatsApp API (Campaign: ${activeCampaign}, Destination: ${e164}).`,
+          details: `Successfully dispatched via Meta WhatsApp Cloud API (Message ID: ${messageId}, Destination: ${digits}).`,
           directLink: waDirectUrl
         });
 
         return res.status(200).json({
           success: true,
-          gateway: "aisensy",
+          gateway: "meta_whatsapp",
           isLiveSent: true,
           status: "real_success",
+          messageId,
           formattedPhone: e164,
           directUrl: waDirectUrl,
-          message: `WhatsApp alert successfully dispatched to ${e164} via AiSensy WhatsApp API!`,
-          aisensyResponse: aisensyData,
+          message: `WhatsApp alert successfully dispatched to ${e164} via Meta WhatsApp Cloud API!`,
+          metaResponse: metaData,
           log: logged
         });
       } else {
-        const errorMsg = aisensyData.message || aisensyData.error || `AiSensy dispatch failed with HTTP ${aisensyResponse.status}`;
-        console.warn("[AiSensy Dispatch Error]:", errorMsg);
+        const errorMsg = metaData.error?.message || metaData.error?.error_user_msg || `Meta WhatsApp API error (HTTP ${metaResponse.status})`;
+        console.warn("[Meta WhatsApp Cloud API Error]:", errorMsg);
 
         const logged = recordDispatch({
           type: "whatsapp",
           target: e164,
           recipientName: buyerName || "Buyer",
-          message: message || `AiSensy Campaign: ${activeCampaign}`,
+          message: message || `Meta Template: ${activeTemplate || 'text'}`,
           status: "failed",
-          details: `AiSensy Gateway Error: ${errorMsg}`,
+          details: `Meta WhatsApp Error: ${errorMsg}`,
           directLink: waDirectUrl
         });
 
-        return res.status(aisensyResponse.status >= 400 && aisensyResponse.status < 600 ? aisensyResponse.status : 400).json({
+        return res.status(metaResponse.status >= 400 && metaResponse.status < 600 ? metaResponse.status : 400).json({
           success: false,
-          gateway: "aisensy",
+          gateway: "meta_whatsapp",
           error: errorMsg,
           directUrl: waDirectUrl,
           formattedPhone: e164,
-          aisensyResponse: aisensyData,
+          metaResponse: metaData,
           log: logged
         });
       }
     } catch (networkErr: any) {
-      console.error("[AiSensy Network Failure]:", networkErr);
+      console.error("[Meta WhatsApp Network Failure]:", networkErr);
       const logged = recordDispatch({
         type: "whatsapp",
         target: e164,
         recipientName: buyerName || "Buyer",
-        message: message || `AiSensy Campaign: ${activeCampaign}`,
+        message: message || `Meta Template: ${activeTemplate || 'text'}`,
         status: "failed",
-        details: `AiSensy Network Error: ${networkErr?.message || "Failed to reach AiSensy servers"}`,
+        details: `Meta WhatsApp Network Error: ${networkErr?.message || "Failed to reach Meta Graph API"}`,
         directLink: waDirectUrl
       });
 
       return res.status(502).json({
         success: false,
-        gateway: "aisensy",
-        error: `Could not reach AiSensy WhatsApp servers: ${networkErr?.message || "Network Timeout"}. Direct WhatsApp fallback available.`,
+        gateway: "meta_whatsapp",
+        error: `Could not reach Meta WhatsApp Cloud API servers: ${networkErr?.message || "Network Timeout"}. Direct WhatsApp fallback available.`,
         directUrl: waDirectUrl,
         formattedPhone: e164,
         log: logged
@@ -429,8 +471,8 @@ app.post("/api/dispatch-whatsapp", async (req, res) => {
     }
   }
 
-  // 2. Direct 1-Click WhatsApp Launcher (Default when AiSensy is not configured)
-  console.info(`[WhatsApp Dispatcher] AiSensy not configured. Running in direct mode with 1-click WhatsApp launcher.`);
+  // 2. Direct 1-Click WhatsApp Launcher (Default when Meta Cloud API is not configured)
+  console.info(`[WhatsApp Dispatcher] Meta WhatsApp Cloud API not configured. Running in direct mode with 1-click WhatsApp launcher.`);
 
   const logged = recordDispatch({
     type: "whatsapp",
@@ -450,7 +492,7 @@ app.post("/api/dispatch-whatsapp", async (req, res) => {
     gateway: "direct",
     formattedPhone: e164,
     directUrl: waDirectUrl,
-    message: `WhatsApp notification recorded in audit trail. Enter your AiSensy API Key in Settings to dispatch automatically via AiSensy!`,
+    message: `WhatsApp notification recorded in audit trail. Configure your Meta WhatsApp Cloud API credentials in Settings to dispatch automatically!`,
     log: logged,
   });
 });
@@ -496,32 +538,44 @@ app.get("/api/dispatch-history", (req, res) => {
     process.env.SMTP_USER &&
     process.env.SMTP_PASS
   );
-  const aisensyConfigured = !!process.env.AISENSY_API_KEY;
+  const metaWhatsappConfigured = !!(
+    process.env.META_WHATSAPP_PHONE_NUMBER_ID &&
+    process.env.META_WHATSAPP_TOKEN
+  );
 
   res.json({
     logs: dispatchHistory,
     configured: {
       smtp: smtpConfigured,
-      aisensy: aisensyConfigured,
+      metaWhatsapp: metaWhatsappConfigured,
+      aisensy: metaWhatsappConfigured, // Backward compatibility alias
     },
-    aisensyApiKeyPrefix: process.env.AISENSY_API_KEY ? `${process.env.AISENSY_API_KEY.substring(0, 6)}...` : null,
-    aisensyCampaignName: process.env.AISENSY_CAMPAIGN_NAME || "order_notification",
+    metaWhatsappPhoneNumberId: process.env.META_WHATSAPP_PHONE_NUMBER_ID || null,
+    metaWhatsappTokenPrefix: process.env.META_WHATSAPP_TOKEN ? `${process.env.META_WHATSAPP_TOKEN.substring(0, 8)}...` : null,
+    metaWhatsappTemplateName: process.env.META_WHATSAPP_TEMPLATE_NAME || "",
+    metaWhatsappWabaId: process.env.META_WHATSAPP_BUSINESS_ACCOUNT_ID || "",
   });
 });
 
-// UPDATE & CONNECT AISENSY WHATSAPP API ROUTE
-app.post("/api/update-aisensy-credentials", async (req, res) => {
-  const { apiKey, campaignName } = req.body;
-  if (!apiKey) {
-    return res.status(400).json({ error: "AiSensy API Key ('apiKey') is required." });
+// UPDATE & CONNECT META WHATSAPP CLOUD API ROUTE
+const handleUpdateMetaWhatsapp = async (req: any, res: any) => {
+  const { phoneNumberId, accessToken, wabaId, templateName, apiKey } = req.body;
+  const token = accessToken || apiKey; // Support either field name
+  
+  if (!phoneNumberId || !token) {
+    return res.status(400).json({ error: "Meta WhatsApp Phone Number ID and Access Token are required." });
   }
 
-  const cleanApiKey = String(apiKey).trim().replace(/^["']|["']$/g, '');
-  const cleanCampaign = String(campaignName || "order_notification").trim();
+  const cleanPhoneId = String(phoneNumberId).trim();
+  const cleanToken = String(token).trim().replace(/^["']|["']$/g, '');
+  const cleanWabaId = String(wabaId || "").trim();
+  const cleanTemplate = String(templateName || "").trim();
 
   // Set in current Node process memory
-  process.env.AISENSY_API_KEY = cleanApiKey;
-  process.env.AISENSY_CAMPAIGN_NAME = cleanCampaign;
+  process.env.META_WHATSAPP_PHONE_NUMBER_ID = cleanPhoneId;
+  process.env.META_WHATSAPP_TOKEN = cleanToken;
+  if (cleanWabaId) process.env.META_WHATSAPP_BUSINESS_ACCOUNT_ID = cleanWabaId;
+  if (cleanTemplate) process.env.META_WHATSAPP_TEMPLATE_NAME = cleanTemplate;
 
   // Persist to .env file
   try {
@@ -541,20 +595,26 @@ app.post("/api/update-aisensy-credentials", async (req, res) => {
       return `${text}\n${key}=${val}`;
     };
 
-    envContent = updateOrAdd("AISENSY_API_KEY", cleanApiKey, envContent);
-    envContent = updateOrAdd("AISENSY_CAMPAIGN_NAME", cleanCampaign, envContent);
+    envContent = updateOrAdd("META_WHATSAPP_PHONE_NUMBER_ID", cleanPhoneId, envContent);
+    envContent = updateOrAdd("META_WHATSAPP_TOKEN", cleanToken, envContent);
+    if (cleanWabaId) envContent = updateOrAdd("META_WHATSAPP_BUSINESS_ACCOUNT_ID", cleanWabaId, envContent);
+    if (cleanTemplate) envContent = updateOrAdd("META_WHATSAPP_TEMPLATE_NAME", cleanTemplate, envContent);
     fs.writeFileSync(envPath, envContent.trim() + "\n", "utf-8");
   } catch (fsErr) {
-    console.warn("Could not write AiSensy credentials to .env file:", fsErr);
+    console.warn("Could not write Meta WhatsApp credentials to .env file:", fsErr);
   }
 
   return res.json({
     success: true,
-    message: `AiSensy WhatsApp API credentials saved! Automated alerts will now route directly through AiSensy (Campaign: ${cleanCampaign}).`,
-    apiKeyPrefix: `${cleanApiKey.substring(0, 6)}...`,
-    campaignName: cleanCampaign,
+    message: `Meta WhatsApp Cloud API credentials connected and saved successfully!`,
+    phoneNumberId: cleanPhoneId,
+    tokenPrefix: `${cleanToken.substring(0, 8)}...`,
+    templateName: cleanTemplate,
   });
-});
+};
+
+app.post("/api/update-meta-whatsapp-credentials", handleUpdateMetaWhatsapp);
+app.post("/api/update-aisensy-credentials", handleUpdateMetaWhatsapp);
 
 // UPDATE & TEST SMTP CREDENTIALS ROUTE
 app.post("/api/update-smtp-credentials", async (req, res) => {

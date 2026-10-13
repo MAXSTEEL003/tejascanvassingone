@@ -19,7 +19,8 @@ import {
   Layers,
   ArrowRight,
   ExternalLink,
-  Phone
+  Phone,
+  Printer
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, formatINR } from '../lib/utils';
@@ -29,6 +30,7 @@ import {
   formatQtl, 
   formatDifference 
 } from '../utils/orderOperations';
+import PrintEntriesPdfModal from '../components/PrintEntriesPdfModal';
 
 export default function LedgerManagement() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -49,6 +51,7 @@ export default function LedgerManagement() {
   const [selectedPoForModal, setSelectedPoForModal] = useState<OperationalPO | null>(null);
   const [expandedPoId, setExpandedPoId] = useState<string | null>(null);
   const [copiedPoNumber, setCopiedPoNumber] = useState<string | null>(null);
+  const [isPdfModalOpen, setIsPdfModalOpen] = useState<boolean>(false);
 
   // Synchronize URL param for buyer if set externally
   useEffect(() => {
@@ -308,6 +311,14 @@ export default function LedgerManagement() {
           </div>
 
           <div className="flex items-center gap-2.5 self-end md:self-auto">
+            <button
+              onClick={() => setIsPdfModalOpen(true)}
+              className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs btn-tactile active:scale-95"
+              title="Print purchase order ledger as PDF with buyer, supplier, and month filters"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>Print PDF</span>
+            </button>
             <button
               onClick={loadOrdersData}
               disabled={isLoading}
@@ -1149,6 +1160,15 @@ export default function LedgerManagement() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* PDF Export / Print Modal */}
+      <PrintEntriesPdfModal
+        isOpen={isPdfModalOpen}
+        onClose={() => setIsPdfModalOpen(false)}
+        reportType="po_ledger"
+        title="Purchase Order Ledger"
+        entries={orders}
+      />
 
     </div>
   );

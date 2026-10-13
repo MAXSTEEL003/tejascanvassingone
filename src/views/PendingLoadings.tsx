@@ -21,7 +21,8 @@ import {
   ExternalLink,
   Coins,
   Phone,
-  ArrowUpRight
+  ArrowUpRight,
+  Printer
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, formatINR } from '../lib/utils';
@@ -31,6 +32,7 @@ import {
   formatQtl, 
   formatDifference 
 } from '../utils/orderOperations';
+import PrintEntriesPdfModal from '../components/PrintEntriesPdfModal';
 
 export default function PendingLoadings() {
   const navigate = useNavigate();
@@ -50,6 +52,7 @@ export default function PendingLoadings() {
   const [selectedPoForModal, setSelectedPoForModal] = useState<OperationalPO | null>(null);
   const [expandedPoId, setExpandedPoId] = useState<string | null>(null);
   const [copiedPoNumber, setCopiedPoNumber] = useState<string | null>(null);
+  const [isPdfModalOpen, setIsPdfModalOpen] = useState<boolean>(false);
 
   // Load orders from canonical operational order service
   const loadOrdersData = async () => {
@@ -281,6 +284,14 @@ export default function PendingLoadings() {
           </div>
 
           <div className="flex items-center gap-2.5 self-end md:self-auto">
+            <button
+              onClick={() => setIsPdfModalOpen(true)}
+              className="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs btn-tactile active:scale-95"
+              title="Print entries as PDF with buyer, supplier, and month filters"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>Print PDF</span>
+            </button>
             <button
               onClick={loadOrdersData}
               disabled={isLoading}
@@ -1064,6 +1075,15 @@ export default function PendingLoadings() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* PDF Export / Print Modal */}
+      <PrintEntriesPdfModal
+        isOpen={isPdfModalOpen}
+        onClose={() => setIsPdfModalOpen(false)}
+        reportType="pending_loadings"
+        title="Pending Loadings"
+        entries={orders}
+      />
 
     </div>
   );
