@@ -225,7 +225,13 @@ export default function OrdersDashboard() {
     profile: any;
   } | null>(null);
 
-  const [arrivalEntries, setArrivalEntries] = useState<any[]>([]);
+  const [arrivalEntries, setArrivalEntries] = useState<any[]>(() => {
+    try {
+      const raw = localStorage.getItem('arrival_entry_data_v4');
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return [];
+  });
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -482,7 +488,13 @@ export default function OrdersDashboard() {
     urgency: 'Standard' as 'Critical' | 'Standard' | 'High'
   });
 
-  const [inventoryProducts, setInventoryProducts] = useState<any[]>([]);
+  const [inventoryProducts, setInventoryProducts] = useState<any[]>(() => {
+    try {
+      const raw = localStorage.getItem('product_inventory');
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return [];
+  });
   const [availableSuppliers, setAvailableSuppliers] = useState<{ id: string; name: string }[]>(DEFAULT_SUPPLIERS);
   const [availableBuyers, setAvailableBuyers] = useState<{ id: string; name: string }[]>(DEFAULT_BUYERS);
 
@@ -512,6 +524,8 @@ export default function OrdersDashboard() {
               buyMap.set(b.name.trim().toUpperCase(), { id: b.id || `BUY-${Date.now()}`, name: b.name.trim() });
             }
           });
+          if (supMap.size > 0) setAvailableSuppliers(Array.from(supMap.values()));
+          if (buyMap.size > 0) setAvailableBuyers(Array.from(buyMap.values()));
         }
 
         // Cloud Firestore stakeholders
@@ -780,7 +794,9 @@ export default function OrdersDashboard() {
             }
           }
         });
-        setCurrentOrders(Array.from(cloudOrdersMap.values()));
+        if (cloudOrdersMap.size > 0 || localStorage.getItem('cleared_procurement_requests') === 'true') {
+          setCurrentOrders(Array.from(cloudOrdersMap.values()));
+        }
       }, (err) => {
         console.warn('Real-time subscription notice in OrdersDashboard:', err?.message || err);
       });

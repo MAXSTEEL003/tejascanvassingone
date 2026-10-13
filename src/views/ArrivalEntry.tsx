@@ -378,10 +378,63 @@ export default function ArrivalEntry() {
   // Due List PDF Options Modal state
   const [isDueListModalOpen, setIsDueListModalOpen] = useState(false);
   const [dueListRoad, setDueListRoad] = useState<string>('All');
+  const [dueListScope, setDueListScope] = useState<'all_sheets' | 'current_sheet'>('all_sheets');
+  const [selectedDueListMonths, setSelectedDueListMonths] = useState<string[]>([]);
   const [dueListStatus, setDueListStatus] = useState<'All' | 'Pending' | 'Cleared'>('Pending');
   const [dueListDaysOp, setDueListDaysOp] = useState<'all' | '>' | '<' | '=' | '>=' | '<=' | 'between'>('all');
   const [dueListDaysVal, setDueListDaysVal] = useState<string>('');
   const [dueListDaysVal2, setDueListDaysVal2] = useState<string>('');
+  const [dueListSortOrder, setDueListSortOrder] = useState<'buyer_asc' | 'buyer_desc' | 'date_desc' | 'days_desc' | 'amount_desc'>('buyer_asc');
+
+  // Available Months for Due List PDF Filtering (Scans all sheets so user can pick any month from any page)
+  const availableDueListMonths = useMemo(() => {
+    const monthsMap: Record<string, { key: string; label: string; count: number; timestamp: number }> = {};
+    const seenRowKeys = new Set<string>();
+
+    sheets.forEach(sheet => {
+      const rows = Array.isArray(sheet?.data) ? sheet.data : [];
+      const sName = (sheet.name || '').toLowerCase();
+      let sheetMonthKey = '';
+      const mIdx = MONTH_NAMES.findIndex(m => sName.includes(m.slice(0, 3).toLowerCase()));
+      const yearMatch = sName.match(/\b(20\d\d)\b/);
+      const sheetYear = yearMatch ? parseInt(yearMatch[1], 10) : 2026;
+      if (mIdx !== -1) {
+        sheetMonthKey = `${sheetYear}-${String(mIdx + 1).padStart(2, '0')}`;
+        if (!monthsMap[sheetMonthKey]) {
+          monthsMap[sheetMonthKey] = {
+            key: sheetMonthKey,
+            label: `${MONTH_NAMES[mIdx]} ${sheetYear}`,
+            count: 0,
+            timestamp: new Date(sheetYear, mIdx, 1).getTime()
+          };
+        }
+      }
+
+      rows.forEach(r => {
+        if (r && (r.partyName || r.millerName || r.qty || r.amount)) {
+          const dedupKey = r.id || `${r.date}_${r.partyName}_${r.billNo || ''}_${r.amount || ''}`;
+          if (seenRowKeys.has(dedupKey)) return;
+          seenRowKeys.add(dedupKey);
+
+          const d = parseAnyDate(r.date);
+          if (d && !isNaN(d.getTime())) {
+            const y = d.getFullYear();
+            const m = d.getMonth();
+            const key = `${y}-${String(m + 1).padStart(2, '0')}`;
+            const label = `${MONTH_NAMES[m]} ${y}`;
+            if (!monthsMap[key]) {
+              monthsMap[key] = { key, label, count: 0, timestamp: new Date(y, m, 1).getTime() };
+            }
+            monthsMap[key].count++;
+          } else if (sheetMonthKey) {
+            monthsMap[sheetMonthKey].count++;
+          }
+        }
+      });
+    });
+
+    return Object.values(monthsMap).sort((a, b) => b.timestamp - a.timestamp);
+  }, [sheets]);
 
   // Modals
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -413,6 +466,7 @@ export default function ArrivalEntry() {
   // Stakeholders metadata
   const [dynamicSuppliers, setDynamicSuppliers] = useState<string[]>(SUPPLIERS);
   const [dynamicBuyers, setDynamicBuyers] = useState<string[]>(BUYERS);
+  const [registeredBuyerRoads, setRegisteredBuyerRoads] = useState<string[]>([]);
   const [inventoryProducts, setInventoryProducts] = useState<any[]>([]);
 
   // Sheet creation states
@@ -440,16 +494,22 @@ export default function ArrivalEntry() {
         const reg = getRegisteredSuppliers();
         const supSet = new Set<string>(reg.length > 0 ? reg.map(s => s.name) : SUPPLIERS);
         const buySet = new Set<string>(BUYERS);
+        const buyerRoadsSet = new Set<string>();
 
         cloudDocs.forEach(d => {
           if (d && d.name) {
             if (d.type === 'suppliers') supSet.add(d.name.trim());
-            if (d.type === 'buyers') buySet.add(d.name.trim());
+            if (d.type === 'buyers') {
+              buySet.add(d.name.trim());
+              if (d.road && String(d.road).trim()) buyerRoadsSet.add(String(d.road).trim());
+              if (d.area && String(d.area).trim()) buyerRoadsSet.add(String(d.area).trim());
+            }
           }
         });
 
         setDynamicSuppliers(Array.from(supSet).sort());
         setDynamicBuyers(Array.from(buySet).sort());
+        setRegisteredBuyerRoads(Array.from(buyerRoadsSet).sort());
 
         const orders = await getCollectionDocs('placed_orders').catch(() => []);
         setPlacedOrders(orders);
@@ -637,19 +697,44 @@ export default function ArrivalEntry() {
     setData(newData);
   }, [data, saveToHistory, setData]);
 
-  // Unique dropdown option sets for Quick Controls
+  // Unique dropdown option sets for Quick Controls, Autocomplete, and Due List PDF
+  // DELIVERY ROADS ARE COMMON FOR THE CANVASSING BUSINESS ACROSS ALL MONTHS:
+  // We scan ALL sheets in the workbook + active sheet + registered buyers,
+  // ensuring that being on the October page (or any month page) still shows all business roads!
   const uniqueShopLocations = useMemo(() => {
     const set = new Set<string>();
+    sheets.forEach(sh => {
+      (sh.data || []).forEach(r => {
+        if (r?.area && String(r.area).trim()) {
+          set.add(String(r.area).trim());
+        }
+      });
+    });
     data.forEach(r => {
       if (r?.area && String(r.area).trim()) {
         set.add(String(r.area).trim());
       }
     });
-    return Array.from(set).sort();
-  }, [data]);
+    registeredBuyerRoads.forEach(r => {
+      if (r && String(r).trim()) set.add(String(r).trim());
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [sheets, data, registeredBuyerRoads]);
 
   const uniqueRoads = useMemo(() => {
     const set = new Set<string>();
+    // 1. Scan all sheets across the workbook
+    sheets.forEach(sh => {
+      (sh.data || []).forEach(r => {
+        if (r?.road && String(r.road).trim()) {
+          set.add(String(r.road).trim());
+        }
+        if (r?.area && String(r.area).trim()) {
+          set.add(String(r.area).trim());
+        }
+      });
+    });
+    // 2. Scan active sheet
     data.forEach(r => {
       if (r?.road && String(r.road).trim()) {
         set.add(String(r.road).trim());
@@ -658,8 +743,31 @@ export default function ArrivalEntry() {
         set.add(String(r.area).trim());
       }
     });
-    return Array.from(set).sort();
-  }, [data]);
+    // 3. Scan registered buyer roads
+    registeredBuyerRoads.forEach(r => {
+      if (r && String(r).trim()) set.add(String(r).trim());
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [sheets, data, registeredBuyerRoads]);
+
+  // When filtering by a road in the current sheet, find how many matching entries exist in other sheets
+  const otherSheetsWithQuickRoad = useMemo(() => {
+    if (quickRoad === 'All') return [];
+    const target = quickRoad.toLowerCase().trim();
+    const matches: { sheetId: string; sheetName: string; count: number }[] = [];
+    sheets.forEach(sh => {
+      if (sh.id !== currentSheetId) {
+        let count = 0;
+        (sh.data || []).forEach(r => {
+          const roadVal = r?.road ? String(r.road).trim().toLowerCase() : '';
+          const areaVal = r?.area ? String(r.area).trim().toLowerCase() : '';
+          if (roadVal === target || areaVal === target) count++;
+        });
+        if (count > 0) matches.push({ sheetId: sh.id, sheetName: sh.name, count });
+      }
+    });
+    return matches;
+  }, [sheets, currentSheetId, quickRoad]);
 
   const hasActiveQuickFilters = useMemo(() => {
     return (
@@ -1650,13 +1758,59 @@ export default function ArrivalEntry() {
   };
 
 
+  // Compact Miller / Supplier Name for clean tabular rendering
+  const compactMillerName = (rawName: any, maxLen: number = 20): string => {
+    if (!rawName) return '-';
+    let name = String(rawName).trim();
+    if (!name || name === '-') return '-';
+
+    // 1. Strip redundant corporate entity suffixes
+    name = name.replace(/\b(private\s+limited|pvt\.?\s*ltd\.?|limited|ltd\.?|llp|inc\.?)\b/gi, '').trim();
+
+    // 2. Siphon common grain milling qualifiers into clean short tokens
+    name = name.replace(/\b(modern\s+rice\s+mills?|parboiled\s+rice\s+mills?|boiled\s+rice\s+mills?|raw\s+rice\s+mills?|rice\s+mills?|paddy\s+&\s+rice\s+mills?|rice\s+mill)\b/gi, 'Mill').trim();
+    name = name.replace(/\b(agro\s+industries|agro\s+foods?|agro\s+products?|agro\s+tech)\b/gi, 'Agro').trim();
+    name = name.replace(/\b(food\s+products?|foods?|food\s+processing)\b/gi, 'Foods').trim();
+    name = name.replace(/\b(trading\s+co(mpany)?|traders?)\b/gi, 'Traders').trim();
+    name = name.replace(/\b(corporation|corp\.?)\b/gi, 'Corp').trim();
+    name = name.replace(/\b(industries|industry)\b/gi, 'Ind.').trim();
+    name = name.replace(/\b(enterprises|enterprise)\b/gi, 'Ent.').trim();
+
+    // 3. Remove excess whitespace and trailing punctuation
+    name = name.replace(/\s+/g, ' ').replace(/[-.,\s]+$/, '').trim();
+
+    // 4. Siphon / truncate neatly if still exceeding maximum length
+    if (name.length > maxLen) {
+      name = name.slice(0, maxLen).trim() + '…';
+    }
+
+    return name || String(rawName).trim();
+  };
+
   // Due List PDF generation with independent options
   const handleGenerateDueListPDF = () => {
-    // 1. Take candidate records from the CURRENT ACTIVE SHEET only
-    let candidateRows = (currentSheet.data || []).filter(row => {
-      const hasBasicData = !!(row && (row.partyName || row.millerName || row.billNo || row.qty || row.amount));
-      return hasBasicData;
-    });
+    // 1. Gather candidate records from all sheets or current sheet
+    let rawCandidates: any[] = [];
+    if (dueListScope === 'all_sheets' || selectedDueListMonths.length > 0) {
+      const seenRowKeys = new Set<string>();
+      sheets.forEach(sh => {
+        (sh.data || []).forEach(row => {
+          if (row && (row.partyName || row.millerName || row.billNo || row.qty || row.amount)) {
+            const dedupKey = row.id || `${row.date}_${row.partyName}_${row.billNo || ''}_${row.amount || ''}`;
+            if (!seenRowKeys.has(dedupKey)) {
+              seenRowKeys.add(dedupKey);
+              rawCandidates.push({ ...row, sheetName: row.sheetName || sh.name, sheetId: row.sheetId || sh.id });
+            }
+          }
+        });
+      });
+    } else {
+      rawCandidates = (currentSheet.data || []).filter(row => {
+        return !!(row && (row.partyName || row.millerName || row.billNo || row.qty || row.amount));
+      }).map(row => ({ ...row, sheetName: row.sheetName || currentSheet.name, sheetId: row.sheetId || currentSheet.id }));
+    }
+
+    let candidateRows = rawCandidates;
 
     // 2. Filter by Road
     if (dueListRoad !== 'All') {
@@ -1667,14 +1821,40 @@ export default function ArrivalEntry() {
       });
     }
 
-    // 3. Filter by Status (Pending, Cleared, All)
+    // 3. Filter by Selected Month(s) (empty array means All Months)
+    if (selectedDueListMonths.length > 0) {
+      candidateRows = candidateRows.filter(row => {
+        if (!row) return false;
+        if (row.date) {
+          const d = parseAnyDate(row.date);
+          if (d && !isNaN(d.getTime())) {
+            const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            if (selectedDueListMonths.includes(key)) return true;
+          }
+        }
+        if (row.sheetName) {
+          const sName = String(row.sheetName).toLowerCase();
+          for (const mKey of selectedDueListMonths) {
+            const [, mStr] = mKey.split('-');
+            const mIdx = parseInt(mStr, 10) - 1;
+            if (mIdx >= 0 && mIdx < 12) {
+              const mName = MONTH_NAMES[mIdx].toLowerCase();
+              if (sName.includes(mName.slice(0, 3))) return true;
+            }
+          }
+        }
+        return false;
+      });
+    }
+
+    // 4. Filter by Status (Pending, Cleared, All)
     if (dueListStatus === 'Pending') {
       candidateRows = candidateRows.filter(row => (row.noOfDayRec || 'Not Cleared') !== 'Cleared');
     } else if (dueListStatus === 'Cleared') {
       candidateRows = candidateRows.filter(row => row.noOfDayRec === 'Cleared');
     }
 
-    // 4. Filter by Days Pending
+    // 5. Filter by Days Pending
     if (dueListDaysOp !== 'all') {
       const v1 = parseFloat(dueListDaysVal);
       const v2 = parseFloat(dueListDaysVal2);
@@ -1700,95 +1880,170 @@ export default function ArrivalEntry() {
     }
 
     if (candidateRows.length === 0) {
-      alert(`No records found in "${currentSheet.name}" matching the selected Due List PDF criteria.`);
+      alert(`No records found matching the selected Due List PDF criteria.`);
       return;
     }
 
-    // Sort by Party Name (Buyer) ascending
+    // Sort according to user preference (Default: Ascending Party / Buyer name)
     const sortedRows = [...candidateRows].sort((a, b) => {
-      const nameA = String(a.partyName || '').trim().toUpperCase();
-      const nameB = String(b.partyName || '').trim().toUpperCase();
-      return nameA.localeCompare(nameB);
+      if (dueListSortOrder === 'buyer_asc') {
+        const nameA = String(a.partyName || '').trim().toUpperCase();
+        const nameB = String(b.partyName || '').trim().toUpperCase();
+        return nameA.localeCompare(nameB);
+      }
+      if (dueListSortOrder === 'buyer_desc') {
+        const nameA = String(a.partyName || '').trim().toUpperCase();
+        const nameB = String(b.partyName || '').trim().toUpperCase();
+        return nameB.localeCompare(nameA);
+      }
+      if (dueListSortOrder === 'date_desc') {
+        const tA = Number.isFinite(new Date(a.date || 0).getTime()) ? new Date(a.date || 0).getTime() : 0;
+        const tB = Number.isFinite(new Date(b.date || 0).getTime()) ? new Date(b.date || 0).getTime() : 0;
+        return tB - tA;
+      }
+      if (dueListSortOrder === 'days_desc') {
+        return getDaysPendingNum(b) - getDaysPendingNum(a);
+      }
+      if (dueListSortOrder === 'amount_desc') {
+        const aAmt = parseFloat(String(a.amount || 0).replace(/[₹,\s]/g, '')) || 0;
+        const bAmt = parseFloat(String(b.amount || 0).replace(/[₹,\s]/g, '')) || 0;
+        return bAmt - aAmt;
+      }
+      return 0;
     });
 
-    // Generate jsPDF (A4 Portrait)
-    const doc = new jsPDF('p', 'mm', 'a4');
-    const primaryColor: [number, number, number] = [147, 0, 11]; // Deep crimson
-
-    // Crimson Top Header Banner
-    doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-    doc.rect(0, 0, 210, 30, 'F');
-
-    // Title inside banner
-    doc.setTextColor(255, 255, 255);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(14);
-    doc.text(`DUE LIST - ${currentSheet.name.toUpperCase()}`, 8, 12);
-
-    // Subtitle inside banner
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    const filterDesc = [
-      `Road: ${dueListRoad}`,
-      `Status: ${dueListStatus === 'Pending' ? 'Pending / Not Cleared' : dueListStatus}`,
-      dueListDaysOp !== 'all' ? `Days: ${dueListDaysOp} ${dueListDaysVal}${dueListDaysOp === 'between' ? ` to ${dueListDaysVal2}` : ''}` : null,
-      `Records: ${sortedRows.length}`
-    ].filter(Boolean).join('  |  ');
-    doc.text(filterDesc, 8, 20);
+    // Generate jsPDF (A4 Portrait: 210mm x 297mm)
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4'
+    });
 
     const now = new Date();
     const dd = String(now.getDate()).padStart(2, '0');
     const mm = String(now.getMonth() + 1).padStart(2, '0');
     const yyyy = now.getFullYear();
-    doc.text(`Generated: ${dd}-${mm}-${yyyy} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`, 8, 26);
 
-    // Exact 10 Columns:
-    // Date | Party Name | Party Loc | Miller Name | No. of Days Pending | Bill No | QTLs | Rate | Amount | LH
+    // Executive Slate Top Banner (210 x 25 mm)
+    doc.setFillColor(15, 23, 42); // slate-900
+    doc.rect(0, 0, 210, 25, 'F');
+
+    // Crimson Accent Stripe (1.2mm)
+    doc.setFillColor(190, 24, 93); // rose-700
+    doc.rect(0, 23.8, 210, 1.2, 'F');
+
+    // Header Branding & Title
+    doc.setTextColor(241, 245, 249);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9.5);
+    doc.text('TEJAS CANVASSING • COMMODITY BROKERAGE', 7, 8);
+
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(15);
+    const scopeTitle = (dueListScope === 'all_sheets' || selectedDueListMonths.length > 0)
+      ? 'DUE LIST STATEMENT • CONSOLIDATED'
+      : `DUE LIST STATEMENT • ${currentSheet.name.toUpperCase()}`;
+    doc.text(scopeTitle, 7, 16);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9.5);
+    doc.setTextColor(226, 232, 240);
+    doc.text(`Generated: ${dd}-${mm}-${yyyy} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`, 203, 16, { align: 'right' });
+
+    // Context / Filter Summary Card (Soft slate-50 background, 196mm wide)
+    doc.setFillColor(248, 250, 252); // slate-50
+    doc.setDrawColor(203, 213, 225); // slate-300
+    doc.roundedRect(7, 27.0, 196, 11.5, 1.2, 1.2, 'FD');
+
+    // Filter Badges inside Context Card
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.8);
+    doc.setTextColor(15, 23, 42);
+    
+    const monthLabel = selectedDueListMonths.length === 0 
+      ? 'All Recorded Months' 
+      : selectedDueListMonths.map(k => {
+          const item = availableDueListMonths.find(m => m.key === k);
+          return item ? item.label : k;
+        }).join(', ');
+
+    const sortLabel = dueListSortOrder === 'buyer_asc' 
+      ? 'Buyer Name (A to Z)' 
+      : dueListSortOrder === 'buyer_desc' 
+      ? 'Buyer Name (Z to A)' 
+      : dueListSortOrder === 'date_desc' 
+      ? 'Date (Newest)' 
+      : dueListSortOrder === 'days_desc' 
+      ? 'Due Days (Highest)' 
+      : 'Amount (Highest)';
+
+    const line1 = `Road: ${dueListRoad}  |  Status: ${dueListStatus === 'Pending' ? 'Pending (Uncollected)' : dueListStatus}  |  Months: ${monthLabel}`;
+    const line2 = `Scope: ${dueListScope === 'all_sheets' || selectedDueListMonths.length > 0 ? 'All Sheets' : currentSheet.name}  |  Sort: ${sortLabel}  |  Matching Records: ${sortedRows.length}`;
+
+    doc.text(line1, 10, 31.5);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.2);
+    doc.setTextColor(51, 65, 85);
+    doc.text(line2, 10, 36.2);
+
+    // Exact 10 Columns fitting 196mm total printable width
+    // Date (15) + Party Name (38) + Party Loc (17) + Miller Name (26) + Due Days (16) + Bill No (14) + QTLs (14) + Rate (16) + Amount (23) + LH (17) = 196mm
     const tableHeaders = [
       'Date',
       'Party Name',
       'Party Loc',
       'Miller Name',
-      'No. of Days Pending',
+      'Due Days',
       'Bill No',
       'QTLs',
-      'Rate',
-      'Amount',
-      'LH'
+      'Rate (Rs)',
+      'Amount (Rs)',
+      'LH (Rs)'
     ];
 
     let totalQtls = 0;
     let totalAmount = 0;
     let totalLh = 0;
 
+    const formatCleanNum = (val: number | null | undefined): string => {
+      const n = Number(val ?? 0);
+      if (!Number.isFinite(n) || n === 0) return '-';
+      return n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    };
+
     const tableBody = sortedRows.map(row => {
       const formattedDate = formatDateToDDMMYYYY(row.date);
-      const partyName = row.partyName || '';
-      const partyLoc = row.area || row.road || '';
-      const millerName = row.millerName || '';
+      const partyName = row.partyName || '-';
+      const partyLoc = row.area || row.road || '-';
+      const millerName = compactMillerName(row.millerName || '', 24);
       
       const isCleared = (row.noOfDayRec || 'Not Cleared') === 'Cleared';
       const daysPending = getDaysPendingNum(row);
-      const daysPendingText = isCleared ? 'Cleared' : `${daysPending} Days`;
+      const daysPendingText = isCleared ? 'Cleared' : `${daysPending} D`;
 
       const billNoVal = row.billNo
         ? String(row.billNo).trim().replace(/^(bill[-.\s]*|bil[-.\s]*|tc[-.\s]*|invoice[-.\s]*)/i, '')
-        : '';
+        : '-';
 
-      const qVal = parseFloat(String(row.qty || 0).replace(/,/g, '')) || 0;
+      const qClean = String(row.qty || 0).replace(/[,\s]/g, '');
+      const qVal = parseFloat(qClean) || 0;
       totalQtls += qVal;
-      const qtlsText = qVal > 0 ? qVal.toFixed(2) : (row.qty ? String(row.qty) : '');
+      const qtlsText = qVal > 0 ? formatCleanNum(qVal) : (row.qty ? String(row.qty).trim() : '-');
 
-      const rateVal = parseFloat(String(row.rate || 0).replace(/,/g, '')) || 0;
-      const rateText = rateVal > 0 ? formatINR(rateVal) : (row.rate ? String(row.rate) : '');
+      const rateClean = String(row.rate || 0).replace(/[₹,\s]/g, '');
+      const rateVal = parseFloat(rateClean) || 0;
+      const rateText = rateVal > 0 ? formatCleanNum(rateVal) : (row.rate ? String(row.rate).trim() : '-');
 
-      const amtVal = parseFloat(String(row.amount || 0).replace(/,/g, '')) || (qVal * rateVal) || 0;
+      const amtClean = String(row.amount || 0).replace(/[₹,\s]/g, '');
+      const amtVal = parseFloat(amtClean) || (qVal * rateVal) || 0;
       totalAmount += amtVal;
-      const amountText = amtVal > 0 ? formatINR(amtVal) : (row.amount ? String(row.amount) : '');
+      const amountText = amtVal > 0 ? formatCleanNum(amtVal) : (row.amount ? String(row.amount).trim() : '-');
 
-      const lhVal = parseFloat(String(row.lh || 0).replace(/,/g, '')) || 0;
+      const lhClean = String(row.lh || 0).replace(/[₹,\s]/g, '');
+      const lhVal = parseFloat(lhClean) || 0;
       totalLh += lhVal;
-      const lhText = lhVal > 0 ? formatINR(lhVal) : (row.lh ? String(row.lh) : '');
+      const lhText = lhVal > 0 ? formatCleanNum(lhVal) : (row.lh ? String(row.lh).trim() : '-');
 
       return [
         formattedDate,
@@ -1805,56 +2060,93 @@ export default function ArrivalEntry() {
     });
 
     autoTable(doc, {
-      startY: 34,
+      startY: 41,
       head: [tableHeaders],
       body: tableBody,
       foot: [
         [
-          'Total',
+          'TOTAL',
           `${sortedRows.length} Rows`,
           '',
           '',
           '',
           '',
-          totalQtls > 0 ? totalQtls.toFixed(2) : '',
+          totalQtls > 0 ? formatCleanNum(totalQtls) : '-',
           '',
-          totalAmount > 0 ? formatINR(totalAmount) : '',
-          totalLh > 0 ? formatINR(totalLh) : ''
+          totalAmount > 0 ? formatCleanNum(totalAmount) : '-',
+          totalLh > 0 ? formatCleanNum(totalLh) : '-'
         ]
       ],
-      theme: 'striped',
+      theme: 'grid',
       headStyles: {
-        fillColor: primaryColor,
+        fillColor: [15, 23, 42], // slate-900
         textColor: [255, 255, 255],
         fontStyle: 'bold',
-        fontSize: 8,
-        halign: 'center'
-      },
-      footStyles: {
-        fillColor: [241, 245, 249],
-        textColor: [15, 23, 42],
-        fontStyle: 'bold',
-        fontSize: 8
-      },
-      styles: {
-        fontSize: 8,
-        cellPadding: 1.5,
+        fontSize: 7.2,
+        cellPadding: { top: 2.2, bottom: 2.2, left: 0.8, right: 0.8 },
+        lineColor: [51, 65, 85],
+        lineWidth: 0.1,
         valign: 'middle',
         overflow: 'ellipsize'
       },
-      columnStyles: {
-        0: { cellWidth: 20, halign: 'center' }, // Date
-        1: { cellWidth: 34, halign: 'left', fontStyle: 'bold' }, // Party Name
-        2: { cellWidth: 22, halign: 'left' },   // Party Loc
-        3: { cellWidth: 28, halign: 'left' },   // Miller Name
-        4: { cellWidth: 18, halign: 'center' }, // No. of Days Pending
-        5: { cellWidth: 16, halign: 'center' }, // Bill No
-        6: { cellWidth: 14, halign: 'right' },  // QTLs
-        7: { cellWidth: 14, halign: 'right' },  // Rate
-        8: { cellWidth: 18, halign: 'right', fontStyle: 'bold' }, // Amount
-        9: { cellWidth: 10, halign: 'right' }   // LH
+      footStyles: {
+        fillColor: [241, 245, 249], // slate-100
+        textColor: [15, 23, 42],
+        fontStyle: 'bold',
+        fontSize: 7.2,
+        cellPadding: { top: 2.0, bottom: 2.0, left: 0.8, right: 0.8 },
+        lineColor: [203, 213, 225],
+        lineWidth: 0.15,
+        valign: 'middle'
       },
-      margin: { left: 8, right: 8 }
+      styles: {
+        fontSize: 7.0,
+        textColor: [15, 23, 42], // slate-900 dark text
+        cellPadding: { top: 1.6, bottom: 1.6, left: 0.8, right: 0.8 },
+        valign: 'middle',
+        overflow: 'ellipsize', // Enforce exactly 1 row per entry
+        lineColor: [226, 232, 240], // crisp light slate grid
+        lineWidth: 0.1
+      },
+      alternateRowStyles: {
+        fillColor: [248, 250, 252] // slate-50 soft alternate
+      },
+      columnStyles: {
+        0: { cellWidth: 15, halign: 'center' }, // Date
+        1: { cellWidth: 38, halign: 'left', fontStyle: 'bold' }, // Party Name
+        2: { cellWidth: 17, halign: 'left' },   // Party Loc
+        3: { cellWidth: 26, halign: 'left' },   // Miller Name
+        4: { cellWidth: 16, halign: 'center' }, // Due Days
+        5: { cellWidth: 14, halign: 'center' }, // Bill No
+        6: { cellWidth: 14, halign: 'right' },  // QTLs
+        7: { cellWidth: 16, halign: 'right' },  // Rate (Rs)
+        8: { cellWidth: 23, halign: 'right', fontStyle: 'bold' }, // Amount (Rs)
+        9: { cellWidth: 17, halign: 'right' }   // LH (Rs)
+      },
+      didParseCell: (data) => {
+        // Enforce strict matching alignment across head, body, and foot
+        const colIdx = data.column.index;
+        if ([0, 4, 5].includes(colIdx)) {
+          data.cell.styles.halign = 'center';
+        } else if ([1, 2, 3].includes(colIdx)) {
+          data.cell.styles.halign = 'left';
+        } else if ([6, 7, 8, 9].includes(colIdx)) {
+          data.cell.styles.halign = 'right';
+        }
+      },
+      didDrawPage: (data) => {
+        // Subtle footer rule
+        doc.setDrawColor(203, 213, 225);
+        doc.line(7, 290, 203, 290);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8.5);
+        doc.setTextColor(71, 85, 105);
+        doc.text('TEJAS CANVASSING • Commercial Due List Statement', 7, 294);
+        doc.text(`Page ${data.pageNumber}`, 203, 294, { align: 'right' });
+      },
+      tableWidth: 196,
+      margin: { left: 7, right: 7, bottom: 12 }
     });
 
     const cleanSheetName = currentSheet.name.replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -2676,6 +2968,7 @@ export default function ArrivalEntry() {
                             <input
                               ref={inputRef}
                               value={editValue}
+                              list={col.id === 'area' || col.id === 'place' ? 'arrival-roads-autocomplete' : undefined}
                               onChange={(e) => setEditValue(e.target.value)}
                               onBlur={() => stopEditing(true)}
                               className="w-full h-full bg-transparent px-2 text-xs font-mono font-bold text-primary outline-none"
@@ -2763,8 +3056,44 @@ export default function ArrivalEntry() {
               </div>
               <h3 className="text-sm font-black text-on-surface mb-1">No matching records found</h3>
               <p className="text-xs text-secondary mb-4 max-w-sm">
-                No rows match your current column filters or search criteria.
+                No rows match your current column filters or search criteria in {currentSheet.name}.
               </p>
+
+              {/* Cross-sheet road discovery banner when filtered by a common road */}
+              {quickRoad !== 'All' && otherSheetsWithQuickRoad.length > 0 && (
+                <div className="mb-4 p-3.5 rounded-2xl bg-primary/10 border border-primary/20 max-w-md w-full text-left shadow-xs">
+                  <p className="text-xs font-bold text-primary mb-1.5 flex items-center gap-1.5">
+                    <span>📍 Road &quot;{quickRoad}&quot; found in other months:</span>
+                  </p>
+                  <div className="flex flex-wrap gap-1.5 mb-2.5">
+                    {otherSheetsWithQuickRoad.map(m => (
+                      <button
+                        key={m.sheetId}
+                        type="button"
+                        onClick={() => setCurrentSheetId(m.sheetId)}
+                        className="px-2.5 py-1 rounded-xl bg-surface border border-outline-variant text-[11px] font-bold text-on-surface hover:border-primary hover:text-primary transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs active:scale-95"
+                        title={`Switch to ${m.sheetName}`}
+                      >
+                        <span>{m.sheetName}</span>
+                        <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-primary/15 text-primary font-black">{m.count} rows</span>
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDueListRoad(quickRoad);
+                      setDueListScope('all_sheets');
+                      setIsDueListModalOpen(true);
+                    }}
+                    className="text-[11px] font-bold text-primary hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>Generate Due List PDF for &quot;{quickRoad}&quot; across all months →</span>
+                  </button>
+                </div>
+              )}
+
               <button
                 onClick={handleClearQuickFilters}
                 className="px-4 py-2 bg-primary hover:bg-primary-hover text-on-primary rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
@@ -2774,6 +3103,13 @@ export default function ArrivalEntry() {
               </button>
             </div>
           )}
+
+          {/* Datalist for cross-sheet road and area autocompletion */}
+          <datalist id="arrival-roads-autocomplete">
+            {uniqueRoads.map(r => (
+              <option key={r} value={r} />
+            ))}
+          </datalist>
         </div>
       </div>
 
@@ -2886,7 +3222,108 @@ export default function ArrivalEntry() {
                   </select>
                 </div>
 
-                {/* Option 2: Status */}
+                {/* Option 2: Scope (All Months across all sheets vs Current Sheet) */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[11px] font-bold text-secondary uppercase">
+                      Data Scope
+                    </label>
+                    <span className="text-[10px] text-secondary font-medium">
+                      {dueListScope === 'all_sheets' ? 'All Months & Sheets' : `Current: ${currentSheet.name}`}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setDueListScope('all_sheets')}
+                      className={cn(
+                        "py-1.5 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer text-center",
+                        dueListScope === 'all_sheets'
+                          ? "bg-rose-500/10 border-rose-500 text-rose-700 dark:text-rose-400 font-black shadow-xs"
+                          : "bg-surface-container-low border-outline-variant text-secondary hover:text-on-surface"
+                      )}
+                    >
+                      🌐 All Months (Cross-Sheet)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDueListScope('current_sheet')}
+                      className={cn(
+                        "py-1.5 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer text-center truncate",
+                        dueListScope === 'current_sheet'
+                          ? "bg-rose-500/10 border-rose-500 text-rose-700 dark:text-rose-400 font-black shadow-xs"
+                          : "bg-surface-container-low border-outline-variant text-secondary hover:text-on-surface"
+                      )}
+                      title={currentSheet.name}
+                    >
+                      📄 {currentSheet.name} Only
+                    </button>
+                  </div>
+                </div>
+
+                {/* Option 3: Months (Single or Multiple) */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[11px] font-bold text-secondary uppercase">
+                      Select Month(s)
+                    </label>
+                    <span className="text-[10px] text-secondary">
+                      {selectedDueListMonths.length === 0 ? 'All Months' : `${selectedDueListMonths.length} Selected`}
+                    </span>
+                  </div>
+                  {availableDueListMonths.length === 0 ? (
+                    <p className="text-xs text-secondary italic">No dated entries found in this sheet.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5 p-2 bg-surface-container-low border border-outline-variant rounded-xl max-h-28 overflow-y-auto">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedDueListMonths([])}
+                        className={cn(
+                          "px-2.5 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer",
+                          selectedDueListMonths.length === 0
+                            ? "bg-rose-500 text-white border-rose-500 shadow-xs"
+                            : "bg-surface border-outline-variant/60 text-secondary hover:text-on-surface hover:bg-surface-container"
+                        )}
+                      >
+                        All Months
+                      </button>
+                      {availableDueListMonths.map(m => {
+                        const isSelected = selectedDueListMonths.includes(m.key);
+                        return (
+                          <button
+                            key={m.key}
+                            type="button"
+                            onClick={() => {
+                              setSelectedDueListMonths(prev => {
+                                if (prev.includes(m.key)) {
+                                  return prev.filter(k => k !== m.key);
+                                } else {
+                                  return [...prev, m.key];
+                                }
+                              });
+                            }}
+                            className={cn(
+                              "px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all cursor-pointer flex items-center gap-1.5",
+                              isSelected
+                                ? "bg-rose-500/10 border-rose-500 text-rose-700 dark:text-rose-400 font-bold"
+                                : "bg-surface border-outline-variant/60 text-secondary hover:text-on-surface hover:bg-surface-container"
+                            )}
+                          >
+                            <span>{m.label}</span>
+                            <span className={cn(
+                              "text-[10px] px-1 py-0.2 rounded-full",
+                              isSelected ? "bg-rose-500 text-white font-bold" : "bg-surface-container text-secondary"
+                            )}>
+                              {m.count}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Option 3: Status */}
                 <div>
                   <label className="text-[11px] font-bold text-secondary uppercase block mb-1">
                     Status
@@ -2958,6 +3395,67 @@ export default function ArrivalEntry() {
                         />
                       </>
                     )}
+                  </div>
+                </div>
+
+                {/* Option 4: Sort Order */}
+                <div>
+                  <label className="text-[11px] font-bold text-secondary uppercase block mb-1">
+                    Sort Order
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setDueListSortOrder('buyer_asc')}
+                      className={cn(
+                        "py-2 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer text-left flex items-center justify-between",
+                        dueListSortOrder === 'buyer_asc'
+                          ? "bg-rose-500/10 border-rose-500 text-rose-700 dark:text-rose-400 font-black shadow-xs"
+                          : "bg-surface-container-low border-outline-variant text-secondary hover:text-on-surface"
+                      )}
+                    >
+                      <span>🔤 Buyer Name (A to Z)</span>
+                      {dueListSortOrder === 'buyer_asc' && <span className="text-[10px] text-rose-500 font-black">✓ Active</span>}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDueListSortOrder('date_desc')}
+                      className={cn(
+                        "py-2 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer text-left flex items-center justify-between",
+                        dueListSortOrder === 'date_desc'
+                          ? "bg-rose-500/10 border-rose-500 text-rose-700 dark:text-rose-400 font-black shadow-xs"
+                          : "bg-surface-container-low border-outline-variant text-secondary hover:text-on-surface"
+                      )}
+                    >
+                      <span>📅 Date (Newest First)</span>
+                      {dueListSortOrder === 'date_desc' && <span className="text-[10px] text-rose-500 font-black">✓ Active</span>}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDueListSortOrder('days_desc')}
+                      className={cn(
+                        "py-2 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer text-left flex items-center justify-between",
+                        dueListSortOrder === 'days_desc'
+                          ? "bg-rose-500/10 border-rose-500 text-rose-700 dark:text-rose-400 font-black shadow-xs"
+                          : "bg-surface-container-low border-outline-variant text-secondary hover:text-on-surface"
+                      )}
+                    >
+                      <span>⏳ Due Days (Highest)</span>
+                      {dueListSortOrder === 'days_desc' && <span className="text-[10px] text-rose-500 font-black">✓ Active</span>}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDueListSortOrder('amount_desc')}
+                      className={cn(
+                        "py-2 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer text-left flex items-center justify-between",
+                        dueListSortOrder === 'amount_desc'
+                          ? "bg-rose-500/10 border-rose-500 text-rose-700 dark:text-rose-400 font-black shadow-xs"
+                          : "bg-surface-container-low border-outline-variant text-secondary hover:text-on-surface"
+                      )}
+                    >
+                      <span>💰 Amount (Highest)</span>
+                      {dueListSortOrder === 'amount_desc' && <span className="text-[10px] text-rose-500 font-black">✓ Active</span>}
+                    </button>
                   </div>
                 </div>
 

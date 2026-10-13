@@ -4,6 +4,8 @@ import { getAnalytics, isSupported, Analytics } from 'firebase/analytics';
 import { 
   getFirestore, 
   initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
   collection, 
   getDocs, 
   setDoc, 
@@ -21,8 +23,18 @@ import { sanitizeSupplierName } from './utils';
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
+let localCacheSetting: any = undefined;
+try {
+  if (typeof window !== 'undefined') {
+    localCacheSetting = persistentLocalCache({ tabManager: persistentMultipleTabManager() });
+  }
+} catch (e) {
+  console.warn("Firestore persistent cache notice:", e);
+}
+
 export const db = initializeFirestore(app, {
-  experimentalForceLongPolling: true,
+  ...(localCacheSetting ? { localCache: localCacheSetting } : {}),
+  experimentalAutoDetectLongPolling: true,
 }, firebaseConfig.firestoreDatabaseId);
 
 export const auth = getAuth(app);
@@ -36,15 +48,15 @@ if (typeof window !== 'undefined') {
   }).catch(() => {});
 }
 
-// CRITICAL CONSTRAINT: Test connection upon boot & auto-seed Firestore collections
+// Background connection test (deferred to idle time so it doesn't block initial page load)
 async function testConnection() {
   if (typeof window !== 'undefined' && !navigator.onLine) {
     console.warn("Firebase connection status: Browser is currently offline. Will retry once connection is restored.");
     return;
   }
   try {
-    // Attempting a connection test by fetching a dummy path as specified in Firebase skill
-    await getDocFromServer(doc(db, 'test', 'connection'));
+    // Non-blocking connectivity probe
+    await getDoc(doc(db, 'test', 'connection'));
     console.log("Firebase connection established successfully.");
   } catch (error: any) {
     const errMsg = error?.message || String(error);
@@ -71,7 +83,7 @@ export async function ensureFirestoreSeeded(): Promise<void> {
 if (typeof window !== 'undefined') {
   setTimeout(() => {
     testConnection().catch(err => console.warn('Background connection check notice:', err));
-  }, 100);
+  }, 4000);
 }
 
 export enum OperationType {
@@ -220,7 +232,7 @@ interface CollectionCacheEntry {
 
 const collectionCache = new Map<string, CollectionCacheEntry>();
 const inFlightQueries = new Map<string, Promise<any[]>>();
-const CACHE_TTL_MS = 30000; // 30-second TTL cache for collections
+const CACHE_TTL_MS = 60000; // 60-second in-memory freshness window
 
 export function invalidateCollectionCache(collectionName?: string) {
   if (collectionName) {
@@ -232,41 +244,76 @@ export function invalidateCollectionCache(collectionName?: string) {
   }
 }
 
-// Helper: Get all documents from a collection with automatic LocalStorage fallback & strict role boundary
-export async function getCollectionDocs(collectionName: string, forceFresh = false): Promise<any[]> {
-  const callerRole = getCurrentCallerRole();
-
-  // Strict data isolation:
-  // 1. Merchants cannot query corporate financial ledgers, patti, pending loadings, arrival entries, or stakeholder lists
-  if (callerRole === 'merchant') {
-    const forbiddenForMerchant = ['ledgers', 'patti', 'pending_loadings', 'arrival_entries', 'stakeholders', 'users'];
-    if (forbiddenForMerchant.includes(collectionName)) {
-      console.warn(`[Security Guard] Blocked unauthorized merchant query to collection: ${collectionName}`);
-      return [];
-    }
-  }
-
-  // 2. Operations Staff cannot query corporate financial ledgers or patti
-  if (callerRole === 'employee') {
-    const forbiddenForEmployee = ['ledgers', 'patti', 'users'];
-    if (forbiddenForEmployee.includes(collectionName)) {
-      console.warn(`[Security Guard] Blocked unauthorized staff query to collection: ${collectionName}`);
-      return [];
-    }
-  }
-
-  // Fast path: In-memory cached data
-  if (!forceFresh) {
-    const cached = collectionCache.get(collectionName);
-    if (cached && (Date.now() - cached.timestamp < CACHE_TTL_MS)) {
-      return cached.data;
+// Helper to retrieve local storage backup for instant hydration on boot & refresh (0ms delay)
+function getLocalBackup(collectionName: string): any[] | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    // 1. Honor explicit user wipes
+    if (collectionName === 'placed_orders') {
+      if (localStorage.getItem('cleared_placed_orders') === 'true' || localStorage.getItem('placed_orders_cleared_all') === 'true') {
+        const raw = localStorage.getItem('placed_orders');
+        if (!raw || raw === '[]') return [];
+      }
+    } else if (collectionName === 'procurement_requests') {
+      if (localStorage.getItem('cleared_procurement_requests') === 'true') {
+        const raw = localStorage.getItem('procurement_requests');
+        if (!raw || raw === '[]') return [];
+      }
+    } else if (collectionName === 'ledgers') {
+      if (localStorage.getItem('cleared_ledgers') === 'true') {
+        const raw = localStorage.getItem('ledgers');
+        if (!raw || raw === '[]') return [];
+      }
     }
 
-    // Deduplicate in-flight queries
-    const inFlight = inFlightQueries.get(collectionName);
-    if (inFlight) {
-      return inFlight;
+    // 2. Candidate storage keys (prefer canonical dataset keys first)
+    const candidateKeys: string[] = [];
+    if (collectionName === 'arrival_entries') {
+      candidateKeys.push('arrival_entry_data_v4');
+    } else if (collectionName === 'arrival_sheets') {
+      candidateKeys.push('arrival_entry_sheets_v4');
+    } else if (collectionName === 'stakeholders') {
+      candidateKeys.push('stakeholders_v2');
+    } else if (collectionName === 'product_inventory') {
+      candidateKeys.push('product_inventory');
+    } else if (collectionName === 'placed_orders') {
+      candidateKeys.push('placed_orders');
+    } else if (collectionName === 'procurement_requests') {
+      candidateKeys.push('procurement_requests');
+    } else if (collectionName === 'ledgers') {
+      candidateKeys.push('ledgers');
     }
+    candidateKeys.push(`firestore_cache_${collectionName}`);
+    candidateKeys.push(collectionName);
+
+    for (const key of candidateKeys) {
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+        if (collectionName === 'stakeholders' && parsed && typeof parsed === 'object') {
+          const flat: any[] = [];
+          if (Array.isArray(parsed.suppliers)) {
+            flat.push(...parsed.suppliers.map((s: any) => ({ ...s, type: 'suppliers' })));
+          }
+          if (Array.isArray(parsed.buyers)) {
+            flat.push(...parsed.buyers.map((b: any) => ({ ...b, type: 'buyers' })));
+          }
+          if (flat.length > 0) return flat;
+        }
+      }
+    }
+  } catch (e) {}
+  return null;
+}
+
+// Background fresh fetch & sync worker
+async function fetchAndSyncFreshCollection(collectionName: string): Promise<any[]> {
+  const inFlight = inFlightQueries.get(collectionName);
+  if (inFlight) {
+    return inFlight;
   }
 
   const queryPromise = (async () => {
@@ -292,23 +339,27 @@ export async function getCollectionDocs(collectionName: string, forceFresh = fal
 
       const items = Array.from(itemsMap.values());
       collectionCache.set(collectionName, { data: items, timestamp: Date.now() });
+
+      // Save to localStorage for instant cold start on next refresh/launch
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem(`firestore_cache_${collectionName}`, JSON.stringify(items));
+        } catch (e) {}
+
+        // Global event dispatch so views can update reactively without freezing
+        window.dispatchEvent(new CustomEvent('collection-synced', {
+          detail: { collectionName, count: items.length }
+        }));
+      }
+
       return items;
     } catch (error: any) {
       console.warn(`Firestore getCollectionDocs notice for ${collectionName}:`, error?.message || error);
       if (typeof window !== 'undefined') {
-        try {
-          const localKey = collectionName === 'arrival_entries' ? 'arrival_entry_data_v4' : collectionName;
-          const cached = localStorage.getItem(localKey);
-          if (cached) {
-            const parsed = JSON.parse(cached);
-            if (Array.isArray(parsed)) {
-              // Cache fallback briefly (5s) to avoid hammer loops
-              collectionCache.set(collectionName, { data: parsed, timestamp: Date.now() - (CACHE_TTL_MS - 5000) });
-              return parsed;
-            }
-          }
-        } catch (e) {
-          console.warn('LocalStorage fallback read error:', e);
+        const localData = getLocalBackup(collectionName);
+        if (localData) {
+          collectionCache.set(collectionName, { data: localData, timestamp: Date.now() - (CACHE_TTL_MS - 5000) });
+          return localData;
         }
       }
       return [];
@@ -319,6 +370,61 @@ export async function getCollectionDocs(collectionName: string, forceFresh = fal
 
   inFlightQueries.set(collectionName, queryPromise);
   return queryPromise;
+}
+
+// Helper: Get all documents from a collection with SWR (Stale-While-Revalidate) instant rendering & strict role boundary
+export async function getCollectionDocs(collectionName: string, forceFresh = false): Promise<any[]> {
+  const callerRole = getCurrentCallerRole();
+
+  // Strict data isolation:
+  // 1. Merchants cannot query corporate financial ledgers, patti, pending loadings, arrival entries, or stakeholder lists
+  if (callerRole === 'merchant') {
+    const forbiddenForMerchant = ['ledgers', 'patti', 'pending_loadings', 'arrival_entries', 'stakeholders', 'users'];
+    if (forbiddenForMerchant.includes(collectionName)) {
+      console.warn(`[Security Guard] Blocked unauthorized merchant query to collection: ${collectionName}`);
+      return [];
+    }
+  }
+
+  // 2. Operations Staff cannot query corporate financial ledgers or patti
+  if (callerRole === 'employee') {
+    const forbiddenForEmployee = ['ledgers', 'patti', 'users'];
+    if (forbiddenForEmployee.includes(collectionName)) {
+      console.warn(`[Security Guard] Blocked unauthorized staff query to collection: ${collectionName}`);
+      return [];
+    }
+  }
+
+  // Fast path 1: Fresh in-memory cached data
+  if (!forceFresh) {
+    const cached = collectionCache.get(collectionName);
+    if (cached && (Date.now() - cached.timestamp < CACHE_TTL_MS)) {
+      return cached.data;
+    }
+
+    // Fast path 2 (SWR): Instant LocalStorage Hydration for cold start & page refreshes (0ms delay)
+    const localData = getLocalBackup(collectionName);
+    if (localData && localData.length > 0) {
+      // Seed in-memory cache temporarily
+      collectionCache.set(collectionName, { data: localData, timestamp: Date.now() });
+
+      // Silently revalidate fresh Firestore data in background
+      fetchAndSyncFreshCollection(collectionName).catch(err => {
+        console.warn(`Background revalidation notice for ${collectionName}:`, err?.message || err);
+      });
+
+      return localData;
+    }
+
+    // Deduplicate in-flight queries
+    const inFlight = inFlightQueries.get(collectionName);
+    if (inFlight) {
+      return inFlight;
+    }
+  }
+
+  // If forceFresh or no local data exists, await fresh fetch directly
+  return fetchAndSyncFreshCollection(collectionName);
 }
 
 // Helper: Set/Write a specific document by ID with strict role isolation

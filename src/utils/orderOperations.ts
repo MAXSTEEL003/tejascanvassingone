@@ -246,14 +246,30 @@ const SEED_OPERATIONAL_POS: OperationalPO[] = [
   }
 ];
 
+let operationalOrdersMemCache: { data: OperationalPO[]; timestamp: number } | null = null;
+const OP_CACHE_TTL_MS = 60000;
+
+export function invalidateOperationalOrdersCache() {
+  operationalOrdersMemCache = null;
+}
+
 /**
  * Loads all Purchase Orders, reconciles with recorded Arrival Entries,
  * and produces clean single-row-per-PO records.
  */
-export async function fetchOperationalOrders(): Promise<OperationalPO[]> {
+export async function fetchOperationalOrders(forceFresh = false): Promise<OperationalPO[]> {
   try {
-    // 1. Load Placed Orders (Cloud Firestore + LocalStorage fallback)
-    const cloudPlaced = await getCollectionDocs('placed_orders').catch(() => []);
+    if (!forceFresh && operationalOrdersMemCache && (Date.now() - operationalOrdersMemCache.timestamp < OP_CACHE_TTL_MS)) {
+      return operationalOrdersMemCache.data;
+    }
+
+    // 1. Fetch Placed Orders, Arrival Entries, and Ledgers in PARALLEL
+    const [cloudPlaced, cloudArrivals, cloudLedgers] = await Promise.all([
+      getCollectionDocs('placed_orders', forceFresh).catch(() => []),
+      getCollectionDocs('arrival_entries', forceFresh).catch(() => []),
+      getCollectionDocs('ledgers', forceFresh).catch(() => [])
+    ]);
+
     let localPlaced: any[] = [];
     try {
       localPlaced = JSON.parse(localStorage.getItem('placed_orders') || '[]');
@@ -270,8 +286,6 @@ export async function fetchOperationalOrders(): Promise<OperationalPO[]> {
       }
     });
 
-    // 2. Load Arrival Entries (Cloud Firestore + LocalStorage sheets & array)
-    const cloudArrivals = await getCollectionDocs('arrival_entries').catch(() => []);
     let localArrivals: any[] = [];
     try {
       localArrivals = JSON.parse(localStorage.getItem('arrival_entry_data_v4') || '[]');
@@ -312,12 +326,11 @@ export async function fetchOperationalOrders(): Promise<OperationalPO[]> {
     });
 
     // 3. Historical Ledgers Fallback (Ensure no older orders are missing)
-    let historicalLedgers: any[] = [];
+    let localLedgers: any[] = [];
     try {
-      const cloudLedgers = await getCollectionDocs('ledgers').catch(() => []);
-      const localLedgers = JSON.parse(localStorage.getItem('ledgers') || '[]');
-      historicalLedgers = [...cloudLedgers, ...localLedgers];
+      localLedgers = JSON.parse(localStorage.getItem('ledgers') || '[]');
     } catch {}
+    const historicalLedgers = [...cloudLedgers, ...localLedgers];
 
     const ledgerPoMap = new Map<string, { buyer?: string; supplier?: string; date?: any; qty?: number; rate?: number; amount?: number }>();
     historicalLedgers.forEach(l => {
@@ -520,7 +533,14 @@ export async function fetchOperationalOrders(): Promise<OperationalPO[]> {
     }
 
     // Sort chronologically by dateTimestamp (newest date first)
-    return results.sort((a, b) => b.dateTimestamp - a.dateTimestamp);
+    const sorted = results.sort((a, b) => b.dateTimestamp - a.dateTimestamp);
+    operationalOrdersMemCache = { data: sorted, timestamp: Date.now() };
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('cached_operational_orders', JSON.stringify(sorted));
+      } catch (e) {}
+    }
+    return sorted;
   } catch (error) {
     console.error('Error fetching operational orders:', error);
     return [...SEED_OPERATIONAL_POS];

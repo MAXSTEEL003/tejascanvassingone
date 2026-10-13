@@ -7,7 +7,6 @@ import {
   Layers, 
   Warehouse, 
   TrendingUp, 
-  TrendingDown,
   MapPin, 
   Eye, 
   Sparkles, 
@@ -121,44 +120,6 @@ const getProductSpecs = (product: any) => {
   };
 };
 
-const HERO_SLIDES = [
-  {
-    tagline: "FROM OUR FIELDS TO YOUR TABLE",
-    title: "The Finest Rice for a Healthier Tomorrow",
-    subtitle: "Premium aged Basmati & daily staples, directly certified from premier APMC milling centers.",
-    badge: "🌾 Royal Harvest",
-    image: "https://images.unsplash.com/photo-1586201375761-83865001e31c?auto=format&fit=crop&w=800&q=80",
-    bgGradient: "from-[#ebf5ef] via-[#d7edd9] to-[#c1e2cb] dark:from-[#0d2118] dark:via-[#11291f] dark:to-[#0c1e16]",
-    badgeColor: "text-emerald-800 dark:text-emerald-300"
-  },
-  {
-    tagline: "100% NATURALLY AGED & POLISHED",
-    title: "Silky Sona Masoori & Fragrant Jasmine",
-    subtitle: "Lightweight, aromatic texture trusted by premier restaurants and households.",
-    badge: "✨ Master Grade Aroma",
-    image: "https://images.unsplash.com/photo-1536304993881-ff6e9eefa2a6?auto=format&fit=crop&w=800&q=80",
-    bgGradient: "from-[#fef7ee] via-[#faead1] to-[#f5dfb8] dark:from-[#1c180e] dark:via-[#262013] dark:to-[#171309]",
-    badgeColor: "text-amber-800 dark:text-amber-300"
-  },
-  {
-    tagline: "UNPOLISHED FIBER & NUTRITION",
-    title: "Organic Brown & Single-Origin Paddy",
-    subtitle: "Full-bran whole grains packed with essential minerals and wholesome crunch.",
-    badge: "🌱 100% Whole Grain",
-    image: "https://images.unsplash.com/photo-1626082927389-6cd097cdc6ec?auto=format&fit=crop&w=800&q=80",
-    bgGradient: "from-[#f4f7ed] via-[#e2ebd2] to-[#cddbb8] dark:from-[#141d11] dark:via-[#1c2717] dark:to-[#10170d]",
-    badgeColor: "text-lime-800 dark:text-lime-300"
-  },
-  {
-    tagline: "DIRECT MILL-TO-MERCHANT SETTLEMENT",
-    title: "Wholesale APMC Lots & Guaranteed Delivery",
-    subtitle: "Direct procurement with automated logistics tracking and verified digital receipts.",
-    badge: "🚚 Direct Mill Logistics",
-    image: "https://images.unsplash.com/photo-1610444319455-802521c750dc?auto=format&fit=crop&w=800&q=80",
-    bgGradient: "from-[#ecf3f8] via-[#d6e7f2] to-[#bee0eb] dark:from-[#0d1c24] dark:via-[#122530] dark:to-[#0a151c]",
-    badgeColor: "text-sky-800 dark:text-sky-300"
-  }
-];
 
 function ProductCardMedia({ product }: { product: any }) {
   const [imgError, setImgError] = useState(false);
@@ -286,49 +247,21 @@ export default function StoreManagement() {
   });
 
   // Dynamic Admin Store Config states
-  const [heroSlides, setHeroSlides] = useState<any[]>(() => {
-    try {
-      const saved = localStorage.getItem('tejas_hero_slides');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch {}
-    return HERO_SLIDES;
-  });
-
-  const [tickerMessages, setTickerMessages] = useState<any[]>(() => {
-    try {
-      const saved = localStorage.getItem('tejas_ticker_messages');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch {}
-    return [
-      { id: 't1', text: '🌾 NEW ARRIVAL: Fresh Sona Masoori 2026 Batch Stock Arrived at APMC Yard!', active: true, type: 'new_arrival' },
-      { id: 't2', text: '⚡ SPECIAL RATE TODAY: 1121 Sella Rice Ex-Mill Rate Updated', active: true, type: 'rate_update' },
-      { id: 't3', text: '🚚 APMC EXPRESS DISPATCH: Guaranteed 24-48 Hr Mill Loading', active: true, type: 'announcement' }
-    ];
-  });
-
-  const [rateListGraphic, setRateListGraphic] = useState<any>(() => {
-    try {
-      const saved = localStorage.getItem('tejas_rate_list_graphic');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed && parsed.imageUrl) return parsed;
-      }
-    } catch {}
-    return {
-      imageUrl: 'https://images.unsplash.com/photo-1574323347407-f5e1ad6d020b?auto=format&fit=crop&w=800&q=80',
-      title: 'Daily APMC Market Rate Chart',
-      noticeText: 'Latest wholesale paddy & rice rates updated ex-mill Ludhiana & APMC Yard Bangalore.'
-    };
-  });
 
   const [heroProductId, setHeroProductId] = useState<string>(() => {
     return localStorage.getItem('tejas_hero_product_id') || '';
+  });
+
+  // Curated Categories state
+  const [storeCategories, setStoreCategories] = useState<any[]>(() => {
+    try {
+      const saved = localStorage.getItem('tejas_store_categories');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return POPULAR_CATEGORIES;
   });
 
   const [showRateChartModal, setShowRateChartModal] = useState(false);
@@ -341,21 +274,14 @@ export default function StoreManagement() {
         if (cloudDocs && cloudDocs.length > 0) {
           const mainConfig = cloudDocs.find((d: any) => d.id === 'main_config');
           if (mainConfig) {
-            if (Array.isArray(mainConfig.heroSlides) && mainConfig.heroSlides.length > 0) {
-              setHeroSlides(mainConfig.heroSlides);
-              localStorage.setItem('tejas_hero_slides', JSON.stringify(mainConfig.heroSlides));
-            }
-            if (Array.isArray(mainConfig.tickerMessages) && mainConfig.tickerMessages.length > 0) {
-              setTickerMessages(mainConfig.tickerMessages);
-              localStorage.setItem('tejas_ticker_messages', JSON.stringify(mainConfig.tickerMessages));
-            }
-            if (mainConfig.rateListGraphic) {
-              setRateListGraphic(mainConfig.rateListGraphic);
-              localStorage.setItem('tejas_rate_list_graphic', JSON.stringify(mainConfig.rateListGraphic));
-            }
+
             if (mainConfig.heroProductId) {
               setHeroProductId(mainConfig.heroProductId);
               localStorage.setItem('tejas_hero_product_id', mainConfig.heroProductId);
+            }
+            if (Array.isArray(mainConfig.storeCategories) && mainConfig.storeCategories.length > 0) {
+              setStoreCategories(mainConfig.storeCategories);
+              localStorage.setItem('tejas_store_categories', JSON.stringify(mainConfig.storeCategories));
             }
           }
         }
@@ -367,17 +293,13 @@ export default function StoreManagement() {
 
     const handleConfigUpdate = () => {
       try {
-        const savedSlides = localStorage.getItem('tejas_hero_slides');
-        if (savedSlides) setHeroSlides(JSON.parse(savedSlides));
 
-        const savedTickers = localStorage.getItem('tejas_ticker_messages');
-        if (savedTickers) setTickerMessages(JSON.parse(savedTickers));
-
-        const savedRateList = localStorage.getItem('tejas_rate_list_graphic');
-        if (savedRateList) setRateListGraphic(JSON.parse(savedRateList));
 
         const savedHero = localStorage.getItem('tejas_hero_product_id');
         if (savedHero) setHeroProductId(savedHero);
+
+        const savedCategories = localStorage.getItem('tejas_store_categories');
+        if (savedCategories) setStoreCategories(JSON.parse(savedCategories));
       } catch (e) {}
     };
 
@@ -486,15 +408,7 @@ export default function StoreManagement() {
     }
   });
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [activeSlide, setActiveSlide] = useState(0);
 
-  // Auto-cycle hero carousel slides every 4.5s
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setActiveSlide(prev => (prev + 1) % HERO_SLIDES.length);
-    }, 4500);
-    return () => clearInterval(timer);
-  }, []);
 
   const [qtyModalProduct, setQtyModalProduct] = useState<any | null>(null);
   const [modalQtyValue, setModalQtyValue] = useState<number>(10);
@@ -1217,6 +1131,10 @@ export default function StoreManagement() {
           </div>
         </div>
 
+
+
+
+
         {/* --- VIEW SWITCHER: SCREEN 2 (CATEGORIES) VS SCREEN 1 & 10 (HOME & PRODUCTS) --- */}
         {activeTabParam === 'categories' ? (
           /* ============================================================== */
@@ -1243,7 +1161,7 @@ export default function StoreManagement() {
             </div>
 
             <div className="space-y-2.5">
-              {POPULAR_CATEGORIES.map((cat) => (
+              {(storeCategories || POPULAR_CATEGORIES).filter((c: any) => c && c.active !== false).map((cat: any) => (
                 <div
                   key={cat.id}
                   onClick={() => {
@@ -1254,7 +1172,7 @@ export default function StoreManagement() {
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="w-14 h-14 rounded-xl overflow-hidden shrink-0 bg-neutral-100 dark:bg-neutral-800 border border-neutral-200/80 dark:border-neutral-700">
-                      <img src={cat.image} alt={cat.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                      <img src={cat.image || 'https://images.unsplash.com/photo-1586201375761-83865001e31c?auto=format&fit=crop&w=300&q=80'} alt={cat.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
                     </div>
                     <div className="min-w-0 text-left">
                       <h3 className="font-extrabold text-sm text-neutral-900 dark:text-white truncate group-hover:text-[#C22424] transition-colors">
@@ -1264,7 +1182,7 @@ export default function StoreManagement() {
                         {cat.description}
                       </p>
                       <span className="text-[10px] font-bold text-[#C22424] mt-0.5 inline-block">
-                        {cat.count}
+                        {cat.count || 'Available'}
                       </span>
                     </div>
                   </div>
@@ -1280,12 +1198,82 @@ export default function StoreManagement() {
           <>
 
 
+            {/* --- SPOTLIGHT HERO PRODUCT CARD (Configured from Merchant View) --- */}
+            {(() => {
+              const heroProd = heroProductId ? productsList.find(p => p.id === heroProductId) : null;
+              if (!heroProd) return null;
+              const unitPrice = heroProd.price || 3850;
+              const inCartItem = items.find(i => i.id === heroProd.id);
 
+              return (
+                <div className="p-3 sm:p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/30 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-2xs text-left my-1">
+                  <div className="flex items-center gap-3 min-w-0 w-full sm:w-auto">
+                    <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl overflow-hidden shrink-0 bg-white dark:bg-neutral-800 border border-amber-400/30 flex items-center justify-center relative shadow-xs">
+                      <span className="absolute top-0.5 left-0.5 z-10 text-[7px] font-black px-1 rounded-full bg-amber-500 text-slate-950 uppercase tracking-wider">
+                        🌟 HERO
+                      </span>
+                      <ProductCardMedia product={heroProd} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[9px] font-black uppercase text-amber-700 dark:text-amber-400 tracking-wider">
+                          Today&apos;s Featured Harvest
+                        </span>
+                      </div>
+                      <h3 
+                        onClick={() => openProductDetails(heroProd)}
+                        className="text-xs sm:text-sm font-black text-neutral-900 dark:text-white truncate cursor-pointer hover:text-[#C22424]"
+                      >
+                        {heroProd.name}
+                      </h3>
+                      <p className="text-[10px] text-neutral-500 dark:text-neutral-400 truncate">
+                        {heroProd.variant ? `Grade A • ${heroProd.variant}` : heroProd.category || 'Premium Sortex'} • {heroProd.supplier || 'Direct Mill'}
+                      </p>
+                      <div className="flex items-baseline gap-1 mt-0.5">
+                        <span className="text-xs sm:text-sm font-black text-[#C22424]">
+                          ₹{formatINR(unitPrice)}
+                        </span>
+                        <span className="text-[9px] text-neutral-500">/ QTL</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                    <button
+                      type="button"
+                      onClick={() => openProductDetails(heroProd)}
+                      className="px-2.5 py-1 rounded-xl border border-neutral-300 dark:border-neutral-700 text-[10.5px] font-bold text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
+                    >
+                      Details
+                    </button>
+                    {inCartItem ? (
+                      <button
+                        type="button"
+                        onClick={() => setIsCartOpen(true)}
+                        className="px-3 py-1 rounded-xl bg-emerald-600 text-white text-[10.5px] font-bold shadow-xs cursor-pointer flex items-center gap-1"
+                      >
+                        <Check className="w-3 h-3" />
+                        <span>In Cart ({inCartItem.qty} Qtl)</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleAddToCartProduct(heroProd, 25)}
+                        className="px-3.5 py-1 rounded-xl bg-[#C22424] hover:bg-[#A81F1F] text-white text-[10.5px] font-bold shadow-xs transition-all active:scale-95 cursor-pointer flex items-center gap-1.5"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>Order (25 Qtl)</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* --- SCREEN 10: HORIZONTAL CATEGORY CHIPS --- */}
             <div className="w-full overflow-hidden">
               <div className="flex items-center gap-1.5 overflow-x-auto py-0.5 no-scrollbar scrollbar-none scroll-smooth select-none">
-                {['All', 'Basmati', 'Sona Masoori', 'IR64', 'Ponni', 'Parboiled', 'Broken'].map((catName) => {
+                {['All', ...Array.from(new Set((storeCategories || POPULAR_CATEGORIES).filter((c: any) => c && c.active !== false).map((c: any) => c.name || c.id)))].map((catName) => {
                   const isSelected = (selectedCategory === catName) || (catName === 'All' && selectedCategory === 'All');
                   return (
                     <button
@@ -1354,10 +1342,13 @@ export default function StoreManagement() {
                         onClick={() => openProductDetails(product)}
                         className="relative w-full aspect-[4/3] sm:aspect-square overflow-hidden bg-neutral-50 dark:bg-neutral-800/60 cursor-pointer flex items-center justify-center"
                       >
-                        {/* Best Seller Pill Badge */}
-                        {product.isBestSeller && (
-                          <span className="absolute top-1.5 left-1.5 z-20 bg-[#C22424] text-white text-[7.5px] font-bold px-1.5 py-0.5 rounded-full shadow-2xs">
-                            Best Seller
+                        {/* Best Seller or Promo Pill Badge */}
+                        {(product.promoBadge || product.isBestSeller) && (
+                          <span className={cn(
+                            "absolute top-1.5 left-1.5 z-20 text-[7.5px] font-bold px-1.5 py-0.5 rounded-full shadow-2xs",
+                            product.promoBadge ? "bg-amber-600 text-white" : "bg-[#C22424] text-white"
+                          )}>
+                            {product.promoBadge || 'Best Seller'}
                           </span>
                         )}
 
@@ -1878,9 +1869,14 @@ export default function StoreManagement() {
                     <h2 className="text-base sm:text-lg font-black text-neutral-900 dark:text-white leading-tight">
                       {selectedProductDetails.name}
                     </h2>
-                    <span className="bg-red-50 text-[#C22424] border border-red-200 text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0">
-                      Best Seller
-                    </span>
+                    {(selectedProductDetails.promoBadge || selectedProductDetails.isBestSeller) && (
+                      <span className={cn(
+                        "text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0",
+                        selectedProductDetails.promoBadge ? "bg-amber-50 text-amber-700 border border-amber-200" : "bg-red-50 text-[#C22424] border border-red-200"
+                      )}>
+                        {selectedProductDetails.promoBadge || 'Best Seller'}
+                      </span>
+                    )}
                   </div>
 
                   <p className="text-xs text-neutral-500 dark:text-neutral-400 font-medium">

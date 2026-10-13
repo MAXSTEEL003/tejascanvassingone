@@ -829,8 +829,8 @@ Generated via GrainMart B2B Depot Terminal.`;
       }
       const imgData = canvas.toDataURL('image/png', 1.0);
       
-      // A4 Dimensions in landscape: 297mm x 210mm
-      const pdf = new jsPDF('l', 'mm', 'a4');
+      // A4 Dimensions in portrait: 210mm x 297mm
+      const pdf = new jsPDF('p', 'mm', 'a4');
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = pdf.internal.pageSize.getHeight();
       

@@ -36,8 +36,23 @@ import PrintEntriesPdfModal from '../components/PrintEntriesPdfModal';
 
 export default function PendingLoadings() {
   const navigate = useNavigate();
-  const [orders, setOrders] = useState<OperationalPO[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [orders, setOrders] = useState<OperationalPO[]>(() => {
+    try {
+      const cached = localStorage.getItem('cached_operational_orders');
+      if (cached) {
+        const all: OperationalPO[] = JSON.parse(cached);
+        return all.filter(po => (po.poQtl > po.arrivalQtl) || po.status === 'Pending Loading' || po.status === 'Partial Arrival' || po.arrivalQtl === 0);
+      }
+    } catch {}
+    return [];
+  });
+  const [isLoading, setIsLoading] = useState<boolean>(() => {
+    try {
+      const cached = localStorage.getItem('cached_operational_orders');
+      if (cached && JSON.parse(cached).length > 0) return false;
+    } catch {}
+    return true;
+  });
 
   // Filter State
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -59,8 +74,8 @@ export default function PendingLoadings() {
     setIsLoading(true);
     try {
       const allOrders = await fetchOperationalOrders();
-      // Keep only POs where arrival has NOT been recorded (arrivalQtl === 0 or pending load exists)
-      const pendingOnly = allOrders.filter(po => po.arrivalQtl === 0 || po.status === 'Pending Loading');
+      // Keep only POs where arrival has NOT been recorded, partial arrival, or pending load exists
+      const pendingOnly = allOrders.filter(po => (po.poQtl > po.arrivalQtl) || po.status === 'Pending Loading' || po.status === 'Partial Arrival' || po.arrivalQtl === 0);
       setOrders(pendingOnly);
     } catch (e) {
       console.error('Failed to load pending loadings:', e);
@@ -540,7 +555,7 @@ export default function PendingLoadings() {
         ) : (
           <div className="space-y-6">
             {groupedOrders.map(group => {
-              const groupPendingQtl = group.items.reduce((s, it) => s + it.poQtl, 0);
+              const groupPendingQtl = group.items.reduce((s, it) => s + Math.max(0, it.poQtl - it.arrivalQtl), 0);
 
               return (
                 <div key={group.dateKey} className="space-y-2">
@@ -548,38 +563,40 @@ export default function PendingLoadings() {
                   <div className="flex items-center justify-between px-1">
                     <div className="flex items-center gap-2">
                       <div className="w-2 h-2 rounded-full bg-rose-500" />
-                      <h2 className="text-sm font-black text-slate-900 dark:text-white tracking-tight">
+                      <h2 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white tracking-tight">
                         {group.dateKey}
                       </h2>
-                      <span className="text-[11px] text-slate-500 font-bold">
+                      <span className="text-xs text-slate-500 font-medium">
                         ({group.items.length} {group.items.length === 1 ? 'Pending PO' : 'Pending POs'})
                       </span>
                     </div>
 
-                    <div className="text-xs font-mono text-slate-500">
-                      Pending Volume: <strong className="text-rose-600 dark:text-rose-400">{groupPendingQtl.toLocaleString()} QTL</strong>
+                    <div className="text-xs font-mono text-slate-500 font-medium">
+                      Pending Volume: <strong className="text-rose-600 dark:text-rose-400 font-semibold">{groupPendingQtl.toLocaleString()} QTL</strong>
                     </div>
                   </div>
 
-                  {/* Clean Operational Table: Date | PO No. | Buyer | Supplier/Miller | Brand | PO QTL | Rate / QTL */}
+                  {/* Clean Operational Table: Date | PO No. | Buyer | Supplier/Miller | Brand | PO QTL | Arrival QTL | Pending QTL | Rate / QTL */}
                   <div className="overflow-x-auto rounded-2xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-[#0a1610] shadow-2xs">
                     <table className="w-full text-left text-xs border-collapse">
                       <thead>
-                        <tr className="border-b border-slate-200/80 dark:border-white/10 bg-slate-50/75 dark:bg-neutral-900/60 text-[10px] font-black uppercase tracking-wider text-slate-500">
-                          <th className="w-9 py-3 px-2 text-center"></th>
-                          <th className="py-3 px-3.5">Date</th>
-                          <th className="py-3 px-3.5">PO No.</th>
-                          <th className="py-3 px-3.5">Buyer</th>
-                          <th className="py-3 px-3.5">Supplier / Miller</th>
-                          <th className="py-3 px-3.5">Brand</th>
-                          <th className="py-3 px-3.5 text-right">PO QTL</th>
-                          <th className="py-3 px-3.5 text-right">Rate / QTL</th>
+                        <tr className="border-b border-slate-200/80 dark:border-white/10 bg-slate-50/75 dark:bg-neutral-900/60 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                          <th className="w-9 py-3.5 px-2 text-center"></th>
+                          <th className="py-3.5 px-3.5">Date</th>
+                          <th className="py-3.5 px-3.5">PO No.</th>
+                          <th className="py-3.5 px-3.5">Buyer</th>
+                          <th className="py-3.5 px-3.5">Supplier / Miller</th>
+                          <th className="py-3.5 px-3.5">Brand</th>
+                          <th className="py-3.5 px-3.5 text-right">PO QTL</th>
+                          <th className="py-3.5 px-3.5 text-right">Arrival QTL</th>
+                          <th className="py-3.5 px-3.5 text-right">Pending QTL</th>
+                          <th className="py-3.5 px-3.5 text-right">Rate / QTL</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 dark:divide-white/5 font-medium">
                         {group.items.map(po => {
                           const isExpanded = expandedPoId === po.id;
-                          const estVal = po.poQtl * (po.rate || 0);
+                          const estVal = Math.max(0, po.poQtl - po.arrivalQtl) * (po.rate || 0);
 
                           return (
                             <React.Fragment key={po.id}>
@@ -591,7 +608,7 @@ export default function PendingLoadings() {
                                 onClick={() => setExpandedPoId(isExpanded ? null : po.id)}
                               >
                                 {/* Dropdown Chevron Toggle */}
-                                <td className="w-9 py-3 px-2 text-center">
+                                <td className="w-9 py-3.5 px-2 text-center">
                                   <button
                                     type="button"
                                     onClick={(e) => {
@@ -606,19 +623,19 @@ export default function PendingLoadings() {
                                 </td>
 
                                 {/* Date (Short: e.g. 30 Sep) */}
-                                <td className="py-3 px-3.5 whitespace-nowrap text-slate-600 dark:text-slate-400 font-mono text-[11px]">
+                                <td className="py-3.5 px-3.5 whitespace-nowrap text-slate-600 dark:text-slate-400 font-mono text-xs font-medium">
                                   {po.dateShort}
                                 </td>
 
                                 {/* PO No (Clickable for PO details) */}
-                                <td className="py-3 px-3.5 whitespace-nowrap">
+                                <td className="py-3.5 px-3.5 whitespace-nowrap">
                                   <button
                                     type="button"
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       setSelectedPoForModal(po);
                                     }}
-                                    className="font-mono font-black text-rose-600 dark:text-rose-400 hover:underline hover:text-rose-700 inline-flex items-center gap-1 cursor-pointer btn-tactile"
+                                    className="font-mono font-bold text-xs text-rose-600 dark:text-rose-400 hover:underline hover:text-rose-700 inline-flex items-center gap-1 cursor-pointer btn-tactile"
                                     title="Click to view PO details"
                                   >
                                     <span>{po.poNumber}</span>
@@ -626,14 +643,14 @@ export default function PendingLoadings() {
                                 </td>
 
                                 {/* Buyer (Clickable for Buyer Mini Profile) */}
-                                <td className="py-3 px-3.5">
+                                <td className="py-3.5 px-3.5">
                                   <button
                                     type="button"
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       setSelectedBuyerForModal(po.buyer);
                                     }}
-                                    className="font-bold text-slate-900 dark:text-white hover:text-rose-600 dark:hover:text-rose-400 hover:underline text-left cursor-pointer transition-colors btn-tactile"
+                                    className="font-semibold text-xs text-slate-900 dark:text-slate-100 hover:text-rose-600 dark:hover:text-rose-400 hover:underline text-left cursor-pointer transition-colors btn-tactile"
                                     title={`View buyer profile for ${po.buyer}`}
                                   >
                                     {po.buyer}
@@ -641,24 +658,62 @@ export default function PendingLoadings() {
                                 </td>
 
                                 {/* Supplier / Miller */}
-                                <td className="py-3 px-3.5 text-slate-700 dark:text-slate-300">
+                                <td className="py-3.5 px-3.5 text-xs font-medium text-slate-700 dark:text-slate-300">
                                   {po.supplier}
                                 </td>
 
                                 {/* Brand */}
-                                <td className="py-3 px-3.5">
-                                  <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-slate-100 dark:bg-neutral-800 text-slate-800 dark:text-slate-200 text-[11px] font-bold border border-slate-200/60 dark:border-white/10">
+                                <td className="py-3.5 px-3.5">
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-slate-100 dark:bg-neutral-800 text-slate-700 dark:text-slate-200 text-xs font-medium border border-slate-200/60 dark:border-white/10">
                                     {po.brand}
                                   </span>
                                 </td>
 
                                 {/* PO QTL */}
-                                <td className="py-3 px-3.5 text-right font-mono font-black text-slate-900 dark:text-white whitespace-nowrap">
+                                <td className="py-3.5 px-3.5 text-right font-mono font-bold text-xs text-slate-900 dark:text-white whitespace-nowrap">
                                   {po.poQtl.toLocaleString('en-IN', { maximumFractionDigits: 1 })}
                                 </td>
 
+                                {/* Arrival QTL (Green if excess/fulfilled, Red if less) */}
+                                <td className="py-3.5 px-3.5 text-right font-mono text-xs whitespace-nowrap">
+                                  {po.arrivalQtl > po.poQtl ? (
+                                    <span className="font-bold text-emerald-600 dark:text-emerald-400" title="Excess Quantity Arrived">
+                                      {po.arrivalQtl.toLocaleString('en-IN', { maximumFractionDigits: 1 })}
+                                    </span>
+                                  ) : po.arrivalQtl < po.poQtl && po.arrivalQtl > 0 ? (
+                                    <span className="font-bold text-rose-600 dark:text-rose-400" title="Less Quantity Arrived (Shortfall)">
+                                      {po.arrivalQtl.toLocaleString('en-IN', { maximumFractionDigits: 1 })}
+                                    </span>
+                                  ) : po.arrivalQtl === 0 ? (
+                                    <span className="font-bold text-rose-600 dark:text-rose-400" title="Awaiting Arrival">
+                                      0
+                                    </span>
+                                  ) : (
+                                    <span className="font-bold text-emerald-600 dark:text-emerald-400" title="Full Quantity Arrived">
+                                      {po.arrivalQtl.toLocaleString('en-IN', { maximumFractionDigits: 1 })}
+                                    </span>
+                                  )}
+                                </td>
+
+                                {/* Pending QTL (Red if pending/shortfall, Green if excess) */}
+                                <td className="py-3.5 px-3.5 text-right whitespace-nowrap font-mono text-xs">
+                                  {po.arrivalQtl > po.poQtl ? (
+                                    <span className="font-bold text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/20 inline-block">
+                                      +{ (po.arrivalQtl - po.poQtl).toLocaleString('en-IN', { maximumFractionDigits: 1 }) } QTL (Excess)
+                                    </span>
+                                  ) : po.arrivalQtl < po.poQtl ? (
+                                    <span className="font-bold text-rose-600 dark:text-rose-400 px-2 py-0.5 rounded-md bg-rose-500/10 border border-rose-500/20 inline-block">
+                                      { (po.poQtl - po.arrivalQtl).toLocaleString('en-IN', { maximumFractionDigits: 1 }) } QTL (Pending)
+                                    </span>
+                                  ) : (
+                                    <span className="font-bold text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/20 inline-block">
+                                      0 QTL (Fulfilled)
+                                    </span>
+                                  )}
+                                </td>
+
                                 {/* Rate / QTL */}
-                                <td className="py-3 px-3.5 text-right font-mono font-bold text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                                <td className="py-3.5 px-3.5 text-right font-mono font-semibold text-xs text-slate-700 dark:text-slate-300 whitespace-nowrap">
                                   {po.rate > 0 ? `₹ ${formatINR(po.rate)}` : '—'}
                                 </td>
                               </tr>
@@ -667,7 +722,7 @@ export default function PendingLoadings() {
                               <AnimatePresence>
                                 {isExpanded && (
                                   <tr className="table-dropdown-drawer">
-                                    <td colSpan={8} className="p-0">
+                                    <td colSpan={10} className="p-0">
                                       <motion.div
                                         initial={{ opacity: 0, height: 0 }}
                                         animate={{ opacity: 1, height: 'auto' }}
@@ -685,7 +740,7 @@ export default function PendingLoadings() {
                                                 Order Contract
                                               </span>
                                               <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/20">
-                                                Awaiting Arrival
+                                                {po.arrivalQtl > po.poQtl ? 'Excess Arrived' : po.arrivalQtl > 0 ? 'Partial Arrival' : 'Awaiting Arrival'}
                                               </span>
                                             </div>
                                             <div>
@@ -694,8 +749,24 @@ export default function PendingLoadings() {
                                             </div>
                                             <div className="pt-2 border-t border-slate-100 dark:border-white/5 space-y-1">
                                               <div className="flex justify-between items-center text-xs">
-                                                <span className="text-slate-500">Weight:</span>
+                                                <span className="text-slate-500">Contracted PO:</span>
                                                 <span className="font-mono font-bold text-slate-900 dark:text-white">{po.poQtl} QTL</span>
+                                              </div>
+                                              <div className="flex justify-between items-center text-xs">
+                                                <span className="text-slate-500">Recorded Arrival:</span>
+                                                <span className={cn(
+                                                  "font-mono font-bold",
+                                                  po.arrivalQtl > po.poQtl ? "text-emerald-600 dark:text-emerald-400" : po.arrivalQtl < po.poQtl ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"
+                                                )}>{po.arrivalQtl} QTL</span>
+                                              </div>
+                                              <div className="flex justify-between items-center text-xs">
+                                                <span className="text-slate-500">Pending / Excess:</span>
+                                                <span className={cn(
+                                                  "font-mono font-bold",
+                                                  po.arrivalQtl > po.poQtl ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
+                                                )}>
+                                                  {po.arrivalQtl > po.poQtl ? `+${po.arrivalQtl - po.poQtl} QTL (Excess)` : `${po.poQtl - po.arrivalQtl} QTL (Pending)`}
+                                                </span>
                                               </div>
                                               <div className="flex justify-between items-center text-xs">
                                                 <span className="text-slate-500">Agreed Rate:</span>
@@ -864,37 +935,37 @@ export default function PendingLoadings() {
               {/* Metrics Grid */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                 <div className="p-3 rounded-2xl bg-slate-50 dark:bg-neutral-900 border border-slate-200/60 dark:border-neutral-800">
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">
+                  <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
                     Total Orders
                   </span>
-                  <span className="text-lg font-black font-mono">
+                  <span className="text-lg font-bold font-mono text-slate-900 dark:text-white">
                     {buyerProfileData.totalOrders}
                   </span>
                 </div>
 
                 <div className="p-3 rounded-2xl bg-slate-50 dark:bg-neutral-900 border border-slate-200/60 dark:border-neutral-800">
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">
+                  <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
                     Total PO QTL
                   </span>
-                  <span className="text-lg font-black font-mono text-amber-700 dark:text-amber-400">
+                  <span className="text-lg font-bold font-mono text-amber-700 dark:text-amber-400">
                     {buyerProfileData.totalPoQtl.toLocaleString()}
                   </span>
                 </div>
 
                 <div className="p-3 rounded-2xl bg-slate-50 dark:bg-neutral-900 border border-slate-200/60 dark:border-neutral-800">
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">
+                  <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
                     Total Arrived
                   </span>
-                  <span className="text-lg font-black font-mono text-emerald-600 dark:text-emerald-400">
+                  <span className="text-lg font-bold font-mono text-emerald-600 dark:text-emerald-400">
                     {buyerProfileData.totalArrivalQtl.toLocaleString()}
                   </span>
                 </div>
 
                 <div className="p-3 rounded-2xl bg-slate-50 dark:bg-neutral-900 border border-slate-200/60 dark:border-neutral-800">
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">
+                  <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
                     Pending QTL
                   </span>
-                  <span className="text-lg font-black font-mono text-rose-600 dark:text-rose-400">
+                  <span className="text-lg font-bold font-mono text-rose-600 dark:text-rose-400">
                     {buyerProfileData.pendingQtl.toLocaleString()}
                   </span>
                 </div>
@@ -902,14 +973,14 @@ export default function PendingLoadings() {
 
               {/* Suppliers Ordered From */}
               <div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
+                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-1.5">
                   Suppliers & Millers Contracted With:
                 </span>
                 <div className="flex flex-wrap gap-1.5">
                   {buyerProfileData.suppliers.map(s => (
                     <span 
                       key={s} 
-                      className="px-2.5 py-1 rounded-xl text-xs font-bold bg-slate-100 dark:bg-neutral-800 text-slate-800 dark:text-slate-200 border border-slate-200/60 dark:border-white/10"
+                      className="px-2.5 py-1 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-neutral-800 text-slate-800 dark:text-slate-200 border border-slate-200/60 dark:border-white/10"
                     >
                       {s}
                     </span>
@@ -922,32 +993,32 @@ export default function PendingLoadings() {
 
               {/* Recent Orders Table */}
               <div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
+                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-1.5">
                   Recent Orders
                 </span>
                 <div className="overflow-x-auto rounded-xl border border-slate-200/80 dark:border-white/10 max-h-48 overflow-y-auto">
                   <table className="w-full text-left text-xs">
                     <thead>
-                      <tr className="border-b border-slate-200/80 dark:border-white/10 bg-slate-50 dark:bg-neutral-900 text-[9px] font-black uppercase text-slate-500">
-                        <th className="py-2 px-2.5">Date</th>
-                        <th className="py-2 px-2.5">PO</th>
-                        <th className="py-2 px-2.5">Supplier</th>
-                        <th className="py-2 px-2.5">Brand</th>
-                        <th className="py-2 px-2.5 text-right">PO QTL</th>
-                        <th className="py-2 px-2.5 text-right">Arrival</th>
-                        <th className="py-2 px-2.5 text-right">Rate</th>
+                      <tr className="border-b border-slate-200/80 dark:border-white/10 bg-slate-50 dark:bg-neutral-900 text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                        <th className="py-2.5 px-3">Date</th>
+                        <th className="py-2.5 px-3">PO</th>
+                        <th className="py-2.5 px-3">Supplier</th>
+                        <th className="py-2.5 px-3">Brand</th>
+                        <th className="py-2.5 px-3 text-right">PO QTL</th>
+                        <th className="py-2.5 px-3 text-right">Arrival</th>
+                        <th className="py-2.5 px-3 text-right">Rate</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-white/5 font-mono text-[11px]">
+                    <tbody className="divide-y divide-slate-100 dark:divide-white/5 font-mono text-xs">
                       {buyerProfileData.recentOrders.map(ro => (
                         <tr key={ro.id}>
-                          <td className="py-2 px-2.5 whitespace-nowrap text-slate-600 dark:text-slate-400">{ro.dateShort}</td>
-                          <td className="py-2 px-2.5 font-bold text-rose-600 dark:text-rose-400 whitespace-nowrap">{ro.poNumber}</td>
-                          <td className="py-2 px-2.5 font-sans font-medium text-slate-700 dark:text-slate-300 truncate max-w-[120px]">{ro.supplier}</td>
-                          <td className="py-2 px-2.5 font-sans text-slate-600 dark:text-slate-400 truncate max-w-[100px]">{ro.brand}</td>
-                          <td className="py-2 px-2.5 text-right font-black text-slate-900 dark:text-white">{ro.poQtl}</td>
-                          <td className="py-2 px-2.5 text-right font-black text-emerald-600">{ro.arrivalQtl}</td>
-                          <td className="py-2 px-2.5 text-right text-slate-600 dark:text-slate-400">{ro.rate > 0 ? `₹${ro.rate}` : '—'}</td>
+                          <td className="py-2.5 px-3 whitespace-nowrap text-slate-600 dark:text-slate-400 font-medium">{ro.dateShort}</td>
+                          <td className="py-2.5 px-3 font-bold text-rose-600 dark:text-rose-400 whitespace-nowrap">{ro.poNumber}</td>
+                          <td className="py-2.5 px-3 font-sans font-medium text-slate-700 dark:text-slate-300 truncate max-w-[120px]">{ro.supplier}</td>
+                          <td className="py-2.5 px-3 font-sans font-medium text-slate-600 dark:text-slate-400 truncate max-w-[100px]">{ro.brand}</td>
+                          <td className="py-2.5 px-3 text-right font-bold text-slate-900 dark:text-white">{ro.poQtl}</td>
+                          <td className="py-2.5 px-3 text-right font-bold text-emerald-600 dark:text-emerald-400">{ro.arrivalQtl}</td>
+                          <td className="py-2.5 px-3 text-right font-medium text-slate-600 dark:text-slate-400">{ro.rate > 0 ? `₹${ro.rate}` : '—'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -1016,8 +1087,19 @@ export default function PendingLoadings() {
               {/* Status Badge */}
               <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-neutral-900 border border-slate-200/60 dark:border-neutral-800">
                 <span className="text-xs font-bold text-slate-500">Loading / Arrival Status:</span>
-                <span className="px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider border bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/30">
-                  Pending Loading
+                <span className={cn(
+                  "px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider border",
+                  selectedPoForModal.arrivalQtl > selectedPoForModal.poQtl
+                    ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30"
+                    : selectedPoForModal.arrivalQtl > 0
+                    ? "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30"
+                    : "bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/30"
+                )}>
+                  {selectedPoForModal.arrivalQtl > selectedPoForModal.poQtl 
+                    ? 'Excess Arrived' 
+                    : selectedPoForModal.arrivalQtl > 0 
+                    ? 'Partial Arrival' 
+                    : 'Pending Loading'}
                 </span>
               </div>
 
@@ -1042,15 +1124,40 @@ export default function PendingLoadings() {
 
                 <div className="flex items-center justify-between pt-2 font-mono">
                   <span className="text-slate-500 font-sans font-medium">Contracted PO Quantity:</span>
-                  <span className="font-black text-rose-700 dark:text-rose-400">
+                  <span className="font-bold text-slate-900 dark:text-white">
                     {formatQtl(selectedPoForModal.poQtl)}
                   </span>
                 </div>
 
                 <div className="flex items-center justify-between pt-2 font-mono">
                   <span className="text-slate-500 font-sans font-medium">Recorded Arrival Quantity:</span>
-                  <span className="font-bold text-slate-400 italic">
-                    0 QTL (Not Recorded)
+                  <span className={cn(
+                    "font-bold",
+                    selectedPoForModal.arrivalQtl > selectedPoForModal.poQtl
+                      ? "text-emerald-600 dark:text-emerald-400 font-black"
+                      : selectedPoForModal.arrivalQtl < selectedPoForModal.poQtl
+                      ? "text-rose-600 dark:text-rose-400 font-black"
+                      : "text-emerald-600 dark:text-emerald-400 font-black"
+                  )}>
+                    {selectedPoForModal.arrivalQtl > 0 ? formatQtl(selectedPoForModal.arrivalQtl) : '0 QTL (Not Recorded)'}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between pt-2 font-mono">
+                  <span className="text-slate-500 font-sans font-medium">Pending / Excess Quantity:</span>
+                  <span className={cn(
+                    "text-xs font-black px-2 py-0.5 rounded-md",
+                    selectedPoForModal.arrivalQtl > selectedPoForModal.poQtl
+                      ? "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20"
+                      : selectedPoForModal.arrivalQtl < selectedPoForModal.poQtl
+                      ? "text-rose-600 dark:text-rose-400 bg-rose-500/10 border border-rose-500/20"
+                      : "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20"
+                  )}>
+                    {selectedPoForModal.arrivalQtl > selectedPoForModal.poQtl
+                      ? `+${(selectedPoForModal.arrivalQtl - selectedPoForModal.poQtl).toLocaleString('en-IN', { maximumFractionDigits: 1 })} QTL (Excess)`
+                      : selectedPoForModal.arrivalQtl < selectedPoForModal.poQtl
+                      ? `${(selectedPoForModal.poQtl - selectedPoForModal.arrivalQtl).toLocaleString('en-IN', { maximumFractionDigits: 1 })} QTL (Pending)`
+                      : '0 QTL (Fulfilled)'}
                   </span>
                 </div>
 

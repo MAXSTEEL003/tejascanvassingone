@@ -21,14 +21,14 @@ import {
   AlertTriangle,
   CheckCircle2,
   Megaphone,
-  Bell,
   ChevronDown,
   ChevronUp,
   Copy,
   Building2,
   ShoppingBag,
   ArrowUpRight,
-  Share2
+  Share2,
+  Eye
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, formatINR } from '../lib/utils';
@@ -50,8 +50,23 @@ const PRESET_GRAIN_IMAGES = [
 ];
 
 export default function ProductInventory() {
-  const [products, setProducts] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [products, setProducts] = useState<any[]>(() => {
+    try {
+      const raw = localStorage.getItem('product_inventory');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+    return [];
+  });
+  const [loading, setLoading] = useState<boolean>(() => {
+    try {
+      const raw = localStorage.getItem('product_inventory');
+      if (raw && JSON.parse(raw).length > 0) return false;
+    } catch {}
+    return true;
+  });
   const [editingCell, setEditingCell] = useState<{ id: string, field: string } | null>(null);
   const [editValue, setEditValue] = useState('');
   const [userRole, setUserRole] = useState<string | null>(() => {
@@ -88,74 +103,58 @@ export default function ProductInventory() {
   const [activeInventoryTab, setActiveInventoryTab] = useState<'inventory' | 'merchant_control'>('inventory');
 
   // Dynamic Merchant Store Controls State
-  const [adminHeroSlides, setAdminHeroSlides] = useState<any[]>(() => {
-    try {
-      const saved = localStorage.getItem('tejas_hero_slides');
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return [
-      {
-        id: 'slide-1',
-        tagline: "FROM OUR FIELDS TO YOUR TABLE",
-        title: "The Finest Rice for a Healthier Tomorrow",
-        subtitle: "Premium aged Basmati & daily staples, directly certified from premier APMC milling centers.",
-        badge: "🌾 Royal Harvest",
-        image: "https://images.unsplash.com/photo-1586201375761-83865001e31c?auto=format&fit=crop&w=800&q=80",
-        bgGradient: "from-[#ebf5ef] via-[#d7edd9] to-[#c1e2cb] dark:from-[#0d2118] dark:via-[#11291f] dark:to-[#0c1e16]"
-      },
-      {
-        id: 'slide-2',
-        tagline: "100% NATURALLY AGED & POLISHED",
-        title: "Silky Sona Masoori & Fragrant Jasmine",
-        subtitle: "Lightweight, aromatic texture trusted by premier restaurants and households.",
-        badge: "✨ Master Grade Aroma",
-        image: "https://images.unsplash.com/photo-1536304993881-ff6e9eefa2a6?auto=format&fit=crop&w=800&q=80",
-        bgGradient: "from-[#fef7ee] via-[#faead1] to-[#f5dfb8] dark:from-[#1c180e] dark:via-[#262013] dark:to-[#171309]"
-      }
-    ];
-  });
-
-  const [adminTickerMessages, setAdminTickerMessages] = useState<any[]>(() => {
-    try {
-      const saved = localStorage.getItem('tejas_ticker_messages');
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return [
-      { id: 't1', text: '🌾 NEW ARRIVAL: Fresh Sona Masoori 2026 Batch Stock Arrived at APMC Yard!', active: true, type: 'new_arrival' },
-      { id: 't2', text: '⚡ SPECIAL RATE TODAY: 1121 Sella Rice Ex-Mill Rate Updated', active: true, type: 'rate_update' },
-      { id: 't3', text: '🚚 APMC EXPRESS DISPATCH: Guaranteed 24-48 Hr Mill Loading', active: true, type: 'announcement' }
-    ];
-  });
-
-  const [adminRateListGraphic, setAdminRateListGraphic] = useState<any>(() => {
-    try {
-      const saved = localStorage.getItem('tejas_rate_list_graphic');
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return {
-      imageUrl: 'https://images.unsplash.com/photo-1574323347407-f5e1ad6d020b?auto=format&fit=crop&w=800&q=80',
-      title: 'Daily APMC Market Rate Chart',
-      noticeText: 'Latest wholesale paddy & rice rates updated ex-mill Ludhiana & APMC Yard Bangalore.'
-    };
-  });
 
   const [adminHeroProductId, setAdminHeroProductId] = useState<string>(() => {
     return localStorage.getItem('tejas_hero_product_id') || '';
   });
 
-  // Ticker form state
-  const [newTickerText, setNewTickerText] = useState('');
-  
-  // Slide Form / Modal state
-  const [isSlideModalOpen, setIsSlideModalOpen] = useState(false);
-  const [editingSlide, setEditingSlide] = useState<any>(null);
-  const [slideForm, setSlideForm] = useState({
-    tagline: 'SPECIAL PROMOTION',
-    title: 'New Season Harvest Arrived',
-    subtitle: 'Direct mill loading with verified APMC certificates.',
-    image: PRESET_GRAIN_IMAGES[0].url,
-    bgGradient: 'from-[#ebf5ef] via-[#d7edd9] to-[#c1e2cb] dark:from-[#0d2118] dark:via-[#11291f] dark:to-[#0c1e16]'
+  // Curated Store Categories state
+  const [adminStoreCategories, setAdminStoreCategories] = useState<any[]>(() => {
+    try {
+      const saved = localStorage.getItem('tejas_store_categories');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return [
+      { id: 'Basmati', name: 'Basmati Rice', description: 'Long grain aromatic aged rice', count: '12 Varieties', active: true },
+      { id: 'Sona Masoori', name: 'Sona Masoori', description: 'Medium grain everyday staple', count: '8 Varieties', active: true },
+      { id: 'IR64', name: 'IR64 Rice', description: 'Long grain parboiled & raw', count: '6 Varieties', active: true },
+      { id: 'Ponni', name: 'Ponni Rice', description: 'South Indian favorite staple', count: '5 Varieties', active: true },
+      { id: 'Parboiled', name: 'Parboiled Rice', description: 'Nutritious processed rice', count: '7 Varieties', active: true },
+      { id: 'Broken', name: 'Broken Rice', description: 'Economical commercial grade', count: '4 Varieties', active: true }
+    ];
   });
+
+  // Merchant Complaints & Inquiries state
+  const [complaintsList, setComplaintsList] = useState<any[]>([]);
+  const [isLoadingComplaints, setIsLoadingComplaints] = useState(false);
+
+  const loadComplaints = async () => {
+    setIsLoadingComplaints(true);
+    try {
+      const docs = await getCollectionDocs('complaints').catch(() => []);
+      if (Array.isArray(docs)) {
+        setComplaintsList(docs.sort((a: any, b: any) => {
+          const tA = new Date(a.createdAt || 0).getTime();
+          const tB = new Date(b.createdAt || 0).getTime();
+          return tB - tA;
+        }));
+      }
+    } catch (e) {
+      console.warn("Failed to load complaints:", e);
+    } finally {
+      setIsLoadingComplaints(false);
+    }
+  };
+
+  const handleUpdateComplaintStatus = async (ticketId: string, newStatus: 'Pending' | 'In Progress' | 'Resolved') => {
+    try {
+      const updated = complaintsList.map(c => c.id === ticketId ? { ...c, status: newStatus } : c);
+      setComplaintsList(updated);
+      await setCollectionDoc('complaints', ticketId, { status: newStatus, lastUpdated: new Date().toISOString() });
+    } catch (err) {
+      console.error("Failed to update ticket status:", err);
+    }
+  };
 
   const [publishSuccessMsg, setPublishSuccessMsg] = useState('');
   const [isPublishing, setIsPublishing] = useState(false);
@@ -167,18 +166,14 @@ export default function ProductInventory() {
 
     try {
       // 1. Local storage sync
-      localStorage.setItem('tejas_hero_slides', JSON.stringify(adminHeroSlides));
-      localStorage.setItem('tejas_ticker_messages', JSON.stringify(adminTickerMessages));
-      localStorage.setItem('tejas_rate_list_graphic', JSON.stringify(adminRateListGraphic));
       localStorage.setItem('tejas_hero_product_id', adminHeroProductId);
+      localStorage.setItem('tejas_store_categories', JSON.stringify(adminStoreCategories));
 
       // 2. Cloud sync to Firestore
       const storeConfigData = {
         id: 'main_config',
-        heroSlides: adminHeroSlides,
-        tickerMessages: adminTickerMessages,
-        rateListGraphic: adminRateListGraphic,
         heroProductId: adminHeroProductId,
+        storeCategories: adminStoreCategories,
         updatedAt: new Date().toISOString()
       };
       await syncCollection('store_config', [storeConfigData]).catch(e => console.warn("Cloud store_config sync note:", e));
@@ -199,10 +194,13 @@ export default function ProductInventory() {
   const [newProduct, setNewProduct] = useState({
     name: '',
     brand: '',
+    category: 'Sona Masoori',
     price: '',
     status: 'Active',
     image: PRESET_GRAIN_IMAGES[0].url,
-    supplier: ''
+    supplier: '',
+    isBestSeller: false,
+    promoBadge: ''
   });
 
   const handleRequestDelete = (product: any, e?: React.MouseEvent) => {
@@ -560,10 +558,13 @@ export default function ProductInventory() {
       id,
       name: newProduct.name,
       brand: newProduct.brand || 'Premium Sella',
+      category: newProduct.category || newProduct.brand || 'Sona Masoori',
       price: parseFloat(newProduct.price) || 4100.00,
       status: newProduct.status,
       image: newProduct.image,
-      supplier: newProduct.supplier || (suppliersList[0] || '')
+      supplier: newProduct.supplier || (suppliersList[0] || ''),
+      isBestSeller: !!newProduct.isBestSeller,
+      promoBadge: newProduct.promoBadge || ''
     };
 
     const updated = [product, ...products];
@@ -576,10 +577,13 @@ export default function ProductInventory() {
     setNewProduct({
       name: '',
       brand: '',
+      category: 'Sona Masoori',
       price: '',
       status: 'Active',
       image: PRESET_GRAIN_IMAGES[0].url,
-      supplier: suppliersList[0] || ''
+      supplier: suppliersList[0] || '',
+      isBestSeller: false,
+      promoBadge: ''
     });
 
     try {
@@ -603,7 +607,10 @@ export default function ProductInventory() {
     const updatedProd = {
       ...editingProduct,
       price: parsedPrice,
-      supplier: editingProduct.supplier || (suppliersList[0] || '')
+      supplier: editingProduct.supplier || (suppliersList[0] || ''),
+      category: editingProduct.category || editingProduct.brand || 'Sona Masoori',
+      isBestSeller: !!editingProduct.isBestSeller,
+      promoBadge: editingProduct.promoBadge || ''
     };
 
     const updated = products.map(p => p?.id === updatedProd.id ? updatedProd : p);
@@ -728,6 +735,19 @@ export default function ProductInventory() {
         </div>
         {!isEmployee && (
           <div className="flex flex-wrap items-center gap-2.5">
+            <button 
+              onClick={() => setActiveInventoryTab(prev => prev === 'merchant_control' ? 'inventory' : 'merchant_control')}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2.5 rounded-xl border shadow-sm text-xs font-black uppercase tracking-wider transition-all cursor-pointer btn-tactile",
+                activeInventoryTab === 'merchant_control'
+                  ? "bg-amber-500 text-slate-950 border-amber-400 shadow-md font-black"
+                  : "bg-surface border-outline-variant hover:bg-surface-container text-on-surface"
+              )}
+              title="Toggle Merchant View & Store Banner Controls"
+            >
+              <Sparkles className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+              <span>{activeInventoryTab === 'merchant_control' ? '← Inventory Stock' : 'Store & Banners'}</span>
+            </button>
             <button 
               onClick={() => setIsBroadcastModalOpen(true)}
               className="flex items-center gap-2 px-5 py-2.5 bg-[#C22424] text-white rounded-xl shadow-md shadow-red-600/20 hover:bg-[#B91C1C] transition-all text-xs font-black uppercase tracking-wider cursor-pointer btn-tactile"
@@ -1007,10 +1027,22 @@ export default function ProductInventory() {
                               <img src={p.image} alt={p.name} className="w-full h-full object-cover group-hover/img:scale-105 transition-all" referrerPolicy="no-referrer" />
                             </div>
                             <div>
-                              <span className="font-extrabold text-sm block text-on-surface uppercase group-hover:text-primary transition-colors flex items-center gap-1.5">
-                                {p.name}
-                                {!isEmployee && <Edit className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity text-secondary" />}
-                              </span>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-extrabold text-sm text-on-surface uppercase group-hover:text-primary transition-colors flex items-center gap-1">
+                                  {p.name}
+                                  {!isEmployee && <Edit className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity text-secondary" />}
+                                </span>
+                                {p.isBestSeller && (
+                                  <span className="bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 text-[9px] font-black px-1.5 py-0.5 rounded-full lowercase tracking-tight">
+                                    ★ best seller
+                                  </span>
+                                )}
+                                {p.promoBadge && (
+                                  <span className="bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20 text-[9px] font-black px-1.5 py-0.5 rounded-full tracking-tight">
+                                    {p.promoBadge}
+                                  </span>
+                                )}
+                              </div>
                               <span className="text-[10px] font-black text-secondary/60 uppercase font-mono">ID: {p.id}</span>
                             </div>
                           </div>
@@ -1323,10 +1355,22 @@ export default function ProductInventory() {
                   <img src={p.image} alt={p.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h4 className="font-extrabold text-on-surface text-sm uppercase truncate leading-tight flex items-center gap-1.5">
-                    {p.name}
-                    {!isEmployee && <Edit className="w-3.5 h-3.5 text-secondary" />}
-                  </h4>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <h4 className="font-extrabold text-on-surface text-sm uppercase truncate leading-tight flex items-center gap-1">
+                      {p.name}
+                      {!isEmployee && <Edit className="w-3.5 h-3.5 text-secondary" />}
+                    </h4>
+                    {p.isBestSeller && (
+                      <span className="bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 text-[8.5px] font-black px-1.5 py-0.2 rounded-full lowercase tracking-tight">
+                        ★ best seller
+                      </span>
+                    )}
+                    {p.promoBadge && (
+                      <span className="bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20 text-[8.5px] font-black px-1.5 py-0.2 rounded-full tracking-tight">
+                        {p.promoBadge}
+                      </span>
+                    )}
+                  </div>
                   <p className="text-[10px] font-bold text-secondary/70 uppercase tracking-wider mt-0.5">Type: {p.brand} • <span className="font-mono">{p.id}</span></p>
                   <p className="text-[9px] font-extrabold text-primary/80 uppercase tracking-wider mt-0.5">Supplier: {p.supplier || suppliersList[0] || 'DIRECT MILL'}</p>
                 </div>
@@ -1435,7 +1479,7 @@ export default function ProductInventory() {
                 Customize Merchant Store Experience
               </h2>
               <p className="text-xs text-emerald-100/80 max-w-2xl leading-relaxed">
-                Control scrolling banner slides, publish rate chart graphics, broadcast live new arrival announcements, and select today's featured hero product.
+                Spotlight today's featured hero product, manage store categories, and respond to merchant inquiries.
               </p>
             </div>
 
@@ -1446,6 +1490,16 @@ export default function ProductInventory() {
                   {publishSuccessMsg}
                 </span>
               )}
+              <a
+                href="/store"
+                target="_blank"
+                rel="noreferrer"
+                className="w-full sm:w-auto px-5 py-3 bg-white/10 hover:bg-white/20 text-white font-bold text-xs uppercase tracking-wider rounded-2xl border border-white/20 shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
+                title="Open Live Store in new tab"
+              >
+                <Eye className="w-4 h-4 text-emerald-300" />
+                <span>Preview Store ↗</span>
+              </a>
               <button
                 type="button"
                 onClick={handlePublishMerchantControls}
@@ -1467,155 +1521,7 @@ export default function ProductInventory() {
           {/* Grid Layout: 2 Columns */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-            {/* MODULE 1: Live Ticker Announcements ("New Product Arrived" Broadcasts) */}
-            <div className="bg-white dark:bg-[#0c1813] border border-slate-200/90 dark:border-neutral-800 rounded-3xl p-6 shadow-xs space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
-                    Header Ticker Marquee
-                  </span>
-                  <h3 className="text-lg font-bold text-slate-900 dark:text-white">
-                    Live Broadcast Messages
-                  </h3>
-                </div>
-                <span className="text-xs font-bold text-slate-400">
-                  {adminTickerMessages.length} Messages
-                </span>
-              </div>
-
-              {/* Add New Ticker Input */}
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (!newTickerText.trim()) return;
-                  const newT = {
-                    id: `t-${Date.now()}`,
-                    text: newTickerText.trim(),
-                    active: true,
-                    type: 'announcement'
-                  };
-                  setAdminTickerMessages(prev => [newT, ...prev]);
-                  setNewTickerText('');
-                }}
-                className="flex items-center gap-2"
-              >
-                <input
-                  type="text"
-                  value={newTickerText}
-                  onChange={(e) => setNewTickerText(e.target.value)}
-                  placeholder="e.g. 🌾 NEW ARRIVAL: Premium Keshar Kali Stock Live!"
-                  className="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-[#07130e] border border-slate-200 dark:border-neutral-800 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/25"
-                />
-                <button
-                  type="submit"
-                  className="px-4 py-2.5 bg-[#143e2e] hover:bg-[#0e2f22] text-white rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0"
-                >
-                  + Add Alert
-                </button>
-              </form>
-
-              {/* Ticker List */}
-              <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                {adminTickerMessages.map((t) => (
-                  <div
-                    key={t.id}
-                    className="p-3 bg-slate-50 dark:bg-[#07130e] border border-slate-200/80 dark:border-neutral-800 rounded-2xl flex items-center justify-between gap-3 text-xs"
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setAdminTickerMessages(prev =>
-                            prev.map(x => x.id === t.id ? { ...x, active: !x.active } : x)
-                          );
-                        }}
-                        className={cn(
-                          "w-3 h-3 rounded-full shrink-0 cursor-pointer transition-all",
-                          t.active ? "bg-emerald-500 shadow-xs" : "bg-slate-300 dark:bg-neutral-700"
-                        )}
-                        title={t.active ? "Click to deactivate" : "Click to activate"}
-                      />
-                      <span className={cn("font-medium truncate", t.active ? "text-slate-900 dark:text-white" : "text-slate-400 line-through")}>
-                        {t.text}
-                      </span>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAdminTickerMessages(prev => prev.filter(x => x.id !== t.id));
-                      }}
-                      className="p-1 text-slate-400 hover:text-rose-500 cursor-pointer"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* MODULE 2: Daily Rate Sheet Graphic & Banner */}
-            <div className="bg-white dark:bg-[#0c1813] border border-slate-200/90 dark:border-neutral-800 rounded-3xl p-6 shadow-xs space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className="text-[10px] font-black uppercase tracking-wider text-amber-700 dark:text-amber-400">
-                    Paddy & Rice Rate Sheet
-                  </span>
-                  <h3 className="text-lg font-bold text-slate-900 dark:text-white">
-                    Rate Sheet Banner & Notice
-                  </h3>
-                </div>
-              </div>
-
-              {/* Graphic Banner Image URL Input */}
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block">
-                  Rate Sheet Banner Image URL
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={adminRateListGraphic?.imageUrl || ''}
-                    onChange={(e) => setAdminRateListGraphic((prev: any) => ({ ...prev, imageUrl: e.target.value }))}
-                    placeholder="https://images.unsplash.com/..."
-                    className="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-[#07130e] border border-slate-200 dark:border-neutral-800 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-amber-500/25"
-                  />
-                </div>
-
-                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block pt-1">
-                  Rate Announcement Summary / Note
-                </label>
-                <input
-                  type="text"
-                  value={adminRateListGraphic?.noticeText || ''}
-                  onChange={(e) => setAdminRateListGraphic((prev: any) => ({ ...prev, noticeText: e.target.value }))}
-                  placeholder="e.g. Daily market rates updated ex-mill Ludhiana & Mandi Bangalore."
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-[#07130e] border border-slate-200 dark:border-neutral-800 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-amber-500/25"
-                />
-              </div>
-
-              {/* Preview Box */}
-              {adminRateListGraphic?.imageUrl && (
-                <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex items-center gap-3">
-                  <img
-                    src={adminRateListGraphic.imageUrl}
-                    alt="Rate Chart Preview"
-                    className="w-14 h-14 object-cover rounded-xl border border-amber-400/40 shrink-0"
-                    referrerPolicy="no-referrer"
-                  />
-                  <div className="min-w-0 text-xs space-y-0.5">
-                    <span className="font-bold text-amber-900 dark:text-amber-300 block">
-                      Live Rate Sheet Preview
-                    </span>
-                    <p className="text-[11px] text-amber-800/80 dark:text-amber-200/70 truncate">
-                      {adminRateListGraphic.noticeText || 'Notice text here'}
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* MODULE 3: Spotlight Hero Product Selection */}
+            {/* MODULE 1: Spotlight Hero Product Selection */}
             <div className="bg-white dark:bg-[#0c1813] border border-slate-200/90 dark:border-neutral-800 rounded-3xl p-6 shadow-xs space-y-4">
               <div className="flex items-center justify-between">
                 <div>
@@ -1645,89 +1551,79 @@ export default function ProductInventory() {
               </select>
             </div>
 
-            {/* MODULE 4: Hero Carousel Moving Window Banners */}
+            {/* MODULE 2: Curated Grain Categories Manager */}
             <div className="bg-white dark:bg-[#0c1813] border border-slate-200/90 dark:border-neutral-800 rounded-3xl p-6 shadow-xs space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
-                    Header Carousel
+                  <span className="text-[10px] font-black uppercase tracking-wider text-amber-700 dark:text-amber-400">
+                    Store Catalog
                   </span>
                   <h3 className="text-lg font-bold text-slate-900 dark:text-white">
-                    Moving Image Banner Slides ({adminHeroSlides.length})
+                    Curated Rice Categories ({adminStoreCategories.length})
                   </h3>
                 </div>
                 <button
                   type="button"
                   onClick={() => {
-                    setEditingSlide(null);
-                    setSlideForm({
-                      tagline: 'NEW HARVEST ARRIVED',
-                      title: 'Premium Basmati & Daily Staples',
-                      subtitle: 'Direct mill loading certified from APMC hubs.',
-                      image: PRESET_GRAIN_IMAGES[0].url,
-                      bgGradient: 'from-[#ebf5ef] via-[#d7edd9] to-[#c1e2cb] dark:from-[#0d2118] dark:via-[#11291f] dark:to-[#0c1e16]'
-                    });
-                    setIsSlideModalOpen(true);
+                    const name = prompt('Enter new category name (e.g. Keshar Kali, Brown Rice):');
+                    if (!name || !name.trim()) return;
+                    const newCat = {
+                      id: name.trim(),
+                      name: name.trim(),
+                      description: 'Direct APMC procurement',
+                      count: 'New Varieties',
+                      active: true
+                    };
+                    setAdminStoreCategories(prev => [...prev, newCat]);
                   }}
                   className="px-3 py-1.5 bg-[#143e2e] text-white rounded-xl text-xs font-bold cursor-pointer"
                 >
-                  + Add Slide
+                  + Add Category
                 </button>
               </div>
 
-              {/* List of Carousel Slides */}
-              <div className="space-y-3">
-                {adminHeroSlides.map((slide, idx) => (
+              <div className="space-y-2 max-h-64 overflow-y-auto pr-1 text-xs">
+                {adminStoreCategories.map((cat, idx) => (
                   <div
-                    key={slide.id || idx}
-                    className="p-3 bg-slate-50 dark:bg-[#07130e] border border-slate-200/80 dark:border-neutral-800 rounded-2xl flex items-center justify-between gap-3 text-xs"
+                    key={cat.id || idx}
+                    className="p-3 bg-slate-50 dark:bg-[#07130e] border border-slate-200/80 dark:border-neutral-800 rounded-2xl flex items-center justify-between gap-3"
                   >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <img
-                        src={slide.image}
-                        alt={slide.title}
-                        className="w-12 h-12 object-cover rounded-xl border border-slate-200 dark:border-neutral-800 shrink-0"
-                        referrerPolicy="no-referrer"
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAdminStoreCategories(prev =>
+                            prev.map((c, i) => i === idx ? { ...c, active: !c.active } : c)
+                          );
+                        }}
+                        className={cn(
+                          "w-3 h-3 rounded-full shrink-0 cursor-pointer transition-all",
+                          cat.active ? "bg-emerald-500 shadow-xs" : "bg-slate-300 dark:bg-neutral-700"
+                        )}
+                        title={cat.active ? "Active in store (click to hide)" : "Hidden in store (click to activate)"}
                       />
-                      <div className="min-w-0 text-left space-y-0.5">
-                        <span className="text-[8px] font-black uppercase text-emerald-700 dark:text-emerald-400 block truncate">
-                          {slide.tagline}
+                      <div className="min-w-0">
+                        <span className={cn("font-bold block truncate", cat.active ? "text-slate-900 dark:text-white" : "text-slate-400 line-through")}>
+                          {cat.name}
                         </span>
-                        <h4 className="font-bold text-slate-900 dark:text-white truncate">
-                          {slide.title}
-                        </h4>
-                        <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
-                          {slide.subtitle}
-                        </p>
+                        <span className="text-[10px] text-slate-500 block truncate">
+                          {cat.description || cat.count || 'Store category'}
+                        </span>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-1 shrink-0">
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200 dark:bg-neutral-800 text-slate-700 dark:text-slate-300">
+                        {cat.count || 'Active'}
+                      </span>
                       <button
                         type="button"
                         onClick={() => {
-                          setEditingSlide(slide);
-                          setSlideForm({
-                            tagline: slide.tagline || '',
-                            title: slide.title || '',
-                            subtitle: slide.subtitle || '',
-                            image: slide.image || '',
-                            bgGradient: slide.bgGradient || 'from-[#ebf5ef] via-[#d7edd9] to-[#c1e2cb]'
-                          });
-                          setIsSlideModalOpen(true);
+                          setAdminStoreCategories(prev => prev.filter((_, i) => i !== idx));
                         }}
-                        className="p-1.5 text-slate-500 hover:text-emerald-600 cursor-pointer"
+                        className="p-1 text-slate-400 hover:text-rose-500 cursor-pointer"
                       >
-                        <Edit className="w-4 h-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setAdminHeroSlides(prev => prev.filter((_, i) => i !== idx));
-                        }}
-                        className="p-1.5 text-slate-500 hover:text-rose-500 cursor-pointer"
-                      >
-                        <Trash2 className="w-4 h-4" />
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </div>
@@ -1735,125 +1631,78 @@ export default function ProductInventory() {
               </div>
             </div>
 
+            {/* MODULE 3: Merchant Support & Inquiries Terminal */}
+            <div className="bg-white dark:bg-[#0c1813] border border-slate-200/90 dark:border-neutral-800 rounded-3xl p-6 shadow-xs space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-sky-700 dark:text-sky-400">
+                    Live Helpdesk
+                  </span>
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                    Merchant Inquiries & Tickets ({complaintsList.length})
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={loadComplaints}
+                  disabled={isLoadingComplaints}
+                  className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-neutral-800 hover:bg-slate-100 dark:hover:bg-neutral-800 text-xs font-bold text-slate-700 dark:text-slate-300 transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  <span className={cn("w-2 h-2 rounded-full bg-sky-500", isLoadingComplaints && "animate-spin")} />
+                  <span>Refresh</span>
+                </button>
+              </div>
+
+              {complaintsList.length === 0 ? (
+                <div className="p-6 rounded-2xl bg-slate-50 dark:bg-[#07130e] border border-slate-200/80 dark:border-neutral-800 text-center">
+                  <CheckCircle2 className="w-6 h-6 text-emerald-500 mx-auto mb-2 opacity-80" />
+                  <p className="text-xs font-bold text-slate-700 dark:text-slate-300">No Pending Merchant Tickets</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">All customer inquiries & loading support requests are resolved.</p>
+                </div>
+              ) : (
+                <div className="space-y-2.5 max-h-64 overflow-y-auto pr-1 text-xs">
+                  {complaintsList.map((ticket, i) => (
+                    <div
+                      key={ticket.id || i}
+                      className="p-3 bg-slate-50 dark:bg-[#07130e] border border-slate-200/80 dark:border-neutral-800 rounded-2xl space-y-1.5"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-bold text-slate-900 dark:text-white truncate">
+                          {ticket.subject || 'Support Inquiry'}
+                        </span>
+                        <select
+                          value={ticket.status || 'Pending'}
+                          onChange={(e) => handleUpdateComplaintStatus(ticket.id, e.target.value as any)}
+                          className={cn(
+                            "px-2 py-0.5 rounded-lg text-[10px] font-bold border outline-none cursor-pointer",
+                            ticket.status === 'Resolved' ? "bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300" :
+                            ticket.status === 'In Progress' ? "bg-sky-50 text-sky-700 border-sky-300 dark:bg-sky-950/40 dark:text-sky-300" :
+                            "bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300"
+                          )}
+                        >
+                          <option value="Pending">Pending</option>
+                          <option value="In Progress">In Progress</option>
+                          <option value="Resolved">Resolved</option>
+                        </select>
+                      </div>
+                      <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-snug">
+                        {ticket.message}
+                      </p>
+                      <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-slate-200/60 dark:border-neutral-800/60">
+                        <span>{ticket.merchantName || ticket.merchantEmail || 'Merchant'}</span>
+                        <span>{ticket.createdAt ? new Date(ticket.createdAt).toLocaleDateString() : 'Recent'}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
           </div>
         </div>
       )}
 
-      {/* ADD / EDIT BANNER SLIDE MODAL */}
-      <AnimatePresence>
-        {isSlideModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/45 backdrop-blur-[4px]">
-            <motion.div
-              initial={{ scale: 0.93, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.93, opacity: 0 }}
-              className="bg-white dark:bg-[#07130e] border border-slate-200 dark:border-neutral-800 rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-4 text-left relative"
-            >
-              <div className="flex items-center justify-between">
-                <h3 className="font-serif text-xl font-normal text-slate-900 dark:text-white">
-                  {editingSlide ? 'Edit Carousel Slide' : 'Add New Moving Banner Slide'}
-                </h3>
-                <button
-                  type="button"
-                  onClick={() => setIsSlideModalOpen(false)}
-                  className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
 
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (editingSlide) {
-                    setAdminHeroSlides(prev => prev.map(s => s.id === editingSlide.id ? { ...s, ...slideForm } : s));
-                  } else {
-                    const newS = {
-                      id: `slide-${Date.now()}`,
-                      ...slideForm
-                    };
-                    setAdminHeroSlides(prev => [...prev, newS]);
-                  }
-                  setIsSlideModalOpen(false);
-                }}
-                className="space-y-3"
-              >
-                <div>
-                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
-                    Tagline Header
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={slideForm.tagline}
-                    onChange={(e) => setSlideForm(prev => ({ ...prev, tagline: e.target.value }))}
-                    placeholder="e.g. 100% NATURALLY AGED"
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-[#0c1813] border border-slate-200 dark:border-neutral-800 text-xs text-slate-900 dark:text-white outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
-                    Slide Headline / Title
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={slideForm.title}
-                    onChange={(e) => setSlideForm(prev => ({ ...prev, title: e.target.value }))}
-                    placeholder="e.g. Silky Sona Masoori & Fragrant Jasmine"
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-[#0c1813] border border-slate-200 dark:border-neutral-800 text-xs text-slate-900 dark:text-white outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
-                    Subtext Description
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={slideForm.subtitle}
-                    onChange={(e) => setSlideForm(prev => ({ ...prev, subtitle: e.target.value }))}
-                    placeholder="e.g. Direct procurement with guaranteed APMC delivery."
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-[#0c1813] border border-slate-200 dark:border-neutral-800 text-xs text-slate-900 dark:text-white outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
-                    Slide Image URL
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={slideForm.image}
-                    onChange={(e) => setSlideForm(prev => ({ ...prev, image: e.target.value }))}
-                    placeholder="https://images.unsplash.com/..."
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-[#0c1813] border border-slate-200 dark:border-neutral-800 text-xs text-slate-900 dark:text-white outline-none"
-                  />
-                </div>
-
-                <div className="pt-2 flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsSlideModalOpen(false)}
-                    className="px-4 py-2 bg-slate-100 dark:bg-neutral-800 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-5 py-2 bg-[#143e2e] text-white rounded-xl text-xs font-bold shadow-xs hover:bg-[#0e2f22] cursor-pointer"
-                  >
-                    Save Slide
-                  </button>
-                </div>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
 
       {/* ADD PRODUCT MODAL */}
       <AnimatePresence>
@@ -1900,6 +1749,19 @@ export default function ProductInventory() {
                     onChange={(e) => setNewProduct({...newProduct, brand: e.target.value})}
                     className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl px-4 py-3 text-xs font-bold outline-none font-sans text-on-surface text-left"
                   />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[9px] font-black uppercase tracking-widest text-secondary block text-left">Store Category</label>
+                  <select 
+                    value={newProduct.category || 'Sona Masoori'}
+                    onChange={(e) => setNewProduct({...newProduct, category: e.target.value})}
+                    className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl px-4 py-3 text-xs font-bold outline-none cursor-pointer text-on-surface"
+                  >
+                    {Array.from(new Set(['Sona Masoori', 'Basmati', 'IR64', 'Ponni', 'Parboiled', 'Broken', 'Organic', 'Commercial', ...(adminStoreCategories || []).map((c: any) => c.name || c.id)])).map((catName) => (
+                      <option key={catName} value={catName}>{catName}</option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="space-y-1.5">
@@ -2006,6 +1868,37 @@ export default function ProductInventory() {
                   </select>
                 </div>
 
+                {/* Store Promotional Controls */}
+                <div className="space-y-1.5">
+                  <label className="text-[9px] font-black uppercase tracking-widest text-secondary block text-left">Store Promotional Badge</label>
+                  <select 
+                    value={newProduct.promoBadge || ''}
+                    onChange={(e) => setNewProduct({...newProduct, promoBadge: e.target.value})}
+                    className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-3 px-3 text-xs font-bold outline-none cursor-pointer text-on-surface"
+                  >
+                    <option value="">None (Standard Listing)</option>
+                    <option value="🌾 Fresh 2026 Batch">🌾 Fresh 2026 Batch</option>
+                    <option value="⚡ Special Ex-Mill Rate">⚡ Special Ex-Mill Rate</option>
+                    <option value="⭐ Best Seller">⭐ Best Seller</option>
+                    <option value="🔥 Hot Stock">🔥 Hot Stock</option>
+                    <option value="🚚 Fast Dispatch">🚚 Fast Dispatch</option>
+                    <option value="💎 Premium Aged">💎 Premium Aged</option>
+                  </select>
+                </div>
+
+                <div className="p-3 bg-surface-container-low rounded-xl border border-outline-variant/30 flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-black text-on-surface block text-left">Feature as Best Seller</span>
+                    <span className="text-[10px] text-secondary block text-left">Highlights product with best-seller badge on store front</span>
+                  </div>
+                  <input 
+                    type="checkbox"
+                    checked={!!newProduct.isBestSeller}
+                    onChange={(e) => setNewProduct({...newProduct, isBestSeller: e.target.checked})}
+                    className="w-4 h-4 rounded text-primary focus:ring-primary cursor-pointer accent-primary"
+                  />
+                </div>
+
                 <div className="pt-4">
                   <button 
                     type="submit" 
@@ -2063,6 +1956,19 @@ export default function ProductInventory() {
                     onChange={(e) => setEditingProduct({...editingProduct, brand: e.target.value})}
                     className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl px-4 py-3 text-xs font-bold outline-none font-sans text-on-surface text-left"
                   />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[9px] font-black uppercase tracking-widest text-secondary block text-left">Store Category</label>
+                  <select 
+                    value={editingProduct.category || editingProduct.brand || 'Sona Masoori'}
+                    onChange={(e) => setEditingProduct({...editingProduct, category: e.target.value})}
+                    className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl px-4 py-3 text-xs font-bold outline-none cursor-pointer text-on-surface"
+                  >
+                    {Array.from(new Set(['Sona Masoori', 'Basmati', 'IR64', 'Ponni', 'Parboiled', 'Broken', 'Organic', 'Commercial', ...(adminStoreCategories || []).map((c: any) => c.name || c.id)])).map((catName) => (
+                      <option key={catName} value={catName}>{catName}</option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="space-y-1.5">
@@ -2166,6 +2072,37 @@ export default function ProductInventory() {
                     <option value="Restocking">Restocking</option>
                     <option value="Discontinued">Discontinued</option>
                   </select>
+                </div>
+
+                {/* Store Promotional Controls */}
+                <div className="space-y-1.5">
+                  <label className="text-[9px] font-black uppercase tracking-widest text-secondary block text-left">Store Promotional Badge</label>
+                  <select 
+                    value={editingProduct.promoBadge || ''}
+                    onChange={(e) => setEditingProduct({...editingProduct, promoBadge: e.target.value})}
+                    className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-3 px-3 text-xs font-bold outline-none cursor-pointer text-on-surface"
+                  >
+                    <option value="">None (Standard Listing)</option>
+                    <option value="🌾 Fresh 2026 Batch">🌾 Fresh 2026 Batch</option>
+                    <option value="⚡ Special Ex-Mill Rate">⚡ Special Ex-Mill Rate</option>
+                    <option value="⭐ Best Seller">⭐ Best Seller</option>
+                    <option value="🔥 Hot Stock">🔥 Hot Stock</option>
+                    <option value="🚚 Fast Dispatch">🚚 Fast Dispatch</option>
+                    <option value="💎 Premium Aged">💎 Premium Aged</option>
+                  </select>
+                </div>
+
+                <div className="p-3 bg-surface-container-low rounded-xl border border-outline-variant/30 flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-black text-on-surface block text-left">Feature as Best Seller</span>
+                    <span className="text-[10px] text-secondary block text-left">Highlights product with best-seller badge on store front</span>
+                  </div>
+                  <input 
+                    type="checkbox"
+                    checked={!!editingProduct.isBestSeller}
+                    onChange={(e) => setEditingProduct({...editingProduct, isBestSeller: e.target.checked})}
+                    className="w-4 h-4 rounded text-primary focus:ring-primary cursor-pointer accent-primary"
+                  />
                 </div>
 
                 <div className="pt-4 flex gap-3">
