@@ -13,7 +13,6 @@ import {
   ClipboardList,
   Palette,
   CheckCircle2,
-  BookOpen,
   Copy,
   Loader2,
   Image as ImageIcon
@@ -379,7 +378,7 @@ Remarks    : ${formData.remarks || 'None'}
 -------------------------------------------
 Terms      : ${printConfig.terms}
 ===========================================
-Generated via GrainMart B2B Depot Terminal.`;
+Generated via TEJAS CANVASSING Terminal.`;
 
     navigator.clipboard.writeText(summary).then(() => {
       setCopied(true);
@@ -1173,7 +1172,7 @@ Generated via GrainMart B2B Depot Terminal.`;
                 <Settings className="w-5 h-5 text-primary" />
                 <div>
                   <h3 className="text-sm font-black uppercase tracking-wider">Patti Print & Receipt customizer</h3>
-                  <p className="text-secondary text-[11px] font-semibold">Tweak receipt templates, billing metadata, and verify layout properties.</p>
+                  <p className="text-secondary text-[11px] font-semibold">Tweak receipt templates, color schemes, and layout components.</p>
                 </div>
               </div>
               <div className="flex items-center gap-2 flex-wrap">
@@ -1214,112 +1213,55 @@ Generated via GrainMart B2B Depot Terminal.`;
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {/* Column 1: Document Metadata */}
-              <div className="space-y-3.5">
-                <p className="text-[10px] font-black uppercase tracking-widest text-primary flex items-center gap-1.5">
-                  <BookOpen className="w-3 h-3" /> Billing Details
-                </p>
-                
-                <div className="space-y-2">
-                  <label className="block text-[10px] font-bold text-secondary uppercase">Commercial Patti reference</label>
-                  <input 
-                    type="text" 
-                    value={printConfig.pattiNo}
-                    onChange={(e) => setPrintConfig({...printConfig, pattiNo: e.target.value})}
-                    className="w-full bg-surface-container border border-outline-variant/35 rounded-xl px-3 py-2 text-xs font-bold text-on-surface focus:border-primary outline-none"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="block text-[10px] font-bold text-secondary uppercase">Trade Depot GSTIN</label>
-                  <input 
-                    type="text" 
-                    value={printConfig.gstin}
-                    onChange={(e) => setPrintConfig({...printConfig, gstin: e.target.value})}
-                    className="w-full bg-surface-container border border-outline-variant/35 rounded-xl px-3 py-2 text-xs font-bold text-on-surface focus:border-primary outline-none"
-                  />
-                </div>
-              </div>
-
-              {/* Column 2: Header Contacts */}
-              <div className="space-y-3.5">
-                <p className="text-[10px] font-black uppercase tracking-widest text-primary flex items-center gap-1.5">
-                  <Sliders className="w-3 h-3" /> Depot Contact & Signatures
-                </p>
-
-                <div className="space-y-2">
-                  <label className="block text-[10px] font-bold text-secondary uppercase">Depot address</label>
-                  <input 
-                    type="text" 
-                    value={printConfig.address}
-                    onChange={(e) => setPrintConfig({...printConfig, address: e.target.value})}
-                    className="w-full bg-surface-container border border-outline-variant/35 rounded-xl px-3 py-2 text-xs font-bold text-on-surface focus:border-primary outline-none"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="block text-[10px] font-bold text-secondary uppercase">Surveyor Signatory Title</label>
-                  <input 
-                    type="text" 
-                    value={printConfig.signatureTitle2}
-                    onChange={(e) => setPrintConfig({...printConfig, signatureTitle2: e.target.value})}
-                    className="w-full bg-surface-container border border-outline-variant/35 rounded-xl px-3 py-2 text-xs font-bold text-on-surface focus:border-primary outline-none"
-                  />
-                </div>
-              </div>
-
-              {/* Column 3: Component Visibility Switches */}
-              <div className="bg-surface-container/45 border border-outline-variant/40 rounded-2xl p-4.5 space-y-3.5">
+            {/* Component Visibility Switches */}
+            <div className="bg-surface-container/45 border border-outline-variant/40 rounded-2xl p-4.5 space-y-3.5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <p className="text-[10px] font-black uppercase tracking-widest text-secondary">Toggle layout nodes</p>
-                
-                <div className="grid grid-cols-2 gap-3.5">
-                  <label className="flex items-center gap-2 cursor-pointer select-none">
-                    <input 
-                      type="checkbox" 
-                      checked={showLetterhead}
-                      onChange={(e) => setShowLetterhead(e.target.checked)}
-                      className="rounded border-outline-variant/60 text-primary focus:ring-primary w-4 h-4 cursor-pointer"
-                    />
-                    <span className="text-[11px] font-semibold text-secondary">Depot Header</span>
-                  </label>
+                <p className="text-[8px] font-black text-secondary uppercase tracking-widest leading-relaxed">
+                  💡 TIP: Set browser print options to <span className="text-primary font-black">Landscape</span> orientation, set margins to <span className="text-primary font-black">None</span>, and check <span className="text-primary font-black">Background graphics</span> for best result.
+                </p>
+              </div>
+              
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5 pt-1">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input 
+                    type="checkbox" 
+                    checked={showLetterhead}
+                    onChange={(e) => setShowLetterhead(e.target.checked)}
+                    className="rounded border-outline-variant/60 text-primary focus:ring-primary w-4 h-4 cursor-pointer"
+                  />
+                  <span className="text-[11px] font-semibold text-secondary">Depot Header</span>
+                </label>
 
-                  <label className="flex items-center gap-2 cursor-pointer select-none">
-                    <input 
-                      type="checkbox" 
-                      checked={showStamp}
-                      onChange={(e) => setShowStamp(e.target.checked)}
-                      className="rounded border-outline-variant/60 text-primary focus:ring-primary w-4 h-4 cursor-pointer"
-                    />
-                    <span className="text-[11px] font-semibold text-secondary">Audit Stamp</span>
-                  </label>
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input 
+                    type="checkbox" 
+                    checked={showStamp}
+                    onChange={(e) => setShowStamp(e.target.checked)}
+                    className="rounded border-outline-variant/60 text-primary focus:ring-primary w-4 h-4 cursor-pointer"
+                  />
+                  <span className="text-[11px] font-semibold text-secondary">Audit Stamp</span>
+                </label>
 
-                  <label className="flex items-center gap-2 cursor-pointer select-none">
-                    <input 
-                      type="checkbox" 
-                      checked={showSignatures}
-                      onChange={(e) => setShowSignatures(e.target.checked)}
-                      className="rounded border-outline-variant/60 text-primary focus:ring-primary w-4 h-4 cursor-pointer"
-                    />
-                    <span className="text-[11px] font-semibold text-secondary">Signatures Block</span>
-                  </label>
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input 
+                    type="checkbox" 
+                    checked={showSignatures}
+                    onChange={(e) => setShowSignatures(e.target.checked)}
+                    className="rounded border-outline-variant/60 text-primary focus:ring-primary w-4 h-4 cursor-pointer"
+                  />
+                  <span className="text-[11px] font-semibold text-secondary">Signatures Block</span>
+                </label>
 
-                  <label className="flex items-center gap-2 cursor-pointer select-none">
-                    <input 
-                      type="checkbox" 
-                      checked={showTerms}
-                      onChange={(e) => setShowTerms(e.target.checked)}
-                      className="rounded border-outline-variant/60 text-primary focus:ring-primary w-4 h-4 cursor-pointer"
-                    />
-                    <span className="text-[11px] font-semibold text-secondary">T&C Footer</span>
-                  </label>
-                </div>
-
-                <div className="pt-2 border-t border-outline-variant/20">
-                  <p className="text-[8px] font-black text-secondary uppercase tracking-widest leading-relaxed">
-                    💡 TIP: Set browser print options to <span className="text-primary font-black">Landscape</span> orientation, set margins to <span className="text-primary font-black">None</span>, and check <span className="text-primary font-black">Background graphics</span> for best result.
-                  </p>
-                </div>
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input 
+                    type="checkbox" 
+                    checked={showTerms}
+                    onChange={(e) => setShowTerms(e.target.checked)}
+                    className="rounded border-outline-variant/60 text-primary focus:ring-primary w-4 h-4 cursor-pointer"
+                  />
+                  <span className="text-[11px] font-semibold text-secondary">T&C Footer</span>
+                </label>
               </div>
             </div>
           </motion.div>
@@ -1338,11 +1280,11 @@ Generated via GrainMart B2B Depot Terminal.`;
           <div className="mb-6 pb-6 border-b border-dashed border-neutral-300 dark:border-neutral-800 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 text-left">
             <div className="flex items-center gap-3.5">
               <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center font-black text-lg p-0.5 shrink-0 shadow-sm", colors.logoBg)}>
-                GM
+                TC
               </div>
               <div>
                 <h2 className={cn("text-xl font-bold tracking-tight uppercase leading-none pb-1", colors.primaryText)}>
-                  GrainMart depot
+                  TEJAS CANVASSING
                 </h2>
                 <p className="text-[9px] font-black text-secondary tracking-widest uppercase">Procurement Logistics & Commercial Accounts Division</p>
               </div>
