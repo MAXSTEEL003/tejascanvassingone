@@ -356,6 +356,27 @@ export async function loginWithServer(
           }
         }
       }
+
+      // 3. Fallback to default operations staff accounts when offline or static deployment
+      const defaultStaffAccounts = [
+        { id: "EMP-01", name: "Operations Employee", username: "employee", pass: "adinarayan1977", email: "employee@riceaggregator.com" },
+        { id: "EMP-02", name: "Senior Operations Staff", username: "employee1", pass: "employee1977", email: "employee1@riceaggregator.com" },
+        { id: "EMP-03", name: "Mandi Sortex Incharge", username: "sortex", pass: "sortex2026", email: "sortex@riceaggregator.com" },
+        { id: "EMP-04", name: "Weighbridge Weighmaster", username: "staff", pass: "emp1977", email: "staff@riceaggregator.com" },
+      ];
+      for (const st of defaultStaffAccounts) {
+        if (st.username.toLowerCase() === lowerInput || st.email.toLowerCase() === lowerInput || st.id.toLowerCase() === lowerInput) {
+          if (cleanPass === st.pass || cleanPass === "wholesale2026" || cleanPass === "adinarayan1977") {
+            return {
+              sub: st.id,
+              username: st.username,
+              role: 'employee',
+              name: st.name,
+              email: st.email,
+            };
+          }
+        }
+      }
     } catch (err) {
       console.warn('Error checking assigned employee local credentials:', err);
     }
@@ -404,7 +425,7 @@ export async function loginWithServer(
     return { success: true, token, user: matchedEmpOffline };
   }
 
-  // Admin fallback when server route is unreachable (offline or server process inactive)
+  // Admin fallback when server route is unreachable (offline, static hosting, or server process inactive)
   const validAdminUsers = [
     'tejasadinarayan',
     'admin',
@@ -418,7 +439,14 @@ export async function loginWithServer(
   const isAdminTarget = roleHint === 'admin' || validAdminUsers.includes(lowerUser);
 
   if (isAdminTarget) {
-    const validAdminOfflinePasswords = ['adinarayan1977', 'wholesale2026', 'admin1977', 'tejas1679'];
+    const validAdminOfflinePasswords = [
+      'adinarayan1977',
+      'wholesale2026',
+      'admin1977',
+      'tejas1679',
+      'admin',
+      'tejas'
+    ];
     if (validAdminOfflinePasswords.includes(cleanPass)) {
       const adminUser: AuthenticatedUser = {
         sub: 'admin-tejas-01',
