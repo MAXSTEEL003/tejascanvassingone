@@ -113,8 +113,16 @@ service cloud.firestore {
       allow read, write: if isAdmin() || isStaff();
     }
 
-    // Patti Settlement Vouchers: Strictly restricted to Admin & Staff
+    // Patti Settlement Vouchers, Registry & Exports: Strictly restricted to Admin & Staff
     match /patti/{pattiId} {
+      allow read, write: if isAdmin() || isStaff();
+    }
+
+    match /patti_cleared_registry/{registryId} {
+      allow read, write: if isAdmin() || isStaff();
+    }
+
+    match /patti_exports/{exportId} {
       allow read, write: if isAdmin() || isStaff();
     }
 

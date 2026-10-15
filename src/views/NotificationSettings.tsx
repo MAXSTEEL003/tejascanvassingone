@@ -31,6 +31,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { auth, getCollectionDocs, setCollectionDoc } from '../lib/firebase';
 import { generateSupplierPOEmailHtml } from '../utils/poEmailTemplate';
+import { getAuthToken } from '../lib/auth';
 
 interface NotificationSetting {
   id: string;
@@ -293,9 +294,13 @@ export default function NotificationSettings() {
     setIsVerifyingMeta(true);
     setMetaVerifyFeedback(null);
     try {
+      const token = getAuthToken();
       const res = await fetch('/api/update-meta-whatsapp-credentials', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
         body: JSON.stringify({
           phoneNumberId: customMetaPhoneId.trim(),
           accessToken: customMetaToken.trim(),
@@ -345,9 +350,13 @@ export default function NotificationSettings() {
     setIsVerifyingSmtp(true);
     setSmtpVerifyFeedback(null);
     try {
+      const token = getAuthToken();
       const res = await fetch('/api/update-smtp-credentials', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
         body: JSON.stringify({
           host: customSmtpHost.trim(),
           port: parseInt(customSmtpPort.trim(), 10) || 587,

@@ -19,6 +19,7 @@ import CheckoutView from './views/CheckoutView';
 import PaymentTracking from './views/PaymentTracking';
 import NotificationSettings from './views/NotificationSettings';
 import PattiView from './views/PattiView';
+import PattiBookView from './views/PattiBookView';
 import ArrivalEntry from './views/ArrivalEntry';
 import LedgerManagement from './views/LedgerManagement';
 import PendingLoadings from './views/PendingLoadings';
@@ -140,6 +141,7 @@ export default function App() {
                 <Route path="/payments" element={<PaymentTracking />} />
                 <Route path="/settings" element={<NotificationSettings />} />
                 <Route path="/patti" element={<PattiView />} />
+                <Route path="/patti-book" element={<PattiBookView />} />
                 <Route path="/ledger" element={<LedgerManagement />} />
                 <Route path="/pending-loadings" element={<PendingLoadings />} />
                 <Route path="/arrival-entry" element={<ArrivalEntry />} />

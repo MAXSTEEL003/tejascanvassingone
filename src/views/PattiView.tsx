@@ -180,7 +180,7 @@ export default function PattiView() {
           lorrySmall: String(prefill.lorrySmall || '0'),
           discountPct: String(prefill.discountPct || '0'),
           discountAmount: String(prefill.discountAmount || '0'),
-          sellerCom: String(prefill.sellerCom || '0'),
+          sellerCom: (prefill.sellerCom && parseFloat(prefill.sellerCom) > 0) ? String(prefill.sellerCom) : '0',
           manualShortage: String(prefill.manualShortage || '0'),
           qDiff: String(prefill.qDiff || '0'),
           expensesSum: String(prefill.expensesSum || '0'),
@@ -354,7 +354,7 @@ DEDUCTIONS & EXPENSES
 -------------------------------------------
 Lorry Small: ₹${parseFloat(formData.lorrySmall).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
 Discount   : ₹${parseFloat(formData.discountAmount).toLocaleString('en-IN', { minimumFractionDigits: 2 })} (${(parseFloat(formData.discountPct) * 100).toFixed(0)}%)
-Seller Com : ₹${parseFloat(formData.sellerCom).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+Seller Com : ${parseFloat(formData.sellerCom) > 0 ? `₹${parseFloat(formData.sellerCom).toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '-'}
 Shortage   : ₹${parseFloat(formData.manualShortage).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
 Q-Diff     : ₹${parseFloat(formData.qDiff).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
 -------------------------------------------
@@ -1298,18 +1298,23 @@ Generated via TEJAS CANVASSING Terminal.`;
           <InputCell value={formData.rateQty} onChange={(v) => updateField('rateQty', v)} className="col-span-1" borderClass={colors.border} activeTextClass={colors.textMain} />
           <LabelCell borderClass={colors.border} bgClass={colors.labelBg} className="col-span-1 text-[8px] font-bold">X</LabelCell>
           <InputCell value={formData.rateRate} onChange={(v) => updateField('rateRate', v)} className="col-span-1" borderClass={colors.border} activeTextClass={colors.textMain} />
-          <InputCell value={formData.rateAmount} onChange={() => {}} className={cn("col-span-1 text-center font-bold", colors.accentBg)} readOnly borderClass={colors.border} readOnlyBgClass="bg-opacity-10 text-blue-600 dark:text-blue-400 font-bold" />
-          <div className={cn("col-span-4 border-r border-b h-10", colors.border)} />
+          <div className={cn("col-span-3 border-r border-b h-10 flex items-center justify-center px-2 text-sm font-mono font-black tabular-nums tracking-tight", colors.border, colors.accentBg)}>
+            <span className="text-[10px] font-black text-blue-600/70 dark:text-blue-400/70 mr-1.5 uppercase tracking-wider">GROSS:</span>
+            <span className="text-blue-700 dark:text-blue-300 font-extrabold">{formatINR(formData.rateAmount)}</span>
+          </div>
+          <div className={cn("col-span-2 border-r border-b h-10 flex items-center justify-center text-[9px] font-black uppercase tracking-widest text-neutral-400 bg-neutral-50/50 dark:bg-neutral-900/50", colors.border)}>
+            SETTLEMENT DETAILS
+          </div>
 
           {/* Row 6: LORRYHIRE / DEDUCT SUM / CHQ AM */}
           <LabelCell borderClass={colors.border} bgClass={colors.labelBg} className="col-span-2 h-10 underline font-medium">LORRYHIRE</LabelCell>
           <InputCell value={formData.lorrySmall} onChange={(v) => updateField('lorrySmall', v)} className="col-span-1" borderClass={colors.border} activeTextClass={colors.textMain} />
           <div className={cn("col-span-1 border-r border-b h-10", colors.border)} />
           <div className={cn("col-span-1 border-r border-b h-10", colors.border)} />
-          <div className={cn("col-span-1 border-r border-b flex items-center justify-center text-xs font-mono font-black tabular-nums tracking-tight px-1 truncate", colors.border, colors.dedBg)}>
-            {formatINR(formData.expensesSum)}
+          <div className={cn("col-span-3 border-r border-b h-10 flex items-center justify-center px-2 text-sm font-mono font-black tabular-nums tracking-tight", colors.border, colors.dedBg)}>
+            <span className="text-[10px] font-black text-rose-500/80 mr-1.5 uppercase tracking-wider">TOTAL DED:</span>
+            <span className="font-extrabold">{formatINR(formData.expensesSum)}</span>
           </div>
-          <div className={cn("col-span-2 border-r border-b h-10", colors.border)} />
           <LabelCell borderClass={colors.border} bgClass={colors.labelBg} className="col-span-1 text-[9px]">CHQ AM</LabelCell>
           <InputCell value={formData.chqAm} onChange={(v) => updateField('chqAm', v)} className="col-span-1" borderClass={colors.border} activeTextClass={colors.textMain} />
 
@@ -1336,21 +1341,28 @@ Generated via TEJAS CANVASSING Terminal.`;
             {formatINR(formData.discountAmount)}
           </div>
           <div className={cn("col-span-1 border-r border-b h-10", colors.border)} />
-          <div className={cn("col-span-1 border-r border-b h-10 flex items-center justify-center text-xs font-mono font-black tabular-nums tracking-tighter px-0.5 truncate", colors.border, colors.netBg)}>
-            {formatINR(formData.netAmount)}
+          <div className={cn("col-span-3 border-r border-b h-10 flex items-center justify-center px-2 text-sm font-mono font-black tabular-nums tracking-tight", colors.border, colors.netBg)}>
+            <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 mr-1.5 uppercase tracking-wider">NET AMT:</span>
+            <span className="text-emerald-700 dark:text-emerald-300 font-extrabold">{formatINR(formData.netAmount)}</span>
           </div>
-          <div className={cn("col-span-2 border-r border-b h-10", colors.border)} />
           <LabelCell borderClass={colors.border} bgClass={colors.labelBg} className="col-span-1 text-[9px]">CHQ NO</LabelCell>
           <InputCell value={formData.chqNo} onChange={(v) => updateField('chqNo', v)} className="col-span-1" borderClass={colors.border} activeTextClass={colors.textMain} />
 
           {/* Row 8: SELLERCOM / CHQ DT */}
           <LabelCell borderClass={colors.border} bgClass={colors.labelBg} className="col-span-2 h-10 underline font-medium">SELLERCOM</LabelCell>
-          <InputCell value={formData.sellerCom} onChange={(v) => updateField('sellerCom', v)} className="col-span-1" borderClass={colors.border} activeTextClass={colors.textMain} />
+          <InputCell 
+            value={formData.sellerCom} 
+            onChange={(v) => updateField('sellerCom', v)} 
+            placeholder="0"
+            className="col-span-1" 
+            borderClass={colors.border} 
+            activeTextClass={parseFloat(formData.sellerCom) > 0 ? colors.textMain : "text-neutral-400 dark:text-neutral-500"} 
+          />
           <div className={cn("col-span-2 border-r border-b h-10", colors.border)} />
-          <div className={cn("col-span-1 border-r border-b h-10 flex items-center justify-center text-xs font-mono font-bold tabular-nums tracking-tight px-1 truncate text-blue-600 dark:text-blue-400", colors.border)}>
-            {formatINR(formData.chqAm)}
+          <div className={cn("col-span-3 border-r border-b h-10 flex items-center justify-center px-2 text-sm font-mono font-bold tabular-nums tracking-tight text-blue-600 dark:text-blue-400", colors.border, colors.accentBg)}>
+            <span className="text-[10px] font-black text-blue-500 mr-1.5 uppercase tracking-wider">CHQ PAID:</span>
+            <span className="font-extrabold">{formatINR(formData.chqAm)}</span>
           </div>
-          <div className={cn("col-span-2 border-r border-b h-10", colors.border)} />
           <LabelCell borderClass={colors.border} bgClass={colors.labelBg} className="col-span-1 text-[9px]">CHQ DT</LabelCell>
           <div className={cn("col-span-1 border-r border-b h-10 flex items-center justify-center", colors.border)}>
             <input 
@@ -1366,13 +1378,13 @@ Generated via TEJAS CANVASSING Terminal.`;
           <InputCell value={formData.manualShortage} onChange={(v) => updateField('manualShortage', v)} className="col-span-1" borderClass={colors.border} activeTextClass={colors.textMain} />
           <div className={cn("col-span-2 border-r border-b h-10", colors.border)} />
           <div className={cn(
-            "col-span-1 border-r border-b flex items-center justify-center text-xs font-mono font-black tabular-nums tracking-tighter px-0.5 truncate",
+            "col-span-3 border-r border-b h-10 flex items-center justify-center px-2 text-sm font-mono font-black tabular-nums tracking-tight",
             colors.border,
             parseFloat(formData.shortageDelta) >= 0 ? "text-emerald-600 bg-emerald-500/[0.04]" : "text-rose-600 bg-rose-500/[0.04]"
           )}>
-            {formatINR(formData.shortageDelta)}
+            <span className="text-[10px] font-black opacity-80 mr-1.5 uppercase tracking-wider">SHORTAGE Δ:</span>
+            <span className="font-extrabold">{formatINR(formData.shortageDelta)}</span>
           </div>
-          <div className={cn("col-span-2 border-r border-b h-10", colors.border)} />
           <LabelCell borderClass={colors.border} bgClass={colors.labelBg} className="col-span-1 text-[9px]">BANK</LabelCell>
           <InputCell value={formData.bank} onChange={(v) => updateField('bank', v)} className="col-span-1" borderClass={colors.border} activeTextClass={colors.textMain} />
 
@@ -1383,13 +1395,13 @@ Generated via TEJAS CANVASSING Terminal.`;
 
           {/* Row 11: TOTAL / REMARKS */}
           <LabelCell borderClass={colors.border} bgClass={colors.labelBg} className="col-span-2 h-12 font-black uppercase tracking-tighter">TOTAL DEDUCTIBLES</LabelCell>
-          <div className={cn("col-span-1 border-r border-b text-xs font-mono font-black tabular-nums tracking-tighter px-0.5 truncate flex items-center justify-center", colors.border, colors.dedBg)}>
+          <div className={cn("col-span-2 border-r border-b text-sm font-mono font-black tabular-nums tracking-normal px-2 truncate flex items-center justify-center", colors.border, colors.dedBg)}>
             {formatINR(formData.expensesSum)}
           </div>
-          <div className={cn("col-span-1 border-r border-b px-2 flex items-center text-[8px] font-black uppercase text-neutral-400 border-r", colors.border)}>
+          <div className={cn("col-span-1 border-r border-b px-2 flex items-center justify-center text-[9px] font-black uppercase text-neutral-400 border-r", colors.border)}>
             Remarks:
           </div>
-          <div className={cn("col-span-6 border-r border-b h-12 flex items-center", colors.border)}>
+          <div className={cn("col-span-5 border-r border-b h-12 flex items-center", colors.border)}>
             <input 
               type="text" 
               value={formData.remarks}

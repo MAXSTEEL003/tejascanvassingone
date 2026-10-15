@@ -5,7 +5,7 @@ import express from "express";
 import http from "http";
 import path from "path";
 import fs from "fs";
-import app from "./api/index.ts";
+import app from "./api/index";
 
 // Process-level unhandled exception safety
 process.on("unhandledRejection", (reason, promise) => {

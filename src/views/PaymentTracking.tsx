@@ -40,12 +40,15 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, formatINR, formatDateToDDMMYYYY } from '../lib/utils';
 import { getCollectionDocs, syncCollection, setCollectionDoc } from '../lib/firebase';
+import { recordPaymentClearedForPatti, unmarkPaymentClearedForPatti } from '../utils/pattiBookManager';
 import { PRELOADED_TRANSACTIONS } from '../lib/analyticsEngine';
 import InlinePattiSlip from '../components/InlinePattiSlip';
 import { 
   dateToTimestamp, 
   formatDateDisplay, 
-  formatDateDDMMYYYY as formatIndianDate 
+  formatDateDDMMYYYY as formatIndianDate,
+  computeDaysPending,
+  normalizeDate
 } from '../utils/dateUtils';
 import { 
   ArrivalSheet, 
@@ -123,6 +126,90 @@ const generateEmptyArrivalRows = (count: number = 100): any[] => {
 
 const generateDefaultArrivalRows = () => {
   return generateEmptyArrivalRows(100);
+};
+
+// Robust extractor for Cheque / Clearing Date across all known variations & relations
+export const extractChequeDate = (row: any, matchingOrder?: any): string => {
+  const possibleKeys = [
+    'chqDt', 'CHQ DT', 'Chq Dt', 'chq_dt', 'CHQ_DT',
+    'chequeDate', 'cheque_date', 'Cheque Date', 'CHEQUE DATE', 'chqDate',
+    'paymentDate', 'payment_date', 'Payment Date', 'clearedDate', 'clearDate', 'clDate', 'cl_dt'
+  ];
+  if (row) {
+    for (const k of possibleKeys) {
+      if (row[k] !== undefined && row[k] !== null && String(row[k]).trim() !== '') {
+        const normalized = normalizeDate(row[k]);
+        return normalized || String(row[k]).trim();
+      }
+    }
+  }
+  if (matchingOrder) {
+    for (const k of possibleKeys) {
+      if (matchingOrder[k] !== undefined && matchingOrder[k] !== null && String(matchingOrder[k]).trim() !== '') {
+        const normalized = normalizeDate(matchingOrder[k]);
+        return normalized || String(matchingOrder[k]).trim();
+      }
+    }
+    if (Array.isArray(matchingOrder.payments) && matchingOrder.payments.length > 0) {
+      const lastPayment = matchingOrder.payments[matchingOrder.payments.length - 1];
+      if (lastPayment && lastPayment.date) {
+        const normalized = normalizeDate(lastPayment.date);
+        return normalized || String(lastPayment.date).trim();
+      }
+    }
+  }
+  return '';
+};
+
+// Robust extractor for Cheque / Ref Number
+export const extractChequeNumber = (row: any, matchingOrder?: any): string => {
+  if (row) {
+    for (const k of ['chqNo', 'CHQ NO', 'Ch/DD No.', 'chq_no', 'CHQ_NO', 'cheque_no', 'chequeNo', 'refNo', 'utr']) {
+      if (row[k] !== undefined && row[k] !== null && String(row[k]).trim() !== '') return String(row[k]).trim();
+    }
+  }
+  if (matchingOrder) {
+    if (matchingOrder.refNo) return String(matchingOrder.refNo).trim();
+    if (Array.isArray(matchingOrder.payments) && matchingOrder.payments.length > 0) {
+      const lastP = matchingOrder.payments[matchingOrder.payments.length - 1];
+      if (lastP && lastP.refNo) return String(lastP.refNo).trim();
+    }
+  }
+  return '';
+};
+
+// Robust extractor for Cheque Amount
+export const extractChequeAmount = (row: any, matchingOrder?: any): number => {
+  if (row) {
+    for (const k of ['chqAm', 'CHQ AM', 'chq_am', 'CHQ_AM', 'chequeAmount', 'cheque_amount']) {
+      if (row[k] !== undefined && row[k] !== null && String(row[k]).trim() !== '') {
+        const val = parseFloat(String(row[k]).replace(/,/g, ''));
+        if (!isNaN(val) && val > 0) return val;
+      }
+    }
+  }
+  if (matchingOrder && matchingOrder.amountPaid) {
+    const val = parseFloat(String(matchingOrder.amountPaid));
+    if (!isNaN(val) && val > 0) return val;
+  }
+  return 0;
+};
+
+// Robust extractor for Bank Name
+export const extractBankName = (row: any, matchingOrder?: any): string => {
+  if (row) {
+    for (const k of ['bank', 'BANK', 'bank_name', 'bankName']) {
+      if (row[k] !== undefined && row[k] !== null && String(row[k]).trim() !== '') return String(row[k]).trim();
+    }
+  }
+  if (matchingOrder) {
+    if (matchingOrder.bank) return String(matchingOrder.bank).trim();
+    if (Array.isArray(matchingOrder.payments) && matchingOrder.payments.length > 0) {
+      const lastP = matchingOrder.payments[matchingOrder.payments.length - 1];
+      if (lastP && lastP.bank) return String(lastP.bank).trim();
+    }
+  }
+  return '';
 };
 
 // Memoized table row component for maximum render performance during typing and searching
@@ -233,26 +320,33 @@ const PaymentRow = memo(function PaymentRow({
               "inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border",
               isCleared 
                 ? 'bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-950/20 dark:border-emerald-900/30' 
-                : 'bg-amber-50 text-amber-600 border-amber-100 dark:bg-amber-950/20 dark:border-amber-900/40'
+                : over60 
+                  ? 'bg-rose-50 text-rose-600 border-rose-200 dark:bg-rose-950/30 dark:border-rose-900/50'
+                  : 'bg-amber-50 text-amber-600 border-amber-100 dark:bg-amber-950/20 dark:border-amber-900/40'
             )}>
-              <span className={cn("w-1.5 h-1.5 rounded-full", isCleared ? "bg-emerald-500" : "bg-amber-500 animate-pulse")} />
+              <span className={cn(
+                "w-1.5 h-1.5 rounded-full", 
+                isCleared 
+                  ? "bg-emerald-500" 
+                  : over60 
+                    ? "bg-rose-500 animate-pulse" 
+                    : "bg-amber-500 animate-pulse"
+              )} />
+              {txn.daysOutstanding !== undefined && txn.daysOutstanding > 0 
+                ? `${txn.daysOutstanding} ${txn.daysOutstanding === 1 ? 'DAY' : 'DAYS'}`
+                : '0 DAYS'
+              }
+            </span>
+            <span className={cn(
+              "text-[9px] font-mono font-bold tracking-tight px-1.5 py-0.5 rounded uppercase",
+              isCleared 
+                ? "text-emerald-600 dark:text-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/10" 
+                : over60 
+                  ? "text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/20 font-black animate-pulse" 
+                  : "text-neutral-500 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-800"
+            )}>
               {isCleared ? 'CLEARED' : 'PENDING'}
             </span>
-            {txn.daysOutstanding !== undefined && txn.daysOutstanding > 0 && (
-              <span className={cn(
-                "text-[9px] font-mono font-bold tracking-tight px-1.5 py-0.5 rounded",
-                isCleared 
-                  ? "text-emerald-600 dark:text-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/10" 
-                  : over60 
-                    ? "text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/20 font-black animate-pulse" 
-                    : "text-neutral-500 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-800"
-              )}>
-                {isCleared 
-                  ? `${txn.daysOutstanding}d to settle` 
-                  : `${txn.daysOutstanding}d outstanding`
-                }
-              </span>
-            )}
           </div>
         </td>
 
@@ -485,30 +579,57 @@ export default function PaymentTracking() {
     });
   }, []);
 
-  // Calculate pending days for an arrival record on-the-fly
-  const calculatePendingDays = useCallback((row: any) => {
-    if (!row || !row.date) return 0;
-    const isCleared = row.noOfDayRec === 'Cleared';
-    const arrDate = new Date(row.date);
-    if (isNaN(arrDate.getTime())) return 0;
-    
-    arrDate.setHours(0, 0, 0, 0);
-    
-    if (isCleared && row.chqDt) {
-      const chqDate = new Date(row.chqDt);
-      if (!isNaN(chqDate.getTime())) {
-        chqDate.setHours(0, 0, 0, 0);
-        const diffTime = chqDate.getTime() - arrDate.getTime();
-        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-        return diffDays >= 0 ? diffDays : 0;
+  // Calculate pending days for an arrival record on-the-fly using canonical dates
+  const calculatePendingDays = useCallback((row: any, isClearedDirect?: boolean, chqDtDirect?: string) => {
+    if (!row) return 0;
+    const rowDate = row.date || row.arrivalDt || row.arrival_date;
+    if (!rowDate) return 0;
+
+    const resolvedChqDt = chqDtDirect || extractChequeDate(row);
+    const hasChq = Boolean(resolvedChqDt && String(resolvedChqDt).trim() !== '');
+
+    const isCleared = isClearedDirect !== undefined 
+      ? isClearedDirect 
+      : (
+          row.noOfDayRec === 'Cleared' || 
+          /^(cleared|clear|paid)$/i.test(String(row.noOfDayRec || '')) ||
+          /^(cleared|clear|paid)$/i.test(String(row.noOfDays || '')) ||
+          hasChq
+        );
+
+    // If row already has an explicit numeric noOfDays in ArrivalEntry
+    const explicitDays = String(row.noOfDays ?? '').trim();
+    const matchNum = explicitDays.match(/^\d+/);
+    const parsedExplicit = matchNum ? parseInt(matchNum[0], 10) : NaN;
+
+    if (isCleared) {
+      if (hasChq) {
+        const arrIso = normalizeDate(rowDate);
+        const chqIso = normalizeDate(resolvedChqDt);
+        if (arrIso && chqIso) {
+          const [ay, am, ad] = arrIso.split('-').map(Number);
+          const [cy, cm, cd] = chqIso.split('-').map(Number);
+          const arrUtc = Date.UTC(ay, am - 1, ad);
+          const chqUtc = Date.UTC(cy, cm - 1, cd);
+          const diffDays = Math.floor((chqUtc - arrUtc) / (1000 * 60 * 60 * 24));
+          return Math.max(0, diffDays);
+        }
       }
+      if (!isNaN(parsedExplicit)) {
+        return parsedExplicit;
+      }
+      return 0;
     }
-    
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const diffTime = today.getTime() - arrDate.getTime();
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays >= 0 ? diffDays : 0;
+
+    // Pending: calculate days from arrival date to today
+    const arrIso = normalizeDate(rowDate);
+    if (!arrIso) return 0;
+    const [ay, am, ad] = arrIso.split('-').map(Number);
+    const arrUtc = Date.UTC(ay, am - 1, ad);
+    const now = new Date();
+    const todayUtc = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+    const diffDays = Math.floor((todayUtc - arrUtc) / (1000 * 60 * 60 * 24));
+    return Math.max(0, diffDays);
   }, []);
 
   const loadData = useCallback(async () => {
@@ -557,7 +678,18 @@ export default function PaymentTracking() {
         undefined, 
         cloudSheetsMeta
       );
-      const sheetsList = organized.sheets;
+      // Auto-sanitize legacy records where payment discount was accidentally copied to cc
+      const sheetsList = organized.sheets.map(sheet => ({
+        ...sheet,
+        data: Array.isArray(sheet.data) ? sheet.data.map(row => {
+          if (!row) return row;
+          // If cc matches tds or cc was stored as the discount on a cleared row without original cc, clean it up
+          if (row.noOfDayRec === 'Cleared' && row.cc && row.tds && String(row.cc).trim() === String(row.tds).trim() && parseFloat(row.cc) > 0) {
+            return { ...row, cc: 0 };
+          }
+          return row;
+        }) : []
+      }));
       setAllSheets(sheetsList);
 
       // Update localStorage so arrival_entry_sheets_v4 is consistent
@@ -676,16 +808,24 @@ export default function PaymentTracking() {
         }
 
         const calculatedNet = parseFloat(row.netAmt) || parseFloat(row.amount) || ((parseFloat(row.qty) || 0) * (parseFloat(row.rate) || 0)) || 0;
+        
+        const resolvedChqDt = extractChequeDate(row, matchingOrder);
+        const resolvedChqNo = extractChequeNumber(row, matchingOrder);
+        const resolvedChqAm = extractChequeAmount(row, matchingOrder);
+        const resolvedBank = extractBankName(row, matchingOrder);
+
         const hasAnyChqDetail = 
-          (row.chqAm && parseFloat(row.chqAm) > 0) ||
-          (row.chqNo && String(row.chqNo).trim() !== '') ||
-          (row.chqDt && String(row.chqDt).trim() !== '') ||
-          (row.bank && String(row.bank).trim() !== '');
+          (resolvedChqAm > 0) ||
+          (resolvedChqNo !== '') ||
+          (resolvedChqDt !== '') ||
+          (resolvedBank !== '');
 
         const isCleared = row.noOfDayRec === 'Cleared' || 
+                          /^(cleared|clear|paid)$/i.test(String(row.noOfDayRec || '')) ||
+                          /^(cleared|clear|paid)$/i.test(String(row.noOfDays || '')) ||
                           hasAnyChqDetail || 
-                          (matchingOrder && (matchingOrder.paymentStatus === 'Received' || matchingOrder.paymentStatus === 'Settled'));
-        const daysCount = calculatePendingDays(row);
+                          (matchingOrder && (matchingOrder.paymentStatus === 'Received' || matchingOrder.paymentStatus === 'Settled' || matchingOrder.paymentStatus === 'Cleared'));
+        const daysCount = calculatePendingDays(row, isCleared, resolvedChqDt);
 
         const rawBill = row.billNo || matchingOrder?.billNo || '';
         const cleanedBill = String(rawBill).trim().replace(/^(bill[-.\s]*|bil[-.\s]*|tc[-.\s]*|invoice[-.\s]*)/i, '');
@@ -755,10 +895,10 @@ export default function PaymentTracking() {
           qty: parseFloat(row.qty) || 0,
           rate: parseFloat(row.rate) || 0,
           shortage: parseFloat(row.shortage) || 0,
-          chqAm: parseFloat(row.chqAm) || 0,
-          chqNo: row.chqNo || '',
-          chqDt: row.chqDt || '',
-          bank: row.bank || '',
+          chqAm: resolvedChqAm,
+          chqNo: resolvedChqNo,
+          chqDt: resolvedChqDt,
+          bank: resolvedBank,
           status: isCleared ? 'Cleared' : 'Awaiting Settlement',
           daysOutstanding: daysCount,
           rawRow: row,
@@ -910,7 +1050,18 @@ export default function PaymentTracking() {
     
     // Deductions & Charges matching columns:
     const lorrySmall = getArrivalValue(['lh', 'lorrySmall', 'lorry_hire', 'freight'], '0');
-    const sellerCom = getArrivalValue(['cc', 'sellerCom', 'commission'], '0');
+    
+    // Seller Commission: ONLY consider if explicitly present as sellerCom in the arrival entry row.
+    // In arrival entry, there is no seller commission (C.C. is canvassing commission, not seller commission).
+    // If sellerCom does not exist in arrival entry, it is strictly 0.
+    let sellerCom = '0';
+    const rawSellerCom = arrival ? (arrival.sellerCom ?? arrival.sellerCommission ?? arrival.seller_com) : null;
+    if (rawSellerCom !== null && rawSellerCom !== undefined && String(rawSellerCom).trim() !== '') {
+      const parsed = parseFloat(String(rawSellerCom));
+      if (!isNaN(parsed) && parsed > 0) {
+        sellerCom = String(parsed);
+      }
+    }
     const discountAmount = getArrivalValue(['tds', 'discountAmount', 'discount'], '0');
     const manualShortage = getArrivalValue(['shortage', 'manualShortage', 'shortage_val'], '0');
     const qDiff = getArrivalValue(['diffIn', 'qDiff', 'diff_in', 'quality_difference'], '0');
@@ -1016,7 +1167,7 @@ export default function PaymentTracking() {
 
     try {
       const shortageVal = parseFloat(paymentData.shortage) || 0;
-      const ccVal = parseFloat(paymentData.discountAmount) || 0;
+      const discountVal = parseFloat(paymentData.discountAmount) || 0;
 
       if (selectedTxn.isArrival) {
         // 1. Direct Physical Shipment update in allSheets
@@ -1038,6 +1189,8 @@ export default function PaymentTracking() {
               const currentLh = parseFloat(updatedData[targetIdx].lh) || 0;
               const currentTds = parseFloat(updatedData[targetIdx].tds) || 0;
               const currentDiffIn = parseFloat(updatedData[targetIdx].diffIn) || 0;
+              const currentCc = parseFloat(updatedData[targetIdx].cc) || 0;
+              const resolvedTds = discountVal > 0 ? discountVal : currentTds;
 
               const updatedRow = {
                 ...updatedData[targetIdx],
@@ -1047,8 +1200,9 @@ export default function PaymentTracking() {
                 chqDt: paymentData.date,
                 bank: paymentData.bank,
                 shortage: shortageVal,
-                cc: ccVal,
-                netAmt: (currentAmt - currentLh - ccVal - currentTds - shortageVal - currentDiffIn - (parseFloat(paymentData.amount) || selectedTxn.amount)).toFixed(2),
+                tds: resolvedTds,
+                cc: updatedData[targetIdx].cc !== undefined ? updatedData[targetIdx].cc : 0,
+                netAmt: (currentAmt - currentLh - currentCc - resolvedTds - shortageVal - currentDiffIn - (parseFloat(paymentData.amount) || selectedTxn.amount)).toFixed(2),
                 lastUpdated: Date.now()
               };
               updatedRow.noOfDays = calculatePendingDays(updatedRow);
@@ -1058,6 +1212,25 @@ export default function PaymentTracking() {
               setCollectionDoc('arrival_entries', docId, updatedRow).catch(err => {
                 console.warn("Could not sync single arrival entry doc to Firestore:", err);
               });
+
+              // Remember cleared payment event for Patti Book without automatic printing/export
+              recordPaymentClearedForPatti({
+                sourceType: 'arrival_entry',
+                sourceId: docId,
+                sheetId: targetSheetId,
+                sheetIndex: targetIdx,
+                clearedDate: paymentData.date || new Date().toISOString().split('T')[0],
+                clearedAt: Date.now(),
+                millerName: updatedRow.millerName || selectedTxn.supplier,
+                partyName: updatedRow.partyName || selectedTxn.buyer,
+                billNo: updatedRow.billNo || selectedTxn.billNo,
+                amount: parseFloat(paymentData.amount) || selectedTxn.amount,
+                chqAm: parseFloat(paymentData.amount) || selectedTxn.amount,
+                chqNo: paymentData.refNo || '',
+                chqDt: paymentData.date,
+                bank: paymentData.bank,
+                rawRow: updatedRow
+              }).catch(() => {});
 
               return { ...sheet, data: updatedData };
             }
@@ -1093,7 +1266,7 @@ export default function PaymentTracking() {
                   method: paymentData.method,
                   refNo: paymentData.refNo,
                   shortage: shortageVal,
-                  discountAmount: ccVal,
+                  discountAmount: discountVal,
                   discountPercent: paymentData.discountPercent
                 }
               };
@@ -1119,11 +1292,29 @@ export default function PaymentTracking() {
                 method: paymentData.method,
                 refNo: paymentData.refNo,
                 shortage: shortageVal,
-                discountAmount: ccVal,
+                discountAmount: discountVal,
                 discountPercent: paymentData.discountPercent
               }
             };
             setCollectionDoc('placed_orders', String(p.id), upd).catch(() => {});
+
+            // Remember cleared placed order for Patti Book
+            recordPaymentClearedForPatti({
+              sourceType: 'placed_order',
+              sourceId: String(p.id),
+              clearedDate: paymentData.date || new Date().toISOString().split('T')[0],
+              clearedAt: Date.now(),
+              millerName: p.supplier || selectedTxn.supplier,
+              partyName: p.buyer || selectedTxn.buyer,
+              billNo: p.billNo || selectedTxn.billNo,
+              amount: parseFloat(paymentData.amount) || selectedTxn.amount,
+              chqAm: parseFloat(paymentData.amount) || selectedTxn.amount,
+              chqNo: paymentData.refNo || '',
+              chqDt: paymentData.date,
+              bank: paymentData.bank,
+              rawRow: p
+            }).catch(() => {});
+
             return upd;
           }
           return p;
@@ -1150,6 +1341,8 @@ export default function PaymentTracking() {
                 const currentLh = parseFloat(updatedData[matchingIndex].lh) || 0;
                 const currentTds = parseFloat(updatedData[matchingIndex].tds) || 0;
                 const currentDiffIn = parseFloat(updatedData[matchingIndex].diffIn) || 0;
+                const currentCc = parseFloat(updatedData[matchingIndex].cc) || 0;
+                const resolvedTds = discountVal > 0 ? discountVal : currentTds;
 
                 const updatedRow = {
                   ...updatedData[matchingIndex],
@@ -1159,8 +1352,9 @@ export default function PaymentTracking() {
                   chqDt: paymentData.date,
                   bank: paymentData.bank,
                   shortage: shortageVal,
-                  cc: ccVal,
-                  netAmt: (currentAmt - currentLh - ccVal - currentTds - shortageVal - currentDiffIn - (parseFloat(paymentData.amount) || selectedTxn.amount)).toFixed(2),
+                  tds: resolvedTds,
+                  cc: updatedData[matchingIndex].cc !== undefined ? updatedData[matchingIndex].cc : 0,
+                  netAmt: (currentAmt - currentLh - currentCc - resolvedTds - shortageVal - currentDiffIn - (parseFloat(paymentData.amount) || selectedTxn.amount)).toFixed(2),
                   lastUpdated: Date.now()
                 };
                 updatedRow.noOfDays = calculatePendingDays(updatedRow);
@@ -1168,6 +1362,24 @@ export default function PaymentTracking() {
 
                 const docId = updatedRow.id || `row-${matchingIndex}`;
                 setCollectionDoc('arrival_entries', docId, updatedRow).catch(() => {});
+
+                recordPaymentClearedForPatti({
+                  sourceType: 'arrival_entry',
+                  sourceId: docId,
+                  sheetId: targetSheetId,
+                  sheetIndex: matchingIndex,
+                  clearedDate: paymentData.date || new Date().toISOString().split('T')[0],
+                  clearedAt: Date.now(),
+                  millerName: updatedRow.millerName || selectedTxn.supplier,
+                  partyName: updatedRow.partyName || selectedTxn.buyer,
+                  billNo: updatedRow.billNo || selectedTxn.billNo,
+                  amount: parseFloat(paymentData.amount) || selectedTxn.amount,
+                  chqAm: parseFloat(paymentData.amount) || selectedTxn.amount,
+                  chqNo: paymentData.refNo || '',
+                  chqDt: paymentData.date,
+                  bank: paymentData.bank,
+                  rawRow: updatedRow
+                }).catch(() => {});
 
                 return { ...sheet, data: updatedData };
               }
@@ -1228,6 +1440,9 @@ export default function PaymentTracking() {
                 console.warn("Could not sync single arrival entry doc reversal to Firestore:", err);
               });
 
+              // Clean up or unmark cleared record in Patti Book
+              unmarkPaymentClearedForPatti(docId, targetSheetId).catch(() => {});
+
               return { ...sheet, data: updatedData };
             }
           }
@@ -1274,6 +1489,7 @@ export default function PaymentTracking() {
               paymentDetails: undefined
             };
             setCollectionDoc('placed_orders', String(p.id), upd).catch(() => {});
+            unmarkPaymentClearedForPatti(String(p.id)).catch(() => {});
             return upd;
           }
           return p;
@@ -1309,6 +1525,7 @@ export default function PaymentTracking() {
 
               const docId = updatedRow.id || `row-${matchingIndex}`;
               setCollectionDoc('arrival_entries', docId, updatedRow).catch(() => {});
+              unmarkPaymentClearedForPatti(docId, targetSheetId).catch(() => {});
 
               return { ...sheet, data: updatedData };
             }

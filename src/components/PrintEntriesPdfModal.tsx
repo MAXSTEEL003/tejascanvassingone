@@ -284,7 +284,7 @@ export default function PrintEntriesPdfModal({
       doc.setFontSize(8.8);
       doc.setTextColor(226, 232, 240);
       const genDate = new Date();
-      doc.text(`Generated: ${genDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })} ${genDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`, 203, 16, { align: 'right' });
+      doc.text(`Generated: ${genDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })} ${genDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}`, 203, 16, { align: 'right' });
       doc.text('Strictly Confidential', 203, 20.5, { align: 'right' });
 
       // 2. Filter Summary Card (Soft slate-50 background, 196mm wide)
@@ -296,31 +296,36 @@ export default function PrintEntriesPdfModal({
       const supplierLabel = selectedSupplier === 'all' ? 'All Suppliers' : selectedSupplier;
       const monthLabel = selectedMonths.length === 0
         ? 'All Recorded Months'
+        : selectedMonths.length > 2
+        ? `${selectedMonths.length} Months Selected`
         : selectedMonths.map(k => {
             const mObj = monthOptions.find(m => m.key === k);
             return mObj ? mObj.label : k;
           }).join(', ');
 
+      const buyerDisplay = buyerLabel.length > 28 ? buyerLabel.slice(0, 27) + '…' : buyerLabel;
+      const supplierDisplay = supplierLabel.length > 28 ? supplierLabel.slice(0, 27) + '…' : supplierLabel;
+
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(8.8);
       doc.setTextColor(15, 23, 42);
-      const line1 = `Buyer: ${buyerLabel}   |   Supplier: ${supplierLabel}   |   Month: ${monthLabel}`;
-      doc.text(line1, 10, 31.2);
+      const line1 = `Buyer: ${buyerDisplay}   |   Supplier: ${supplierDisplay}   |   Month: ${monthLabel}`;
+      doc.text(line1, 10, 31.2, { maxWidth: 190 });
 
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8.2);
       doc.setTextColor(51, 65, 85);
       const sortLabel = sortOrder === 'buyer_asc'
-        ? 'Buyer Name (A to Z)'
+        ? 'Buyer (A-Z)'
         : sortOrder === 'buyer_desc'
-        ? 'Buyer Name (Z to A)'
+        ? 'Buyer (Z-A)'
         : sortOrder === 'amount_desc'
-        ? 'Value (Highest)'
+        ? 'Value (High-Low)'
         : sortOrder === 'qty_desc'
-        ? 'Quantity (Highest)'
+        ? 'Quantity (High-Low)'
         : 'Date (Newest)';
-      const line2 = `Sort: ${sortLabel}   |   Matching Records: ${matchingEntries.length}   |   Total PO Qtl: ${formatNumber(summaryMetrics.totalPoQtl)}   |   Total Value: Rs. ${formatNumber(summaryMetrics.totalEstimatedValue)}`;
-      doc.text(line2, 10, 35.8);
+      const line2 = `Sort: ${sortLabel}   |   Records: ${matchingEntries.length}   |   Total PO Qtl: ${formatNumber(summaryMetrics.totalPoQtl)}   |   Total Value: Rs. ${formatNumber(summaryMetrics.totalEstimatedValue)}`;
+      doc.text(line2, 10, 35.8, { maxWidth: 190 });
 
       // 3. Define Table Columns & Data
       let headers: string[] = [];
@@ -344,11 +349,12 @@ export default function PrintEntriesPdfModal({
         ];
 
         bodyData = matchingEntries.map((e, idx) => {
-          const poQ = e.poQtl || 0;
-          const arrQ = e.arrivalQtl || 0;
+          const poQ = Number(e.poQtl || 0);
+          const arrQ = Number(e.arrivalQtl || 0);
           const pendQ = Math.max(0, poQ - arrQ);
           const diff = arrQ - poQ;
-          const estAmt = pendQ * (e.rate || 0);
+          const numRate = Number(e.rate || 0);
+          const estAmt = pendQ * numRate;
 
           let pendingDisplay = '0.00';
           if (arrQ > poQ) {
@@ -378,7 +384,7 @@ export default function PrintEntriesPdfModal({
             formatNumber(poQ),
             formatNumber(arrQ),
             pendingDisplay,
-            e.rate > 0 ? formatNumber(e.rate) : '-',
+            numRate > 0 ? formatNumber(numRate) : '-',
             estAmt > 0 ? formatNumber(estAmt) : '-',
             statusDisplay
           ];
@@ -417,10 +423,11 @@ export default function PrintEntriesPdfModal({
         ];
 
         bodyData = matchingEntries.map((e, idx) => {
-          const poQ = e.poQtl || 0;
-          const arrQ = e.arrivalQtl || 0;
+          const poQ = Number(e.poQtl || 0);
+          const arrQ = Number(e.arrivalQtl || 0);
           const diff = arrQ - poQ;
-          const amt = poQ * (e.rate || 0);
+          const numRate = Number(e.rate || 0);
+          const amt = poQ * numRate;
 
           let statusDisplay = e.status || 'Active';
           if (arrQ > poQ) {
@@ -443,7 +450,7 @@ export default function PrintEntriesPdfModal({
             formatNumber(poQ),
             formatNumber(arrQ),
             diff !== 0 ? (diff > 0 ? `+${formatNumber(diff)}` : formatNumber(diff)) : '0.00',
-            e.rate > 0 ? formatNumber(e.rate) : '-',
+            numRate > 0 ? formatNumber(numRate) : '-',
             amt > 0 ? formatNumber(amt) : '-',
             statusDisplay
           ];
@@ -645,16 +652,6 @@ export default function PrintEntriesPdfModal({
       // Trigger file download
       doc.save(fileName);
 
-      // Open printable view in new browser tab
-      try {
-        const blobUrl = doc.output('bloburl');
-        if (blobUrl) {
-          window.open(blobUrl, '_blank');
-        }
-      } catch (previewErr) {
-        console.warn('Could not open preview tab:', previewErr);
-      }
-
       setSuccessFeedback(`PDF successfully generated: ${fileName}`);
       setTimeout(() => {
         setSuccessFeedback(null);
@@ -667,11 +664,10 @@ export default function PrintEntriesPdfModal({
     }
   };
 
-  if (!isOpen) return null;
-
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+      {isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
         <motion.div
           initial={{ opacity: 0, scale: 0.96, y: 8 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -934,12 +930,15 @@ export default function PrintEntriesPdfModal({
                     Sample entries included in this print:
                   </span>
                   <div className="space-y-1">
-                    {matchingEntries.slice(0, 3).map(e => (
-                      <div key={e.id} className="text-xs text-slate-600 dark:text-slate-300 flex items-center justify-between font-mono bg-white dark:bg-neutral-800/40 p-1.5 rounded-lg border border-slate-100 dark:border-neutral-800">
-                        <span className="font-bold text-slate-800 dark:text-slate-200">{e.poNumber} • {e.buyer}</span>
-                        <span>{formatNumber(e.poQtl)} QTL @ {formatRupees(e.rate)}</span>
-                      </div>
-                    ))}
+                    {matchingEntries.slice(0, 3).map((e, idx) => {
+                      const rateNum = Number(e.rate || 0);
+                      return (
+                        <div key={e.id ? `${e.id}-${idx}` : `entry-${idx}`} className="text-xs text-slate-600 dark:text-slate-300 flex items-center justify-between font-mono bg-white dark:bg-neutral-800/40 p-1.5 rounded-lg border border-slate-100 dark:border-neutral-800">
+                          <span className="font-bold text-slate-800 dark:text-slate-200">{e.poNumber || 'PO'} • {e.buyer || 'Direct'}</span>
+                          <span>{formatNumber(e.poQtl)} QTL {rateNum > 0 ? `@ ${formatRupees(rateNum)}` : ''}</span>
+                        </div>
+                      );
+                    })}
                     {matchingEntries.length > 3 && (
                       <span className="text-[10px] text-slate-400 italic block pt-0.5">
                         + {matchingEntries.length - 3} more entries will be printed in the tabular PDF.
@@ -1015,6 +1014,7 @@ export default function PrintEntriesPdfModal({
           </div>
         </motion.div>
       </div>
+      )}
     </AnimatePresence>
   );
 }

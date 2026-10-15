@@ -39,6 +39,7 @@ Route protection is enforced at both the router layer (`RouteGuards.tsx` in `App
 | `/ledger` | `LedgerManagement` | **Allowed** | Redirect -> `/inventory` | Redirect -> `/store` | Redirect -> `/login?portal=admin` |
 | `/pending-loadings` | `PendingLoadings` | **Allowed** | Redirect -> `/inventory` | Redirect -> `/store` | Redirect -> `/login?portal=admin` |
 | `/patti` | `PattiView` | **Allowed** | Redirect -> `/inventory` | Redirect -> `/store` | Redirect -> `/login?portal=admin` |
+| `/patti-book` | `PattiBookView` | **Allowed** | Redirect -> `/inventory` | Redirect -> `/store` | Redirect -> `/login?portal=admin` |
 | `/users` | `UsersManagement` | **Allowed** | Redirect -> `/inventory` | Redirect -> `/store` | Redirect -> `/login?portal=admin` |
 | `/analytics` | `AnalyticsDashboard` | **Allowed** | Redirect -> `/inventory` | Redirect -> `/store` | Redirect -> `/login?portal=admin` |
 | `/settings` | `NotificationSettings` | **Allowed** | Redirect -> `/inventory` | Redirect -> `/store` | Redirect -> `/login?portal=admin` |
