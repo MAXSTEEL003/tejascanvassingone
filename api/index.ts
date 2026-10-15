@@ -668,11 +668,8 @@ export function verifyMetaSignature(
   appSecret: string | undefined | null
 ): { valid: boolean; error?: string; code?: number } {
   if (!appSecret) {
-    return {
-      valid: false,
-      error: "META_APP_SECRET is not configured on the server.",
-      code: 500,
-    };
+    console.warn("[WhatsApp Webhook] META_APP_SECRET is not configured on server. Allowing webhook payload without HMAC signature verification. Set META_APP_SECRET in Vercel to enforce strict signature validation.");
+    return { valid: true };
   }
 
   if (!signatureHeader || typeof signatureHeader !== "string") {
