@@ -1330,7 +1330,8 @@ app.post("/api/dispatch-whatsapp", async (req, res) => {
   const waDirectUrl = `https://api.whatsapp.com/send?phone=${digits}&text=${encodeURIComponent(message || "")}`;
 
   // 1. Check for Meta WhatsApp Cloud API Credentials (prefer server-side environment variables)
-  const activePhoneId = String(process.env.META_WHATSAPP_PHONE_NUMBER_ID || reqPhoneId || "").trim();
+  const rawPhoneId = String(process.env.META_WHATSAPP_PHONE_NUMBER_ID || reqPhoneId || "").trim();
+  const activePhoneId = rawPhoneId === "1395351100324748" ? "1335387812999639" : rawPhoneId;
   const activeToken = String(process.env.META_WHATSAPP_TOKEN || reqToken || aisensyApiKey || "").trim().replace(/^["']|["']$/g, '');
   const activeTemplate = String(process.env.META_WHATSAPP_TEMPLATE_NAME || reqTemplate || (campaignName !== "order_notification" ? campaignName : "") || "").trim();
   const activeLang = String(languageCode || "en").trim();
@@ -1625,10 +1626,13 @@ const handleUpdateMetaWhatsapp = async (req: any, res: any) => {
   const cleanWabaId = String(wabaId || "").trim();
   const cleanTemplate = String(templateName || "").trim();
 
+  const actualPhoneId = cleanPhoneId === "1395351100324748" ? "1335387812999639" : cleanPhoneId;
+  const actualWabaId = cleanWabaId || (cleanPhoneId === "1395351100324748" ? "1395351100324748" : "");
+
   // Set in current Node process memory
-  process.env.META_WHATSAPP_PHONE_NUMBER_ID = cleanPhoneId;
+  process.env.META_WHATSAPP_PHONE_NUMBER_ID = actualPhoneId;
   process.env.META_WHATSAPP_TOKEN = cleanToken;
-  if (cleanWabaId) process.env.META_WHATSAPP_BUSINESS_ACCOUNT_ID = cleanWabaId;
+  if (actualWabaId) process.env.META_WHATSAPP_BUSINESS_ACCOUNT_ID = actualWabaId;
   if (cleanTemplate) process.env.META_WHATSAPP_TEMPLATE_NAME = cleanTemplate;
 
   const isServerless = !!(process.env.VERCEL || process.env.NOW_REGION || process.env.AWS_LAMBDA_FUNCTION_NAME);
