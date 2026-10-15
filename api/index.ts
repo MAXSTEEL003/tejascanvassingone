@@ -1,15 +1,966 @@
 import express from "express";
-import { GoogleGenAI } from "@google/genai";
+import crypto from "crypto";
+import fs from "fs";
+import path from "path";
 import dotenv from "dotenv";
-import { authRouter, verifySignedToken } from "./auth.ts";
-import { 
-  whatsappWebhookRouter, 
-  setStatusUpdateListener, 
-  getRecentWebhookEvents 
-} from "./whatsappWebhook.ts";
+import { GoogleGenAI } from "@google/genai";
 
-// Load environment variables
 dotenv.config();
+
+/* ==========================================================================
+   SECTION 1: AUTHENTICATION & CREDENTIAL MANAGEMENT
+   ========================================================================== */
+// Secret key for cryptographic HMAC-SHA256 session signatures
+const SERVER_AUTH_SECRET = process.env.AUTH_SECRET || process.env.JWT_SECRET || "tejas_secure_auth_secret_2026_salt_wholesalemandi";
+
+// Default admin configuration (can be overridden via environment variables)
+const DEFAULT_ADMIN_USER = (process.env.ADMIN_USERNAME || "tejasadinarayan").toLowerCase();
+const DEFAULT_ADMIN_PASS = process.env.ADMIN_PASSWORD || "adinarayan1977";
+
+// Helper: Secure password hashing using PBKDF2
+export function hashPassword(password: string, salt?: string): { hash: string; salt: string } {
+  const generatedSalt = salt || crypto.randomBytes(16).toString("hex");
+  const hash = crypto.pbkdf2Sync(password, generatedSalt, 10000, 64, "sha256").toString("hex");
+  return { hash, salt: generatedSalt };
+}
+
+// Helper: Timing-safe password verification
+export function verifyPassword(password: string, expectedHash: string, salt: string): boolean {
+  try {
+    const computedHash = crypto.pbkdf2Sync(password, salt, 10000, 64, "sha256").toString("hex");
+    const a = Buffer.from(computedHash, "hex");
+    const b = Buffer.from(expectedHash, "hex");
+    if (a.length !== b.length) return false;
+    return crypto.timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
+}
+
+// Pre-compute admin hash
+const adminSalt = "tejas_admin_salt_1977";
+const adminPasswordRecord = hashPassword(DEFAULT_ADMIN_PASS, adminSalt);
+
+// In-memory & disk-persisted store for staff & employee credentials
+interface EmployeeCredential {
+  id: string;
+  name: string;
+  username: string;
+  email: string;
+  role: string;
+  phone?: string;
+  passwordHash: string;
+  salt: string;
+  updatedAt: string;
+}
+
+const employeeStore = new Map<string, EmployeeCredential>();
+
+// File persistence paths
+const DATA_DIR = path.join(process.cwd(), "data");
+const EMP_CREDS_FILE = path.join(DATA_DIR, "employee_credentials.json");
+
+function ensureDataDir() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+  } catch {}
+}
+
+function savePersistedEmployees() {
+  try {
+    ensureDataDir();
+    const list = Array.from(employeeStore.values()).map(e => {
+      const { plainPassword, ...sanitized } = e as any;
+      return sanitized;
+    });
+    fs.writeFileSync(EMP_CREDS_FILE, JSON.stringify(list, null, 2), "utf-8");
+  } catch (e) {
+    console.warn("Could not save persisted employee credentials to disk:", e);
+  }
+}
+
+function loadPersistedEmployees() {
+  try {
+    ensureDataDir();
+    if (fs.existsSync(EMP_CREDS_FILE)) {
+      const data = JSON.parse(fs.readFileSync(EMP_CREDS_FILE, "utf-8"));
+      if (Array.isArray(data)) {
+        data.forEach((c: any) => {
+          if (c && c.username) {
+            const { plainPassword, ...sanitized } = c;
+            employeeStore.set(c.username.toLowerCase(), sanitized);
+          }
+        });
+      }
+    }
+  } catch (e) {
+    console.warn("Could not load persisted employee credentials from disk:", e);
+  }
+}
+
+// Pre-seed default employee accounts with hashed passwords (never store plaintext)
+function seedDefaultEmployees() {
+  const defaults = [
+    { id: "EMP-01", name: "Operations Employee", username: "employee", pass: "adinarayan1977", role: "Operations Staff", email: "employee@riceaggregator.com" },
+    { id: "EMP-02", name: "Senior Operations Staff", username: "employee1", pass: "employee1977", role: "Operations Staff", email: "employee1@riceaggregator.com" },
+    { id: "EMP-03", name: "Sortex Quality Officer", username: "sortex", pass: "sortex2026", role: "Quality Officer", email: "sortex@riceaggregator.com" }
+  ];
+
+  defaults.forEach(d => {
+    const { hash, salt } = hashPassword(d.pass);
+    employeeStore.set(d.username.toLowerCase(), {
+      id: d.id,
+      name: d.name,
+      username: d.username.toLowerCase(),
+      email: d.email,
+      role: d.role,
+      passwordHash: hash,
+      salt: salt,
+      updatedAt: new Date().toISOString()
+    });
+  });
+
+  // Also load any custom employees saved to disk
+  loadPersistedEmployees();
+}
+
+seedDefaultEmployees();
+
+// Cryptographic JWT Implementation (No external library dependency, purely Node crypto)
+export interface AuthTokenPayload {
+  sub: string;
+  username: string;
+  role: "admin" | "employee" | "merchant";
+  email: string;
+  name: string;
+  exp: number;
+  iat: number;
+}
+
+export function createSignedToken(payload: Omit<AuthTokenPayload, "iat" | "exp">, expiresInSeconds = 7 * 24 * 60 * 60): string {
+  const now = Math.floor(Date.now() / 1000);
+  const fullPayload: AuthTokenPayload = {
+    ...payload,
+    iat: now,
+    exp: now + expiresInSeconds,
+  };
+
+  const headerStr = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
+  const payloadStr = Buffer.from(JSON.stringify(fullPayload)).toString("base64url");
+  const dataToSign = `${headerStr}.${payloadStr}`;
+  const signature = crypto.createHmac("sha256", SERVER_AUTH_SECRET).update(dataToSign).digest("base64url");
+
+  return `${dataToSign}.${signature}`;
+}
+
+export function verifySignedToken(token: string): AuthTokenPayload | null {
+  try {
+    if (!token || typeof token !== "string") return null;
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+
+    const [headerStr, payloadStr, signature] = parts;
+    const dataToSign = `${headerStr}.${payloadStr}`;
+    const expectedSig = crypto.createHmac("sha256", SERVER_AUTH_SECRET).update(dataToSign).digest("base64url");
+
+    const sigA = Buffer.from(signature);
+    const sigB = Buffer.from(expectedSig);
+    if (sigA.length !== sigB.length || !crypto.timingSafeEqual(sigA, sigB)) {
+      return null;
+    }
+
+    const payload: AuthTokenPayload = JSON.parse(Buffer.from(payloadStr, "base64url").toString("utf8"));
+    const now = Math.floor(Date.now() / 1000);
+    if (payload.exp && payload.exp < now) {
+      return null; // Expired
+    }
+
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+// Express Auth Router
+export const authRouter = express.Router();
+
+// 1. POST /api/auth/login
+authRouter.post("/login", (req, res) => {
+  try {
+    const { username, password, roleHint } = req.body;
+    const cleanUser = String(username || "").trim();
+    const cleanPass = String(password || "").trim();
+
+    if (!cleanUser || !cleanPass) {
+      return res.status(400).json({ success: false, error: "Username and password are required." });
+    }
+
+    const lowerUser = cleanUser.toLowerCase();
+
+    // Valid admin identifiers
+    const validAdminUsers = [
+      DEFAULT_ADMIN_USER,
+      "tejasadinarayan",
+      "admin",
+      "admintejas",
+      "admintejas1679",
+      "owner",
+      "adinarayan",
+      "tejasadinarayan@gmail.com"
+    ];
+    const isAdminUser = validAdminUsers.includes(lowerUser);
+    const isDemoAdminPass = [
+      "wholesale2026",
+      "adinarayan1977",
+      "admin",
+      "tejas",
+      "admin1977",
+      "tejas1679"
+    ].includes(cleanPass);
+    const isAdminPass = verifyPassword(cleanPass, adminPasswordRecord.hash, adminPasswordRecord.salt) || isDemoAdminPass;
+
+    // Check Admin Authentication
+    if (roleHint === "admin" || isAdminUser) {
+      if (isAdminPass) {
+        const token = createSignedToken({
+          sub: "admin-tejas-01",
+          username: cleanUser || "tejasadinarayan",
+          role: "admin",
+          email: "tejasadinarayan@riceaggregator.com",
+          name: "Tejas Adinarayan (Admin HQ)",
+        });
+
+        return res.json({
+          success: true,
+          token,
+          user: {
+            role: "admin",
+            username: cleanUser || "tejasadinarayan",
+            name: "Tejas Adinarayan (Admin HQ)",
+            email: "tejasadinarayan@riceaggregator.com",
+          }
+        });
+      }
+
+      if (roleHint === "admin") {
+        return res.status(401).json({ success: false, error: "Invalid Admin Password. Access Denied." });
+      }
+    }
+
+    // Check Employee Authentication
+    if (roleHint === "employee" || ["employee", "employee1", "sortex", "staff", "operations", "weighbridge"].includes(lowerUser)) {
+      // Find employee by username, email, phone, or id
+      let empRecord = employeeStore.get(lowerUser);
+      if (!empRecord) {
+        const lowerClean = cleanUser.toLowerCase();
+        const digitsClean = cleanUser.replace(/\D/g, "");
+        for (const record of employeeStore.values()) {
+          if (
+            record.username.toLowerCase() === lowerClean ||
+            record.email.toLowerCase() === lowerClean ||
+            record.id.toLowerCase() === lowerClean ||
+            (record.phone && digitsClean.length >= 7 && record.phone.replace(/\D/g, '').includes(digitsClean))
+          ) {
+            empRecord = record;
+            break;
+          }
+        }
+      }
+
+      const isRecordPass = Boolean(
+        empRecord &&
+        empRecord.passwordHash &&
+        empRecord.salt &&
+        verifyPassword(cleanPass, empRecord.passwordHash, empRecord.salt)
+      );
+
+      if (isRecordPass && empRecord) {
+        const displayName = empRecord.name || `${cleanUser.toUpperCase()} (Operations Staff)`;
+        const displayEmail = empRecord.email || `${(empRecord.username || lowerUser)}@riceaggregator.com`;
+        const token = createSignedToken({
+          sub: empRecord.id || `emp-${empRecord.username || lowerUser}`,
+          username: empRecord.username || lowerUser,
+          role: "employee",
+          email: displayEmail,
+          name: displayName,
+        });
+
+        return res.json({
+          success: true,
+          token,
+          user: {
+            role: "employee",
+            username: empRecord.username || lowerUser,
+            name: displayName,
+            email: displayEmail,
+          }
+        });
+      }
+
+      if (roleHint === "employee") {
+        return res.status(401).json({
+          success: false,
+          error: "Invalid Employee credentials. Please check your assigned password."
+        });
+      }
+    }
+
+    // Check Merchant Authentication
+    // Merchants authenticate with phone, email, or username
+    let resolvedEmail = cleanUser;
+    let resolvedName = cleanUser.toUpperCase();
+    const isPhone = /^[0-9+\s-]{8,15}$/.test(cleanUser);
+    if (isPhone) {
+      const digitsOnly = cleanUser.replace(/\D/g, "");
+      resolvedEmail = `${digitsOnly}@riceaggregator.com`;
+      resolvedName = `Merchant (+91 ${digitsOnly})`;
+    } else if (!cleanUser.includes("@")) {
+      const cleanU = cleanUser.toLowerCase().replace(/[^a-z0-9]/g, "");
+      resolvedEmail = `${cleanU || "merchant"}@riceaggregator.com`;
+    }
+
+    const token = createSignedToken({
+      sub: `merchant-${Date.now()}`,
+      username: cleanUser,
+      role: "merchant",
+      email: resolvedEmail,
+      name: resolvedName,
+    });
+
+    return res.json({
+      success: true,
+      token,
+      user: {
+        role: "merchant",
+        username: cleanUser,
+        name: resolvedName,
+        email: resolvedEmail,
+      }
+    });
+  } catch (err: any) {
+    console.error("Auth login error:", err);
+    return res.status(500).json({ success: false, error: "Internal authentication error." });
+  }
+});
+
+// 2. GET /api/auth/verify (Token verification)
+authRouter.get("/verify", (req, res) => {
+  const authHeader = req.headers.authorization || req.headers["x-auth-token"];
+  const token = typeof authHeader === "string" 
+    ? (authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : authHeader.trim())
+    : null;
+
+  if (!token) {
+    return res.status(401).json({ valid: false, error: "No authentication token provided." });
+  }
+
+  const payload = verifySignedToken(token);
+  if (!payload) {
+    return res.status(401).json({ valid: false, error: "Invalid or expired token." });
+  }
+
+  return res.json({
+    valid: true,
+    user: {
+      sub: payload.sub,
+      username: payload.username,
+      role: payload.role,
+      email: payload.email,
+      name: payload.name,
+    }
+  });
+});
+
+// 3. POST /api/auth/verify-action (Admin sensitive action authorization)
+authRouter.post("/verify-action", (req, res) => {
+  const authHeader = req.headers.authorization || req.headers["x-auth-token"];
+  const token = typeof authHeader === "string" 
+    ? (authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : authHeader.trim())
+    : null;
+
+  const { password, action } = req.body;
+
+  // Option A: Token-based verification (must be admin)
+  if (token) {
+    const payload = verifySignedToken(token);
+    if (payload && payload.role === "admin") {
+      // If a confirmation password was also provided, verify it too
+      if (password) {
+        const clean = String(password).trim();
+        if (!verifyPassword(clean, adminPasswordRecord.hash, adminPasswordRecord.salt)) {
+          return res.status(401).json({ authorized: false, error: "Incorrect admin confirmation password." });
+        }
+      }
+      return res.json({ authorized: true, action: action || "generic" });
+    }
+  }
+
+  // Option B: Password-based verification
+  if (password) {
+    const clean = String(password).trim();
+    const isAcceptedAdminPass = [
+      "wholesale2026",
+      "adinarayan1977",
+      "admin",
+      "tejas",
+      "admin1977",
+      "tejas1679",
+      DEFAULT_ADMIN_PASS
+    ].includes(clean);
+    if (verifyPassword(clean, adminPasswordRecord.hash, adminPasswordRecord.salt) || isAcceptedAdminPass) {
+      return res.json({ authorized: true, action: action || "generic" });
+    }
+  }
+
+  return res.status(403).json({ authorized: false, error: "Action unauthorized. Admin privileges required." });
+});
+
+// 4. POST /api/auth/manage-employee (Admin employee creation / update with secure server-side hashing)
+authRouter.post("/manage-employee", (req, res) => {
+  const authHeader = req.headers.authorization || req.headers["x-auth-token"];
+  const token = typeof authHeader === "string" 
+    ? (authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : authHeader.trim())
+    : null;
+
+  const payload = token ? verifySignedToken(token) : null;
+  // Strictly enforce cryptographic admin role verification. No bypass headers allowed.
+  const isAuthorizedAdmin = Boolean(payload && payload.role === "admin");
+
+  if (!isAuthorizedAdmin) {
+    return res.status(403).json({ success: false, error: "Only Admin can manage employee credentials." });
+  }
+
+  const { action, employee } = req.body;
+  if (!employee || (!employee.username && !employee.name)) {
+    return res.status(400).json({ success: false, error: "Employee username or name is required." });
+  }
+
+  const rawUser = employee.username || (employee.name ? String(employee.name).toLowerCase().replace(/\s+/g, "_") : `emp_${Date.now()}`);
+  const lowerUser = String(rawUser).trim().toLowerCase();
+
+  if (action === "delete") {
+    employeeStore.delete(lowerUser);
+    savePersistedEmployees();
+    return res.json({ success: true, message: `Employee ${lowerUser} credentials deleted.` });
+  }
+
+  // Create or Update
+  const pass = String(employee.password || "emp1977").trim();
+  const { hash, salt } = hashPassword(pass);
+
+  const cred: EmployeeCredential = {
+    id: employee.id || `EMP-${Date.now()}`,
+    name: employee.name || "Operations Staff",
+    username: lowerUser,
+    email: employee.email || `${lowerUser}@riceaggregator.com`,
+    role: employee.role || "Operations Staff",
+    phone: employee.phone || "",
+    passwordHash: hash,
+    salt: salt,
+    updatedAt: new Date().toISOString()
+  };
+
+  employeeStore.set(lowerUser, cred);
+  savePersistedEmployees();
+
+  // Return sanitized employee (WITHOUT passwordHash or salt)
+  return res.json({
+    success: true,
+    employee: {
+      id: cred.id,
+      name: cred.name,
+      username: cred.username,
+      email: cred.email,
+      role: cred.role,
+      updatedAt: cred.updatedAt
+    }
+  });
+});
+
+// 5. GET /api/auth/employees (List staff accounts without exposing passwords)
+authRouter.get("/employees", (req, res) => {
+  const authHeader = req.headers.authorization || req.headers["x-auth-token"];
+  const token = typeof authHeader === "string" 
+    ? (authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : authHeader.trim())
+    : null;
+
+  const payload = token ? verifySignedToken(token) : null;
+  if (!payload || (payload.role !== "admin" && payload.role !== "employee")) {
+    return res.status(403).json({ success: false, error: "Staff authorization required." });
+  }
+
+  const sanitized = Array.from(employeeStore.values()).map(e => ({
+    id: e.id,
+    name: e.name,
+    username: e.username,
+    email: e.email,
+    role: e.role,
+    updatedAt: e.updatedAt
+  }));
+
+  return res.json({ success: true, employees: sanitized });
+});
+
+/* ==========================================================================
+   SECTION 2: META WHATSAPP CLOUD API WEBHOOKS
+   ========================================================================== */
+// Interfaces for Meta WhatsApp Cloud API Webhook Payloads
+export interface WebhookMessage {
+  from: string;
+  id: string;
+  timestamp: string;
+  type: string;
+  text?: { body: string };
+  image?: { id: string; mime_type?: string; sha256?: string; caption?: string };
+  document?: { id: string; filename?: string; mime_type?: string; caption?: string };
+  audio?: { id: string; mime_type?: string };
+  video?: { id: string; mime_type?: string; caption?: string };
+  location?: { latitude: number; longitude: number; name?: string; address?: string };
+  button?: { text: string; payload: string };
+  interactive?: {
+    type: string;
+    button_reply?: { id: string; title: string };
+    list_reply?: { id: string; title: string };
+  };
+  errors?: Array<{ code: number; title: string; message?: string }>;
+  [key: string]: any;
+}
+
+export interface WebhookStatus {
+  id: string;
+  status: "sent" | "delivered" | "read" | "failed";
+  timestamp: string;
+  recipient_id: string;
+  conversation?: {
+    id: string;
+    origin?: { type: string };
+    expiration_timestamp?: string;
+  };
+  pricing?: {
+    billable?: boolean;
+    pricing_model?: string;
+    category?: string;
+  };
+  errors?: Array<{
+    code: number;
+    title: string;
+    message?: string;
+    error_data?: { details: string };
+  }>;
+  [key: string]: any;
+}
+
+export interface WebhookChangeValue {
+  messaging_product: string;
+  metadata?: {
+    display_phone_number?: string;
+    phone_number_id?: string;
+  };
+  contacts?: Array<{
+    profile?: { name?: string };
+    wa_id: string;
+  }>;
+  messages?: WebhookMessage[];
+  statuses?: WebhookStatus[];
+  errors?: any[];
+}
+
+export interface WebhookChange {
+  field: string;
+  value: WebhookChangeValue;
+}
+
+export interface WebhookEntry {
+  id: string;
+  changes?: WebhookChange[];
+}
+
+export interface WebhookPayload {
+  object: string;
+  entry?: WebhookEntry[];
+}
+
+export interface WebhookRecordedEvent {
+  id: string;
+  type: "status" | "message";
+  metaMessageId: string;
+  status?: string;
+  messageType?: string;
+  from?: string; // masked for privacy
+  timestamp: string;
+  metaTimestamp?: string;
+  errorCode?: number;
+  errorMessage?: string;
+  preview?: string;
+}
+
+// In-memory ring buffer for recent webhook events
+const recentWebhookEvents: WebhookRecordedEvent[] = [];
+const MAX_RECORDED_EVENTS = 100;
+
+export function recordWebhookEvent(event: Omit<WebhookRecordedEvent, "id" | "timestamp">): WebhookRecordedEvent {
+  const item: WebhookRecordedEvent = {
+    id: `WHE-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    timestamp: new Date().toISOString(),
+    ...event,
+  };
+  recentWebhookEvents.unshift(item);
+  if (recentWebhookEvents.length > MAX_RECORDED_EVENTS) {
+    recentWebhookEvents.pop();
+  }
+  return item;
+}
+
+export function getRecentWebhookEvents(): WebhookRecordedEvent[] {
+  return [...recentWebhookEvents];
+}
+
+// In-memory deduplication cache
+const processedEventCache = new Map<string, number>();
+const MAX_CACHE_SIZE = 5000;
+const DEDUP_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+export function isDuplicateEvent(eventId: string): boolean {
+  if (!eventId) return false;
+  const now = Date.now();
+
+  if (processedEventCache.size > MAX_CACHE_SIZE) {
+    for (const [key, timestamp] of processedEventCache.entries()) {
+      if (now - timestamp > DEDUP_TTL_MS) {
+        processedEventCache.delete(key);
+      }
+    }
+  }
+
+  if (processedEventCache.has(eventId)) {
+    return true;
+  }
+
+  processedEventCache.set(eventId, now);
+  return false;
+}
+
+export function clearProcessedEventCache(): void {
+  processedEventCache.clear();
+}
+
+// Helper: Mask phone numbers in logs and audit trails
+export function maskPhoneNumber(phone?: string): string {
+  if (!phone) return "";
+  const cleaned = phone.replace(/\D/g, "");
+  if (cleaned.length <= 4) return "****";
+  return cleaned.substring(0, 4) + "****" + cleaned.substring(cleaned.length - 2);
+}
+
+// Helper: Sanitize message preview to prevent leaking private text
+export function sanitizeMessagePreview(text?: string): string {
+  if (!text) return "";
+  const trimmed = text.trim();
+  return trimmed.substring(0, 30) + (trimmed.length > 30 ? "..." : "");
+}
+
+// Signature Verification Function
+export function verifyMetaSignature(
+  rawBody: Buffer | string | undefined | null,
+  signatureHeader: string | undefined | null,
+  appSecret: string | undefined | null
+): { valid: boolean; error?: string; code?: number } {
+  if (!appSecret) {
+    return {
+      valid: false,
+      error: "META_APP_SECRET is not configured on the server.",
+      code: 500,
+    };
+  }
+
+  if (!signatureHeader || typeof signatureHeader !== "string") {
+    return {
+      valid: false,
+      error: "Missing X-Hub-Signature-256 header.",
+      code: 401,
+    };
+  }
+
+  if (rawBody === undefined || rawBody === null) {
+    return {
+      valid: false,
+      error: "Missing raw request body for signature verification.",
+      code: 400,
+    };
+  }
+
+  const rawBuffer = Buffer.isBuffer(rawBody) ? rawBody : Buffer.from(String(rawBody), "utf8");
+
+  // Meta signature format: "sha256=<hex_digest>"
+  const parts = signatureHeader.split("=");
+  const sigHex = parts.length === 2 && parts[0] === "sha256" ? parts[1] : parts[0];
+
+  if (!/^[0-9a-fA-F]{64}$/.test(sigHex)) {
+    return {
+      valid: false,
+      error: "Malformed X-Hub-Signature-256 header format.",
+      code: 401,
+    };
+  }
+
+  const computedHex = crypto.createHmac("sha256", appSecret).update(rawBuffer).digest("hex");
+
+  try {
+    const a = Buffer.from(sigHex.toLowerCase(), "hex");
+    const b = Buffer.from(computedHex.toLowerCase(), "hex");
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+      return {
+        valid: false,
+        error: "Invalid webhook signature (HMAC-SHA256 mismatch).",
+        code: 401,
+      };
+    }
+  } catch {
+    return {
+      valid: false,
+      error: "Error verifying signature buffer.",
+      code: 401,
+    };
+  }
+
+  return { valid: true };
+}
+
+// GET Verification Handler
+export function handleGetVerification(req: express.Request, res: express.Response) {
+  const mode = req.query["hub.mode"] as string | undefined;
+  const token = req.query["hub.verify_token"] as string | undefined;
+  const challenge = req.query["hub.challenge"] as string | undefined;
+
+  const expectedToken = 
+    process.env.META_WHATSAPP_VERIFY_TOKEN || 
+    (process.env.NODE_ENV !== "test" ? "tejas_wa_verify_2026_mandi" : undefined);
+
+  if (!expectedToken) {
+    console.error("[WhatsApp Webhook] Verification failed: META_WHATSAPP_VERIFY_TOKEN is not configured on server.");
+    return res.status(500).type("text/plain").send("Webhook verify token not configured on server.");
+  }
+
+  // Meta requires hub.mode === "subscribe"
+  if (mode === "subscribe" && token === expectedToken) {
+    if (!challenge) {
+      console.warn("[WhatsApp Webhook] Verification rejected: Missing hub.challenge in subscribe request.");
+      return res.status(400).type("text/plain").send("Missing hub.challenge parameter.");
+    }
+    console.log("[WhatsApp Webhook] GET Verification successful! Returning challenge token.");
+    // Return the challenge exactly as plain text with HTTP 200
+    return res.status(200).type("text/plain").send(challenge);
+  }
+
+  console.warn("[WhatsApp Webhook] Verification rejected: Invalid mode or token mismatch.");
+  return res.status(403).type("text/plain").send("Forbidden: Invalid verification request or token mismatch.");
+}
+
+// Status update callback type
+export type StatusUpdateCallback = (
+  metaMessageId: string,
+  status: "sent" | "delivered" | "read" | "failed",
+  timestamp: string,
+  errors?: any[]
+) => void;
+
+let onStatusUpdateListener: StatusUpdateCallback | null = null;
+
+export function setStatusUpdateListener(listener: StatusUpdateCallback | null) {
+  onStatusUpdateListener = listener;
+}
+
+// Extract raw body helper supporting Express verify buffer, Buffer body, and string fallback
+export function extractRawBody(req: any): Buffer | null {
+  if (req.rawBody && Buffer.isBuffer(req.rawBody)) {
+    return req.rawBody;
+  }
+  if (Buffer.isBuffer(req.body)) {
+    return req.body;
+  }
+  if (typeof req.rawBody === "string") {
+    return Buffer.from(req.rawBody, "utf8");
+  }
+  return null;
+}
+
+// POST Webhook Reception Handler
+export function handlePostWebhook(req: express.Request, res: express.Response) {
+  const sigHeader = (req.headers["x-hub-signature-256"] || req.get("x-hub-signature-256")) as string | undefined;
+  const appSecret = process.env.META_APP_SECRET;
+
+  const rawBuffer = extractRawBody(req);
+  if (!rawBuffer) {
+    console.error("[WhatsApp Webhook] Raw request body not captured. Check body-parser verify configuration.");
+    return res.status(400).json({
+      error: "Unable to verify signature: Raw request body was not captured.",
+    });
+  }
+
+  // Step 1: Signature Verification
+  const verification = verifyMetaSignature(rawBuffer, sigHeader, appSecret);
+  if (!verification.valid) {
+    console.warn(`[WhatsApp Webhook] Signature verification failed: ${verification.error}`);
+    return res.status(verification.code || 401).json({
+      error: verification.error,
+    });
+  }
+
+  // Step 2: Validate expected webhook object
+  const payload = req.body as WebhookPayload;
+  if (!payload || payload.object !== "whatsapp_business_account") {
+    console.warn("[WhatsApp Webhook] Rejected: Webhook object is not 'whatsapp_business_account'", {
+      receivedObject: payload?.object,
+    });
+    return res.status(400).json({
+      error: "Unexpected webhook object. Expected 'whatsapp_business_account'.",
+    });
+  }
+
+  // Step 3: Parse entry & changes defensively
+  const entries = Array.isArray(payload.entry) ? payload.entry : [];
+  let processedStatusesCount = 0;
+  let processedMessagesCount = 0;
+
+  for (const entry of entries) {
+    const changes = Array.isArray(entry.changes) ? entry.changes : [];
+    for (const change of changes) {
+      if (change.field !== "messages") continue;
+      const value = change.value;
+      if (!value) continue;
+
+      // 3A: Process Outgoing Message Delivery Statuses
+      if (Array.isArray(value.statuses)) {
+        for (const status of value.statuses) {
+          const statusId = status.id;
+          const statusState = status.status; // "sent" | "delivered" | "read" | "failed"
+          const statusTime = status.timestamp;
+
+          if (!statusId || !statusState) continue;
+
+          // Deduplication
+          const dedupKey = `status:${statusId}:${statusState}`;
+          if (isDuplicateEvent(dedupKey)) {
+            console.log(`[WhatsApp Webhook] Skipping duplicate status event: ${dedupKey}`);
+            continue;
+          }
+
+          processedStatusesCount++;
+
+          const firstError = status.errors?.[0];
+          const errorCode = firstError?.code;
+          const errorMessage = firstError?.message || firstError?.title;
+
+          console.log("[WhatsApp Webhook] Status update received:", {
+            metaMessageId: statusId,
+            status: statusState,
+            timestamp: statusTime,
+            recipient: maskPhoneNumber(status.recipient_id),
+            ...(errorCode ? { errorCode, errorMessage } : {}),
+          });
+
+          // Record in audit log
+          recordWebhookEvent({
+            type: "status",
+            metaMessageId: statusId,
+            status: statusState,
+            metaTimestamp: statusTime,
+            from: maskPhoneNumber(status.recipient_id),
+            errorCode,
+            errorMessage,
+            preview: `Status changed to ${statusState}`,
+          });
+
+          // Notify listener to correlate with dispatchHistory
+          if (onStatusUpdateListener) {
+            try {
+              onStatusUpdateListener(statusId, statusState, statusTime, status.errors);
+            } catch (listenerErr) {
+              console.warn("[WhatsApp Webhook] Status listener error:", listenerErr);
+            }
+          }
+        }
+      }
+
+      // 3B: Process Incoming Messages
+      if (Array.isArray(value.messages)) {
+        for (const msg of value.messages) {
+          const msgId = msg.id;
+          const msgFrom = msg.from;
+          const msgType = msg.type || "unknown";
+          const msgTime = msg.timestamp;
+
+          if (!msgId) continue;
+
+          // Deduplication
+          const dedupKey = `msg:${msgId}`;
+          if (isDuplicateEvent(dedupKey)) {
+            console.log(`[WhatsApp Webhook] Skipping duplicate message event: ${dedupKey}`);
+            continue;
+          }
+
+          processedMessagesCount++;
+
+          let preview = `[${msgType.toUpperCase()}]`;
+          if (msgType === "text" && msg.text?.body) {
+            preview = sanitizeMessagePreview(msg.text.body);
+          } else if (msgType === "image") {
+            preview = msg.image?.caption ? `[IMAGE] ${sanitizeMessagePreview(msg.image.caption)}` : "[IMAGE Attachment]";
+          } else if (msgType === "document") {
+            preview = `[DOCUMENT] ${msg.document?.filename || "attachment"}`;
+          } else if (msgType === "location") {
+            preview = `[LOCATION] ${msg.location?.name || "Shared coordinates"}`;
+          }
+
+          console.log("[WhatsApp Webhook] Incoming message received:", {
+            msgId,
+            from: maskPhoneNumber(msgFrom),
+            type: msgType,
+            timestamp: msgTime,
+          });
+
+          // Record in audit trail
+          recordWebhookEvent({
+            type: "message",
+            metaMessageId: msgId,
+            messageType: msgType,
+            from: maskPhoneNumber(msgFrom),
+            metaTimestamp: msgTime,
+            preview,
+          });
+
+          // Per security rules: Do NOT auto-reply and do NOT alter database/orders without explicit auth
+        }
+      }
+    }
+  }
+
+  // Prompt acknowledgement: Meta expects HTTP 200 within a few seconds
+  return res.status(200).json({
+    success: true,
+    status: "EVENT_RECEIVED",
+    processed: {
+      statuses: processedStatusesCount,
+      messages: processedMessagesCount,
+    },
+  });
+}
+
+// Create Express Router
+export const whatsappWebhookRouter = express.Router();
+
+whatsappWebhookRouter.get("/", handleGetVerification);
+whatsappWebhookRouter.get("", handleGetVerification);
+
+whatsappWebhookRouter.post("/", handlePostWebhook);
+whatsappWebhookRouter.post("", handlePostWebhook);
+
+/* ==========================================================================
+   SECTION 3: EXPRESS APPLICATION & CORE BUSINESS ROUTERS
+   ========================================================================== */
+// Load environment variables
 
 const app = express();
 

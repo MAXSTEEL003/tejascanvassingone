@@ -13,8 +13,7 @@ delete process.env.META_WHATSAPP_PHONE_NUMBER_ID;
 delete process.env.META_WHATSAPP_TOKEN;
 process.env.PORT = "0"; // Pick random port
 
-import app from "../api/index";
-import { createSignedToken } from "../api/auth";
+import app, { createSignedToken } from "../api/index.ts";
 
 function computeSignature(payload: string, secret: string): string {
   const hmac = crypto.createHmac("sha256", secret).update(Buffer.from(payload, "utf8")).digest("hex");
