@@ -1,12 +1,12 @@
 import express from "express";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
-import { authRouter, verifySignedToken } from "./auth";
+import { authRouter, verifySignedToken } from "./auth.ts";
 import { 
   whatsappWebhookRouter, 
   setStatusUpdateListener, 
   getRecentWebhookEvents 
-} from "./whatsappWebhook";
+} from "./whatsappWebhook.ts";
 
 // Load environment variables
 dotenv.config();

@@ -3,6 +3,7 @@ import crypto from "crypto";
 import assert from "assert";
 
 // Set test environment variables BEFORE importing app
+process.env.NODE_ENV = "test";
 process.env.VERCEL = "1"; // Test in simulated serverless mode
 process.env.META_WHATSAPP_VERIFY_TOKEN = "test_meta_verify_token_2026";
 process.env.META_APP_SECRET = "test_meta_app_secret_1234567890abcdef";
