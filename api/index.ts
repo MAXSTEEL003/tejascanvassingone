@@ -13,6 +13,15 @@ dotenv.config();
 
 const app = express();
 
+// Normalize req.url when rewritten by Vercel serverless proxy (/api/(.*) -> /api)
+app.use((req, _res, next) => {
+  const matched = (req.headers["x-matched-path"] || req.headers["x-vercel-matched-path"]) as string | undefined;
+  if (matched && (req.url === "/" || req.url === "/api" || req.url === "")) {
+    req.url = matched;
+  }
+  next();
+});
+
 // Body parser with 10MB limit and rawBody buffer capture for HMAC-SHA256 signature verification
 app.use(
   express.json({

@@ -495,3 +495,5 @@ authRouter.get("/employees", (req, res) => {
 
   return res.json({ success: true, employees: sanitized });
 });
+
+export default authRouter;

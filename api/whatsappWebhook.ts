@@ -451,3 +451,5 @@ whatsappWebhookRouter.get("", handleGetVerification);
 
 whatsappWebhookRouter.post("/", handlePostWebhook);
 whatsappWebhookRouter.post("", handlePostWebhook);
+
+export default whatsappWebhookRouter;
