@@ -8,8 +8,7 @@ import { useCart } from '../context/CartContext';
 import { getCollectionDocs, syncCollection, setCollectionDoc, deleteCollectionDoc, createLedgerEntriesForOrder, db } from '../lib/firebase';
 import { doc, deleteDoc, collection, getDocs, onSnapshot } from 'firebase/firestore';
 import SearchableSelect from '../components/SearchableSelect';
-import { generateSupplierPOEmailHtml, generateBuyerConfirmationEmailHtml } from '../utils/poEmailTemplate';
-import { generatePoPdfBase64, getPoPdfFileName } from '../utils/poPdfGenerator';
+
 
 const trendData = [
   { name: 'Mon', value: 1200 },
@@ -1296,52 +1295,10 @@ export default function OrdersDashboard() {
     });
 
     const isSingleOrder = selected.length === 1;
-    const poSubject = "Tejas Canvassing: New purchase orders";
 
-    // 1. AUTOMATIC PO EMAIL DISPATCH VIA OFFICIAL GMAIL API OAUTH 2.0 (NO PDF ATTACHMENT - DIRECT BODY FORMAT)
-    const emailHtml = generateSupplierPOEmailHtml(assignedBatchSupplier, groupedOrder, selected);
-
-    fetch('/api/dispatch-po', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        orderId: groupedOrder.id,
-        batchId: groupedOrder.id,
-        poNumber: groupedOrder.id,
-        to: supplierProfile.email,
-        supplierName: assignedBatchSupplier,
-        subject: poSubject,
-        html: emailHtml,
-        htmlContent: emailHtml,
-        textContent: `Tejas Canvassing: New purchase orders\n\nDear ${assignedBatchSupplier.toUpperCase()},\n\nToday's orders:\nTotal Quantity: ${groupedOrder.qty} QTLS.`,
-      })
-    })
-    .then(res => res.json())
-    .then(data => console.log('Automated Supplier PO Email Result:', data))
-    .catch(err => console.warn('Dispatch supplier email notice:', err?.message || err));
-
-    // 2. DISPATCH CONFIRMATION EMAIL, WHATSAPP & SMS TO ALL BUYERS IMMEDIATELY (ARRIVING IN 3-5 DAYS)
+    // 1. DISPATCH WHATSAPP & SMS TO ALL BUYERS IMMEDIATELY (NO EMAIL SENT ON APPROVAL)
     buyerProfiles.forEach(bp => {
       const buyerOrders = selected.filter(s => (s.buyer || '').trim().toLowerCase() === bp.name.trim().toLowerCase());
-      const buyerConfirmationHtml = generateBuyerConfirmationEmailHtml(bp.name, groupedOrder, buyerOrders.length > 0 ? buyerOrders : selected);
-
-      if (bp.email) {
-        fetch('/api/dispatch-po', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            to: bp.email,
-            recipientName: bp.name,
-            subject: `ORDER CONFIRMATION - ${groupedOrder.id} - Tejas Canvassing`,
-            html: buyerConfirmationHtml,
-            htmlContent: buyerConfirmationHtml,
-            textContent: `Hello ${bp.name}, your procurement order ${groupedOrder.id} for ${groupedOrder.qty} QTLS has been registered on Tejas Canvassing and will arrive in 3-5 business days.`
-          })
-        })
-        .then(res => res.json())
-        .then(data => console.log(`Buyer confirmation email result for ${bp.name}:`, data))
-        .catch(err => console.warn(`Buyer email dispatch error for ${bp.name}:`, err?.message || err));
-      }
 
       const bpOrder = buyerOrders[0] || groupedOrder;
       const bpBrand = (bpOrder.product || groupedOrder.product || 'keshar kali').replace(/\(\d+.*$/, '').trim();
@@ -1418,14 +1375,14 @@ export default function OrdersDashboard() {
       });
     }, 300);
 
-    // Step 2: Documents compiled update (600ms)
+    // Step 2: System allocation update (600ms)
     setTimeout(() => {
       setAutoDispatchStatus(prev => {
         if (!prev) return prev;
         return {
           ...prev,
           progress: 55,
-          currentAction: "Transmitting PO email to supplier via secure SMTP relay..."
+          currentAction: "Registering approved batch allocation in system..."
         };
       });
     }, 600);

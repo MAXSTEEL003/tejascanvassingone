@@ -32,7 +32,7 @@ import {
   DeliveryLocation,
   addDeliveryLocation
 } from '../utils/deliveryLocations';
-import { generateSupplierPOEmailHtml, generateBuyerConfirmationEmailHtml } from '../utils/poEmailTemplate';
+import { generateSupplierPOEmailHtml } from '../utils/poEmailTemplate';
 
 const BUYER_PROFILES_LOOKUP: Record<string, { email: string; phone: string }> = {
   'G.K.UDYOG': { email: 'hr_hk2005@yahoo.com', phone: '8880088844' },
