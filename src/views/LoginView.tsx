@@ -18,7 +18,6 @@ import {
   X,
   Sun,
   Moon,
-  Sparkles,
   ShoppingBag,
   ExternalLink,
   ChevronRight
@@ -148,8 +147,8 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
 
   // Input states
   const [merchantAuthTab, setMerchantAuthTab] = useState<'signin' | 'signup'>(defaultTab);
-  const [identifier, setIdentifier] = useState('9845012345');
-  const [email, setEmail] = useState('tejas@example.com');
+  const [identifier, setIdentifier] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
@@ -186,17 +185,23 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
       const rawInput = (identifier || email).trim();
       const cleanPass = password.trim();
 
+      if (!rawInput) {
+        setErrorMsg('Please enter your mobile number or business email.');
+        setLoading(false);
+        return;
+      }
+
       if (!cleanPass) {
         setErrorMsg('Please enter your account password.');
         setLoading(false);
         return;
       }
 
-      let resolvedEmail = rawInput || 'tejas@example.com';
-      let resolvedName = 'TEJAS CANVASSING';
-      let resolvedPhone = '9845012345';
+      let resolvedEmail = rawInput;
+      let resolvedName = 'Merchant';
+      let resolvedPhone = '';
 
-      // Check if input is a phone number (e.g. 9845012345)
+      // Check if input is a phone number
       const isPhone = /^[0-9+\s-]{8,15}$/.test(rawInput);
       if (isPhone) {
         const digitsOnly = rawInput.replace(/\D/g, '');
@@ -204,7 +209,7 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
         resolvedPhone = digitsOnly;
         resolvedName = `Merchant (+91 ${digitsOnly})`;
       } else if (!rawInput.includes('@')) {
-        // Input is a username / firm name (e.g. BALAJI TRADERS)
+        // Input is a username / firm name
         const cleanUser = rawInput.toLowerCase().replace(/[^a-z0-9]/g, '');
         resolvedEmail = `${cleanUser || 'merchant'}@riceaggregator.com`;
         resolvedName = rawInput.toUpperCase();
@@ -251,11 +256,27 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
     setSuccessMsg(null);
 
     try {
-      const name = signupName.trim() || 'NEW MERCHANT';
-      const phone = signupPhone.trim() || '9845012345';
-      const emailVal = signupEmail.trim() || `${phone.replace(/\D/g, '')}@riceaggregator.com`;
-      const passVal = password.trim() || 'wholesale2026';
+      const name = signupName.trim();
+      const phone = signupPhone.trim();
+      const emailVal = signupEmail.trim() || (phone ? `${phone.replace(/\D/g, '')}@riceaggregator.com` : '');
+      const passVal = password.trim();
       const gstinVal = signupGstin.trim().toUpperCase() || '29AAGCV7712M1ZP';
+
+      if (!name) {
+        setErrorMsg('Please enter your business or merchant name.');
+        setLoading(false);
+        return;
+      }
+      if (!phone) {
+        setErrorMsg('Please enter your 10-digit mobile number.');
+        setLoading(false);
+        return;
+      }
+      if (!passVal) {
+        setErrorMsg('Please enter a password for your account.');
+        setLoading(false);
+        return;
+      }
 
       // Authenticate securely with Express backend
       await loginWithServer(emailVal, passVal, 'merchant');
@@ -817,20 +838,7 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
                     </div>
                   </div>
 
-                  {/* Demo fill shortcut */}
-                  <div className="pt-0.5">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIdentifier('9845012345');
-                        setPassword('wholesale2026');
-                      }}
-                      className="text-[10px] font-semibold text-[#C22424] hover:underline cursor-pointer flex items-center gap-1"
-                    >
-                      <Sparkles className="w-3 h-3 text-[#C22424]" />
-                      <span>Fill demo credentials</span>
-                    </button>
-                  </div>
+
 
                   {/* Sign In CTA */}
                   <button
@@ -1027,20 +1035,7 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
                   </div>
                 </div>
 
-                {/* Demo Employee Fill */}
-                <div className="pt-0.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setStaffUsername('employee');
-                      setStaffPassword('wholesale2026');
-                    }}
-                    className="text-[10px] font-semibold text-[#C22424] hover:underline cursor-pointer flex items-center gap-1"
-                  >
-                    <Sparkles className="w-3 h-3 text-[#C22424]" />
-                    <span>Fill demo credentials</span>
-                  </button>
-                </div>
+
 
                 <button
                   type="submit"
@@ -1147,20 +1142,7 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
                   </div>
                 </div>
 
-                {/* Demo Admin Fill */}
-                <div className="pt-0.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setStaffUsername('admintejas1679');
-                      setStaffPassword('wholesale2026');
-                    }}
-                    className="text-[10px] font-semibold text-[#C22424] hover:underline cursor-pointer flex items-center gap-1"
-                  >
-                    <Sparkles className="w-3 h-3 text-[#C22424]" />
-                    <span>Fill demo credentials</span>
-                  </button>
-                </div>
+
 
                 <button
                   type="submit"

@@ -386,7 +386,7 @@ export async function loginWithServer(
       ];
       for (const st of defaultStaffAccounts) {
         if (st.username.toLowerCase() === lowerInput || st.email.toLowerCase() === lowerInput || st.id.toLowerCase() === lowerInput) {
-          if (cleanPass === st.pass || cleanPass === "wholesale2026" || cleanPass === "adinarayan1977") {
+          if (cleanPass === st.pass) {
             return {
               sub: st.id,
               username: st.username,
@@ -463,11 +463,7 @@ export async function loginWithServer(
   if (isAdminTarget) {
     const validAdminOfflinePasswords = [
       'adinarayan1977',
-      'wholesale2026',
-      'admin1977',
-      'tejas1679',
-      'admin',
-      'tejas'
+      'tejas1679'
     ];
     if (validAdminOfflinePasswords.includes(cleanPass)) {
       const adminUser: AuthenticatedUser = {
@@ -551,7 +547,7 @@ export async function verifyActionWithServer(
     const user = getAuthUser();
     if (user?.role === 'admin') {
       const clean = String(password || '').trim();
-      const validAdminOfflinePasswords = ['adinarayan1977', 'wholesale2026', 'admin1977', 'tejas1679'];
+      const validAdminOfflinePasswords = ['adinarayan1977', 'tejas1679'];
       if (!clean || validAdminOfflinePasswords.includes(clean)) {
         return { success: true };
       }

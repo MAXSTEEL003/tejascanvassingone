@@ -246,15 +246,7 @@ authRouter.post("/login", (req, res) => {
       "nani"
     ];
     const isAdminUser = validAdminUsers.includes(lowerUser);
-    const isDemoAdminPass = [
-      "wholesale2026",
-      "adinarayan1977",
-      "admin",
-      "tejas",
-      "admin1977",
-      "tejas1679"
-    ].includes(cleanPass);
-    const isAdminPass = verifyPassword(cleanPass, adminPasswordRecord.hash, adminPasswordRecord.salt) || isDemoAdminPass;
+    const isAdminPass = verifyPassword(cleanPass, adminPasswordRecord.hash, adminPasswordRecord.salt) || (DEFAULT_ADMIN_PASS && cleanPass === DEFAULT_ADMIN_PASS);
 
     // Check Admin Authentication
     if (roleHint === "admin" || isAdminUser) {
@@ -435,16 +427,7 @@ authRouter.post("/verify-action", (req, res) => {
   // Option B: Password-based verification
   if (password) {
     const clean = String(password).trim();
-    const isAcceptedAdminPass = [
-      "wholesale2026",
-      "adinarayan1977",
-      "admin",
-      "tejas",
-      "admin1977",
-      "tejas1679",
-      DEFAULT_ADMIN_PASS
-    ].includes(clean);
-    if (verifyPassword(clean, adminPasswordRecord.hash, adminPasswordRecord.salt) || isAcceptedAdminPass) {
+    if (verifyPassword(clean, adminPasswordRecord.hash, adminPasswordRecord.salt) || (DEFAULT_ADMIN_PASS && clean === DEFAULT_ADMIN_PASS)) {
       return res.json({ authorized: true, action: action || "generic" });
     }
   }
@@ -2338,16 +2321,7 @@ export function verifyAdminRequest(req: express.Request): boolean {
   if (bodyPassword) {
     const cleanPass = String(bodyPassword).trim();
     const adminPass = process.env.ADMIN_PASSWORD || "adinarayan1977";
-    const acceptedAdminPass = [
-      "wholesale2026",
-      "adinarayan1977",
-      "admin",
-      "tejas",
-      "admin1977",
-      "tejas1679",
-      adminPass
-    ];
-    if (acceptedAdminPass.includes(cleanPass)) {
+    if (verifyPassword(cleanPass, adminPasswordRecord.hash, adminPasswordRecord.salt) || cleanPass === adminPass) {
       return true;
     }
   }
