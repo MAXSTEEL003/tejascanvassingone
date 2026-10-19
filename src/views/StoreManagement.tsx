@@ -240,7 +240,12 @@ export default function StoreManagement() {
       const rawStakeholders = localStorage.getItem('stakeholders_v2');
       if (rawStakeholders) {
         const parsed = JSON.parse(rawStakeholders);
-        if (Array.isArray(parsed.suppliers)) return parsed.suppliers;
+        if (Array.isArray(parsed.suppliers) && parsed.suppliers.length > 0) return parsed.suppliers;
+      }
+      const rawReg = localStorage.getItem('registered_suppliers');
+      if (rawReg) {
+        const parsedReg = JSON.parse(rawReg);
+        if (Array.isArray(parsedReg)) return parsedReg;
       }
     } catch {}
     return [];
@@ -468,7 +473,7 @@ export default function StoreManagement() {
   // Extra buyer profile states
   const [phone, setPhone] = useState(() => localStorage.getItem('userPhone') || '');
   const [tempPhone, setTempPhone] = useState('');
-  const [email, setEmail] = useState(() => localStorage.getItem('userEmail') || 'tejasadinarayan@gmail.com');
+  const [email, setEmail] = useState(() => localStorage.getItem('companyEmail') || (localStorage.getItem('userEmail') && localStorage.getItem('userEmail') !== 'tejasadinarayan@gmail.com' ? localStorage.getItem('userEmail') : null) || 'nani@tejasc.in');
   const [tempEmail, setTempEmail] = useState('');
   
   const [gstin, setGstin] = useState(() => localStorage.getItem('userGstin') || '');
@@ -554,7 +559,7 @@ export default function StoreManagement() {
         id: currentUid,
         name: tempBuyerName.trim() || 'Registered Merchant',
         type: 'buyers',
-        phone: tempPhone.trim() || '9342380981',
+        phone: tempPhone.trim() || '',
         email: userEmail,
         gstin: tempGstin.trim().toUpperCase() || '29AAGCV7712M1ZP',
         address: tempAddress.trim() || 'No. 15, APMC Yard, Yeshwanthpur, Bangalore, Karnataka - 560022',
@@ -669,6 +674,19 @@ export default function StoreManagement() {
           try {
             const parsed = JSON.parse(rawStakeholders);
             if (Array.isArray(parsed.suppliers)) loadedSuppliers = parsed.suppliers;
+          } catch (e) {}
+        }
+        const rawReg = localStorage.getItem('registered_suppliers');
+        if (rawReg) {
+          try {
+            const parsedReg = JSON.parse(rawReg);
+            if (Array.isArray(parsedReg)) {
+              parsedReg.forEach((s: any) => {
+                if (s && s.name && !loadedSuppliers.some(x => x.id === s.id)) {
+                  loadedSuppliers.push(s);
+                }
+              });
+            }
           } catch (e) {}
         }
         const cloudStakeholders = await getCollectionDocs('stakeholders').catch(() => []);

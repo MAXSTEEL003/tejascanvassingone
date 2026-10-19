@@ -161,7 +161,7 @@ export default function CheckoutView() {
     name: localStorage.getItem('userStoreName') || localStorage.getItem('userName') || 'Main Shop',
     type: 'Shop',
     address: localStorage.getItem('userAddress') || 'Shop #14, APMC Yard, Yeshwanthpur, Bangalore, Karnataka - 560022',
-    phone: localStorage.getItem('userPhone') || '9342380981',
+    phone: localStorage.getItem('userPhone') || '',
     isDefault: true
   };
 
@@ -278,7 +278,7 @@ export default function CheckoutView() {
         deliveryLocationId: activeLocation.id,
         deliveryLocationName: activeLocation.name,
         deliveryLocationType: activeLocation.type,
-        phone: activeLocation.phone || localStorage.getItem('userPhone') || '9342380981',
+        phone: activeLocation.phone || localStorage.getItem('userPhone') || '',
         gstin: localStorage.getItem('userGstin') || '29AAGCV7712M1ZP',
         loadingDays: preferredLoadingDays,
         paymentMethod: 'Pay on Delivery / Mill Settlement'
@@ -293,22 +293,25 @@ export default function CheckoutView() {
       const supplierProf = resolveSupplierProfile(supplierVal);
       const buyerProf = resolveBuyerProfile(buyerText);
 
-      const emailHtml = `
-<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px; color: #1e293b;">
-  <h2 style="color: #C22424; margin-top: 0; border-bottom: 2px solid #C22424; padding-bottom: 8px;">OFFICIAL PURCHASE ORDER</h2>
-  <p><strong>PO Number:</strong> ${newOrder.id}</p>
-  <p><strong>Date of Issue:</strong> ${newOrder.date}</p>
-  <p><strong>Deliver To:</strong> ${newOrder.buyer}</p>
-  <p><strong>Delivery Destination:</strong> ${newOrder.destination}</p>
-  <p><strong>Loading Limit:</strong> ${preferredLoadingDays} Days Ex-Mill</p>
-  <p><strong>Total Amount:</strong> ${newOrder.total}</p>
-</div>
-`;
+      const emailHtml = generateSupplierPOEmailHtml(
+        supplierVal,
+        newOrder,
+        [{
+          id: newOrder.id,
+          buyer: newOrder.buyer || buyerText,
+          product: newOrder.items || 'KESHAR KALI',
+          qty: orderQty,
+          rate: orderRate,
+          date: newOrder.date || new Date(),
+          loadingDays: preferredLoadingDays,
+          unloadingPoint: 'shop'
+        }]
+      );
 
-      const subject = `[OFFICIAL PO] Purchase Order ${newOrder.id} - ${newOrder.buyer} (${orderQty} QTL)`;
+      const subject = "Tejas Canvassing: New purchase orders";
       const encodedSubject = encodeURIComponent(subject);
       const encodedBody = encodeURIComponent(
-        `Official Purchase Order Details:\n` +
+        `Dear ${supplierVal.toUpperCase()},\n\nToday's orders:\n` +
         `-----------------------------------------\n` +
         `PO Number: ${newOrder.id}\n` +
         `Date: ${newOrder.date}\n` +
@@ -322,27 +325,29 @@ export default function CheckoutView() {
         `--\nTejas Canvassing Grain Brokerage`
       );
 
-      const waMsg = encodeURIComponent(
-        `*NEW ORDER PLACED*\n` +
-        `*PO:* ${newOrder.id}\n` +
-        `*Buyer:* ${newOrder.buyer}\n` +
-        `*Qty:* ${orderQty} QTL\n` +
-        `*Destination:* ${newOrder.destination}\n` +
-        `*Loading:* ${preferredLoadingDays} Days\n` +
-        `*Total:* ${newOrder.total}\n` +
-        `*Terms:* Pay on Delivery (No Advance)`
-      );
+      const brandVal = (items[0]?.name || newOrder.product || 'keshar kali').replace(/\(\d+.*$/, '').trim();
+      const customerWaMsg = `Hello ${newOrder.buyer},\n\nOrder placed successfully.\n\nBrand: ${brandVal}\nQuantity: ${orderQty} QTL\nRate: ₹${orderRate}/QTL\n\nThank you,\nTejas Canvassing`;
+      const waMsg = encodeURIComponent(customerWaMsg);
 
-      setDirectWaLink(`https://wa.me/91${supplierProf.phone}?text=${waMsg}`);
-      setDirectSmsLink(`sms:+91${supplierProf.phone}?body=${waMsg}`);
+      const customerPhone = (activeLocation.phone || localStorage.getItem('userPhone') || supplierProf.phone || '9945351166').replace(/[^0-9]/g, '');
+      const finalCustomerWaPhone = customerPhone.length === 10 ? `91${customerPhone}` : customerPhone;
+      setDirectWaLink(`https://wa.me/${finalCustomerWaPhone}?text=${waMsg}`);
+      setDirectSmsLink(`sms:+${finalCustomerWaPhone}?body=${waMsg}`);
 
-      fetch('/api/send-po-email', {
+      // 1. Automatic Official PO Email Trigger (via Gmail API OAuth 2.0 / nani@tejasc.in)
+      fetch('/api/dispatch-po', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          orderId: newOrder.id,
+          poNumber: newOrder.id,
+          batchId: newOrder.id,
           to: supplierProf.email,
+          supplierName: supplierVal,
           subject,
           html: emailHtml,
+          htmlContent: emailHtml,
+          textContent: `Tejas Canvassing: New purchase orders\n\nDear ${supplierVal.toUpperCase()},\n\nToday's orders for ${orderQty} QTL.`,
           orderDetails: newOrder,
         }),
       })
@@ -354,6 +359,30 @@ export default function CheckoutView() {
         console.warn('Silent fallback for PO email:', err);
         setEmailStatus('sent');
       });
+
+      // 2. Automatic Meta WhatsApp Order Notification Trigger (order_notify template)
+      const waRecipient = activeLocation.phone || localStorage.getItem('userPhone') || supplierProf.phone || '9945351166';
+      fetch('/api/dispatch-whatsapp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: waRecipient,
+          buyerName: newOrder.buyer,
+          brand: brandVal,
+          qty: String(orderQty),
+          rate: String(orderRate),
+          orderId: newOrder.id,
+          poNumber: newOrder.id,
+          message: customerWaMsg,
+          templateName: 'order_notify',
+          templateId: '1016669984165776',
+          templateParams: [newOrder.buyer, brandVal, String(orderQty), String(orderRate)],
+          languageCode: 'en'
+        })
+      })
+      .then(res => res.json())
+      .then(data => console.log('[Checkout WhatsApp Dispatch Result]:', data))
+      .catch(err => console.warn('[Checkout WhatsApp Dispatch Error]:', err));
     }, 1200);
   };
 
@@ -549,7 +578,7 @@ export default function CheckoutView() {
               </p>
               <div className="pt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[#6B7280] dark:text-neutral-400 font-sans">
                 <span>GSTIN: <span className="font-sans font-bold text-[#111827] dark:text-neutral-200">{localStorage.getItem('userGstin') || '29AAGCV7712M1ZP'}</span></span>
-                <span>Phone: <span className="font-sans font-bold text-[#111827] dark:text-neutral-200">+91 {activeLocation.phone || localStorage.getItem('userPhone') || '9342380981'}</span></span>
+                <span>Phone: <span className="font-sans font-bold text-[#111827] dark:text-neutral-200">{(activeLocation.phone || localStorage.getItem('userPhone')) ? `+91 ${activeLocation.phone || localStorage.getItem('userPhone')}` : 'Not Specified'}</span></span>
               </div>
             </div>
           </section>

@@ -21,7 +21,7 @@ export default function ProfileView() {
   const [profName, setProfName] = useState(() => {
     return localStorage.getItem('userName') || 'Authorized Merchant';
   });
-  const [profPhone, setProfPhone] = useState(() => localStorage.getItem('userPhone') || '9342380981');
+  const [profPhone, setProfPhone] = useState(() => localStorage.getItem('userPhone') || '');
   const [profGstin, setProfGstin] = useState(() => localStorage.getItem('userGstin') || '29AAGCV7712M1ZP');
   const [profAddress, setProfAddress] = useState(() => localStorage.getItem('userAddress') || 'No. 15, APMC Yard, Yeshwanthpur, Bangalore, Karnataka - 560022');
   const [isProfileLocked, setIsProfileLocked] = useState(() => localStorage.getItem('profileLocked') === 'true');
@@ -69,7 +69,7 @@ export default function ProfileView() {
   const handleSaveModalProfile = (e: React.FormEvent) => {
     e.preventDefault();
     const finalName = tempName.trim() || 'Authorized Merchant';
-    const finalPhone = tempPhone.trim().replace(/[^\d]/g, '') || '9342380981';
+    const finalPhone = tempPhone.trim().replace(/[^\d]/g, '');
     const finalGstin = tempGstin.trim().toUpperCase() || '29AAGCV7712M1ZP';
     const finalAddress = tempAddress.trim() || profAddress;
 
@@ -468,7 +468,7 @@ export default function ProfileView() {
 
         {/* 5. Direct APMC Broker Desk Support */}
         <a
-          href="tel:+919342380981"
+          href="tel:+919916416995"
           className="w-full p-4 flex items-center justify-between gap-3 text-left hover:bg-slate-50 dark:hover:bg-neutral-800/50 transition-colors cursor-pointer no-underline"
         >
           <div className="flex items-center gap-3 min-w-0">
@@ -480,7 +480,7 @@ export default function ProfileView() {
                 Help & APMC Support
               </span>
               <span className="text-[11px] text-[#6B7280] dark:text-slate-400 block truncate">
-                Direct APMC broker desk: +91 93423 80981
+                Direct APMC broker desk: +91 99164 16995
               </span>
             </div>
           </div>

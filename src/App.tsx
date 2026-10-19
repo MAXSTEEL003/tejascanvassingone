@@ -27,6 +27,7 @@ import BrokerageView from './views/BrokerageView';
 import BagView from './views/BagView';
 import ProfileView from './views/ProfileView';
 import EmployeePortalView from './views/EmployeePortalView';
+import AcknowledgeReceiptView from './views/AcknowledgeReceiptView';
 import MainLayout from './layout/MainLayout';
 
 
@@ -119,6 +120,7 @@ export default function App() {
             <Route path="/onboarding" element={<AboutView />} />
             <Route path="/journey" element={<Navigate to="/about" replace />} />
             <Route path="/experience" element={<Navigate to="/about" replace />} />
+            <Route path="/acknowledge-po" element={<AcknowledgeReceiptView />} />
             <Route path="/login" element={<LoginView defaultTab="signin" />} />
             <Route path="/admintejas1679" element={<Navigate to="/admin" replace />} />
             <Route path="/employee1977" element={<LoginView secretRole="employee" />} />

@@ -9,6 +9,7 @@ import { getCollectionDocs, syncCollection, setCollectionDoc, deleteCollectionDo
 import { doc, deleteDoc, collection, getDocs, onSnapshot } from 'firebase/firestore';
 import SearchableSelect from '../components/SearchableSelect';
 import { generateSupplierPOEmailHtml, generateBuyerConfirmationEmailHtml } from '../utils/poEmailTemplate';
+import { generatePoPdfBase64, getPoPdfFileName } from '../utils/poPdfGenerator';
 
 const trendData = [
   { name: 'Mon', value: 1200 },
@@ -504,9 +505,14 @@ export default function OrdersDashboard() {
       try {
         const rawDeleted = localStorage.getItem('deleted_stakeholder_ids');
         const deletedIds: string[] = rawDeleted ? JSON.parse(rawDeleted) : [];
-        const deletedSet = new Set(deletedIds.map(id => String(id).trim().toLowerCase().replace(/^#/, '')));
+        const deletedSet = new Set(
+          deletedIds
+            .map(id => String(id).trim().toLowerCase().replace(/^#/, ''))
+            .filter(id => id !== 'sup-01' && id !== 'buy-01')
+        );
 
         const cached = JSON.parse(localStorage.getItem('stakeholders_v2') || 'null');
+        const regSuppliers = JSON.parse(localStorage.getItem('registered_suppliers') || '[]');
         const cloudDocs = await getCollectionDocs('stakeholders').catch(() => []);
 
         const supMap = new Map<string, { id: string; name: string }>();
@@ -524,9 +530,18 @@ export default function OrdersDashboard() {
               buyMap.set(b.name.trim().toUpperCase(), { id: b.id || `BUY-${Date.now()}`, name: b.name.trim() });
             }
           });
-          if (supMap.size > 0) setAvailableSuppliers(Array.from(supMap.values()));
-          if (buyMap.size > 0) setAvailableBuyers(Array.from(buyMap.values()));
         }
+
+        if (Array.isArray(regSuppliers)) {
+          regSuppliers.forEach((s: any) => {
+            if (s && s.name && !deletedSet.has(String(s.id || '').toLowerCase())) {
+              supMap.set(s.name.trim().toUpperCase(), { id: s.id || `SUP-${Date.now()}`, name: s.name.trim() });
+            }
+          });
+        }
+
+        if (supMap.size > 0) setAvailableSuppliers(Array.from(supMap.values()));
+        if (buyMap.size > 0) setAvailableBuyers(Array.from(buyMap.values()));
 
         // Cloud Firestore stakeholders
         if (cloudDocs && cloudDocs.length > 0) {
@@ -894,29 +909,8 @@ export default function OrdersDashboard() {
           const approvedObj = { ...orderToUpdate, status: 'Approved', approvedAt: new Date().toISOString() };
           await setCollectionDoc('procurement_requests', id, approvedObj);
 
-          // Sync directly to placed_orders so it shows in Placed Orders / My Orders immediately once approved
-          try {
-            const existingPlaced = JSON.parse(localStorage.getItem('placed_orders') || '[]');
-            const normId = String(id).trim().toLowerCase().replace(/^#/, '');
-            const alreadyInPlaced = existingPlaced.some((p: any) => String(p.id).trim().toLowerCase().replace(/^#/, '') === normId);
-            if (!alreadyInPlaced) {
-              const placedRecord = {
-                ...approvedObj,
-                items: approvedObj.product || approvedObj.items || 'Rice Variety',
-                total: approvedObj.total || `₹ ${formatINR((Number(approvedObj.qty) || 0) * (Number(approvedObj.rate) || 0))}`,
-                origin: approvedObj.origin || 'Mill Dispatch Hub',
-                destination: approvedObj.destination || 'APMC Yard, Bangalore',
-                progress: 25,
-                status: 'Approved',
-                originalOrders: [approvedObj],
-                date: approvedObj.date || new Date().toISOString()
-              };
-              localStorage.setItem('placed_orders', JSON.stringify([placedRecord, ...existingPlaced]));
-              await setCollectionDoc('placed_orders', id, placedRecord);
-            }
-          } catch (e) {
-            console.warn('Sync to placed_orders on approve notice:', e);
-          }
+          // Indent is approved and ready in procurement requests.
+          // It will only be added to Placed Orders when explicitly grouped and placed via Group & Place Orders.
         }
       }
     } catch (err) {
@@ -1282,7 +1276,7 @@ export default function OrdersDashboard() {
       originalOrders: selected,
       purchaseOrderSent: true,
       purchaseOrderSentAt: new Date().toISOString(),
-      companyEmail: localStorage.getItem('userEmail') || 'tejasadinarayan@gmail.com',
+      companyEmail: localStorage.getItem('companyEmail') || (localStorage.getItem('userEmail') && localStorage.getItem('userEmail') !== 'tejasadinarayan@gmail.com' ? localStorage.getItem('userEmail') : null) || 'nani@tejasc.in',
       sellerEmail: supplierProfile.email,
       qty: totalSelectedQty,
       rate: avgRate,
@@ -1302,28 +1296,29 @@ export default function OrdersDashboard() {
     });
 
     const isSingleOrder = selected.length === 1;
-    const poSubject = isSingleOrder
-      ? `PURCHASE ORDER - ${groupedOrder.id} - Tejas Canvassing`
-      : `CONSOLIDATED BATCH PO - ${groupedOrder.id} - Tejas Canvassing`;
+    const poSubject = "Tejas Canvassing: New purchase orders";
 
-    // 1. DISPATCH SMTP EMAIL TO SUPPLIER IMMEDIATELY
+    // 1. AUTOMATIC PO EMAIL DISPATCH VIA OFFICIAL GMAIL API OAUTH 2.0 (NO PDF ATTACHMENT - DIRECT BODY FORMAT)
     const emailHtml = generateSupplierPOEmailHtml(assignedBatchSupplier, groupedOrder, selected);
 
     fetch('/api/dispatch-po', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        orderId: groupedOrder.id,
+        batchId: groupedOrder.id,
+        poNumber: groupedOrder.id,
         to: supplierProfile.email,
         supplierName: assignedBatchSupplier,
         subject: poSubject,
         html: emailHtml,
         htmlContent: emailHtml,
-        textContent: `${isSingleOrder ? 'Purchase Order' : 'Consolidated Purchase Order'} ${groupedOrder.id} approved. Total Quantity: ${groupedOrder.qty} QTLS, Total: ${groupedOrder.total}.`
+        textContent: `Tejas Canvassing: New purchase orders\n\nDear ${assignedBatchSupplier.toUpperCase()},\n\nToday's orders:\nTotal Quantity: ${groupedOrder.qty} QTLS.`,
       })
     })
     .then(res => res.json())
-    .then(data => console.log('Approved Batch Email Result:', data))
-    .catch(err => console.warn('Dispatch approved batch email notice:', err?.message || err));
+    .then(data => console.log('Automated Supplier PO Email Result:', data))
+    .catch(err => console.warn('Dispatch supplier email notice:', err?.message || err));
 
     // 2. DISPATCH CONFIRMATION EMAIL, WHATSAPP & SMS TO ALL BUYERS IMMEDIATELY (ARRIVING IN 3-5 DAYS)
     buyerProfiles.forEach(bp => {
@@ -1348,7 +1343,12 @@ export default function OrdersDashboard() {
         .catch(err => console.warn(`Buyer email dispatch error for ${bp.name}:`, err?.message || err));
       }
 
-      const buyerWhatsappMsg = `Hello ${bp.name},\n\nGood news! Your order has been placed and will arrive in 3-5 days under ${isSingleOrder ? 'Purchase Order' : 'consolidated Batch PO'} ${groupedOrder.id}.\n\n📦 *Order details*:\n🌾 Brand Specification: ${groupedOrder.product || 'Premium Rice'}\n⚖️ Quantity: ${groupedOrder.qty} QTLS\n💰 Overall Trade Value: ${groupedOrder.total}\n🏢 Assigned Supplier: ${assignedBatchSupplier}\n\nThank you for working with Tejas Canvassing!\nFor quick updates, use our mobile portal.`;
+      const bpOrder = buyerOrders[0] || groupedOrder;
+      const bpBrand = (bpOrder.product || groupedOrder.product || 'keshar kali').replace(/\(\d+.*$/, '').trim();
+      const bpQtyNum = buyerOrders.reduce((sum, o) => sum + (Number(o.qty) || 0), 0) || Number(groupedOrder.qty) || 40;
+      const bpRateNum = bpOrder.rate || groupedOrder.rate || 10000;
+
+      const buyerWhatsappMsg = `Hello ${bp.name},\n\nOrder placed successfully.\n\nBrand: ${bpBrand}\nQuantity: ${bpQtyNum} QTL\nRate: ₹${bpRateNum}/QTL\n\nThank you,\nTejas Canvassing`;
 
       fetch('/api/dispatch-whatsapp', {
         method: 'POST',
@@ -1356,7 +1356,16 @@ export default function OrdersDashboard() {
         body: JSON.stringify({
           to: bp.phone,
           buyerName: bp.name,
-          message: buyerWhatsappMsg
+          brand: bpBrand,
+          qty: String(bpQtyNum),
+          rate: String(bpRateNum),
+          orderId: groupedOrder.id,
+          poNumber: groupedOrder.id,
+          message: buyerWhatsappMsg,
+          templateName: 'order_notify',
+          templateId: '1016669984165776',
+          templateParams: [bp.name, bpBrand, String(bpQtyNum), String(bpRateNum)],
+          languageCode: 'en'
         })
       })
       .then(res => res.json())
@@ -1373,6 +1382,29 @@ export default function OrdersDashboard() {
         })
       }).catch(err => console.warn(`SMS dispatch note for ${bp.name}:`, err?.message || err));
     });
+
+    // 3. DISPATCH WHATSAPP PURCHASE ORDER NOTIFICATION TO ASSIGNED SUPPLIER
+    if (supplierProfile.phone) {
+      const supplierWhatsappMsg = `Tejas Canvassing Official PO: ${isSingleOrder ? 'Purchase Order' : 'Batch PO'} ${groupedOrder.id} (${groupedOrder.qty} QTLS) has been issued to supplier ${assignedBatchSupplier}.\n\n📦 *Order details*:\n🌾 Brand: ${groupedOrder.product || 'Premium Rice'}\n⚖️ Quantity: ${groupedOrder.qty} QTLS\n💰 Value: ${groupedOrder.total}\n📍 Destination: ${groupedOrder.destination || 'Consolidated Hub'}\n\nOfficial PO document transmitted to ${supplierProfile.email}.`;
+
+      fetch('/api/dispatch-whatsapp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: supplierProfile.phone,
+          buyerName: assignedBatchSupplier,
+          orderId: groupedOrder.id,
+          poNumber: groupedOrder.id,
+          message: supplierWhatsappMsg,
+          templateName: 'order_notification',
+          templateParams: [assignedBatchSupplier, groupedOrder.id],
+          languageCode: 'en_US'
+        })
+      })
+      .then(res => res.json())
+      .then(data => console.log(`Approved Supplier WhatsApp Result for ${assignedBatchSupplier}:`, data))
+      .catch(err => console.warn(`Supplier WhatsApp dispatch note for ${assignedBatchSupplier}:`, err?.message || err));
+    }
 
     // Step 1: Profile resolution update (300ms)
     setTimeout(() => {
@@ -1983,8 +2015,14 @@ export default function OrdersDashboard() {
                                   const buyerProf = resolveBuyerProfile(order.buyer);
                                   const phone = buyerProf?.phone || '919845000000';
                                   const cleanPhone = phone.replace(/[^0-9]/g, '');
-                                  const msg = encodeURIComponent(`Hello ${order.buyer}, regarding your order for ${(order as any).product || 'Rice'} (${order.qty} Qtl @ Rs.${order.rate}) on Tejas Canvassing.`);
-                                  window.open(`https://wa.me/${cleanPhone}?text=${msg}`, '_blank');
+                                  const finalPhone = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
+                                  const brand = ((order as any).product || 'keshar kali').replace(/\(\d+.*$/, '').trim();
+                                  const qty = order.qty || 40;
+                                  const rate = order.rate || 10000;
+                                  const msg = encodeURIComponent(
+                                    `Hello ${order.buyer},\n\nOrder placed successfully.\n\nBrand: ${brand}\nQuantity: ${qty} QTL\nRate: ₹${rate}/QTL\n\nThank you,\nTejas Canvassing`
+                                  );
+                                  window.open(`https://wa.me/${finalPhone}?text=${msg}`, '_blank');
                                 }}
                                 className="btn-tactile px-3 py-1.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 border border-emerald-500/20 cursor-pointer"
                               >

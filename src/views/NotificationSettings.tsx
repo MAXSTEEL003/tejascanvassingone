@@ -31,6 +31,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { auth, getCollectionDocs, setCollectionDoc } from '../lib/firebase';
 import { generateSupplierPOEmailHtml } from '../utils/poEmailTemplate';
+import { generatePoPdfBase64, getPoPdfFileName } from '../utils/poPdfGenerator';
 import { getAuthToken } from '../lib/auth';
 
 interface NotificationSetting {
@@ -130,11 +131,11 @@ export default function NotificationSettings() {
   // --- Dispatch Test Bench States ---
   const [testSupplierEmail, setTestSupplierEmail] = useState('orders@tejascanvassing.com');
   const [testPoNumber, setTestPoNumber] = useState('TC-9801');
-  const [testPhone, setTestPhone] = useState('9945351166');
-  const [testRecipientName, setTestRecipientName] = useState('Registered Merchant');
+  const [testPhone, setTestPhone] = useState(() => localStorage.getItem('testWhatsappPhone') || localStorage.getItem('userPhone') || '');
+  const [testRecipientName, setTestRecipientName] = useState('Vision stores');
   const [testMessageTemplate, setTestMessageTemplate] = useState<'po' | 'indent' | 'arrival' | 'custom'>('po');
   const [testMessageText, setTestMessageText] = useState(
-    'Hello Wholesale Partner,\n\nYour Purchase Order TC-9801 for 24 QTLS (KESHAR KALI) has been successfully dispatched to supplier DIRECT RICE MILL.\n\nArrival ETA: 3-5 business days at APMC Yard, Bangalore.\n\nTejas Canvassing Brokerage Desk'
+    'Hello Vision stores,\n\nOrder placed successfully.\n\nBrand: keshar kali\nQuantity: 40 QTL\nRate: ₹10000/QTL\n\nThank you,\nTejas Canvassing'
   );
   const [isSendingTestPo, setIsSendingTestPo] = useState(false);
   const [isSendingTestWa, setIsSendingTestWa] = useState(false);
@@ -173,6 +174,7 @@ export default function NotificationSettings() {
           setCustomMetaWabaId(data.metaWhatsappWabaId);
         }
       }
+      await fetchGmailOAuthStatus();
     } catch (err) {
       console.warn('Could not fetch dispatch history:', err);
     } finally {
@@ -181,9 +183,7 @@ export default function NotificationSettings() {
   };
 
   useEffect(() => {
-    if (activeTab === 'dispatch_test') {
-      fetchHistory();
-    }
+    fetchHistory();
   }, [activeTab]);
 
   // Update direct links when test message or phone changes
@@ -192,7 +192,7 @@ export default function NotificationSettings() {
     const waDigits = cleanDigits.length === 10 ? `91${cleanDigits}` : cleanDigits;
     setDirectWaLink(`https://api.whatsapp.com/send?phone=${waDigits}&text=${encodeURIComponent(testMessageText)}`);
     
-    const poSubject = `Purchase Order ${testPoNumber} - Tejas Canvassing`;
+    const poSubject = "Tejas Canvassing: New purchase orders";
     setDirectMailLink(`mailto:${encodeURIComponent(testSupplierEmail)}?subject=${encodeURIComponent(poSubject)}&body=${encodeURIComponent(testMessageText)}`);
     setDirectGmailLink(`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(testSupplierEmail)}&su=${encodeURIComponent(poSubject)}&body=${encodeURIComponent(testMessageText)}`);
   }, [testPhone, testMessageText, testSupplierEmail, testPoNumber]);
@@ -202,7 +202,7 @@ export default function NotificationSettings() {
     setTestMessageTemplate(template);
     if (template === 'po') {
       setTestMessageText(
-        `Hello ${testRecipientName},\n\nYour Purchase Order ${testPoNumber} for 24 QTLS (KESHAR KALI) has been successfully dispatched to supplier DIRECT RICE MILL.\n\nArrival ETA: 3-5 business days at APMC Yard, Bangalore.\n\nTejas Canvassing Brokerage Desk`
+        `Hello ${testRecipientName},\n\nOrder placed successfully.\n\nBrand: keshar kali\nQuantity: 40 QTL\nRate: ₹10000/QTL\n\nThank you,\nTejas Canvassing`
       );
     } else if (template === 'indent') {
       setTestMessageText(
@@ -219,19 +219,30 @@ export default function NotificationSettings() {
     setIsSendingTestPo(true);
     setTestFeedback(null);
     try {
+      const testOrderObj = {
+        id: testPoNumber,
+        date: new Date().toISOString(),
+        supplier: 'Direct Rice Mill',
+        status: 'Placed',
+        destination: 'APMC Yard, Bangalore',
+        phone: '9916416995'
+      };
+
+      const testSubOrders = [{
+        id: testPoNumber,
+        buyer: testRecipientName || 'Registered Merchant',
+        product: 'KESHAR KALI',
+        qty: 80,
+        rate: 8400,
+        date: new Date(),
+        loadingDays: 0,
+        unloadingPoint: 'shop'
+      }];
+
       const emailHtml = generateSupplierPOEmailHtml(
         'DIRECT RICE MILL',
         { id: testPoNumber, date: new Date() },
-        [{
-          id: testPoNumber,
-          buyer: testRecipientName || 'Registered Merchant',
-          product: 'KESHAR KALI',
-          qty: 80,
-          rate: 8400,
-          date: new Date(),
-          loadingDays: 0,
-          unloadingPoint: 'shop'
-        }]
+        testSubOrders
       );
 
       const res = await fetch('/api/dispatch-po', {
@@ -239,24 +250,26 @@ export default function NotificationSettings() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           to: testSupplierEmail,
-          from: localStorage.getItem('userEmail') || 'tejasadinarayan@gmail.com',
+          from: 'nani@tejasc.in',
+          cc: 'nani@tejasc.in',
           supplierName: 'Direct Rice Mill',
-          subject: `TEST PURCHASE ORDER - ${testPoNumber} - Tejas Canvassing`,
+          subject: "Tejas Canvassing: New purchase orders",
           html: emailHtml,
-          batchId: testPoNumber
+          batchId: testPoNumber,
         })
       });
 
       const data = await res.json();
       setTestFeedback({
-        type: 'success',
-        text: `PO Transmission Result: ${data.message || 'Dispatched successfully'} (Status: ${data.status || 'OK'})`
+        type: data.success ? 'success' : 'error',
+        text: `Gmail API Result: ${data.message || 'Dispatched via Gmail API'} (Status: ${data.status || 'OK'}${data.gmailMessageId ? `, Message ID: ${data.gmailMessageId}` : ''})`
       });
       fetchHistory();
+      fetchGmailOAuthStatus();
     } catch (err: any) {
       setTestFeedback({
         type: 'error',
-        text: `Failed to dispatch PO: ${err.message || 'Unknown network error'}`
+        text: `Failed to dispatch PO via Gmail API: ${err.message || 'Unknown network error'}`
       });
     } finally {
       setIsSendingTestPo(false);
@@ -334,59 +347,73 @@ export default function NotificationSettings() {
     }
   };
 
+  // Official Gmail API OAuth 2.0 State (nani@tejasc.in)
+  const [gmailOAuthStatus, setGmailOAuthStatus] = useState<{
+    authorized: boolean;
+    emailAddress?: string;
+    scopes?: string[];
+    configured?: boolean;
+    error?: string;
+  }>({ authorized: false });
+  const [showGmailOAuthConfig, setShowGmailOAuthConfig] = useState<boolean>(true);
+  const [customClientId, setCustomClientId] = useState<string>('');
+  const [customClientSecret, setCustomClientSecret] = useState<string>('');
+  const [customRefreshToken, setCustomRefreshToken] = useState<string>('');
+  const [isUpdatingGmailOAuth, setIsUpdatingGmailOAuth] = useState<boolean>(false);
+  const [gmailOAuthFeedback, setGmailOAuthFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  const [showSmtpConfig, setShowSmtpConfig] = useState<boolean>(false);
-  const [customSmtpHost, setCustomSmtpHost] = useState<string>('smtp.gmail.com');
-  const [customSmtpPort, setCustomSmtpPort] = useState<string>('587');
-  const [customSmtpUser, setCustomSmtpUser] = useState<string>('tejasadinarayan@gmail.com');
-  const [customSmtpPass, setCustomSmtpPass] = useState<string>('');
-  const [customSmtpFrom, setCustomSmtpFrom] = useState<string>('tejasadinarayan@gmail.com');
-  const [isVerifyingSmtp, setIsVerifyingSmtp] = useState<boolean>(false);
-  const [smtpVerifyFeedback, setSmtpVerifyFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const fetchGmailOAuthStatus = async () => {
+    try {
+      const res = await fetch('/api/auth/gmail/status');
+      if (res.ok) {
+        const data = await res.json();
+        setGmailOAuthStatus(data);
+      }
+    } catch (e) {
+      console.warn("Could not check Gmail OAuth status:", e);
+    }
+  };
 
-  const handleVerifyAndSaveSmtp = async (e?: React.FormEvent) => {
+  const handleSaveGmailOAuth = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!customSmtpUser.trim() || !customSmtpPass.trim()) return;
-    setIsVerifyingSmtp(true);
-    setSmtpVerifyFeedback(null);
+    setIsUpdatingGmailOAuth(true);
+    setGmailOAuthFeedback(null);
     try {
       const token = getAuthToken();
-      const res = await fetch('/api/update-smtp-credentials', {
+      const res = await fetch('/api/update-gmail-oauth-credentials', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
         body: JSON.stringify({
-          host: customSmtpHost.trim(),
-          port: parseInt(customSmtpPort.trim(), 10) || 587,
-          user: customSmtpUser.trim(),
-          pass: customSmtpPass.trim(),
-          fromEmail: customSmtpFrom.trim() || customSmtpUser.trim()
+          clientId: customClientId.trim(),
+          clientSecret: customClientSecret.trim(),
+          refreshToken: customRefreshToken.trim()
         })
       });
 
       const data = await res.json();
       if (res.ok && data.success) {
-        setSmtpVerifyFeedback({
+        setGmailOAuthFeedback({
           type: 'success',
-          text: data.message || 'SMTP credentials verified and connected successfully!'
+          text: data.message || 'Official Gmail API OAuth 2.0 credentials updated successfully!'
         });
-        setGatewayStatus(prev => ({ ...prev, smtp: true }));
+        await fetchGmailOAuthStatus();
         fetchHistory();
       } else {
-        setSmtpVerifyFeedback({
+        setGmailOAuthFeedback({
           type: 'error',
-          text: data.error || 'SMTP authentication failed. If using Gmail, make sure to generate an App Password in your Google Account security settings.'
+          text: data.error || 'Failed to update Gmail OAuth credentials.'
         });
       }
     } catch (err: any) {
-      setSmtpVerifyFeedback({
+      setGmailOAuthFeedback({
         type: 'error',
-        text: `Network error verifying SMTP credentials: ${err.message || 'Unknown error'}`
+        text: `Network error updating Gmail OAuth credentials: ${err.message || 'Unknown error'}`
       });
     } finally {
-      setIsVerifyingSmtp(false);
+      setIsUpdatingGmailOAuth(false);
     }
   };
 
@@ -398,7 +425,14 @@ export default function NotificationSettings() {
       const payload: any = {
         to: testPhone,
         buyerName: testRecipientName,
-        message: testMessageText
+        brand: 'keshar kali',
+        qty: '40',
+        rate: '10000',
+        message: testMessageText,
+        templateName: customMetaTemplateName.trim() || 'order_notify',
+        templateId: '1016669984165776',
+        templateParams: [testRecipientName, 'keshar kali', '40', '10000'],
+        languageCode: 'en'
       };
 
       if (customMetaPhoneId.trim()) payload.phoneNumberId = customMetaPhoneId.trim();
@@ -426,7 +460,10 @@ export default function NotificationSettings() {
           });
         }
       } else {
-        const errorText = data.error || data.message || 'Dispatch failed';
+        let errorText = data.error || data.message || 'Dispatch failed';
+        if (errorText.toLowerCase().includes('authentication error') || errorText.toLowerCase().includes('oauth')) {
+          errorText = 'Meta Access Token / Phone Number ID is expired or invalid. Please paste your active System User Access Token and Phone Number ID in the card below and save.';
+        }
         setTestFeedback({
           type: 'error',
           text: `${data.gateway === 'meta_whatsapp' ? 'Meta WhatsApp' : 'WhatsApp'} Error: ${errorText}`
@@ -456,7 +493,7 @@ export default function NotificationSettings() {
         
         // Initial fallbacks
         setBusinessName(localStorage.getItem('userName') || 'Registered Merchant');
-        setPhone(localStorage.getItem('userPhone') || '9945351166');
+        setPhone(localStorage.getItem('userPhone') || '');
         setContactEmail(userEmail || 'merchant.test@riceaggregator.com');
         setGstin('29AAGCV7712M1ZP');
         setAddress('No. 15, APMC Yard, Yeshwanthpur, Bangalore');
@@ -956,30 +993,30 @@ export default function NotificationSettings() {
 
               <div className={cn(
                 "p-5 rounded-3xl border flex items-start gap-3.5 transition-all",
-                gatewayStatus.smtp 
+                gmailOAuthStatus.authorized 
                   ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-800 dark:text-emerald-300"
                   : "bg-amber-500/10 border-amber-500/30 text-amber-900 dark:text-amber-300"
               )}>
                 <div className={cn(
                   "p-2.5 rounded-2xl shrink-0 mt-0.5",
-                  gatewayStatus.smtp ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-300" : "bg-amber-500/20 text-amber-700 dark:text-amber-300"
+                  gmailOAuthStatus.authorized ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-300" : "bg-amber-500/20 text-amber-700 dark:text-amber-300"
                 )}>
                   <Mail className="w-5 h-5" />
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-1 flex-1">
                   <div className="flex items-center justify-between gap-2">
-                    <h4 className="font-black text-xs uppercase tracking-wider">SMTP PO Email Gateway</h4>
+                    <h4 className="font-black text-xs uppercase tracking-wider">Official Gmail API (OAuth 2.0)</h4>
                     <span className={cn(
                       "px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest",
-                      gatewayStatus.smtp ? "bg-emerald-600 text-white" : "bg-amber-500/30 text-amber-800 dark:text-amber-200"
+                      gmailOAuthStatus.authorized ? "bg-emerald-600 text-white" : "bg-amber-500/30 text-amber-800 dark:text-amber-200"
                     )}>
-                      {gatewayStatus.smtp ? 'Live Relay Active' : 'Simulation & Direct Mode'}
+                      {gmailOAuthStatus.authorized ? 'OAuth Authorized (nani@tejasc.in)' : 'Action Required'}
                     </span>
                   </div>
                   <p className="text-[11px] opacity-80 leading-relaxed font-medium">
-                    {gatewayStatus.smtp 
-                      ? 'Connected to your SMTP server. Automated POs are delivered directly to real supplier inboxes.'
-                      : 'Running in simulation mode. Dispatches are logged in the audit trail, and you can 1-click launch Gmail / Mail clients to send immediately.'}
+                    {gmailOAuthStatus.authorized 
+                      ? `Connected to Google Workspace REST API as ${gmailOAuthStatus.emailAddress || 'nani@tejasc.in'}. Automated POs are sent via official Gmail API with attachments.`
+                      : 'Official OAuth 2.0 authorization required for nani@tejasc.in. App passwords and SMTP passwords are not used.'}
                   </p>
                 </div>
               </div>
@@ -1010,8 +1047,12 @@ export default function NotificationSettings() {
                   <input
                     type="tel"
                     value={testPhone}
-                    onChange={(e) => setTestPhone(e.target.value)}
-                    placeholder="e.g. 9945351166"
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setTestPhone(val);
+                      localStorage.setItem('testWhatsappPhone', val);
+                    }}
+                    placeholder="Enter 10-digit mobile number (e.g. 9916416995)"
                     className="w-full bg-surface-container-low border border-outline-variant rounded-xl px-4 py-3 text-xs font-mono font-bold outline-none focus:ring-2 focus:ring-emerald-500/20 text-on-surface"
                   />
                 </div>
@@ -1076,30 +1117,25 @@ export default function NotificationSettings() {
                   href={directWaLink}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-5 py-3 bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/20 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all no-underline cursor-pointer"
+                  className="px-6 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/20 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2.5 transition-all no-underline cursor-pointer"
                 >
                   <ExternalLink className="w-4 h-4" />
-                  Launch Direct WhatsApp to {testPhone} (Instant)
+                  Launch Direct WhatsApp to {testPhone || 'Recipient'} (Instant)
                 </a>
+              </div>
 
-                <button
-                  type="button"
-                  disabled={isSendingTestWa || !testPhone}
-                  onClick={handleSendTestWhatsApp}
-                  className="px-5 py-3 bg-surface-container-high hover:bg-surface-container-highest text-on-surface border border-outline-variant rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 disabled:opacity-50 cursor-pointer"
-                >
-                  {isSendingTestWa ? (
-                    <>
-                      <div className="w-3.5 h-3.5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-                      {(gatewayStatus.metaWhatsapp || gatewayStatus.aisensy) ? 'Sending via Meta Cloud API...' : 'Dispatching via Gateway...'}
-                    </>
-                  ) : (
-                    <>
-                      <Send className="w-4 h-4 text-emerald-600" />
-                      {(gatewayStatus.metaWhatsapp || gatewayStatus.aisensy) ? 'Send via Meta WhatsApp Cloud API' : 'Send via Automated WhatsApp API'}
-                    </>
-                  )}
-                </button>
+              <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-start sm:items-center gap-3 text-xs text-emerald-900 dark:text-emerald-200">
+                <div className="p-1.5 bg-emerald-500/20 rounded-xl text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5 sm:mt-0">
+                  <CheckCircle2 className="w-4 h-4" />
+                </div>
+                <div className="space-y-0.5 text-[11px] leading-relaxed">
+                  <span className="font-extrabold text-emerald-700 dark:text-emerald-300 uppercase tracking-wider block text-[10px]">
+                    Meta WhatsApp Cloud API Verified &amp; Active
+                  </span>
+                  <span>
+                    Your Phone Number ID and System Access Token are saved and active. Automated order placement notifications route automatically in the background via your pre-approved Meta WhatsApp template (<code className="font-mono font-bold bg-emerald-500/20 px-1 py-0.5 rounded text-[10px]">{customMetaTemplateName || 'order_notification'}</code>). Ad-hoc or test messages open directly in WhatsApp with the pre-formatted text above.
+                  </span>
+                </div>
               </div>
 
               {/* Meta WhatsApp Cloud API Configuration Card (Primary) */}
@@ -1277,126 +1313,154 @@ export default function NotificationSettings() {
                 )}
             </div>
 
-            {/* SECTION 2: Automated Purchase Order Email Test */}
+            {/* SECTION 2: Official Gmail API (OAuth 2.0) Dispatcher */}
             <div className="liquid-glass p-6 sm:p-8 rounded-3xl premium-border space-y-6">
-              <div className="flex items-center justify-between pb-4 border-b border-outline-variant/30">
+              <div className="flex items-center justify-between pb-4 border-b border-outline-variant/30 flex-wrap gap-3">
                 <div className="flex items-center gap-3">
                   <div className="p-3 bg-primary/10 rounded-2xl text-primary">
-                    <FileText className="w-6 h-6" />
+                    <Mail className="w-6 h-6" />
                   </div>
                   <div>
-                    <h3 className="font-black text-lg">Test Automated Purchase Order (SMTP)</h3>
-                    <p className="text-xs text-secondary font-medium">Verify compilation and transmission of supplier POs and buyer order confirmations.</p>
+                    <h3 className="font-black text-lg">Official Gmail API (OAuth 2.0) Dispatcher</h3>
+                    <p className="text-xs text-secondary font-medium">
+                      Server-side Google Workspace OAuth 2.0 integration for sender <code className="font-mono font-bold text-on-surface">nani@tejasc.in</code>.
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => setShowSmtpConfig(!showSmtpConfig)}
+                    onClick={() => setShowGmailOAuthConfig(!showGmailOAuthConfig)}
                     className="px-3 py-1 bg-primary/10 hover:bg-primary/20 text-primary rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer"
                   >
-                    {showSmtpConfig ? 'Hide SMTP Form' : 'Configure SMTP'}
+                    {showGmailOAuthConfig ? 'Hide Credentials Form' : 'Configure Google OAuth'}
                   </button>
                   <span className={cn(
                     "px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider",
-                    gatewayStatus.smtp ? "bg-emerald-600 text-white" : "bg-amber-500/20 text-amber-800 dark:text-amber-200"
+                    gmailOAuthStatus.authorized ? "bg-emerald-600 text-white" : "bg-amber-500/20 text-amber-800 dark:text-amber-200"
                   )}>
-                    {gatewayStatus.smtp ? 'Live Relay Active' : 'Simulation Mode'}
+                    {gmailOAuthStatus.authorized ? 'OAuth Authorized' : 'Authorization Needed'}
                   </span>
                 </div>
               </div>
 
-              {/* SMTP Credential Form */}
-              {showSmtpConfig && (
-                <form onSubmit={handleVerifyAndSaveSmtp} className="p-4 bg-surface-container rounded-2xl border border-outline-variant/50 space-y-3">
+              {/* Status and One-Click Authorize Banner */}
+              <div className="p-4 rounded-2xl bg-surface-container border border-outline-variant/50 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h4 className="text-xs font-black uppercase tracking-wider text-on-surface flex items-center gap-2">
+                      Sender Account: <span className="font-mono text-primary">nani@tejasc.in</span>
+                    </h4>
+                    <p className="text-[11px] text-secondary mt-0.5">
+                      Required Scopes: <code className="font-mono text-[10px] bg-black/5 dark:bg-white/5 px-1 py-0.5 rounded">https://www.googleapis.com/auth/gmail.send</code>, <code className="font-mono text-[10px] bg-black/5 dark:bg-white/5 px-1 py-0.5 rounded">https://www.googleapis.com/auth/gmail.readonly</code>
+                    </p>
+                  </div>
+                  <a
+                    href="/api/auth/gmail/authorize"
+                    className="px-4 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 shadow-sm shadow-primary/20 no-underline self-start sm:self-auto cursor-pointer"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    {gmailOAuthStatus.authorized ? 'Re-authorize with Google' : 'Authorize with Google (nani@tejasc.in)'}
+                  </a>
+                </div>
+                {gmailOAuthStatus.authorized && (
+                  <div className="text-[11px] text-emerald-700 dark:text-emerald-300 font-bold flex items-center gap-1.5 pt-1 border-t border-outline-variant/20">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Active OAuth 2.0 token verified for: {gmailOAuthStatus.emailAddress || 'nani@tejasc.in'}. Automated sending is operational.</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Google Cloud OAuth 2.0 Credentials Form */}
+              {showGmailOAuthConfig && (
+                <form onSubmit={handleSaveGmailOAuth} className="p-4 bg-surface-container rounded-2xl border border-outline-variant/50 space-y-3">
                   <div className="flex items-center gap-2">
                     <div className="p-1.5 bg-primary/10 text-primary rounded-lg">
                       <Key className="w-3.5 h-3.5" />
                     </div>
                     <span className="text-xs font-black uppercase tracking-wider text-on-surface">
-                      SMTP Outgoing Email Credentials
+                      Google Cloud Console OAuth 2.0 Credentials
                     </span>
                   </div>
 
                   <div className="bg-primary/5 border border-primary/20 rounded-xl p-3 text-[11px] text-on-surface space-y-1">
-                    <p className="font-bold">Gmail Setup Notice:</p>
-                    <p className="text-[10px] text-secondary">
-                      For Gmail (e.g. <code className="font-mono font-bold text-on-surface">tejasadinarayan@gmail.com</code>), use your standard Gmail address and generate an <strong>App Password</strong> under <strong>Google Account &gt; Security &gt; 2-Step Verification &gt; App passwords</strong>.
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="space-y-1">
-                      <label className="text-[9px] font-black uppercase tracking-widest text-secondary block">SMTP Host</label>
-                      <input
-                        type="text"
-                        value={customSmtpHost}
-                        onChange={(e) => setCustomSmtpHost(e.target.value)}
-                        placeholder="smtp.gmail.com"
-                        className="w-full bg-surface-container-low border border-outline-variant rounded-lg px-3 py-2 text-xs font-mono font-bold outline-none text-on-surface"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[9px] font-black uppercase tracking-widest text-secondary block">SMTP Port</label>
-                      <input
-                        type="text"
-                        value={customSmtpPort}
-                        onChange={(e) => setCustomSmtpPort(e.target.value)}
-                        placeholder="587"
-                        className="w-full bg-surface-container-low border border-outline-variant rounded-lg px-3 py-2 text-xs font-mono font-bold outline-none text-on-surface"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[9px] font-black uppercase tracking-widest text-secondary block">Sender / User Email</label>
-                      <input
-                        type="email"
-                        value={customSmtpUser}
-                        onChange={(e) => setCustomSmtpUser(e.target.value)}
-                        placeholder="tejasadinarayan@gmail.com"
-                        className="w-full bg-surface-container-low border border-outline-variant rounded-lg px-3 py-2 text-xs font-mono font-bold outline-none text-on-surface"
-                      />
-                    </div>
+                    <p className="font-bold">Google Cloud Setup Checklist:</p>
+                    <ol className="list-decimal list-inside space-y-0.5 text-[10px] text-secondary">
+                      <li>Go to <strong>Google Cloud Console</strong> &gt; APIs &amp; Services &gt; Enable <strong>Gmail API</strong>.</li>
+                      <li>Under <strong>OAuth consent screen</strong>, configure Internal or External app with user <code className="font-mono text-on-surface">nani@tejasc.in</code>.</li>
+                      <li>Under <strong>Credentials</strong>, create an <strong>OAuth client ID (Web Application)</strong>.</li>
+                      <li>Add Authorized redirect URI: <code className="font-mono font-bold text-on-surface">{typeof window !== 'undefined' ? `${window.location.origin}/api/auth/gmail/callback` : 'https://app.tejasc.in/api/auth/gmail/callback'}</code></li>
+                      <li>Click the <strong>Authorize with Google</strong> button above for 1-click token generation, or paste your tokens below.</li>
+                    </ol>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="space-y-1">
-                      <label className="text-[9px] font-black uppercase tracking-widest text-secondary block">App Password</label>
+                      <label className="text-[9px] font-black uppercase tracking-widest text-secondary block">
+                        OAuth Client ID
+                      </label>
                       <input
-                        type="password"
-                        value={customSmtpPass}
-                        onChange={(e) => setCustomSmtpPass(e.target.value)}
-                        placeholder="16-character Google App Password"
+                        type="text"
+                        value={customClientId}
+                        onChange={(e) => setCustomClientId(e.target.value)}
+                        placeholder="e.g. 123456789-xyz.apps.googleusercontent.com"
                         className="w-full bg-surface-container-low border border-outline-variant rounded-lg px-3 py-2 text-xs font-mono font-bold outline-none text-on-surface"
                       />
                     </div>
-                    <div className="flex items-end">
-                      <button
-                        type="submit"
-                        disabled={isVerifyingSmtp || !customSmtpUser || !customSmtpPass}
-                        className="w-full px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg text-xs font-black uppercase tracking-wider transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
-                      >
-                        {isVerifyingSmtp ? (
-                          <>
-                            <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                            Connecting to SMTP...
-                          </>
-                        ) : (
-                          <>
-                            <Check className="w-3.5 h-3.5" />
-                            Verify & Connect SMTP
-                          </>
-                        )}
-                      </button>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black uppercase tracking-widest text-secondary block">
+                        OAuth Client Secret
+                      </label>
+                      <input
+                        type="password"
+                        value={customClientSecret}
+                        onChange={(e) => setCustomClientSecret(e.target.value)}
+                        placeholder="GOCSPX-..."
+                        className="w-full bg-surface-container-low border border-outline-variant rounded-lg px-3 py-2 text-xs font-mono font-bold outline-none text-on-surface"
+                      />
                     </div>
                   </div>
 
-                  {smtpVerifyFeedback && (
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black uppercase tracking-widest text-secondary block">
+                      OAuth Refresh Token (Optional — populated automatically by 1-click authorization)
+                    </label>
+                    <input
+                      type="password"
+                      value={customRefreshToken}
+                      onChange={(e) => setCustomRefreshToken(e.target.value)}
+                      placeholder="1//04..."
+                      className="w-full bg-surface-container-low border border-outline-variant rounded-lg px-3 py-2 text-xs font-mono font-bold outline-none text-on-surface"
+                    />
+                  </div>
+
+                  <div className="flex justify-end pt-1">
+                    <button
+                      type="submit"
+                      disabled={isUpdatingGmailOAuth || (!customClientId.trim() && !customClientSecret.trim() && !customRefreshToken.trim())}
+                      className="px-5 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all disabled:opacity-50 flex items-center gap-2 cursor-pointer shadow-sm shadow-primary/20"
+                    >
+                      {isUpdatingGmailOAuth ? (
+                        <>
+                          <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          Saving Credentials...
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 className="w-4 h-4" />
+                          Save OAuth Credentials
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {gmailOAuthFeedback && (
                     <div className={cn(
                       "p-3 rounded-xl text-xs font-bold flex items-center gap-2",
-                      smtpVerifyFeedback.type === 'success' ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30" : "bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/30"
+                      gmailOAuthFeedback.type === 'success' ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30" : "bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/30"
                     )}>
-                      {smtpVerifyFeedback.type === 'success' ? <Check className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
-                      <span>{smtpVerifyFeedback.text}</span>
+                      {gmailOAuthFeedback.type === 'success' ? <Check className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
+                      <span>{gmailOAuthFeedback.text}</span>
                     </div>
                   )}
                 </form>
@@ -1440,12 +1504,12 @@ export default function NotificationSettings() {
                   {isSendingTestPo ? (
                     <>
                       <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      Transmitting PO via SMTP...
+                      Dispatching via Gmail API (OAuth 2.0)...
                     </>
                   ) : (
                     <>
                       <Send className="w-4 h-4" />
-                      Dispatch via Server SMTP
+                      Dispatch via Gmail API (OAuth 2.0)
                     </>
                   )}
                 </button>

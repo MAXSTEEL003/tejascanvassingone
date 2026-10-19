@@ -1,10 +1,24 @@
+import path from "path";
+import fs from "fs";
+import { fileURLToPath } from "url";
 import dotenv from "dotenv";
-dotenv.config();
+
+const currentDir = typeof __dirname !== "undefined" ? __dirname : (import.meta.url ? path.dirname(fileURLToPath(import.meta.url)) : process.cwd());
+
+const envCandidates = [
+  path.join(process.cwd(), ".env"),
+  path.join(process.cwd(), "tejascanvassingone-main", ".env"),
+  path.join(currentDir, ".env"),
+  path.join(currentDir, "..", ".env"),
+];
+for (const envFile of envCandidates) {
+  if (fs.existsSync(envFile)) {
+    dotenv.config({ path: envFile, override: true });
+  }
+}
 
 import express from "express";
 import http from "http";
-import path from "path";
-import fs from "fs";
 import app from "./api/index.ts";
 
 // Process-level unhandled exception safety
@@ -199,3 +213,5 @@ startServer().catch((err) => {
   console.error("Fatal error starting server:", err);
   process.exit(1);
 });
+
+// reload 1792424199977

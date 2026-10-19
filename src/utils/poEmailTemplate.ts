@@ -7,7 +7,26 @@ export interface BuyerProfileData {
   email: string;
 }
 
-export const DEFAULT_BUYER_PROFILES: Record<string, BuyerProfileData> = {};
+export const DEFAULT_BUYER_PROFILES: Record<string, BuyerProfileData> = {
+  'UPLETA TRADERS SALES DEPOT': {
+    address: '6TH MAIN, 6TH MAIN ,APMC YARD,YESHWANTHPUR,BAMGLORE-560022, BANGLORE, KARNATAKA - 560022',
+    gstin: '29AAFFU0240D2ZI',
+    phone: '9972786170',
+    email: '',
+  },
+  'UPLETA TRADERS': {
+    address: '6TH MAIN, 6TH MAIN ,APMC YARD,YESHWANTHPUR,BAMGLORE-560022, BANGLORE, KARNATAKA - 560022',
+    gstin: '29AAFFU0240D2ZI',
+    phone: '9972786170',
+    email: '',
+  },
+  'SAI RAM TRADERS': {
+    address: 'NO 127/2 1ST FLOOR 4TH MAIN ROAD APMC YARD YESHWANTHPUR, BANGALORE, KARNATAKA - 560022',
+    gstin: '29ACQPB3799R1ZF',
+    phone: '9845148858',
+    email: '',
+  },
+};
 
 export const resolveBuyerProfile = (buyerName: string): BuyerProfileData => {
   const norm = (buyerName || '').trim().toUpperCase()
@@ -15,7 +34,7 @@ export const resolveBuyerProfile = (buyerName: string): BuyerProfileData => {
     .replace(/\.$/, '');
 
   try {
-    const saved = localStorage.getItem('stakeholders_v2');
+    const saved = typeof window !== 'undefined' ? localStorage.getItem('stakeholders_v2') : null;
     if (saved) {
       const parsed = JSON.parse(saved);
       const buyers = parsed.buyers || [];
@@ -23,12 +42,12 @@ export const resolveBuyerProfile = (buyerName: string): BuyerProfileData => {
         const bName = (b.name || '').trim().toUpperCase();
         return bName === norm || bName.includes(norm) || norm.includes(bName);
       });
-      if (matched && (matched.address || matched.gstin || matched.email)) {
+      if (matched && (matched.address || matched.gstin || matched.phone || matched.email)) {
         return {
-          address: matched.address || '88th Main, APMC Yard, Yeshwanthpur, Bangalore, Karnataka - 560022',
-          gstin: matched.gstin || '29AAUBJ618M1Z8',
-          phone: matched.phone || '9840618506',
-          email: matched.email || `${norm.toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`,
+          address: matched.address || 'APMC Yard, Yeshwanthpur, Bangalore, Karnataka - 560022',
+          gstin: matched.gstin || '',
+          phone: matched.phone || '',
+          email: matched.email || '',
         };
       }
     }
@@ -45,10 +64,10 @@ export const resolveBuyerProfile = (buyerName: string): BuyerProfileData => {
   }
 
   return {
-    address: '88th Main, APMC Yard, Yeshwanthpur, Bangalore, Karnataka - 560022',
-    gstin: '29AAUBJ618M1Z8',
-    phone: '9840618506',
-    email: `${norm.toLowerCase().replace(/[^a-z0-9]/g, '') || 'buyer'}@gmail.com`,
+    address: 'APMC Yard, Yeshwanthpur, Bangalore, Karnataka - 560022',
+    gstin: '',
+    phone: '',
+    email: '',
   };
 };
 
@@ -58,7 +77,7 @@ export const resolveSupplierProfile = (supplierName: string): { email: string; p
     .replace(/\.$/, '');
 
   try {
-    const saved = localStorage.getItem('stakeholders_v2');
+    const saved = typeof window !== 'undefined' ? localStorage.getItem('stakeholders_v2') : null;
     if (saved) {
       const parsed = JSON.parse(saved);
       const suppliers = parsed.suppliers || [];
@@ -82,6 +101,8 @@ export const resolveSupplierProfile = (supplierName: string): { email: string; p
   const lookup: Record<string, { email: string; phone: string }> = {
     'SRI SAI TEJA RICE TECH': { email: 'saitejaricetech@gmail.com', phone: '9440188941' },
     'SRI SAI TEJA': { email: 'saitejaricetech@gmail.com', phone: '9440188941' },
+    'SAI TEJA PARBOILED RICE MILLS (P) LTD': { email: 'saitejapbrm@gmail.com', phone: '9440188941' },
+    'SAI TEJA PARBOILED RICE MILLS': { email: 'saitejapbrm@gmail.com', phone: '9440188941' },
     'RUDRA AGRO MILLS': { email: 'rudraagro@gmail.com', phone: '9840192831' },
     'BHARAT GRAIN EXPORTS': { email: 'bharatgrains@gmail.com', phone: '9740112938' },
     'DECCAN MILLERS': { email: 'deccanmillers@gmail.com', phone: '9940177263' }
@@ -98,30 +119,46 @@ export const resolveSupplierProfile = (supplierName: string): { email: string; p
 };
 
 export const formatPoDate = (dateVal: any): string => {
+  const fullMonthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+
   if (!dateVal) {
     const d = new Date();
-    const day = String(d.getDate()).padStart(2, '0');
-    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return `${day}-${monthNames[d.getMonth()]}-${d.getFullYear()}`;
+    return `${d.getDate()} ${fullMonthNames[d.getMonth()]}, ${d.getFullYear()}`;
   }
 
   const clean = String(dateVal).trim();
-  if (/^\d{1,2}-[A-Za-z]{3}-\d{4}$/.test(clean)) {
-    return clean;
+
+  // If already formatted like "19 October, 2026" or "19 October 2026"
+  if (/^\d{1,2}\s+[A-Za-z]+,?\s+\d{4}$/.test(clean)) {
+    const parts = clean.replace(',', '').split(/\s+/);
+    return `${parts[0]} ${parts[1]}, ${parts[2]}`;
   }
 
-  let parsed: Date;
-  if (/^\d{2}\/\d{2}\/\d{4}$/.test(clean)) {
+  // If "19-Oct-2026" or "19-October-2026"
+  const dashMatch = clean.match(/^(\d{1,2})-([A-Za-z]{3,9})-(\d{4})$/);
+  if (dashMatch) {
+    const day = parseInt(dashMatch[1], 10);
+    const monthStr = dashMatch[2].toLowerCase();
+    const year = dashMatch[3];
+    const monthIdx = fullMonthNames.findIndex(m => m.toLowerCase().startsWith(monthStr.slice(0, 3)));
+    const monthName = monthIdx >= 0 ? fullMonthNames[monthIdx] : dashMatch[2];
+    return `${day} ${monthName}, ${year}`;
+  }
+
+  // If "DD/MM/YYYY"
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(clean)) {
     const [dd, mm, yyyy] = clean.split('/');
-    parsed = new Date(Number(yyyy), Number(mm) - 1, Number(dd));
-  } else {
-    parsed = new Date(clean);
+    const monthIdx = Math.max(0, Math.min(11, parseInt(mm, 10) - 1));
+    return `${parseInt(dd, 10)} ${fullMonthNames[monthIdx]}, ${yyyy}`;
   }
 
+  // Fallback to standard Date parsing
+  const parsed = new Date(clean);
   if (!isNaN(parsed.getTime())) {
-    const day = String(parsed.getDate()).padStart(2, '0');
-    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return `${day}-${monthNames[parsed.getMonth()]}-${parsed.getFullYear()}`;
+    return `${parsed.getDate()} ${fullMonthNames[parsed.getMonth()]}, ${parsed.getFullYear()}`;
   }
 
   return clean;
@@ -131,15 +168,18 @@ export const formatPoDate = (dateVal: any): string => {
  * Generates the EXACT HTML layout requested by the user:
  * - TC Blue Square Logo + "Tejas Canvassing" & "Bangalore" header
  * - Divider line
- * - "DEAR [SUPPLIER NAME],"
+ * - "Dear [SUPPLIER NAME],"
  * - "Today's orders:"
- * - Tabular grid: [DATE | BUYER | PRODUCT | QTY (QUINTALS) | RATE (PER QTL.) | DETAILS]
- * - Footer protocol text
+ * - Tabular grid: [Date | Buyer | Product | Qty (quintals) | Rate (per qtl.) | Details]
+ * - Clean format directly rendered in the email body (no PDF attachment)
  */
 export const generateSupplierPOEmailHtml = (
   supplierName: string,
   order: any,
-  subOrders: any[]
+  subOrders: any[],
+  options?: {
+    trackingPixelUrl?: string;
+  }
 ): string => {
   const normSupplier = sanitizeSupplierName(supplierName, 'DIRECT MILL').toUpperCase();
 
@@ -148,9 +188,9 @@ export const generateSupplierPOEmailHtml = (
     : [{
         id: order?.id || 'PO-1',
         buyer: order?.buyer || 'Authorized Merchant',
-        product: order?.product || order?.items?.replace(/\(\d+.*$/, '').trim() || 'KESHAR KALI',
-        qty: parseFloat(order?.qty || order?.items?.match(/\d+/)?.[0] || '80'),
-        rate: parseFloat(order?.rate || '8400') || 8400,
+        product: order?.product || order?.items?.replace(/\(\d+.*$/, '').trim() || 'JMR KNM STEAM',
+        qty: parseFloat(order?.qty || order?.items?.match(/\d+/)?.[0] || '20.8'),
+        rate: parseFloat(order?.rate || '7950') || 7950,
         date: order?.date || new Date(),
         loadingDays: order?.loadingDays !== undefined ? order.loadingDays : 0,
         unloadingPoint: order?.unloadingPoint || 'shop',
@@ -160,80 +200,104 @@ export const generateSupplierPOEmailHtml = (
     const buyerName = sub.buyer || order?.buyer || 'Authorized Merchant';
     const profile = resolveBuyerProfile(buyerName);
     const dateFormatted = formatPoDate(sub.date || order?.date);
-    const product = (sub.product || order?.product || 'KESHAR KALI').toUpperCase();
-    const qty = sub.qty !== undefined ? sub.qty : 80;
-    const rate = sub.rate !== undefined ? sub.rate : 8400;
+    
+    // Product formatting: multi-word products split onto multiple lines as in reference screenshot
+    const rawProduct = (sub.product || order?.product || sub.items?.replace(/\(\d+.*$/, '') || 'JMR KNM STEAM')
+      .toString()
+      .trim()
+      .replace(/<br\s*\/?>/gi, ' ');
+    const productFormatted = rawProduct.split(/[\s\n]+/).join('<br/>').toUpperCase();
+
+    const qty = sub.qty !== undefined ? sub.qty : (sub.totalQty !== undefined ? sub.totalQty : 20.8);
+    const rate = sub.rate !== undefined ? sub.rate : 7950;
     const loadingDays = sub.loadingDays !== undefined ? sub.loadingDays : 0;
     const unloadingPoint = sub.unloadingPoint || 'shop';
 
+    const phoneHtml = profile.phone 
+      ? `<a href="tel:${profile.phone}" style="color: #0070f3; text-decoration: none;">${profile.phone}</a>` 
+      : '';
+    const emailHtml = profile.email 
+      ? `<a href="mailto:${profile.email}" style="color: #0070f3; text-decoration: none;">${profile.email}</a>` 
+      : '';
+
     return `
-      <tr style="background-color: #ffffff;">
-        <td style="padding: 12px 14px; border: 1px solid #e5e7eb; vertical-align: top; color: #374151; font-weight: 500; font-size: 12px; white-space: nowrap;">
+      <tr>
+        <td style="padding: 12px 14px; border: 1px solid #b0b0b0; vertical-align: top; text-align: left; font-size: 13px; line-height: 1.4; color: #000000; width: 14%;">
           ${dateFormatted}
         </td>
-        <td style="padding: 12px 14px; border: 1px solid #e5e7eb; vertical-align: top; text-align: left;">
-          <div style="font-weight: 700; font-size: 13px; color: #111827; text-transform: uppercase; margin-bottom: 4px;">${buyerName}</div>
-          <div style="font-size: 11px; color: #64748b; line-height: 1.4; margin-bottom: 8px;">${profile.address}</div>
-          <div style="border-top: 1px solid #f1f5f9; padding-top: 6px; font-size: 11px; color: #374151; line-height: 1.5;">
-            <div><strong>GSTIN:</strong> ${profile.gstin}</div>
-            <div><strong>Phone:</strong> ${profile.phone}</div>
-            <div><strong>Email:</strong> <a href="mailto:${profile.email}" style="color: #0070f3; text-decoration: none;">${profile.email}</a></div>
+        <td style="padding: 12px 14px; border: 1px solid #b0b0b0; vertical-align: top; text-align: left; font-size: 13px; line-height: 1.45; color: #000000; width: 42%;">
+          <div style="font-weight: bold; margin-bottom: 4px; text-transform: uppercase;">${buyerName}</div>
+          <div style="margin-bottom: 6px; font-size: 11px; line-height: 1.4; color: #333333;">${profile.address}</div>
+          <div style="font-size: 11.5px; line-height: 1.45;">
+            <div><strong>GSTIN:</strong> ${profile.gstin || ''}</div>
+            <div><strong>Phone:</strong> ${phoneHtml}</div>
+            <div><strong>Email:</strong> ${emailHtml}</div>
           </div>
         </td>
-        <td style="padding: 12px 14px; border: 1px solid #e5e7eb; vertical-align: top; font-weight: 700; color: #111827; text-transform: uppercase; font-size: 12px;">
-          ${product}
+        <td style="padding: 12px 14px; border: 1px solid #b0b0b0; vertical-align: top; text-align: left; font-size: 13px; line-height: 1.4; color: #000000; width: 14%;">
+          ${productFormatted}
         </td>
-        <td style="padding: 12px 14px; border: 1px solid #e5e7eb; vertical-align: top; text-align: right; font-weight: 700; color: #111827; font-size: 12px;">
+        <td style="padding: 12px 14px; border: 1px solid #b0b0b0; vertical-align: top; text-align: center; font-size: 13px; color: #000000; width: 10%;">
           ${qty}
         </td>
-        <td style="padding: 12px 14px; border: 1px solid #e5e7eb; vertical-align: top; text-align: right; font-weight: 700; color: #111827; font-size: 12px;">
+        <td style="padding: 12px 14px; border: 1px solid #b0b0b0; vertical-align: top; text-align: center; font-size: 13px; color: #000000; width: 10%;">
           ${rate}
         </td>
-        <td style="padding: 12px 14px; border: 1px solid #e5e7eb; vertical-align: top; text-align: left; font-size: 11px; color: #374151; line-height: 1.5;">
-          <div>No of days for loading: <strong style="color: #0070f3;">${loadingDays}</strong></div>
-          <div style="margin-top: 4px;">Unloading Point: <strong>${unloadingPoint}</strong></div>
+        <td style="padding: 12px 14px; border: 1px solid #b0b0b0; vertical-align: top; text-align: left; font-size: 13px; line-height: 1.45; color: #000000; width: 10%;">
+          <strong>No of days for loading:</strong><br/>
+          ${loadingDays}<br/>
+          <strong>Unloading Point:</strong> ${unloadingPoint}
         </td>
       </tr>
     `;
   }).join('');
+
+  const trackingPixelHtml = options?.trackingPixelUrl ? `
+    <img src="${options.trackingPixelUrl}" width="1" height="1" alt="" style="display:none; width:1px; height:1px; border:0;" />
+  ` : '';
 
   return `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Purchase Order - Tejas Canvassing</title>
+  <title>Tejas Canvassing: New purchase orders</title>
 </head>
-<body style="margin: 0; padding: 20px; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-  <div style="max-width: 850px; margin: 0 auto; background: #ffffff; padding: 28px 32px; color: #1e293b; border-radius: 8px; border: 1px solid #e5e7eb; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+<body style="margin: 0; padding: 20px; background-color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #000000;">
+  <div style="max-width: 880px; margin: 0 auto; background-color: #ffffff; color: #000000; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
     
-    <!-- Top Header: Logo + Brand -->
-    <div style="display: table; width: 100%; border-bottom: 1px solid #e5e7eb; padding-bottom: 18px; margin-bottom: 24px;">
-      <div style="display: table-cell; vertical-align: middle; width: 50px;">
-        <div style="background-color: #0084ff; color: #ffffff; font-weight: 800; font-size: 20px; width: 44px; height: 44px; line-height: 44px; text-align: center; border-radius: 6px; font-family: sans-serif;">TC</div>
-      </div>
-      <div style="display: table-cell; vertical-align: middle; padding-left: 14px;">
-        <div style="font-size: 19px; font-weight: 700; color: #0f172a; line-height: 1.2;">Tejas Canvassing</div>
-        <div style="font-size: 12px; color: #64748b; margin-top: 2px;">Bangalore</div>
-      </div>
+    <!-- Top Header: TC Logo + Tejas Canvassing / Bangalore -->
+    <table cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 16px;">
+      <tr>
+        <td style="vertical-align: middle; padding-right: 14px; width: 48px;">
+          <div style="background-color: #0084ff; color: #ffffff; font-weight: bold; font-size: 22px; width: 48px; height: 48px; line-height: 48px; text-align: center; border-radius: 6px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">TC</div>
+        </td>
+        <td style="vertical-align: middle;">
+          <div style="font-size: 20px; font-weight: bold; color: #000000; line-height: 1.2;">Tejas Canvassing</div>
+          <div style="font-size: 14px; color: #333333; margin-top: 2px;">Bangalore</div>
+        </td>
+      </tr>
+    </table>
+
+    <!-- Horizontal Divider -->
+    <hr style="border: 0; border-top: 1px solid #999999; margin: 0 0 22px 0;" />
+
+    <!-- Salutation & Today's orders -->
+    <div style="margin-bottom: 20px; font-size: 14px; line-height: 1.6; color: #000000;">
+      <div>Dear ${normSupplier},</div>
+      <div style="margin-top: 14px;">Today's orders:</div>
     </div>
 
-    <!-- Salutation & Greeting -->
-    <div style="margin-bottom: 22px;">
-      <div style="font-size: 13.5px; font-weight: 700; color: #0f172a; letter-spacing: 0.2px; text-transform: uppercase; margin-bottom: 6px;">DEAR ${normSupplier},</div>
-      <div style="font-size: 13px; font-weight: 600; color: #64748b;">Today's orders:</div>
-    </div>
-
-    <!-- Exact Tabular Order Specification -->
-    <table style="width: 100%; border-collapse: collapse; border: 1px solid #e5e7eb; font-size: 11.5px; margin-bottom: 22px;">
+    <!-- Official Tabular Purchase Orders -->
+    <table cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; border: 1px solid #b0b0b0; font-size: 13px; color: #000000;">
       <thead>
-        <tr style="background-color: #f3f4f6; color: #374151;">
-          <th style="padding: 12px 14px; border: 1px solid #e5e7eb; text-align: left; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; width: 14%;">DATE</th>
-          <th style="padding: 12px 14px; border: 1px solid #e5e7eb; text-align: left; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; width: 38%;">BUYER</th>
-          <th style="padding: 12px 14px; border: 1px solid #e5e7eb; text-align: left; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; width: 16%;">PRODUCT</th>
-          <th style="padding: 12px 14px; border: 1px solid #e5e7eb; text-align: right; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; width: 11%;">QTY<br/>(QUINTALS)</th>
-          <th style="padding: 12px 14px; border: 1px solid #e5e7eb; text-align: right; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; width: 11%;">RATE (PER<br/>QTL.)</th>
-          <th style="padding: 12px 14px; border: 1px solid #e5e7eb; text-align: left; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; width: 16%;">DETAILS</th>
+        <tr style="background-color: #ebebeb;">
+          <th style="padding: 12px 10px; border: 1px solid #b0b0b0; text-align: center; font-weight: bold; font-size: 13px; width: 14%;">Date</th>
+          <th style="padding: 12px 10px; border: 1px solid #b0b0b0; text-align: center; font-weight: bold; font-size: 13px; width: 42%;">Buyer</th>
+          <th style="padding: 12px 10px; border: 1px solid #b0b0b0; text-align: center; font-weight: bold; font-size: 13px; width: 14%;">Product</th>
+          <th style="padding: 12px 10px; border: 1px solid #b0b0b0; text-align: center; font-weight: bold; font-size: 13px; width: 10%;">Qty<br/>(quintals)</th>
+          <th style="padding: 12px 10px; border: 1px solid #b0b0b0; text-align: center; font-weight: bold; font-size: 13px; width: 10%;">Rate<br/>(per<br/>qtl.)</th>
+          <th style="padding: 12px 10px; border: 1px solid #b0b0b0; text-align: center; font-weight: bold; font-size: 13px; width: 10%;">Details</th>
         </tr>
       </thead>
       <tbody>
@@ -241,10 +305,7 @@ export const generateSupplierPOEmailHtml = (
       </tbody>
     </table>
 
-    <!-- Footer Notice -->
-    <div style="border-top: 1px solid #f1f5f9; padding-top: 14px; font-size: 11px; color: #64748b; font-style: italic;">
-      This transaction confirmation was dynamically encoded and transmitted securely under Tejas Canvassing authorization protocols.
-    </div>
+    ${trackingPixelHtml}
 
   </div>
 </body>

@@ -35,13 +35,32 @@ export function getRegisteredSuppliers(): Array<{ id: string; name: string; phon
   try {
     const rawDel = localStorage.getItem('deleted_stakeholder_ids');
     const deletedIds: string[] = rawDel ? JSON.parse(rawDel) : [];
-    const deletedSet = new Set(deletedIds.map(id => String(id).trim().toLowerCase().replace(/^#/, '')));
+    const deletedSet = new Set(
+      deletedIds
+        .map(id => String(id).trim().toLowerCase().replace(/^#/, ''))
+        .filter(id => id !== 'sup-01' && id !== 'buy-01')
+    );
 
     const raw = localStorage.getItem('stakeholders_v2');
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed.suppliers)) {
+      if (Array.isArray(parsed.suppliers) && parsed.suppliers.length > 0) {
         return parsed.suppliers
+          .filter((s: any) => s && s.name && s.status !== 'Inactive' && !deletedSet.has(String(s.id || '').toLowerCase()))
+          .map((s: any) => ({
+            id: s.id || '',
+            name: String(s.name).trim(),
+            phone: s.phone || '',
+            email: s.email || ''
+          }));
+      }
+    }
+
+    const rawReg = localStorage.getItem('registered_suppliers');
+    if (rawReg) {
+      const parsed = JSON.parse(rawReg);
+      if (Array.isArray(parsed)) {
+        return parsed
           .filter((s: any) => s && s.name && s.status !== 'Inactive' && !deletedSet.has(String(s.id || '').toLowerCase()))
           .map((s: any) => ({
             id: s.id || '',

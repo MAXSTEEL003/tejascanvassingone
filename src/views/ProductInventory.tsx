@@ -348,14 +348,26 @@ export default function ProductInventory() {
       try {
         const rawDel = localStorage.getItem('deleted_stakeholder_ids');
         const deletedIds: string[] = rawDel ? JSON.parse(rawDel) : [];
-        const deletedSet = new Set(deletedIds.map(id => String(id).trim().toLowerCase().replace(/^#/, '')));
+        const deletedSet = new Set(
+          deletedIds
+            .map(id => String(id).trim().toLowerCase().replace(/^#/, ''))
+            .filter(id => id !== 'sup-01' && id !== 'buy-01')
+        );
 
         const cached = JSON.parse(localStorage.getItem('stakeholders_v2') || 'null');
+        const regSuppliers = JSON.parse(localStorage.getItem('registered_suppliers') || '[]');
         const cloudDocs = await getCollectionDocs('stakeholders').catch(() => []);
 
         const supSet = new Set<string>();
         if (cached && Array.isArray(cached.suppliers)) {
           cached.suppliers.forEach((s: any) => {
+            if (s && s.name && !deletedSet.has(String(s.id || '').toLowerCase())) {
+              supSet.add(s.name.trim());
+            }
+          });
+        }
+        if (Array.isArray(regSuppliers)) {
+          regSuppliers.forEach((s: any) => {
             if (s && s.name && !deletedSet.has(String(s.id || '').toLowerCase())) {
               supSet.add(s.name.trim());
             }

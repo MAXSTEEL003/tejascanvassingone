@@ -423,7 +423,7 @@ html.is-standalone .ios-notch-header {
 @media print {
   @page {
     size: A4 portrait;
-    margin: 12mm 15mm;
+    margin: 10mm;
   }
   * {
     -webkit-print-color-adjust: exact !important;
@@ -435,6 +435,27 @@ html.is-standalone .ios-notch-header {
   }
   header, nav, aside, footer, .no-print, button, input {
     display: none !important;
+  }
+
+  /* When printing with #a4-printable-po-document, hide all application UI */
+  body:has(#a4-printable-po-document) * {
+    visibility: hidden;
+  }
+  body:has(#a4-printable-po-document) #a4-printable-po-document,
+  body:has(#a4-printable-po-document) #a4-printable-po-document * {
+    visibility: visible;
+  }
+  body:has(#a4-printable-po-document) #a4-printable-po-document {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 10mm !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
   }
 }
 

@@ -29,7 +29,10 @@ export function getAuthorizedAdminGoogleEmails(): string[] {
   // Account 2: Trusted employee account
   const trustedAccount = (storedTrusted || envEmail2 || 'tejascanvassing@gmail.com').toLowerCase().trim();
 
-  return [ownerAccount, trustedAccount].filter(Boolean);
+  // Account 3: Active company admin account
+  const activeAdminAccount = 'nani@tejasc.in';
+
+  return [ownerAccount, trustedAccount, activeAdminAccount].filter(Boolean);
 }
 
 export function isAuthorizedAdminGoogleAccount(email?: string | null): boolean {
@@ -450,7 +453,9 @@ export async function loginWithServer(
     'admintejas1679',
     'owner',
     'adinarayan',
-    'tejasadinarayan@gmail.com'
+    'tejasadinarayan@gmail.com',
+    'nani@tejasc.in',
+    'nani'
   ];
   const lowerUser = cleanUser.toLowerCase();
   const isAdminTarget = roleHint === 'admin' || validAdminUsers.includes(lowerUser);

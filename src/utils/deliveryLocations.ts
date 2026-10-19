@@ -37,7 +37,7 @@ export function cleanLocationName(raw: string): string {
 
 export function getDefaultDeliveryLocations(): DeliveryLocation[] {
   const userAddress = localStorage.getItem('userAddress') || 'No. 15, APMC Yard, Yeshwanthpur, Bangalore, Karnataka - 560022';
-  const userPhone = localStorage.getItem('userPhone') || '9342380981';
+  const userPhone = localStorage.getItem('userPhone') || '';
   const userName = localStorage.getItem('userName') || 'Trade Buyer';
   const userGstin = localStorage.getItem('userGstin') || '29AAGCV7712M1ZP';
 

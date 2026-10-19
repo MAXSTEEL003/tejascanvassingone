@@ -45,17 +45,22 @@ export default function UsersManagement() {
   const [stakeholders, setStakeholders] = useState<any>(() => {
     try {
       const saved = localStorage.getItem('stakeholders_v2');
+      const regSuppliers = JSON.parse(localStorage.getItem('registered_suppliers') || '[]');
       if (saved) {
         const parsed = JSON.parse(saved);
-        const filterLegacy = (list: any[]) => (list || []).filter(item => {
-          if (!item) return false;
-          const id = String(item.id || '').toUpperCase();
-          return id !== 'SUP-01' && id !== 'BUY-01';
-        });
+        const suppliersList = Array.isArray(parsed.suppliers) && parsed.suppliers.length > 0 
+          ? parsed.suppliers 
+          : (Array.isArray(regSuppliers) ? regSuppliers : []);
         return {
-          suppliers: filterLegacy(parsed.suppliers),
-          buyers: filterLegacy(parsed.buyers),
+          suppliers: suppliersList,
+          buyers: Array.isArray(parsed.buyers) ? parsed.buyers : [],
           employees: Array.isArray(parsed.employees) ? parsed.employees : initialStakeholders.employees
+        };
+      } else if (Array.isArray(regSuppliers) && regSuppliers.length > 0) {
+        return {
+          suppliers: regSuppliers,
+          buyers: [],
+          employees: initialStakeholders.employees
         };
       }
     } catch {}
@@ -101,15 +106,44 @@ export default function UsersManagement() {
     try {
       const rawDeleted = localStorage.getItem('deleted_stakeholder_ids');
       const deletedIds: string[] = rawDeleted ? JSON.parse(rawDeleted) : [];
-      const deletedSet = new Set(deletedIds.map(id => String(id).trim().toLowerCase().replace(/^#/, '')));
+      // Clean legacy placeholder ids 'sup-01' and 'buy-01' so real stakeholders are never suppressed
+      const cleanedDeletedIds = deletedIds.filter(id => {
+        const n = String(id).trim().toLowerCase().replace(/^#/, '');
+        return n !== 'sup-01' && n !== 'buy-01';
+      });
+      if (cleanedDeletedIds.length !== deletedIds.length) {
+        localStorage.setItem('deleted_stakeholder_ids', JSON.stringify(cleanedDeletedIds));
+      }
+      const deletedSet = new Set(cleanedDeletedIds.map(id => String(id).trim().toLowerCase().replace(/^#/, '')));
 
-      // Also read local buyer registration requests
+      // Also read local buyer registration requests, registered suppliers, and legacy stakeholders
       const localBuyerRequests = JSON.parse(localStorage.getItem('buyer_registration_requests') || '[]');
+      const localSuppliers = JSON.parse(localStorage.getItem('registered_suppliers') || '[]');
+      const localStakeholdersRaw = localStorage.getItem('stakeholders');
+      let localLegacyStakeholders: any[] = [];
+      if (localStakeholdersRaw) {
+        try {
+          const parsed = JSON.parse(localStakeholdersRaw);
+          if (Array.isArray(parsed)) localLegacyStakeholders = parsed;
+          else if (parsed && typeof parsed === 'object') {
+            if (Array.isArray(parsed.suppliers)) localLegacyStakeholders.push(...parsed.suppliers);
+            if (Array.isArray(parsed.buyers)) localLegacyStakeholders.push(...parsed.buyers);
+          }
+        } catch {}
+      }
 
       const cloudStakeholders = await getCollectionDocs('stakeholders').catch(() => []);
+      const cloudSuppliers = await getCollectionDocs('suppliers').catch(() => []);
       const cloudBuyerRequests = await getCollectionDocs('buyer_registration_requests').catch(() => []);
 
-      const combinedStakeholders = [...cloudStakeholders, ...cloudBuyerRequests, ...localBuyerRequests];
+      const combinedStakeholders = [
+        ...cloudStakeholders,
+        ...cloudSuppliers,
+        ...cloudBuyerRequests,
+        ...localBuyerRequests,
+        ...localSuppliers,
+        ...localLegacyStakeholders
+      ];
 
       if (combinedStakeholders.length > 0) {
         setStakeholders((prev: any) => {
@@ -118,38 +152,64 @@ export default function UsersManagement() {
           const employees = [...(prev.employees || [])];
 
           combinedStakeholders.forEach((cs: any) => {
-            if (!cs || !cs.id) return;
+            if (!cs || (!cs.id && !cs.name)) return;
             const normId = String(cs.id || '').trim().toLowerCase().replace(/^#/, '');
-            if (deletedSet.has(normId) || normId === 'sup-01' || normId === 'buy-01') {
+            if (normId && deletedSet.has(normId)) {
               return; // Skip deleted stakeholder
             }
 
-            const type = cs.type || 'buyers';
-            if (type === 'buyers') {
-              const idx = buyers.findIndex((b: any) => b.id === cs.id || (cs.email && b.email?.toLowerCase() === cs.email?.toLowerCase()));
+            const rawType = String(cs.type || cs.category || cs.role || '').toLowerCase();
+            const idUpper = String(cs.id || '').toUpperCase();
+
+            const isSupplier = rawType === 'suppliers' || rawType === 'supplier' || idUpper.startsWith('SUP') || idUpper.startsWith('CLD-SUP');
+            const isEmployee = rawType === 'employees' || rawType === 'employee' || idUpper.startsWith('EMP') || idUpper.startsWith('CLD-EMP');
+
+            if (isSupplier) {
+              const idx = suppliers.findIndex((s: any) => 
+                (cs.id && s.id === cs.id) || 
+                (cs.email && cs.email.trim() && s.email && s.email.trim().toLowerCase() === cs.email.trim().toLowerCase()) ||
+                (cs.name && cs.name.trim() && s.name && s.name.trim().toLowerCase() === cs.name.trim().toLowerCase())
+              );
               if (idx !== -1) {
-                buyers[idx] = { ...buyers[idx], ...cs };
+                suppliers[idx] = { ...suppliers[idx], ...cs, type: 'suppliers' };
               } else {
-                buyers.unshift({ ...cs, id: cs.id || `BUY-${Date.now()}` });
+                suppliers.push({ ...cs, id: cs.id || `SUP-${Date.now()}`, type: 'suppliers' });
               }
-            } else if (type === 'suppliers') {
-              const idx = suppliers.findIndex((s: any) => s.id === cs.id || (cs.email && s.email?.toLowerCase() === cs.email?.toLowerCase()));
+            } else if (isEmployee) {
+              const idx = employees.findIndex((e: any) => 
+                (cs.id && e.id === cs.id) || 
+                (cs.email && cs.email.trim() && e.email && e.email.trim().toLowerCase() === cs.email.trim().toLowerCase()) ||
+                (cs.username && e.username && cs.username.toLowerCase() === e.username.toLowerCase())
+              );
               if (idx !== -1) {
-                suppliers[idx] = { ...suppliers[idx], ...cs };
+                employees[idx] = { ...employees[idx], ...cs, type: 'employees' };
               } else {
-                suppliers.push({ ...cs, id: cs.id || `CLD-SUP-${Date.now()}` });
+                employees.push({ ...cs, id: cs.id || `EMP-${Date.now()}`, type: 'employees' });
               }
-            } else if (type === 'employees') {
-              const idx = employees.findIndex((e: any) => e.id === cs.id || (cs.email && e.email?.toLowerCase() === cs.email?.toLowerCase()));
+            } else {
+              // Buyers
+              const idx = buyers.findIndex((b: any) => 
+                (cs.id && b.id === cs.id) || 
+                (cs.email && cs.email.trim() && b.email && b.email.trim().toLowerCase() === cs.email.trim().toLowerCase()) ||
+                (cs.name && cs.name.trim() && b.name && b.name.trim().toLowerCase() === cs.name.trim().toLowerCase())
+              );
               if (idx !== -1) {
-                employees[idx] = { ...employees[idx], ...cs };
+                buyers[idx] = { ...buyers[idx], ...cs, type: 'buyers' };
               } else {
-                employees.push({ ...cs, id: cs.id || `CLD-EMP-${Date.now()}` });
+                buyers.unshift({ ...cs, id: cs.id || `BUY-${Date.now()}`, type: 'buyers' });
               }
             }
           });
 
-          return { buyers, suppliers, employees };
+          const synced = { buyers, suppliers, employees };
+          try {
+            localStorage.setItem('stakeholders_v2', JSON.stringify(synced));
+            if (suppliers.length > 0) {
+              localStorage.setItem('registered_suppliers', JSON.stringify(suppliers));
+            }
+          } catch (e) {}
+
+          return synced;
         });
       }
     } catch (err) {
@@ -303,7 +363,31 @@ export default function UsersManagement() {
   const handleCreateStakeholder = (e: React.FormEvent) => {
     e.preventDefault();
     const prefix = newUser.category === 'suppliers' ? 'SUP' : newUser.category === 'buyers' ? 'BUY' : 'EMP';
-    const id = `${prefix}-${(stakeholders[newUser.category].length + 1).toString().padStart(2, '0')}`;
+    
+    // Calculate next sequential ID safely based on maximum existing numerical suffix
+    const existingList = stakeholders[newUser.category] || [];
+    let nextNum = 1;
+    existingList.forEach((item: any) => {
+      const match = String(item?.id || '').match(new RegExp(`^${prefix}-(\\d+)`, 'i'));
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (!isNaN(num) && num >= nextNum) {
+          nextNum = num + 1;
+        }
+      }
+    });
+    const id = `${prefix}-${nextNum.toString().padStart(2, '0')}`;
+
+    // Ensure the new ID is not blocked by stale deleted_stakeholder_ids
+    try {
+      const rawDeleted = localStorage.getItem('deleted_stakeholder_ids');
+      if (rawDeleted) {
+        const deletedIds: string[] = JSON.parse(rawDeleted);
+        const normNewId = id.trim().toLowerCase().replace(/^#/, '');
+        const cleaned = deletedIds.filter(d => String(d).trim().toLowerCase().replace(/^#/, '') !== normNewId);
+        localStorage.setItem('deleted_stakeholder_ids', JSON.stringify(cleaned));
+      }
+    } catch (e) {}
     
     const isEmployee = newUser.category === 'employees';
     const generatedUsername = (newUser.username || '').trim().toLowerCase() || newUser.name.trim().toLowerCase().replace(/\s+/g, '_');
@@ -330,6 +414,7 @@ export default function UsersManagement() {
       address: newUser.address || (isEmployee ? 'Tejas Canvassing Operations' : ''),
       road: newUser.category === 'buyers' ? (newUser.road || '') : undefined,
       status: isEmployee ? 'On Duty' : 'Active',
+      type: newUser.category,
       ...(isEmployee ? { 
         role: newUser.role || 'Operations Staff',
         username: generatedUsername,
@@ -343,10 +428,18 @@ export default function UsersManagement() {
 
     const updated = {
       ...stakeholders,
-      [newUser.category]: [entry, ...stakeholders[newUser.category]]
+      [newUser.category]: [entry, ...(stakeholders[newUser.category] || [])]
     };
     setStakeholders(updated);
     localStorage.setItem('stakeholders_v2', JSON.stringify(updated));
+
+    if (newUser.category === 'suppliers') {
+      try {
+        const regSuppliers = JSON.parse(localStorage.getItem('registered_suppliers') || '[]');
+        const updatedReg = [entry, ...regSuppliers.filter((s: any) => s.id !== id && s.name !== entry.name)];
+        localStorage.setItem('registered_suppliers', JSON.stringify(updatedReg));
+      } catch (e) {}
+    }
 
     // Sync sanitized stakeholder profile to Firestore cloud storage (never store plain passwords in cloud)
     const { password: _p, assignedPassword: _ap, ...cloudStakeholder } = entry as any;
@@ -356,6 +449,9 @@ export default function UsersManagement() {
 
     window.dispatchEvent(new Event('storage'));
     window.dispatchEvent(new CustomEvent('stakeholders-updated', { detail: { category: newUser.category, user: entry } }));
+
+    setActionSuccessMsg(`${newUser.category === 'suppliers' ? 'Supplier' : newUser.category === 'buyers' ? 'Buyer' : 'Staff'} "${newUser.name}" successfully onboarded!`);
+    setTimeout(() => setActionSuccessMsg(null), 4000);
 
     setIsAddModalOpen(false);
     setNewUser({
@@ -430,6 +526,14 @@ export default function UsersManagement() {
     });
 
     // If a supplier was renamed, propagate the new supplier name to all associated products in product_inventory
+    if (activeTab === 'suppliers') {
+      try {
+        const regSuppliers = JSON.parse(localStorage.getItem('registered_suppliers') || '[]');
+        const updatedReg = regSuppliers.map((s: any) => s.id === userToSave.id ? userToSave : s);
+        localStorage.setItem('registered_suppliers', JSON.stringify(updatedReg));
+      } catch (e) {}
+    }
+
     if (activeTab === 'suppliers' && oldName && newName && oldName !== newName) {
       try {
         const rawInv = localStorage.getItem('product_inventory');
@@ -492,6 +596,14 @@ export default function UsersManagement() {
       localStorage.setItem('stakeholders_v2', JSON.stringify(updated));
       return updated;
     });
+
+    if (category === 'suppliers') {
+      try {
+        const regSuppliers = JSON.parse(localStorage.getItem('registered_suppliers') || '[]');
+        const updatedReg = regSuppliers.filter((s: any) => s.id !== userId);
+        localStorage.setItem('registered_suppliers', JSON.stringify(updatedReg));
+      } catch (e) {}
+    }
 
     // 2. Persistent tombstone in localStorage so cloud fetch ignores it
     try {

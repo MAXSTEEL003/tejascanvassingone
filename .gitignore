@@ -7,3 +7,5 @@ coverage/
 !.env.example
 bun.lock*
 scratch/
+data/gmail_oauth.json
+data/po_email_tracking.json

@@ -139,7 +139,7 @@ export function getCurrentCallerRole(): 'admin' | 'employee' | 'merchant' | null
     const user = auth.currentUser;
     if (user?.email) {
       const email = user.email.toLowerCase().trim();
-      if (email === 'tejasadinarayan@gmail.com' || email === 'tejascanvassing@gmail.com') {
+      if (email === 'tejasadinarayan@gmail.com' || email === 'tejascanvassing@gmail.com' || email === 'nani@tejasc.in') {
         return 'admin';
       }
     }
@@ -847,7 +847,8 @@ export async function autoCreateArrivalEntryForIncomingLog(
   targetOrder: any,
   customQtys?: {[subId: string]: number}, 
   customRates?: {[subId: string]: number},
-  customBillNo?: string
+  customBillNo?: string | {[subId: string]: string},
+  lhPerQtl?: number | {[subId: string]: number}
 ): Promise<string> {
   try {
     if (!targetOrder) return orderId;
@@ -892,12 +893,25 @@ export async function autoCreateArrivalEntryForIncomingLog(
         const rate = (customRates && customRates[subId] !== undefined) ? customRates[subId] : (parseFloat(sub.rate) || 4200);
         const amount = qty * rate;
         const normPo = String(orderId).trim().toUpperCase().replace(/^#/, '');
-        const bNo = customBillNo?.trim() || targetOrder.actualSupplierBillNo || targetOrder.billNo || sub.billNo || `BIL-${Math.floor(1000 + Math.random() * 9000)}`;
+        
+        const subCustomBill = (typeof customBillNo === 'object' && customBillNo !== null)
+          ? (customBillNo[subId] || customBillNo[orderId] || '')
+          : (typeof customBillNo === 'string' ? customBillNo : '');
+        const bNo = subCustomBill.trim() || sub.actualSupplierBillNo || sub.billNo || targetOrder.actualSupplierBillNo || targetOrder.billNo || `BIL-${Math.floor(1000 + Math.random() * 9000)}`;
 
         const partyName = sub.redirectedTo || (sub.isLifted ? targetOrder.currentShop : null) || sub.buyer || targetOrder.currentShop || targetOrder.redirectedShop || targetOrder.buyer || targetOrder.partyName || "General Merchant";
         const isLifted = !!(sub.redirectedTo || sub.isLifted || targetOrder.currentShop || targetOrder.redirectedShop || (targetOrder.liftingRecords && targetOrder.liftingRecords.length > 0));
 
         const subMiller = sanitizeSupplierName(sub.supplier || sub.seller || targetOrder.origin || targetOrder.supplier, "DIRECT MILL");
+
+        const subLhRate = (typeof lhPerQtl === 'object' && lhPerQtl !== null)
+          ? (lhPerQtl[subId] !== undefined ? Number(lhPerQtl[subId]) : (lhPerQtl[orderId] !== undefined ? Number(lhPerQtl[orderId]) : 0))
+          : (typeof lhPerQtl === 'number' ? lhPerQtl : (sub.lhPerQtl || targetOrder.lhPerQtl || 0));
+
+        const subLh = subLhRate > 0
+          ? Math.round(qty * subLhRate)
+          : (parseFloat(String(sub.lh || 0)) || 0);
+        const netAmt = Math.max(0, amount - subLh);
 
         newItemsToInject.push({
           date: dateStr,
@@ -912,13 +926,14 @@ export async function autoCreateArrivalEntryForIncomingLog(
           qty,
           rate,
           amount: amount.toFixed(2),
-          lh: 0,
+          lh: subLh > 0 ? subLh : 0,
+          lhPerQtl: subLhRate || 0,
           cc: 0,
           tds: 0,
           shortage: 0,
           seller: subMiller,
           diffIn: 0,
-          netAmt: amount.toFixed(2),
+          netAmt: netAmt.toFixed(2),
           chqAm: 0,
           chqNo: '',
           chqDt: '',
@@ -939,12 +954,25 @@ export async function autoCreateArrivalEntryForIncomingLog(
         : (parseFloat(targetOrder.rate) || 4200);
       const amount = totalQty * rate;
       const normPo = String(orderId).trim().toUpperCase().replace(/^#/, '');
-      const bNo = customBillNo?.trim() || targetOrder.actualSupplierBillNo || targetOrder.billNo || `BIL-${Math.floor(1000 + Math.random() * 9000)}`;
+      
+      const singleCustomBill = (typeof customBillNo === 'object' && customBillNo !== null)
+        ? (customBillNo[orderId] || '')
+        : (typeof customBillNo === 'string' ? customBillNo : '');
+      const bNo = singleCustomBill.trim() || targetOrder.actualSupplierBillNo || targetOrder.billNo || `BIL-${Math.floor(1000 + Math.random() * 9000)}`;
 
       const partyName = targetOrder.currentShop || targetOrder.redirectedShop || targetOrder.buyer || targetOrder.partyName || "General Merchant";
       const isLifted = !!(targetOrder.currentShop || targetOrder.redirectedShop || (targetOrder.liftingRecords && targetOrder.liftingRecords.length > 0));
 
       const orderMiller = sanitizeSupplierName(targetOrder.supplier || targetOrder.seller || targetOrder.origin, "DIRECT MILL");
+
+      const singleLhRate = (typeof lhPerQtl === 'object' && lhPerQtl !== null)
+        ? (lhPerQtl[orderId] !== undefined ? Number(lhPerQtl[orderId]) : 0)
+        : (typeof lhPerQtl === 'number' ? lhPerQtl : (targetOrder.lhPerQtl || 0));
+
+      const singleLh = singleLhRate > 0
+        ? Math.round(totalQty * singleLhRate)
+        : (parseFloat(String(targetOrder.lh || 0)) || 0);
+      const netAmt = Math.max(0, amount - singleLh);
 
       newItemsToInject.push({
         date: dateStr,
@@ -959,13 +987,14 @@ export async function autoCreateArrivalEntryForIncomingLog(
         qty: totalQty,
         rate,
         amount: amount.toFixed(2),
-        lh: 0,
+        lh: singleLh > 0 ? singleLh : 0,
+        lhPerQtl: singleLhRate || 0,
         cc: 0,
         tds: 0,
         shortage: 0,
         seller: orderMiller,
         diffIn: 0,
-        netAmt: amount.toFixed(2),
+        netAmt: netAmt.toFixed(2),
         chqAm: 0,
         chqNo: '',
         chqDt: '',

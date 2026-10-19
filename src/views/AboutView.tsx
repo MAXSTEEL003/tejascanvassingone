@@ -4,7 +4,7 @@ import {
   Menu, X, Globe, Phone, Mail, MapPin,
   ArrowRight, ArrowUpRight, Sprout, Factory, FlaskConical, Package, Ship,
   Leaf, Award, Truck, ShieldCheck, ChevronLeft, ChevronRight,
-  Send, MessageCircle, LogIn, UserPlus, Download, Sparkles, CheckCircle2, Star, User, Clock, Quote
+  Send, LogIn, UserPlus, Download, Sparkles, CheckCircle2, Star, User, Clock, Quote
 } from "lucide-react";
 import { motion, AnimatePresence, useInView, useMotionValue, useSpring, useTransform } from "motion/react";
 import PwaInstallModal from "../components/PwaInstallModal";
@@ -229,6 +229,8 @@ export default function AboutView() {
   const [testiDir, setTestiDir] = useState(1);
   const [formData, setFormData] = useState({ name: "", company: "", email: "", phone: "", riceType: "Keshar Kali (Kollam Raw)", quantity: "", message: "" });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [quoteSuccessMsg, setQuoteSuccessMsg] = useState<string | null>(null);
+  const [quoteErrMsg, setQuoteErrMsg] = useState<string | null>(null);
   const [isLoggedInMerchant] = useState(() => !!localStorage.getItem('userRole'));
 
   // Scroll-triggered section refs
@@ -265,21 +267,36 @@ export default function AboutView() {
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-    await new Promise(r => setTimeout(r, 600));
-    const msg = [
-      `*New Enquiry — Tejas Canvassing*`,
-      `*Owner:* M. Adinarayan (Est. 2008)`,
-      ``,
-      `*Name:* ${formData.name}`,
-      `*Company:* ${formData.company || "N/A"}`,
-      `*Email:* ${formData.email}`,
-      `*Phone:* ${formData.phone || "N/A"}`,
-      `*Product/Brand:* ${formData.riceType}`,
-      `*Quantity Needed:* ${formData.quantity || "N/A"}`,
-      `*Message:* ${formData.message || "N/A"}`,
-    ].join("\n");
-    window.open(`https://wa.me/919916416995?text=${encodeURIComponent(msg)}`, "_blank");
-    setIsSubmitting(false);
+    setQuoteSuccessMsg(null);
+    setQuoteErrMsg(null);
+
+    try {
+      const res = await fetch("/api/dispatch-quote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to transmit quote details to email");
+      }
+
+      setQuoteSuccessMsg(`Quote request sent successfully! All details for ${formData.riceType} have been emailed directly to our brokerage desk (nani@tejasc.in). We will review mandi rates and contact you promptly.`);
+      setFormData({
+        name: "",
+        company: "",
+        email: "",
+        phone: "",
+        riceType: "Keshar Kali (Kollam Raw)",
+        quantity: "",
+        message: "",
+      });
+    } catch (err: any) {
+      console.error("Quote email dispatch error:", err);
+      setQuoteErrMsg(err?.message || "Could not send quote request. Please reach our desk directly at +91 99164 16995 or nani@tejasc.in.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const currentTesti = testimonials[testiIndex];
@@ -653,7 +670,7 @@ export default function AboutView() {
                 <div className="space-y-3">
                   {[
                     { icon: MapPin, text: "123, 4th Main Rd, APMC Yard, Yeshwanthpur, Bengaluru 560022" },
-                    { icon: Phone, text: "+91 9916416995 / +91 9342380981" },
+                    { icon: Phone, text: "+91 9916416995" },
                     { icon: Mail, text: "tejascanvassing@gmail.com" },
                   ].map(({ icon: Icon, text }) => (
                     <motion.div key={text} className="flex items-start gap-3 text-xs text-white/90 p-3.5 rounded-xl bg-white/5 border border-white/10 backdrop-blur-md hover:bg-white/10 transition-all duration-300 cursor-default group"
@@ -664,12 +681,11 @@ export default function AboutView() {
                   ))}
                 </div>
 
-                {/* WhatsApp CTA */}
-                <motion.a href="https://wa.me/919916416995" target="_blank" rel="noopener noreferrer"
-                  className="mt-6 inline-flex items-center gap-2.5 px-5 py-3 rounded-full text-[11px] font-extrabold tracking-wider uppercase cursor-pointer shadow-lg"
-                  style={{ background: "linear-gradient(135deg, #25D366, #128C7E)", color: "#fff" }}
-                  whileHover={{ scale: 1.04, boxShadow: "0 8px 24px rgba(37,211,102,0.35)" }} whileTap={{ scale: 0.97 }}>
-                  <MessageCircle size={15} /><span>Chat on WhatsApp</span>
+                {/* Direct Email Broker Desk CTA */}
+                <motion.a href="mailto:nani@tejasc.in"
+                  className="mt-6 inline-flex items-center gap-2.5 px-5 py-3 rounded-full text-[11px] font-extrabold tracking-wider uppercase cursor-pointer shadow-lg border border-amber-400/40 text-amber-300 hover:text-amber-200 bg-amber-400/10 hover:bg-amber-400/20 transition-all"
+                  whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}>
+                  <Mail size={15} /><span>Email Brokerage Desk</span>
                 </motion.a>
               </motion.div>
 
@@ -679,6 +695,29 @@ export default function AboutView() {
                 {/* Top shimmer line */}
                 <div className="absolute top-0 left-8 right-8 h-px" style={{ background: "linear-gradient(90deg, transparent, rgba(201,161,88,0.6), transparent)" }} />
                 <h3 style={{ fontFamily: "var(--font-serif)", fontSize: "22px", color: "#ffffff", marginBottom: "22px" }}>Inquiry Details</h3>
+
+                {quoteSuccessMsg && (
+                  <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
+                    className="p-4 rounded-xl bg-emerald-950/70 border border-emerald-500/40 text-emerald-200 text-xs flex items-start gap-2.5 mb-5">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+                    <div>
+                      <div className="font-bold text-white mb-0.5">Quote Request Dispatched to Email</div>
+                      <div className="leading-relaxed">{quoteSuccessMsg}</div>
+                    </div>
+                  </motion.div>
+                )}
+
+                {quoteErrMsg && (
+                  <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
+                    className="p-4 rounded-xl bg-rose-950/70 border border-rose-500/40 text-rose-200 text-xs flex items-start gap-2.5 mb-5">
+                    <X className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+                    <div>
+                      <div className="font-bold text-white mb-0.5">Submission Error</div>
+                      <div className="leading-relaxed">{quoteErrMsg}</div>
+                    </div>
+                  </motion.div>
+                )}
+
                 <form onSubmit={handleFormSubmit} className="space-y-4 text-white">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                     {[
@@ -697,7 +736,7 @@ export default function AboutView() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                     {[
                       { label: "Email Address", key: "email", type: "email", placeholder: "you@example.com" },
-                      { label: "Phone / WhatsApp", key: "phone", type: "tel", placeholder: "+91 98450 XXXXX" },
+                      { label: "Contact Phone", key: "phone", type: "tel", placeholder: "+91 98450 XXXXX" },
                     ].map(f => (
                       <div key={f.key}>
                         <label className="text-[9.5px] uppercase tracking-widest text-white/60 block mb-1 font-semibold">{f.label}</label>
@@ -742,7 +781,7 @@ export default function AboutView() {
                     {isSubmitting ? (
                       <div className="w-4 h-4 border-2 border-[#0d2318]/30 border-t-[#0d2318] rounded-full animate-spin" />
                     ) : (
-                      <><Send size={14} /><span>Send Inquiry to WhatsApp</span></>
+                      <><Mail size={14} /><span>Send Quote Request via Email</span></>
                     )}
                   </motion.button>
                 </form>

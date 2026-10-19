@@ -463,7 +463,7 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
           name: userName,
           type: 'buyers',
           email: userEmail,
-          phone: user.phoneNumber || '+91 9342380981',
+          phone: user.phoneNumber || '',
           gstin: '29AAGCV7712M1ZP',
           address: 'No. 15, APMC Yard, Yeshwanthpur, Bangalore, Karnataka - 560022',
           status: 'Active',

@@ -31,10 +31,12 @@ import {
   Trash2,
   ShieldAlert,
   AlertTriangle,
+  AlertCircle,
   Lock,
   ArrowLeft,
   ArrowRight,
-  RefreshCw
+  RefreshCw,
+  Activity
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { jsPDF } from 'jspdf';
@@ -43,6 +45,8 @@ import { cn, formatINR, getRegisteredSuppliers, sanitizeSupplierName } from '../
 import { getCollectionDocs, setCollectionDoc, deleteCollectionDoc, markLedgerEntriesAsArrived, autoCreateArrivalEntryForIncomingLog, updateLedgersForLifting } from '../lib/firebase';
 import { verifyActionWithServer } from '../lib/auth';
 import { generateSupplierPOEmailHtml, generateSupplierPOA4PrintHtml, printPoDocument, resolveBuyerProfile, formatPoDate } from '../utils/poEmailTemplate';
+import { buildPoPdfDocument, getPoPdfFileName } from '../utils/poPdfGenerator';
+import EmailTrackingModal, { getStatusBadgeConfig } from '../components/EmailTrackingModal';
 
 const BUYER_PROFILES: Record<string, { address: string; gstin: string; phone: string; email: string }> = {};
 
@@ -497,10 +501,10 @@ function MerchantOrdersView({
         {/* Back and Support Actions */}
         <div className="space-y-2 pt-2">
           <a
-            href="tel:+919342380981"
+            href="tel:+919916416995"
             className="w-full py-3 bg-[#FAFBFA] dark:bg-neutral-800 hover:bg-neutral-100 text-[#111827] dark:text-neutral-200 border border-[#E5E7EB] dark:border-neutral-700 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all no-underline cursor-pointer"
           >
-            <span>Direct APMC Broker Desk: +91 93423 80981</span>
+            <span>Direct APMC Broker Desk: +91 99164 16995</span>
           </a>
           <button
             type="button"
@@ -696,6 +700,48 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
   const [statusFilter, setStatusFilter] = useState<'all' | 'arrived' | 'in_transit'>('all');
   const [showAutoSentBanner, setShowAutoSentBanner] = useState(false);
 
+  // Email Tracking states (Section 7, 10)
+  const [selectedOrderForTracking, setSelectedOrderForTracking] = useState<any | null>(null);
+  const [trackingRecordMap, setTrackingRecordMap] = useState<Record<string, any>>({});
+  const [emailFilter, setEmailFilter] = useState<'all' | 'queued' | 'sent_unconfirmed' | 'delivered' | 'bounced' | 'awaiting_ack' | 'acknowledged'>('all');
+
+  const fetchTrackingRecords = async () => {
+    try {
+      const res = await fetch('/api/po-tracking');
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.records)) {
+          const map: Record<string, any> = {};
+          data.records.forEach((r: any) => {
+            if (r.orderId) map[r.orderId] = r;
+          });
+          setTrackingRecordMap(map);
+        }
+      }
+    } catch (e) {
+      console.warn("Could not fetch PO email tracking records:", e);
+    }
+  };
+
+  useEffect(() => {
+    fetchTrackingRecords();
+  }, []);
+
+  const [isCheckingBounces, setIsCheckingBounces] = useState(false);
+  const handleCheckBounces = async () => {
+    setIsCheckingBounces(true);
+    try {
+      const res = await fetch('/api/po-tracking/check-bounces');
+      const data = await res.json();
+      await fetchTrackingRecords();
+      setToastMessage(`Gmail mailbox scan complete. Bounces updated: ${data.bouncesFound || 0}`);
+    } catch (err) {
+      setToastMessage("Failed to check Gmail for bounce notices.");
+    } finally {
+      setIsCheckingBounces(false);
+    }
+  };
+
   // Delete whole placed orders modal states
   const [isDeleteAllModalOpen, setIsDeleteAllModalOpen] = useState(false);
   const [deletePassword, setDeletePassword] = useState('');
@@ -761,6 +807,38 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
     };
   }, [currentPlacedOrders]);
 
+  const emailCounts = React.useMemo(() => {
+    let queued = 0;
+    let sentUnconfirmed = 0;
+    let delivered = 0;
+    let bounced = 0;
+    let awaitingAck = 0;
+    let acknowledged = 0;
+
+    currentPlacedOrders.forEach(o => {
+      const trk = trackingRecordMap[o.id];
+      const status = trk?.status || (o.purchaseOrderSent ? 'Sent' : 'Queued');
+      const acked = Boolean(trk?.acknowledgedAt);
+
+      if (status === 'Queued' || status === 'Sending') queued++;
+      if (status === 'Sent' || status === 'Delivery unconfirmed') sentUnconfirmed++;
+      if (status === 'Delivered') delivered++;
+      if (status === 'Bounced/Failed') bounced++;
+      if (!acked && (status === 'Sent' || status === 'Delivery unconfirmed' || status === 'Opened')) awaitingAck++;
+      if (status === 'Acknowledged' || acked) acknowledged++;
+    });
+
+    return {
+      all: currentPlacedOrders.length,
+      queued,
+      sentUnconfirmed,
+      delivered,
+      bounced,
+      awaitingAck,
+      acknowledged
+    };
+  }, [currentPlacedOrders, trackingRecordMap]);
+
   const filteredPlacedOrders = React.useMemo(() => {
     let list = currentPlacedOrders;
 
@@ -769,6 +847,35 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
       list = list.filter(o => isOrderArrived(o));
     } else if (statusFilter === 'in_transit') {
       list = list.filter(o => !isOrderArrived(o));
+    }
+
+    // Email Tracking status filter (Section 10)
+    if (emailFilter !== 'all') {
+      list = list.filter(o => {
+        const trk = trackingRecordMap[o.id];
+        const status = trk?.status || (o.purchaseOrderSent ? 'Sent' : 'Queued');
+        const acked = Boolean(trk?.acknowledgedAt);
+
+        if (emailFilter === 'queued') {
+          return status === 'Queued' || status === 'Sending';
+        }
+        if (emailFilter === 'sent_unconfirmed') {
+          return status === 'Sent' || status === 'Delivery unconfirmed';
+        }
+        if (emailFilter === 'delivered') {
+          return status === 'Delivered';
+        }
+        if (emailFilter === 'bounced') {
+          return status === 'Bounced/Failed';
+        }
+        if (emailFilter === 'awaiting_ack') {
+          return !acked && (status === 'Sent' || status === 'Delivery unconfirmed' || status === 'Opened');
+        }
+        if (emailFilter === 'acknowledged') {
+          return status === 'Acknowledged' || acked;
+        }
+        return true;
+      });
     }
 
     // Supplier filter
@@ -787,7 +894,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
       });
     }
     return list;
-  }, [currentPlacedOrders, statusFilter, supplierFilter]);
+  }, [currentPlacedOrders, statusFilter, emailFilter, supplierFilter, trackingRecordMap]);
 
   // Modal states
   const [shareOrder, setShareOrder] = useState<any | null>(null);
@@ -798,6 +905,9 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
   const [arrivalQuantities, setArrivalQuantities] = useState<{[subId: string]: number}>({});
   const [arrivalRates, setArrivalRates] = useState<{[subId: string]: number}>({});
   const [actualSupplierBillNo, setActualSupplierBillNo] = useState<string>('');
+  const [arrivalSupplierBillNos, setArrivalSupplierBillNos] = useState<{[subId: string]: string}>({});
+  const [vehicleLhRate, setVehicleLhRate] = useState<string>('');
+  const [vehicleLhAccepted, setVehicleLhAccepted] = useState<boolean>(true);
 
   // Lifting To Modal state
   const [liftingOrder, setLiftingOrder] = useState<any | null>(null);
@@ -816,7 +926,13 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
   const [shareMessage, setShareMessage] = useState('');
 
   // PO email form states
-  const [poSender, setPoSender] = useState(() => localStorage.getItem('userEmail') || 'tejasadinarayan@gmail.com');
+  const [poSender, setPoSender] = useState(() => {
+    const stored = localStorage.getItem('companyEmail') || localStorage.getItem('userEmail');
+    if (stored && stored !== 'tejasadinarayan@gmail.com' && stored !== 'procurement@tejascanvassing.com') {
+      return stored;
+    }
+    return 'nani@tejasc.in';
+  });
   const [poRecipient, setPoRecipient] = useState('');
   const [poSubject, setPoSubject] = useState('');
   const [isSendingPO, setIsSendingPO] = useState(false);
@@ -929,15 +1045,14 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
       const key = String(proc.id).trim().toLowerCase().replace(/^#/, '');
       if (isMerchantMatch(proc)) {
         const batchInfo = batchStatusMap.get(key);
-        // Only show in orders page once approved by admin or grouped into PO!
-        const isApproved = Boolean(batchInfo || isApprovedStatus(proc.status));
-        if (!isApproved) {
+        // Procurement indents only appear in Placed Orders once placed into a PO!
+        if (!batchInfo) {
           return;
         }
 
         const orderObj = {
           ...proc,
-          status: batchInfo?.status || (isApprovedStatus(proc.status) ? proc.status : 'Approved'),
+          status: batchInfo?.status || 'Awaiting Settlement',
           progress: batchInfo?.progress || proc.progress || 25,
           supplier: batchInfo?.supplier || proc.supplier || 'Direct Mill',
           billNo: batchInfo?.billNo || proc.billNo || proc.id,
@@ -1045,36 +1160,22 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
     };
 
     const filterIgnored = (list: any[]) => (list || []).filter(
-      (o: any) => o && o.id !== 'ORD-TC-1024' && !String(o.id).startsWith('#ORD-99') && !String(o.id).startsWith('TC-0000') && o.status !== 'Pending Approval' && o.status !== 'Draft Order' && o.status !== 'Rejected'
+      (o: any) => o && 
+        o.id !== 'ORD-TC-1024' && 
+        !String(o.id).startsWith('#ORD-99') && 
+        !String(o.id).startsWith('TC-0000') && 
+        o.status !== 'Pending Approval' && 
+        o.status !== 'Draft Order' && 
+        o.status !== 'Rejected' &&
+        String(o.status || '').trim().toLowerCase() !== 'approved' &&
+        String(o.status || '').trim().toLowerCase() !== 'accepted'
     );
 
     const validPlaced = filterIgnored(placedList);
-    const validProc = (procList || []).filter(
-      (o: any) => o && o.id !== 'ORD-TC-1024' && !String(o.id).startsWith('#ORD-99') && !String(o.id).startsWith('TC-0000') && o.status !== 'Draft Order' && o.status !== 'Rejected'
-    );
 
-    const placedSubOrderIds = new Set<string>();
-    validPlaced.forEach((p: any) => {
-      if (!p) return;
-      if (p.id) placedSubOrderIds.add(String(p.id).trim().toLowerCase().replace(/^#/, ''));
-      if (p.originalOrders && Array.isArray(p.originalOrders)) {
-        p.originalOrders.forEach((sub: any) => {
-          if (sub && sub.id) {
-            placedSubOrderIds.add(String(sub.id).trim().toLowerCase().replace(/^#/, ''));
-          }
-        });
-      }
-    });
-
-    // Only include proc items that have been explicitly approved by admin
-    const activeProc = validProc.filter((proc: any) => {
-      if (!proc || !proc.id) return false;
-      const normProcId = String(proc.id).trim().toLowerCase().replace(/^#/, '');
-      if (placedSubOrderIds.has(normProcId)) return false;
-      return isApprovedStatus(proc.status);
-    });
-
-    let combined = [...validPlaced, ...activeProc];
+    // Only orders that were explicitly placed (e.g. Batch POs created via Group & Place Orders) belong in Placed Orders.
+    // Procurement requests that are merely approved remain in procurement_requests waiting to be placed.
+    let combined = [...validPlaced];
 
     const uniqueMap = new Map<string, any>();
     combined.forEach(item => {
@@ -1155,14 +1256,19 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
       const merchantUserId = (localStorage.getItem('userId') || '').trim().toLowerCase();
 
       const savedPlaced = JSON.parse(localStorage.getItem('placed_orders') || '[]');
+      // Clean up any stray unplaced/approved indents from placed_orders cache
+      const cleanedSavedPlaced = savedPlaced.filter((o: any) => o && String(o.status || '').trim().toLowerCase() !== 'approved');
+      if (cleanedSavedPlaced.length !== savedPlaced.length) {
+        localStorage.setItem('placed_orders', JSON.stringify(cleanedSavedPlaced));
+      }
 
       // 1. Read local storage first for INSTANT local rendering (0ms delay)
       const savedProcurements = JSON.parse(localStorage.getItem('procurement_requests') || '[]');
       const localArrivals = JSON.parse(localStorage.getItem('arrival_entry_data_v4') || '[]');
 
       const localOrders = isMerchant
-        ? buildMerchantOrders(savedPlaced, savedProcurements, localArrivals, merchantName, merchantEmail, merchantUserId)
-        : buildAdminOrders(savedPlaced, savedProcurements, localArrivals);
+        ? buildMerchantOrders(cleanedSavedPlaced, savedProcurements, localArrivals, merchantName, merchantEmail, merchantUserId)
+        : buildAdminOrders(cleanedSavedPlaced, savedProcurements, localArrivals);
 
       if (localOrders.length > 0) {
         setCurrentPlacedOrders(localOrders);
@@ -1177,6 +1283,13 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
         getCollectionDocs('procurement_requests').catch(() => []),
         getCollectionDocs('arrival_entries').catch(() => [])
       ]);
+
+      // Purge any accidental 'Approved' unplaced docs from cloud placed_orders collection
+      cloudPlaced.forEach((cp: any) => {
+        if (cp && cp.id && String(cp.status || '').trim().toLowerCase() === 'approved') {
+          deleteCollectionDoc('placed_orders', cp.id).catch(() => {});
+        }
+      });
 
       let finalArrivals = [...localArrivals];
       if (cloudArrivals && cloudArrivals.length > 0) {
@@ -1222,6 +1335,19 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
     loadOrders();
   }, [isMerchant]);
 
+  // Intercept Ctrl+P / Cmd+P while A4 Purchase Order preview modal is open
+  useEffect(() => {
+    if (!a4PreviewOrder) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'p' || e.key === 'P')) {
+        e.preventDefault();
+        handleDirectPrintA4(a4PreviewOrder, a4PreviewSubOrders);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [a4PreviewOrder, a4PreviewSubOrders]);
+
   const handleOpenShare = (order: any, e: React.MouseEvent) => {
     e.stopPropagation();
     setShareOrder(order);
@@ -1231,7 +1357,13 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
       : null;
     const finalTotal = calculatedAmt !== null ? `₹ ${formatINR(calculatedAmt)}` : (typeof order.total === 'number' ? `₹ ${formatINR(order.total)}` : order.total);
 
-    const message = `Dear Customer,\n\nWe are pleased to confirm that your procurement order has been placed successfully in our logistics pipeline!\n\nOrder Details:\n• Order ID: ${order.id}\n• Items: ${order.items}\n• Total Amount: ${finalTotal}\n• Shipment Status: ${order.status}\n• Location Routing: ${order.origin} ➔ ${order.destination}\n• Est Delivery Progress: ${order.progress}%\n\nThank you for choosing RiceAggregator and trusting our platform!\n--\nRiceAggregator Procurement Operations`;
+    const firstSub = order.originalOrders && order.originalOrders.length > 0 ? order.originalOrders[0] : null;
+    const brand = (firstSub?.product || order.items || order.product || 'keshar kali').replace(/\(\d+.*$/, '').trim();
+    const qty = firstSub?.qty || order.qty || parseFloat(order.items?.match(/\d+/)?.[0] || '40');
+    const rate = firstSub?.rate || order.rate || 10000;
+    const buyerName = order.buyer || 'Vision stores';
+
+    const message = `Hello ${buyerName},\n\nOrder placed successfully.\n\nBrand: ${brand}\nQuantity: ${qty} QTL\nRate: ₹${rate}/QTL\n\nThank you,\nTejas Canvassing`;
     setShareMessage(message);
     setIsCopied(false);
   };
@@ -1245,7 +1377,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
   const handleOpenPO = (order: any, e: React.MouseEvent) => {
     e.stopPropagation();
     setPoOrder(order);
-    setPoSubject("Today's orders");
+    setPoSubject("Tejas Canvassing: New purchase orders");
     
     const supplierName = sanitizeSupplierName(order.supplier || order.origin || order.sellerName, 'DIRECT MILL');
     const supplierProfile = getSupplierProfile(supplierName);
@@ -1254,7 +1386,10 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
       : (supplierProfile?.email || 'supplier@gmail.com');
 
     setPoRecipient(inferredRecipient);
-    setPoSender(order.companyEmail || localStorage.getItem('userEmail') || 'tejasadinarayan@gmail.com');
+    const resolvedSender = (order.companyEmail && order.companyEmail !== 'tejasadinarayan@gmail.com' && order.companyEmail !== 'procurement@tejascanvassing.com')
+      ? order.companyEmail
+      : (localStorage.getItem('companyEmail') || (localStorage.getItem('userEmail') && localStorage.getItem('userEmail') !== 'tejasadinarayan@gmail.com' ? localStorage.getItem('userEmail') : null) || 'nani@tejasc.in');
+    setPoSender(resolvedSender);
     setSendingSuccess(false);
     setPoLogs([]);
   };
@@ -1310,143 +1445,116 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
 
   const handleDownloadPoPdf = (order: any, subOrders: any[]) => {
     try {
-      const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
-      const supplierName = sanitizeSupplierName(order?.supplier || order?.origin, 'DIRECT MILL');
-      const poRef = order?.id || 'PO-BATCH';
-      const dateFormatted = formatPoDate(order?.date);
-      
-      // Header Logo
-      doc.setFillColor(0, 132, 255);
-      doc.roundedRect(14, 12, 12, 12, 2, 2, 'F');
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(14);
-      doc.setFont('helvetica', 'bold');
-      doc.text('TC', 16.5, 20);
-
-      // Brand Name
-      doc.setTextColor(15, 23, 42);
-      doc.setFontSize(17);
-      doc.setFont('helvetica', 'bold');
-      doc.text('TEJAS CANVASSING', 30, 18);
-      doc.setFontSize(10.5);
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(51, 65, 85);
-      doc.text('Bangalore Grain Brokerage & Supply Chain Logistics • APMC Yard, Yeshwanthpur, Bangalore', 30, 23);
-
-      // Right PO Info
-      doc.setFontSize(14);
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(15, 23, 42);
-      doc.text('PURCHASE ORDER', 196, 17, { align: 'right' });
-      doc.setFontSize(11);
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(30, 41, 59);
-      doc.text(`PO Ref: ${poRef}`, 196, 22, { align: 'right' });
-      doc.text(`Date: ${dateFormatted}`, 196, 27, { align: 'right' });
-
-      // Divider
-      doc.setDrawColor(203, 213, 225);
-      doc.setLineWidth(0.5);
-      doc.line(14, 32, 196, 32);
-
-      // Supplier Info
-      doc.setFontSize(12.5);
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(15, 23, 42);
-      doc.text(`DEAR ${supplierName.toUpperCase()},`, 14, 40);
-      doc.setFontSize(11);
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(51, 65, 85);
-      doc.text("Today's consolidated orders issued under trade authorization:", 14, 45);
-
-      // Table Data
-      const tableData = subOrders.map((sub: any) => {
-        const buyerName = sub.buyer || order?.buyer || 'Authorized Merchant';
-        const profile = resolveBuyerProfile(buyerName);
-        const subDate = formatPoDate(sub.date || order?.date);
-        const product = (sub.product || order?.product || 'KESHAR KALI').toUpperCase();
-        const qty = `${sub.qty !== undefined ? sub.qty : 80}`;
-        const rate = `${sub.rate !== undefined ? sub.rate : 8400}`;
-        const loading = `Loading Days: ${sub.loadingDays !== undefined ? sub.loadingDays : 0}\nUnloading: ${sub.unloadingPoint || 'shop'}`;
-        const buyerDetails = `${buyerName}\n${profile.address}\nGSTIN: ${profile.gstin} | Ph: ${profile.phone}`;
-
-        return [subDate, buyerDetails, product, qty, rate, loading];
-      });
-
-      autoTable(doc, {
-        startY: 49,
-        head: [['DATE', 'BUYER & CONSIGNEE DETAILS', 'PRODUCT', 'QTY (QTL)', 'RATE (RS)', 'LOGISTICS']],
-        body: tableData,
-        theme: 'grid',
-        headStyles: {
-          fillColor: [241, 245, 249],
-          textColor: [15, 23, 42],
-          fontStyle: 'bold',
-          fontSize: 10.5,
-          halign: 'left'
-        },
-        styles: {
-          fontSize: 10,
-          textColor: [15, 23, 42],
-          cellPadding: 3,
-          valign: 'top',
-          lineColor: [203, 213, 225],
-          lineWidth: 0.2
-        },
-        columnStyles: {
-          0: { cellWidth: 22 },
-          1: { cellWidth: 70 },
-          2: { cellWidth: 32 },
-          3: { cellWidth: 18, halign: 'right' },
-          4: { cellWidth: 20, halign: 'right' },
-          5: { cellWidth: 26 }
-        }
-      });
-
-      const finalY = (doc as any).lastAutoTable?.finalY || 150;
-
-      // Total Volume
-      const totalQty = subOrders.reduce((sum: number, s: any) => sum + (parseFloat(s.qty) || 0), 0);
-      doc.setFontSize(11);
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(15, 23, 42);
-      doc.text(`Total Consolidated Volume: ${totalQty} Quintals`, 14, finalY + 8);
-
-      // Terms
-      doc.setFontSize(10);
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(51, 65, 85);
-      doc.text('Terms & Logistics Protocol: Goods must conform to standard moisture and grain analysis. Delivery to consignee address.', 14, finalY + 14);
-
-      // Signatures
-      doc.setDrawColor(203, 213, 225);
-      doc.line(14, finalY + 36, 75, finalY + 36);
-      doc.setFontSize(9.5);
-      doc.setTextColor(15, 23, 42);
-      doc.text('Authorized Signatory (TEJAS CANVASSING)', 14, finalY + 41);
-
-      doc.line(135, finalY + 36, 196, finalY + 36);
-      doc.text('Physical Ledger Filing / Acknowledgement', 135, finalY + 41);
-
-      // Footer note
-      doc.setFontSize(9);
-      doc.setTextColor(71, 85, 105);
-      doc.text('This official purchase order document serves as an authentic trade ledger copy generated by TEJAS CANVASSING.', 105, 287, { align: 'center' });
-
-      doc.save(`PO_${poRef}_Tejas_Canvassing.pdf`);
+      const doc = buildPoPdfDocument(order, subOrders);
+      const fileName = getPoPdfFileName(order);
+      doc.save(fileName);
     } catch (err) {
       console.error("PDF generation error:", err);
     }
   };
 
   const handleDirectPrintA4 = (order: any, subOrders: any[]) => {
-    const supplierName = sanitizeSupplierName(order?.supplier || order?.origin, 'DIRECT MILL');
-    printPoDocument(supplierName, order, subOrders);
-    try {
-      window.print();
-    } catch (err) {
-      console.warn("window.print call fallback:", err);
+    const el = document.getElementById('a4-printable-po-document');
+    if (!el) {
+      const supplierName = sanitizeSupplierName(order?.supplier || order?.origin, 'DIRECT MILL');
+      printPoDocument(supplierName, order, subOrders);
+      return;
     }
+
+    // Clean up any stale print frames
+    const oldFrame = document.getElementById('po-isolated-print-frame');
+    if (oldFrame && document.body.contains(oldFrame)) {
+      document.body.removeChild(oldFrame);
+    }
+
+    // Create an isolated hidden iframe dedicated ONLY to printing the PO
+    const printFrame = document.createElement('iframe');
+    printFrame.id = 'po-isolated-print-frame';
+    printFrame.style.position = 'fixed';
+    printFrame.style.right = '0';
+    printFrame.style.bottom = '0';
+    printFrame.style.width = '0';
+    printFrame.style.height = '0';
+    printFrame.style.border = '0';
+    printFrame.style.visibility = 'hidden';
+    document.body.appendChild(printFrame);
+
+    const frameDoc = printFrame.contentWindow?.document;
+    if (!frameDoc) {
+      const supplierName = sanitizeSupplierName(order?.supplier || order?.origin, 'DIRECT MILL');
+      printPoDocument(supplierName, order, subOrders);
+      return;
+    }
+
+    // Collect all stylesheets from the current page to preserve typography & Tailwind rules
+    let headStyles = '';
+    document.querySelectorAll('link[rel="stylesheet"], style').forEach(node => {
+      headStyles += node.outerHTML;
+    });
+
+    frameDoc.open();
+    frameDoc.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Purchase Order - ${order?.id || 'PO'}</title>
+          ${headStyles}
+          <style>
+            @page {
+              size: A4 portrait;
+              margin: 10mm;
+            }
+            *, *::before, *::after {
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+              box-sizing: border-box !important;
+            }
+            html, body {
+              margin: 0 !important;
+              padding: 0 !important;
+              background: #ffffff !important;
+              color: #0f172a !important;
+              font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+            }
+            #a4-printable-po-document {
+              border: none !important;
+              box-shadow: none !important;
+              padding: 0 !important;
+              margin: 0 auto !important;
+              width: 100% !important;
+              max-width: 100% !important;
+              min-height: auto !important;
+              background: #ffffff !important;
+              color: #0f172a !important;
+            }
+          </style>
+        </head>
+        <body class="bg-white text-slate-900">
+          <div style="width: 100%; max-width: 210mm; margin: 0 auto; background: #ffffff;">
+            ${el.outerHTML}
+          </div>
+        </body>
+      </html>
+    `);
+    frameDoc.close();
+
+    // Trigger printing once the iframe has completed rendering
+    setTimeout(() => {
+      try {
+        printFrame.contentWindow?.focus();
+        printFrame.contentWindow?.print();
+      } catch (err) {
+        console.warn("Iframe print fallback to printPoDocument:", err);
+        const supplierName = sanitizeSupplierName(order?.supplier || order?.origin, 'DIRECT MILL');
+        printPoDocument(supplierName, order, subOrders);
+      } finally {
+        setTimeout(() => {
+          if (document.body.contains(printFrame)) {
+            document.body.removeChild(printFrame);
+          }
+        }, 5000);
+      }
+    }, 350);
   };
 
   const handleOpenStandaloneA4 = (order: any, subOrders: any[]) => {
@@ -1497,7 +1605,8 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           to: poRecipient,
-          from: poSender || localStorage.getItem('userEmail') || 'tejasadinarayan@gmail.com',
+          from: poSender || 'nani@tejasc.in',
+          cc: poSender || 'nani@tejasc.in',
           subject: poSubject,
           html: emailHtml,
           batchId: poOrder.id,
@@ -1506,11 +1615,16 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
       });
       const poData = await poRes.json();
       setPoLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] SMTP Dispatch: ${poData.message || 'Success'} (Status: ${poData.status || 'OK'})`]);
+      if (poData.confirmationEmail) {
+        setPoLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Mail Confirmation Copy routed to: ${poData.confirmationEmail}`]);
+      }
 
-      // 2. Dispatch WhatsApp confirmation to buyer / supplier phone
-      const primaryBuyer = subOrders[0]?.buyer || poOrder.buyer || 'Buyer';
-      const targetPhone = poOrder.phone || '9342380981';
-      const whatsappMsg = `Tejas Canvassing Official PO: Batch ${poOrder.id} (${totalQty} QTLS) has been issued to supplier ${supplierName}. Total: ₹ ${formatINR(calculatedAmt)}. Delivery to: ${poOrder.destination || 'APMC Yard, Bangalore'}.`;
+      // 2. Dispatch WhatsApp confirmation to buyer phone
+      const primaryBuyer = subOrders[0]?.buyer || poOrder.buyer || 'Vision stores';
+      const targetPhone = poOrder.phone || localStorage.getItem('userPhone') || '';
+      const orderBrand = (subOrders[0]?.product || poOrder.product || 'keshar kali').replace(/\(\d+.*$/, '').trim();
+      const orderRate = subOrders[0]?.rate || poOrder.rate || 10000;
+      const whatsappMsg = `Hello ${primaryBuyer},\n\nOrder placed successfully.\n\nBrand: ${orderBrand}\nQuantity: ${totalQty} QTL\nRate: ₹${orderRate}/QTL\n\nThank you,\nTejas Canvassing`;
 
       const waRes = await fetch('/api/dispatch-whatsapp', {
         method: 'POST',
@@ -1518,7 +1632,16 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
         body: JSON.stringify({
           to: targetPhone,
           buyerName: primaryBuyer,
-          message: whatsappMsg
+          brand: orderBrand,
+          qty: String(totalQty),
+          rate: String(orderRate),
+          orderId: poOrder.id,
+          poNumber: poOrder.id,
+          message: whatsappMsg,
+          templateName: 'order_notify',
+          templateId: '1016669984165776',
+          templateParams: [primaryBuyer, orderBrand, String(totalQty), String(orderRate)],
+          languageCode: 'en'
         })
       });
       const waData = await waRes.json();
@@ -1539,7 +1662,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
         ...poOrder,
         purchaseOrderSent: true,
         purchaseOrderSentAt: new Date().toISOString(),
-        companyEmail: poSender,
+        companyEmail: poSender || 'nani@tejasc.in',
         sellerEmail: poRecipient
       };
 
@@ -1549,6 +1672,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
       const saved = JSON.parse(localStorage.getItem('placed_orders') || '[]');
       const updatedSaved = saved.map((o: any) => o.id === poOrder.id ? updatedOrder : o);
       localStorage.setItem('placed_orders', JSON.stringify(updatedSaved));
+      localStorage.setItem('companyEmail', poSender || 'nani@tejasc.in');
 
       setSendingSuccess(true);
     } catch (e: any) {
@@ -1564,20 +1688,71 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
     orderId: string, 
     customQtys?: {[subId: string]: number}, 
     customRates?: {[subId: string]: number},
-    billNoToUse?: string
+    billNoToUse?: string | {[subId: string]: string},
+    customLhRate?: number,
+    customLhAccepted?: boolean
   ) => {
     try {
       const targetOrder = currentPlacedOrders.find(o => o.id === orderId);
       if (!targetOrder) return;
 
-      const finalBillNo = (billNoToUse || actualSupplierBillNo || targetOrder.actualSupplierBillNo || targetOrder.billNo || '').trim();
+      const billMapToUse: {[key: string]: string} = (typeof billNoToUse === 'object' && billNoToUse !== null)
+        ? billNoToUse
+        : (typeof arrivalSupplierBillNos === 'object' && arrivalSupplierBillNos !== null ? arrivalSupplierBillNos : {});
+
+      const fallbackBillNo = (typeof billNoToUse === 'string' && billNoToUse.trim())
+        ? billNoToUse.trim()
+        : (Object.values(billMapToUse).find(b => b && b.trim()) || actualSupplierBillNo || targetOrder.actualSupplierBillNo || targetOrder.billNo || '').trim();
+
+      const lhRateToUse = customLhRate !== undefined 
+        ? customLhRate 
+        : (parseFloat(vehicleLhRate) || 0);
+
+      const isLhAccepted = customLhAccepted !== undefined 
+        ? customLhAccepted 
+        : vehicleLhAccepted;
+
+      let totalVehicleLh = 0;
+      let updatedOriginalOrders = targetOrder.originalOrders;
+
+      if (targetOrder.originalOrders && targetOrder.originalOrders.length > 0) {
+        updatedOriginalOrders = targetOrder.originalOrders.map((sub: any, sIdx: number) => {
+          const subId = sub.id || `sub-${sIdx}`;
+          const q = (customQtys && customQtys[subId] !== undefined) ? customQtys[subId] : (parseFloat(sub.qty) || parseFloat(sub.totalQty) || 0);
+          const subLh = Math.round(q * lhRateToUse);
+          totalVehicleLh += subLh;
+          const subBill = (billMapToUse[subId] !== undefined ? billMapToUse[subId] : (sub.actualSupplierBillNo || sub.billNo || fallbackBillNo || '')).trim();
+          return {
+            ...sub,
+            actualSupplierBillNo: subBill || sub.actualSupplierBillNo || fallbackBillNo,
+            billNo: subBill || sub.billNo || fallbackBillNo,
+            lhPerQtl: lhRateToUse,
+            lh: subLh,
+            lhAccepted: isLhAccepted
+          };
+        });
+      } else {
+        const totalQty = (customQtys && customQtys[orderId] !== undefined)
+          ? customQtys[orderId]
+          : parseFloat(targetOrder.items?.match(/\d+(\.\d+)?/)?.[0] || targetOrder.totalQty || targetOrder.qty || "10");
+        totalVehicleLh = Math.round(totalQty * lhRateToUse);
+      }
+
+      const singleBill = (billMapToUse[orderId] || fallbackBillNo).trim();
+      const primaryBillNo = singleBill || fallbackBillNo || targetOrder.billNo;
 
       const updatedOrder = {
         ...targetOrder,
         status: 'Arrived',
         progress: 100,
-        billNo: finalBillNo || targetOrder.billNo,
-        actualSupplierBillNo: finalBillNo || targetOrder.actualSupplierBillNo || targetOrder.billNo
+        billNo: primaryBillNo,
+        actualSupplierBillNo: primaryBillNo,
+        supplierBillNos: billMapToUse,
+        originalOrders: updatedOriginalOrders,
+        lhPerQtl: lhRateToUse,
+        totalLh: totalVehicleLh,
+        lhAccepted: isLhAccepted,
+        arrivedAt: new Date().toISOString()
       };
 
       // 1. Update React state IMMEDIATELY (0ms latency)
@@ -1591,8 +1766,8 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
       }
       localStorage.setItem('placed_orders', JSON.stringify(updatedSaved));
 
-      // 3. Ensure local Arrival Entry logs and sheets are updated FIRST
-      await autoCreateArrivalEntryForIncomingLog(orderId, updatedOrder, customQtys, customRates, finalBillNo).catch(err => {
+      // 3. Ensure local Arrival Entry logs and sheets are updated FIRST with calculated L.H and sub-order bill numbers
+      await autoCreateArrivalEntryForIncomingLog(orderId, updatedOrder, customQtys, customRates, billMapToUse, lhRateToUse).catch(err => {
         console.error("Arrival Registry automatic auto-creation error:", err);
       });
 
@@ -1615,25 +1790,35 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
   const handleOpenArrivalConfirm = (order: any, e: React.MouseEvent) => {
     e.stopPropagation();
     setArrivalConfirmOrder(order);
-    setActualSupplierBillNo(order.actualSupplierBillNo || order.billNo || '');
     
     const qtyMap: {[key: string]: number} = {};
     const rateMap: {[key: string]: number} = {};
+    const billMap: {[key: string]: string} = {};
     
+    const defaultLh = order.lhPerQtl !== undefined 
+      ? String(order.lhPerQtl) 
+      : (order.totalLh && order.totalQty ? String(Math.round(order.totalLh / order.totalQty)) : '');
+    setVehicleLhRate(defaultLh);
+    setVehicleLhAccepted(true);
+
     if (order.originalOrders && order.originalOrders.length > 0) {
       order.originalOrders.forEach((sub: any, sIdx: number) => {
         const subId = sub.id || `sub-${sIdx}`;
         qtyMap[subId] = parseFloat(sub.qty) || parseFloat(sub.totalQty) || 0;
         rateMap[subId] = parseFloat(sub.rate) || 4200;
+        billMap[subId] = sub.actualSupplierBillNo || sub.billNo || order.actualSupplierBillNo || order.billNo || '';
       });
     } else {
       const totalQty = parseFloat(order.items?.match(/\d+(\.\d+)?/)?.[0] || order.totalQty || "10");
       qtyMap[order.id] = totalQty;
       rateMap[order.id] = parseFloat(order.rate) || 4200;
+      billMap[order.id] = order.actualSupplierBillNo || order.billNo || '';
     }
     
     setArrivalQuantities(qtyMap);
     setArrivalRates(rateMap);
+    setArrivalSupplierBillNos(billMap);
+    setActualSupplierBillNo(order.actualSupplierBillNo || order.billNo || '');
   };
 
   const handleOpenLiftingModal = (order: any, e: React.MouseEvent) => {
@@ -2153,6 +2338,68 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
         </div>
       </motion.div>
 
+      {/* PO Email Tracking Filter Sub-Bar */}
+      <motion.div
+        initial={{ opacity: 0, y: 12, scale: 0.99 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+        className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-surface-container-low/70 dark:bg-neutral-900/60 p-3.5 rounded-2xl border border-outline-variant/30 text-xs shadow-xs"
+      >
+        <div className="flex flex-wrap items-center gap-1.5">
+          <div className="flex items-center gap-1 text-[11px] font-black text-secondary uppercase tracking-wider mr-2">
+            <Mail className="w-3.5 h-3.5 text-primary" />
+            <span>PO Email:</span>
+          </div>
+
+          {[
+            { id: 'all', label: 'All Emails', count: emailCounts.all },
+            { id: 'queued', label: 'Queued / Sending', count: emailCounts.queued },
+            { id: 'sent_unconfirmed', label: 'Sent / Unconfirmed', count: emailCounts.sentUnconfirmed },
+            { id: 'delivered', label: 'Delivered', count: emailCounts.delivered },
+            { id: 'bounced', label: 'Bounced / Failed', count: emailCounts.bounced },
+            { id: 'awaiting_ack', label: 'Awaiting Ack', count: emailCounts.awaitingAck },
+            { id: 'acknowledged', label: 'Acknowledged', count: emailCounts.acknowledged },
+          ].map(tab => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setEmailFilter(tab.id as any)}
+              className={cn(
+                "px-2.5 py-1.5 rounded-xl text-[11px] font-bold tracking-tight transition-all cursor-pointer border flex items-center gap-1.5",
+                emailFilter === tab.id
+                  ? "bg-primary text-white border-primary shadow-xs"
+                  : "bg-surface text-secondary hover:bg-surface-container border-outline-variant/30"
+              )}
+            >
+              <span>{tab.label}</span>
+              <span className={cn(
+                "text-[9.5px] px-1.5 py-0.2 rounded font-mono font-bold",
+                emailFilter === tab.id ? "bg-black/25 text-white" : "bg-neutral-200 dark:bg-neutral-800 text-secondary"
+              )}>
+                {tab.count}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-2 self-end lg:self-auto shrink-0">
+          <button
+            type="button"
+            onClick={handleCheckBounces}
+            disabled={isCheckingBounces}
+            className="px-3 py-1.5 bg-surface hover:bg-surface-container text-secondary hover:text-on-surface border border-outline-variant/50 rounded-xl text-[11px] font-bold tracking-tight flex items-center gap-1.5 cursor-pointer transition-colors disabled:opacity-50"
+            title="Scan Gmail mailbox via gmail.readonly for Mailer-Daemon bounce notifications"
+          >
+            {isCheckingBounces ? (
+              <Loader2 className="w-3.5 h-3.5 text-primary animate-spin" />
+            ) : (
+              <RefreshCw className="w-3.5 h-3.5 text-secondary" />
+            )}
+            <span>Scan Bounces</span>
+          </button>
+        </div>
+      </motion.div>
+
       <div className="grid grid-cols-12 gap-8 font-sans">
         <div className="col-span-12 space-y-6">
           {isLoading && currentPlacedOrders.length === 0 ? (
@@ -2236,12 +2483,29 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                           )}>
                             {order.status}
                           </span>
-                          {order.purchaseOrderSent && (
-                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400 font-bold uppercase tracking-wider flex items-center gap-1">
-                              <FileCheck2 className="w-3 h-3 text-violet-600 dark:text-violet-400" />
-                              PO Sent
-                            </span>
-                          )}
+                          {(() => {
+                            const trk = trackingRecordMap[order.id];
+                            const status = trk?.status || (order.purchaseOrderSent ? 'Sent' : 'Queued');
+                            const cfg = getStatusBadgeConfig(status);
+                            return (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedOrderForTracking(order);
+                                }}
+                                className={cn(
+                                  "text-[10px] px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider flex items-center gap-1.5 border transition-all cursor-pointer hover:opacity-90 shadow-2xs",
+                                  cfg.bg
+                                )}
+                                title="Click to view Email Delivery & Acknowledgement Tracking"
+                              >
+                                <Mail className="w-3 h-3" />
+                                <span>PO Email: {status}</span>
+                                {trk?.acknowledgedAt && <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />}
+                              </button>
+                            );
+                          })()}
                         </h3>
                         <p className="text-xs text-secondary font-medium">{order.items}</p>
                       </div>
@@ -2332,14 +2596,17 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                           Share Summary
                         </button>
                         
-                        {/* Send PO to seller button */}
+                        {/* PO Email Tracking Modal trigger */}
                         <button 
-                          onClick={(e) => handleOpenPO(order, e)}
-                          className="btn-tactile flex items-center gap-1.5 px-3 py-1.5 bg-primary/[0.06] hover:bg-primary/[0.12] rounded-lg text-[10px] font-black uppercase tracking-wider transition-all text-primary border border-primary/15 cursor-pointer"
-                          title="Send Purchase Order email to Seller"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedOrderForTracking(order);
+                          }}
+                          className="btn-tactile flex items-center gap-1.5 px-3 py-1.5 bg-blue-500/[0.08] hover:bg-blue-500/[0.18] rounded-lg text-[10px] font-black uppercase tracking-wider transition-all text-blue-700 dark:text-blue-300 border border-blue-500/25 cursor-pointer shadow-2xs"
+                          title="View PO Email dispatch status, Gmail message IDs, and Supplier Acknowledgement audit timeline"
                         >
-                          <Mail className="w-3.5 h-3.5" />
-                          {order.purchaseOrderSent ? "PO Resend" : "Send PO"}
+                          <Activity className="w-3.5 h-3.5" />
+                          Track Email
                         </button>
 
                         {/* Direct Print A4 PO for filing */}
@@ -2637,7 +2904,10 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                   <form className="space-y-6" onSubmit={(e) => { e.preventDefault(); handleSendPO(); }}>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-1">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-secondary">Company Mail (From)</label>
+                        <div className="flex items-center justify-between">
+                          <label className="text-[10px] font-black uppercase tracking-widest text-secondary">Company Mail (From)</label>
+                          <span className="text-[9px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">Active Sender</span>
+                        </div>
                         <div className="relative group">
                           <Building className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-outline" />
                           <input 
@@ -2645,7 +2915,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                             required
                             value={poSender}
                             onChange={(e) => setPoSender(e.target.value)}
-                            placeholder="tejasadinarayan@gmail.com"
+                            placeholder="nani@tejasc.in"
                             className="w-full pl-10 pr-4 py-2.5 bg-surface border border-outline-variant rounded-xl text-xs font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/10"
                           />
                         </div>
@@ -2677,6 +2947,14 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                         placeholder="Subject"
                         className="w-full px-4 py-2.5 bg-surface border border-outline-variant rounded-xl text-xs font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/10"
                       />
+                    </div>
+
+                    {/* Mail Delivery Confirmation Notice */}
+                    <div className="flex items-center gap-2.5 p-3 bg-emerald-500/10 border border-emerald-500/25 rounded-xl text-xs">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                      <span className="text-emerald-800 dark:text-emerald-200 font-medium">
+                        A mail confirmation copy will automatically be sent to <strong className="font-bold underline">{poSender || 'nani@tejasc.in'}</strong> upon dispatch.
+                      </span>
                     </div>
 
                     {/* High-Fidelity Official Mail Live Preview */}
@@ -2718,92 +2996,94 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                       <div className="border border-outline-variant bg-surface-container rounded-xl p-4 md:p-6 shadow-inner space-y-4">
                         {/* Email Envelope Header */}
                         <div className="bg-surface/85 backdrop-blur-sm p-3 rounded-lg border border-outline-variant/30 text-[10px] space-y-1 text-secondary font-bold">
-                          <div><span className="text-outline uppercase text-[8px] tracking-widest mr-1">From:</span> <span className="text-on-surface">{poSender}</span></div>
+                          <div><span className="text-outline uppercase text-[8px] tracking-widest mr-1">From:</span> <span className="text-on-surface">{poSender || 'nani@tejasc.in'}</span></div>
                           <div><span className="text-outline uppercase text-[8px] tracking-widest mr-1">To:</span> <span className="text-on-surface">{poRecipient}</span></div>
+                          <div><span className="text-outline uppercase text-[8px] tracking-widest mr-1">Confirmation CC:</span> <span className="text-primary font-bold">{poSender || 'nani@tejasc.in'}</span></div>
                           <div><span className="text-outline uppercase text-[8px] tracking-widest mr-1">Subject:</span> <span className="text-on-surface select-all">{poSubject}</span></div>
                         </div>
 
                         {/* Exact copy of user-supplied image inside email body */}
                         <div 
                           id="po-email-preview-container"
-                          className="bg-white p-6 md:p-10 rounded-lg shadow-md border border-[#dddddd] text-slate-800 text-left overflow-x-auto select-text"
-                          style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
+                          className="bg-white p-6 md:p-8 rounded-lg shadow-sm border border-[#b0b0b0] text-black text-left overflow-x-auto select-text"
+                          style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif' }}
                         >
                           {/* Top row with Logo and Business details */}
-                          <div className="flex items-center justify-between pb-3 border-b border-[#dddddd]">
-                            <div className="flex items-center gap-3">
-                              {/* Blue TC logo box */}
-                              <div className="w-10 h-10 bg-[#0091ff] flex items-center justify-center rounded text-white font-sans font-black text-lg select-none">
-                                TC
-                              </div>
-                              <div className="text-left font-sans">
-                                <h3 className="text-base font-extrabold text-slate-900 leading-tight tracking-tight">Tejas Canvassing</h3>
-                                <p className="text-[10px] text-slate-500 leading-none font-medium">Bangalore</p>
-                              </div>
+                          <div className="flex items-center gap-3.5 pb-4">
+                            {/* Blue TC logo box */}
+                            <div className="w-12 h-12 bg-[#0084ff] flex items-center justify-center rounded-md text-white font-sans font-bold text-xl select-none shrink-0">
+                              TC
+                            </div>
+                            <div className="text-left font-sans">
+                              <h3 className="text-xl font-bold text-black leading-tight">Tejas Canvassing</h3>
+                              <p className="text-sm text-[#333333] font-normal mt-0.5">Bangalore</p>
                             </div>
                           </div>
 
-                          {/* Subject reference greeting */}
-                          <div className="pt-6 pb-2">
-                            <p className="text-[11px] text-slate-800 font-extrabold font-sans uppercase mb-1">
-                              DEAR {supplierName.toUpperCase()},
-                            </p>
-                            <p className="text-[11px] text-slate-500 font-medium font-sans">
-                              Today's orders:
-                            </p>
+                          {/* Horizontal divider */}
+                          <hr className="border-0 border-t border-[#999999] my-4" />
+
+                          {/* Salutation & Today's orders */}
+                          <div className="mb-4 text-sm text-black space-y-3.5">
+                            <div>Dear {supplierName.toUpperCase()},</div>
+                            <div>Today's orders:</div>
                           </div>
 
                           {/* Pixel Perfect Tabular layout identical to the reference design */}
                           <div className="w-full my-4">
-                            <table className="w-full border-collapse border border-[#dddddd] font-sans text-[10.5px]">
+                            <table className="w-full border-collapse border border-[#b0b0b0] text-[13px] text-black">
                               <thead>
-                                <tr className="bg-[#f2f2f2] text-slate-700 font-extrabold border-b border-[#dddddd]">
-                                  <th className="p-2 border border-[#dddddd] text-left uppercase tracking-wider font-extrabold" style={{ width: '13%' }}>Date</th>
-                                  <th className="p-2 border border-[#dddddd] text-left uppercase tracking-wider font-extrabold" style={{ width: '42%' }}>Buyer</th>
-                                  <th className="p-2 border border-[#dddddd] text-left uppercase tracking-wider font-extrabold" style={{ width: '15%' }}>Product</th>
-                                  <th className="p-2 border border-[#dddddd] text-right uppercase tracking-wider font-extrabold" style={{ width: '10%' }}>Qty (quintals)</th>
-                                  <th className="p-2 border border-[#dddddd] text-right uppercase tracking-wider font-extrabold" style={{ width: '10%' }}>Rate (per qtl.)</th>
-                                  <th className="p-2 border border-[#dddddd] text-left uppercase tracking-wider font-extrabold" style={{ width: '10%' }}>Details</th>
+                                <tr className="bg-[#ebebeb] text-black font-bold border-b border-[#b0b0b0]">
+                                  <th className="p-3 border border-[#b0b0b0] text-center font-bold" style={{ width: '14%' }}>Date</th>
+                                  <th className="p-3 border border-[#b0b0b0] text-center font-bold" style={{ width: '42%' }}>Buyer</th>
+                                  <th className="p-3 border border-[#b0b0b0] text-center font-bold" style={{ width: '14%' }}>Product</th>
+                                  <th className="p-3 border border-[#b0b0b0] text-center font-bold" style={{ width: '10%' }}>Qty<br/>(quintals)</th>
+                                  <th className="p-3 border border-[#b0b0b0] text-center font-bold" style={{ width: '10%' }}>Rate<br/>(per<br/>qtl.)</th>
+                                  <th className="p-3 border border-[#b0b0b0] text-center font-bold" style={{ width: '10%' }}>Details</th>
                                 </tr>
                               </thead>
-                              <tbody className="divide-y divide-[#dddddd] text-[#334155]">
+                              <tbody>
                                 {subOrders.map((sub: any, sIdx: number) => {
                                   const profile = resolveBuyerProfile(sub.buyer || poOrder.buyer || 'Authorized Merchant');
-                                  const subQty = parseFloat(sub.qty) || parseFloat(sub.totalQty) || 80;
-                                  const subRate = parseFloat(sub.rate) || 8400;
-                                  const subProduct = (sub.product || poOrder.product || "KESHAR KALI").toUpperCase();
+                                  const subQty = sub.qty !== undefined ? sub.qty : (sub.totalQty !== undefined ? sub.totalQty : 20.8);
+                                  const subRate = sub.rate !== undefined ? sub.rate : 7950;
+                                  const subProduct = (sub.product || poOrder.product || sub.items?.replace(/\(\d+.*$/, '') || "JMR KNM STEAM").toString().trim();
+                                  const productWords = subProduct.replace(/<br\s*\/?>/gi, ' ').split(/[\s\n]+/);
                                   const loadingDays = sub.loadingDays !== undefined ? sub.loadingDays : 0;
                                   const unloadingPoint = sub.unloadingPoint || 'shop';
 
                                   return (
-                                    <tr key={sIdx} className="align-top bg-white font-medium hover:bg-slate-50/40 transition-colors">
-                                      <td className="p-3 border border-[#dddddd] text-slate-600 font-sans tracking-wide">
+                                    <tr key={sIdx} className="align-top bg-white font-normal hover:bg-slate-50/50 transition-colors">
+                                      <td className="p-3.5 border border-[#b0b0b0] text-black text-left">
                                         {formatPoDate(sub.date || poOrder.date)}
                                       </td>
-                                      <td className="p-3 border border-[#dddddd] text-left space-y-1.5 font-sans">
-                                        <div className="font-extrabold text-slate-900 uppercase tracking-wide">{sub.buyer || 'Authorized Merchant'}</div>
-                                        <div className="text-[9.5px] text-slate-500 leading-normal max-w-sm">{profile.address}</div>
-                                        <div className="text-[9.5px] text-slate-500 space-y-0.5 pt-1.5 border-t border-slate-100">
-                                          <div><span className="font-bold text-slate-800">GSTIN:</span> <span className="font-mono font-bold select-all text-slate-700">{profile.gstin}</span></div>
-                                          <div><span className="font-bold text-slate-800">Phone:</span> <span className="select-all font-bold text-slate-700">{profile.phone}</span></div>
-                                          <div><span className="font-bold text-slate-800">Email:</span> <a href={`mailto:${profile.email}`} className="text-[#0091ff] hover:underline font-bold select-all">{profile.email}</a></div>
+                                      <td className="p-3.5 border border-[#b0b0b0] text-left space-y-1.5">
+                                        <div className="font-bold text-black uppercase tracking-wide">{sub.buyer || 'Authorized Merchant'}</div>
+                                        <div className="text-[11px] text-[#333333] leading-relaxed">{profile.address}</div>
+                                        <div className="text-[11.5px] text-black space-y-0.5 pt-1">
+                                          <div><span className="font-bold">GSTIN:</span> <span>{profile.gstin}</span></div>
+                                          <div><span className="font-bold">Phone:</span> <span>{profile.phone}</span></div>
+                                          <div><span className="font-bold">Email:</span> {profile.email ? <a href={`mailto:${profile.email}`} className="text-[#0070f3] hover:underline">{profile.email}</a> : null}</div>
                                         </div>
                                       </td>
-                                      <td className="p-3 border border-[#dddddd] font-extrabold text-slate-800 uppercase tracking-wider select-all">
-                                        {subProduct}
+                                      <td className="p-3.5 border border-[#b0b0b0] text-left text-black uppercase font-normal leading-tight">
+                                        {productWords.map((word: string, wIdx: number) => (
+                                          <div key={wIdx}>{word}</div>
+                                        ))}
                                       </td>
-                                      <td className="p-3 border border-[#dddddd] text-right font-extrabold font-mono text-slate-800 select-all">
+                                      <td className="p-3.5 border border-[#b0b0b0] text-center font-normal text-black">
                                         {subQty}
                                       </td>
-                                      <td className="p-3 border border-[#dddddd] text-right font-extrabold font-mono text-slate-800 select-all">
+                                      <td className="p-3.5 border border-[#b0b0b0] text-center font-normal text-black">
                                         {subRate}
                                       </td>
-                                      <td className="p-3 border border-[#dddddd] text-left space-y-1 text-[9.5px] text-slate-500 font-sans">
+                                      <td className="p-3.5 border border-[#b0b0b0] text-left text-black space-y-1 text-xs leading-normal">
                                         <div>
-                                          <span className="font-extrabold text-slate-800">No of days for loading:</span> <strong className="text-[#0091ff] font-bold">{loadingDays}</strong>
+                                          <strong className="font-bold">No of days for loading:</strong><br/>
+                                          <span>{loadingDays}</span>
                                         </div>
-                                        <div>
-                                          <span className="font-extrabold text-slate-800">Unloading Point:</span> <strong>{unloadingPoint}</strong>
+                                        <div className="pt-0.5">
+                                          <strong className="font-bold">Unloading Point:</strong> {unloadingPoint}
                                         </div>
                                       </td>
                                     </tr>
@@ -2811,11 +3091,6 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                                 })}
                               </tbody>
                             </table>
-                          </div>
-                          
-                          {/* Bottom metadata */}
-                          <div className="mt-4 pt-3 border-t border-slate-100 text-[9px] text-slate-400 font-medium italic select-none">
-                            This transaction confirmation was dynamically encoded and transmitted securely under Tejas Canvassing authorization protocols.
                           </div>
                         </div>
                       </div>
@@ -2843,15 +3118,18 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                     <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 shadow-lg shadow-emerald-100 dark:bg-emerald-950/30 dark:text-emerald-400">
                       <Check className="w-8 h-8" />
                     </div>
-                    <div className="space-y-1 col-span-12">
-                      <h4 className="font-black text-lg text-on-surface">Purchase Order Dispatched!</h4>
+                    <div className="space-y-1.5 col-span-12">
+                      <h4 className="font-black text-lg text-on-surface">Purchase Order &amp; Mail Confirmation Dispatched!</h4>
                       <p className="text-xs text-secondary max-w-md">
-                        The purchase order was successfully compiled as a high-fidelity multipart document and transmitted via SMTP to <strong className="text-primary">{poRecipient}</strong>.
+                        The purchase order was compiled and transmitted via SMTP to supplier <strong className="text-primary">{poRecipient}</strong> from <strong className="text-primary">{poSender || 'nani@tejasc.in'}</strong>.
+                      </p>
+                      <p className="text-xs text-emerald-700 dark:text-emerald-400 font-bold max-w-md">
+                        ✓ Delivery confirmation copy routed to: {poSender || 'nani@tejasc.in'}
                       </p>
                     </div>
                     <div className="mt-4 w-full max-w-sm bg-surface-container rounded-xl p-3 border border-outline-variant flex items-center justify-between text-[10px] font-black uppercase text-secondary">
-                      <span>Gateway ID:</span>
-                      <span className="font-mono text-primary select-all">sg.841920-cert-rtx</span>
+                      <span>Sender Mail:</span>
+                      <span className="font-mono text-primary select-all">{poSender || 'nani@tejasc.in'}</span>
                     </div>
                   </div>
                 )}
@@ -2860,13 +3138,14 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
               <div className="p-6 bg-surface-container border-t border-outline-variant shrink-0 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex flex-wrap items-center gap-2">
                   {(() => {
-                    const phoneVal = (poOrder?.phone || '9342380981').replace(/[^0-9]/g, '');
+                    const phoneVal = (poOrder?.phone || localStorage.getItem('userPhone') || '').replace(/[^0-9]/g, '');
                     const waDigits = phoneVal.length === 10 ? `91${phoneVal}` : phoneVal;
                     const totalVolume = subOrders.reduce((sum: number, s: any) => sum + (parseFloat(s.qty) || 0), 0);
                     const poWaText = encodeURIComponent(`Tejas Canvassing PO ${poOrder?.id}: Today's consolidated orders issued to ${supplierName}. Total Volume: ${totalVolume} QTLS.\nRecipient: ${poRecipient}`);
                     const poBodyText = encodeURIComponent(`DEAR ${supplierName.toUpperCase()},\n\nPlease find Purchase Order ${poOrder?.id} for ${totalVolume} QTLS compiled by Tejas Canvassing.\n\nItems:\n${subOrders.map((s: any) => `- ${s.buyer}: ${s.product || 'Rice'} (${s.qty} QTLS @ ₹${s.rate})`).join('\n')}\n\nTerms: Loading days: ${poOrder?.loadingDays || 5}`);
-                    const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(poRecipient)}&su=${encodeURIComponent(poSubject)}&body=${poBodyText}`;
-                    const mailtoUrl = `mailto:${encodeURIComponent(poRecipient)}?subject=${encodeURIComponent(poSubject)}&body=${poBodyText}`;
+                    const currentSenderMail = poSender || 'nani@tejasc.in';
+                    const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(poRecipient)}&cc=${encodeURIComponent(currentSenderMail)}&su=${encodeURIComponent(poSubject)}&body=${poBodyText}`;
+                    const mailtoUrl = `mailto:${encodeURIComponent(poRecipient)}?cc=${encodeURIComponent(currentSenderMail)}&subject=${encodeURIComponent(poSubject)}&body=${poBodyText}`;
 
                     return (
                       <>
@@ -3004,21 +3283,84 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                     <span className="text-xs font-mono font-bold text-primary">ID: {arrivalConfirmOrder.billNo || arrivalConfirmOrder.id}</span>
                   </div>
 
-                  <div className="space-y-1.5 p-3.5 bg-surface-container/60 rounded-xl border border-outline-variant/40">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-primary block">
-                      Actual Supplier Bill No (Received in Billing)
-                    </label>
-                    <input 
-                      type="text"
-                      value={actualSupplierBillNo}
-                      onChange={(e) => setActualSupplierBillNo(e.target.value)}
-                      placeholder="e.g. BIL-9842 / INV-2026-001"
-                      className="w-full px-3 py-2 bg-surface border border-outline-variant rounded-lg text-xs font-mono font-bold outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10 text-on-surface"
-                    />
-                    <p className="text-[10px] text-secondary">
-                      This supplier bill number will be saved to the order and recorded directly into the Arrival Entry registry.
-                    </p>
-                  </div>
+                  {/* Whole Vehicle L.H Section (Applied to entire order/truck) */}
+                  {(() => {
+                    const isBatch = arrivalConfirmOrder.originalOrders && arrivalConfirmOrder.originalOrders.length > 0;
+                    const totalVehicleArrivedQty = isBatch
+                      ? arrivalConfirmOrder.originalOrders.reduce((sum: number, sub: any, sIdx: number) => {
+                          const subId = sub.id || `sub-${sIdx}`;
+                          const q = arrivalQuantities[subId] !== undefined ? arrivalQuantities[subId] : (parseFloat(sub.qty) || parseFloat(sub.totalQty) || 0);
+                          return sum + q;
+                        }, 0)
+                      : (arrivalQuantities[arrivalConfirmOrder.id] !== undefined 
+                          ? arrivalQuantities[arrivalConfirmOrder.id] 
+                          : parseFloat(arrivalConfirmOrder.items?.match(/\d+(\.\d+)?/)?.[0] || arrivalConfirmOrder.totalQty || "10"));
+                    const lhRateNum = parseFloat(vehicleLhRate) || 0;
+                    const totalVehicleLhCalc = Math.round(totalVehicleArrivedQty * lhRateNum);
+
+                    return (
+                      <div className="p-4 bg-emerald-500/5 dark:bg-emerald-500/10 rounded-xl border border-emerald-500/30 space-y-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                          <div>
+                            <span className="text-[10px] font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
+                              <Truck className="w-3.5 h-3.5" />
+                              Vehicle L.H (Loading / Hamali) • Whole Order
+                            </span>
+                            <p className="text-[10px] text-secondary font-medium">
+                              Applied once to the whole vehicle dispatch ({totalVehicleArrivedQty.toFixed(2)} QTLS total arrived)
+                            </p>
+                          </div>
+                          {lhRateNum > 0 && (
+                            <span className="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                              Total Vehicle L.H: ₹{formatINR(totalVehicleLhCalc)}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+                          <div className="space-y-1">
+                            <label className="text-[9px] font-black uppercase tracking-widest text-secondary flex items-center justify-between">
+                              <span>L.H per Quintal (₹/QTL)</span>
+                              <span className="font-mono text-secondary">₹{lhRateNum}/QTL</span>
+                            </label>
+                            <div className="relative">
+                              <span className="absolute left-3 top-2 text-xs font-bold text-secondary">₹</span>
+                              <input 
+                                type="number"
+                                step="any"
+                                min="0"
+                                value={vehicleLhRate}
+                                onChange={(e) => setVehicleLhRate(e.target.value)}
+                                placeholder="e.g. 15 or 20"
+                                className="w-full pl-7 pr-3 py-2 bg-surface border border-outline-variant rounded-lg text-xs font-mono font-bold outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10 text-on-surface"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="space-y-1 sm:pt-4">
+                            <label className={`w-full px-3 py-2 rounded-lg border flex items-center gap-2.5 cursor-pointer transition-all select-none ${
+                              vehicleLhAccepted ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-800 dark:text-emerald-300' : 'bg-amber-500/15 border-amber-500/40 text-amber-800 dark:text-amber-300'
+                            }`}>
+                              <input 
+                                type="checkbox"
+                                checked={vehicleLhAccepted}
+                                onChange={(e) => setVehicleLhAccepted(e.target.checked)}
+                                className="w-4 h-4 text-emerald-600 rounded border-outline-variant focus:ring-emerald-500 cursor-pointer"
+                              />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[10px] font-black uppercase tracking-wide truncate">
+                                  {lhRateNum > 0 ? `Accept ₹${formatINR(totalVehicleLhCalc)} Vehicle L.H` : 'Accept (₹0 Vehicle L.H)'}
+                                </p>
+                                <p className="text-[9px] opacity-80 truncate">
+                                  {lhRateNum > 0 ? `${totalVehicleArrivedQty.toFixed(2)} QTLS × ₹${lhRateNum}` : 'No L.H charged for this truck'}
+                                </p>
+                              </div>
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   <div className="space-y-4">
                     {arrivalConfirmOrder.originalOrders && arrivalConfirmOrder.originalOrders.length > 0 ? (
@@ -3029,9 +3371,14 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                         const subProduct = sub.product || "Premium Rice";
                         const currentQty = arrivalQuantities[subId] !== undefined ? arrivalQuantities[subId] : origQty;
                         const currentRate = arrivalRates[subId] !== undefined ? arrivalRates[subId] : origRate;
+                        const lhRateNum = parseFloat(vehicleLhRate) || 0;
+                        const subGross = Math.round(currentQty * currentRate);
+                        const subTotalLh = Math.round(currentQty * lhRateNum);
+                        const subNetAmt = Math.max(0, subGross - subTotalLh);
+                        const subBillNo = arrivalSupplierBillNos[subId] || '';
 
                         return (
-                          <div key={subId} className="p-4 bg-surface-container/40 rounded-xl border border-outline-variant/30 space-y-3">
+                          <div key={subId} className="p-4 bg-surface-container/40 rounded-xl border border-outline-variant/30 space-y-3.5">
                             <div className="flex justify-between items-start">
                               <div>
                                 <h4 className="text-xs font-black text-on-surface uppercase">{sub.buyer}</h4>
@@ -3042,42 +3389,121 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                               </span>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
-                              <div className="space-y-1">
-                                <label className="text-[9px] font-black uppercase tracking-widest text-secondary">Arrived Qty (QTLS)</label>
-                                <input 
-                                  type="number"
-                                  step="any"
-                                  min="0"
-                                  max={origQty}
-                                  value={currentQty}
-                                  onChange={(e) => {
-                                    const val = parseFloat(e.target.value);
-                                    setArrivalQuantities(prev => ({ ...prev, [subId]: isNaN(val) ? 0 : val }));
-                                  }}
-                                  className="w-full px-3 py-2 bg-surface border border-outline-variant rounded-lg text-xs font-mono font-bold outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10"
-                                />
-                                {currentQty < origQty && (
-                                  <p className="text-[9px] font-black text-amber-600 uppercase tracking-wide">
-                                    Balance Pending: {(origQty - currentQty).toFixed(2)} QTLS
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                              {/* Left: Arrived Qty & Actual Supplier Bill No directly under it */}
+                              <div className="space-y-3">
+                                <div className="space-y-1">
+                                  <label className="text-[9px] font-black uppercase tracking-widest text-secondary">
+                                    Arrived Qty (QTLS)
+                                  </label>
+                                  <input 
+                                    type="number"
+                                    step="any"
+                                    min="0"
+                                    max={origQty}
+                                    value={currentQty}
+                                    onChange={(e) => {
+                                      const val = parseFloat(e.target.value);
+                                      setArrivalQuantities(prev => ({ ...prev, [subId]: isNaN(val) ? 0 : val }));
+                                    }}
+                                    className="w-full px-3 py-2 bg-surface border border-outline-variant rounded-lg text-xs font-mono font-bold outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10 text-on-surface"
+                                  />
+                                  {currentQty < origQty && (
+                                    <p className="text-[9px] font-black text-amber-600 uppercase tracking-wide">
+                                      Balance Pending: {(origQty - currentQty).toFixed(2)} QTLS
+                                    </p>
+                                  )}
+                                </div>
+
+                                {/* Actual Supplier Bill No placed directly under Arrived Qty */}
+                                <div className="space-y-1">
+                                  <div className="flex items-center justify-between">
+                                    <label className="text-[9px] font-black uppercase tracking-widest text-primary">
+                                      Actual Supplier Bill No (Received in Billing)
+                                    </label>
+                                    {sIdx === 0 && arrivalConfirmOrder.originalOrders && arrivalConfirmOrder.originalOrders.length > 1 && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const firstBill = arrivalSupplierBillNos[subId] || '';
+                                          if (!firstBill.trim()) return;
+                                          const updated: {[k: string]: string} = {};
+                                          arrivalConfirmOrder.originalOrders.forEach((so: any, idx: number) => {
+                                            const id = so.id || `sub-${idx}`;
+                                            updated[id] = firstBill;
+                                          });
+                                          setArrivalSupplierBillNos(prev => ({ ...prev, ...updated }));
+                                        }}
+                                        className="text-[9px] font-bold text-primary hover:underline cursor-pointer"
+                                        title="Copy this bill number to all other sub-orders in this batch"
+                                      >
+                                        Apply to all
+                                      </button>
+                                    )}
+                                  </div>
+                                  <input 
+                                    type="text"
+                                    value={arrivalSupplierBillNos[subId] !== undefined ? arrivalSupplierBillNos[subId] : ''}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      setArrivalSupplierBillNos(prev => ({ ...prev, [subId]: val }));
+                                    }}
+                                    placeholder="e.g. BIL-9842 / INV-2026-001"
+                                    className="w-full px-3 py-2 bg-surface border border-outline-variant rounded-lg text-xs font-mono font-bold outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10 text-on-surface"
+                                  />
+                                  <p className="text-[9px] text-secondary">
+                                    Recorded directly into Arrival Entry for this order
                                   </p>
-                                )}
+                                </div>
                               </div>
 
-                              <div className="space-y-1">
-                                <label className="text-[9px] font-black uppercase tracking-widest text-secondary">Settlement Rate (₹/QTL)</label>
-                                <input 
-                                  type="number"
-                                  step="any"
-                                  min="0"
-                                  value={currentRate}
-                                  onChange={(e) => {
-                                    const val = parseFloat(e.target.value);
-                                    setArrivalRates(prev => ({ ...prev, [subId]: isNaN(val) ? 0 : val }));
-                                  }}
-                                  className="w-full px-3 py-2 bg-surface border border-outline-variant rounded-lg text-xs font-mono font-bold outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10"
-                                />
+                              {/* Right: Settlement Rate & Financial Breakdown */}
+                              <div className="space-y-3">
+                                <div className="space-y-1">
+                                  <label className="text-[9px] font-black uppercase tracking-widest text-secondary">
+                                    Settlement Rate (₹/QTL)
+                                  </label>
+                                  <input 
+                                    type="number"
+                                    step="any"
+                                    min="0"
+                                    value={currentRate}
+                                    onChange={(e) => {
+                                      const val = parseFloat(e.target.value);
+                                      setArrivalRates(prev => ({ ...prev, [subId]: isNaN(val) ? 0 : val }));
+                                    }}
+                                    className="w-full px-3 py-2 bg-surface border border-outline-variant rounded-lg text-xs font-mono font-bold outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10 text-on-surface"
+                                  />
+                                </div>
+
+                                <div className="p-2.5 bg-surface-container/60 rounded-lg border border-outline-variant/30 space-y-1.5 text-[10px]">
+                                  <div className="flex justify-between items-center text-secondary">
+                                    <span>Gross Value:</span>
+                                    <span className="font-mono font-semibold text-on-surface">₹{formatINR(subGross)}</span>
+                                  </div>
+                                  <div className="flex justify-between items-center text-secondary">
+                                    <span>Vehicle L.H Share (@ ₹{lhRateNum}/QTL):</span>
+                                    <span className="font-mono font-semibold text-emerald-600 dark:text-emerald-400">
+                                      {subTotalLh > 0 ? `-₹${formatINR(subTotalLh)}` : '₹0'}
+                                    </span>
+                                  </div>
+                                  <div className="pt-1.5 border-t border-outline-variant/30 flex justify-between items-center font-bold text-on-surface">
+                                    <span>Net Sub-order Amount:</span>
+                                    <span className="font-mono text-emerald-600 dark:text-emerald-400">₹{formatINR(subNetAmt)}</span>
+                                  </div>
+                                </div>
                               </div>
+                            </div>
+
+                            {/* Calculated Summary Footer for this sub-order */}
+                            <div className="pt-2 border-t border-outline-variant/30 flex justify-between items-center text-[10px]">
+                              <span className="text-secondary font-mono truncate max-w-[60%]">
+                                Bill No: <strong className="text-primary">{subBillNo || 'Pending'}</strong>
+                                {subTotalLh > 0 && <span className="text-secondary"> • L.H: ₹{formatINR(subTotalLh)}</span>}
+                              </span>
+                              <span className="font-mono font-bold text-on-surface">
+                                Net Amt: ₹{formatINR(subNetAmt)}
+                              </span>
                             </div>
                           </div>
                         );
@@ -3089,9 +3515,14 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                         const origRate = parseFloat(arrivalConfirmOrder.rate) || 4200;
                         const currentQty = arrivalQuantities[arrivalConfirmOrder.id] !== undefined ? arrivalQuantities[arrivalConfirmOrder.id] : origQty;
                         const currentRate = arrivalRates[arrivalConfirmOrder.id] !== undefined ? arrivalRates[arrivalConfirmOrder.id] : origRate;
+                        const lhRateNum = parseFloat(vehicleLhRate) || 0;
+                        const gross = Math.round(currentQty * currentRate);
+                        const totalLh = Math.round(currentQty * lhRateNum);
+                        const netAmt = Math.max(0, gross - totalLh);
+                        const singleBillNo = arrivalSupplierBillNos[arrivalConfirmOrder.id] || '';
 
                         return (
-                          <div className="p-4 bg-surface-container/40 rounded-xl border border-outline-variant/30 space-y-3">
+                          <div className="p-4 bg-surface-container/40 rounded-xl border border-outline-variant/30 space-y-3.5">
                             <div className="flex justify-between items-start">
                               <div>
                                 <h4 className="text-xs font-black text-on-surface uppercase">{arrivalConfirmOrder.buyer || "Standard Buyer"}</h4>
@@ -3102,42 +3533,95 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                               </span>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
-                              <div className="space-y-1">
-                                <label className="text-[9px] font-black uppercase tracking-widest text-secondary">Arrived Qty (QTLS)</label>
-                                <input 
-                                  type="number"
-                                  step="any"
-                                  min="0"
-                                  max={origQty}
-                                  value={currentQty}
-                                  onChange={(e) => {
-                                    const val = parseFloat(e.target.value);
-                                    setArrivalQuantities(prev => ({ ...prev, [arrivalConfirmOrder.id]: isNaN(val) ? 0 : val }));
-                                  }}
-                                  className="w-full px-3 py-2 bg-surface border border-outline-variant rounded-lg text-xs font-mono font-bold outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10"
-                                />
-                                {currentQty < origQty && (
-                                  <p className="text-[9px] font-black text-amber-600 uppercase tracking-wide">
-                                    Balance Pending: {(origQty - currentQty).toFixed(2)} QTLS
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                              {/* Left: Arrived Qty & Actual Supplier Bill No directly under it */}
+                              <div className="space-y-3">
+                                <div className="space-y-1">
+                                  <label className="text-[9px] font-black uppercase tracking-widest text-secondary">Arrived Qty (QTLS)</label>
+                                  <input 
+                                    type="number"
+                                    step="any"
+                                    min="0"
+                                    max={origQty}
+                                    value={currentQty}
+                                    onChange={(e) => {
+                                      const val = parseFloat(e.target.value);
+                                      setArrivalQuantities(prev => ({ ...prev, [arrivalConfirmOrder.id]: isNaN(val) ? 0 : val }));
+                                    }}
+                                    className="w-full px-3 py-2 bg-surface border border-outline-variant rounded-lg text-xs font-mono font-bold outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10 text-on-surface"
+                                  />
+                                  {currentQty < origQty && (
+                                    <p className="text-[9px] font-black text-amber-600 uppercase tracking-wide">
+                                      Balance Pending: {(origQty - currentQty).toFixed(2)} QTLS
+                                    </p>
+                                  )}
+                                </div>
+
+                                {/* Actual Supplier Bill No placed directly under Arrived Qty */}
+                                <div className="space-y-1">
+                                  <label className="text-[9px] font-black uppercase tracking-widest text-primary">
+                                    Actual Supplier Bill No (Received in Billing)
+                                  </label>
+                                  <input 
+                                    type="text"
+                                    value={arrivalSupplierBillNos[arrivalConfirmOrder.id] !== undefined ? arrivalSupplierBillNos[arrivalConfirmOrder.id] : ''}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      setArrivalSupplierBillNos(prev => ({ ...prev, [arrivalConfirmOrder.id]: val }));
+                                    }}
+                                    placeholder="e.g. BIL-9842 / INV-2026-001"
+                                    className="w-full px-3 py-2 bg-surface border border-outline-variant rounded-lg text-xs font-mono font-bold outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10 text-on-surface"
+                                  />
+                                  <p className="text-[9px] text-secondary">
+                                    Recorded directly into Arrival Entry for this order
                                   </p>
-                                )}
+                                </div>
                               </div>
 
-                              <div className="space-y-1">
-                                <label className="text-[9px] font-black uppercase tracking-widest text-secondary">Settlement Rate (₹/QTL)</label>
-                                <input 
-                                  type="number"
-                                  step="any"
-                                  min="0"
-                                  value={currentRate}
-                                  onChange={(e) => {
-                                    const val = parseFloat(e.target.value);
-                                    setArrivalRates(prev => ({ ...prev, [arrivalConfirmOrder.id]: isNaN(val) ? 0 : val }));
-                                  }}
-                                  className="w-full px-3 py-2 bg-surface border border-outline-variant rounded-lg text-xs font-mono font-bold outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10"
-                                />
+                              {/* Right: Settlement Rate & Breakdown */}
+                              <div className="space-y-3">
+                                <div className="space-y-1">
+                                  <label className="text-[9px] font-black uppercase tracking-widest text-secondary">Settlement Rate (₹/QTL)</label>
+                                  <input 
+                                    type="number"
+                                    step="any"
+                                    min="0"
+                                    value={currentRate}
+                                    onChange={(e) => {
+                                      const val = parseFloat(e.target.value);
+                                      setArrivalRates(prev => ({ ...prev, [arrivalConfirmOrder.id]: isNaN(val) ? 0 : val }));
+                                    }}
+                                    className="w-full px-3 py-2 bg-surface border border-outline-variant rounded-lg text-xs font-mono font-bold outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10 text-on-surface"
+                                  />
+                                </div>
+
+                                <div className="p-2.5 bg-surface-container/60 rounded-lg border border-outline-variant/30 space-y-1.5 text-[10px]">
+                                  <div className="flex justify-between items-center text-secondary">
+                                    <span>Gross Value:</span>
+                                    <span className="font-mono font-semibold text-on-surface">₹{formatINR(gross)}</span>
+                                  </div>
+                                  <div className="flex justify-between items-center text-secondary">
+                                    <span>Vehicle L.H Share (@ ₹{lhRateNum}/QTL):</span>
+                                    <span className="font-mono font-semibold text-emerald-600 dark:text-emerald-400">
+                                      {totalLh > 0 ? `-₹${formatINR(totalLh)}` : '₹0'}
+                                    </span>
+                                  </div>
+                                  <div className="pt-1.5 border-t border-outline-variant/30 flex justify-between items-center font-bold text-on-surface">
+                                    <span>Net Amount:</span>
+                                    <span className="font-mono text-emerald-600 dark:text-emerald-400">₹{formatINR(netAmt)}</span>
+                                  </div>
+                                </div>
                               </div>
+                            </div>
+
+                            <div className="pt-2 border-t border-outline-variant/30 flex justify-between items-center text-[10px]">
+                              <span className="text-secondary font-mono truncate max-w-[60%]">
+                                Bill No: <strong className="text-primary">{singleBillNo || 'Pending'}</strong>
+                                {totalLh > 0 && <span className="text-secondary"> • L.H: ₹{formatINR(totalLh)}</span>}
+                              </span>
+                              <span className="font-mono font-bold text-on-surface">
+                                Net Amt: ₹{formatINR(netAmt)}
+                              </span>
                             </div>
                           </div>
                         );
@@ -3158,25 +3642,53 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                 <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
                   <button
                     type="button"
+                    disabled={!vehicleLhAccepted}
                     onClick={async () => {
+                      if (!vehicleLhAccepted) return;
                       const orderId = arrivalConfirmOrder.id;
-                      await handleMarkAsArrived(orderId, arrivalQuantities, arrivalRates, actualSupplierBillNo);
+                      const lhRate = parseFloat(vehicleLhRate) || 0;
+                      await handleMarkAsArrived(
+                        orderId, 
+                        arrivalQuantities, 
+                        arrivalRates, 
+                        arrivalSupplierBillNos,
+                        lhRate,
+                        vehicleLhAccepted
+                      );
                       setArrivalConfirmOrder(null);
                     }}
-                    className="px-4 py-2.5 bg-emerald-600/10 hover:bg-emerald-600/20 text-emerald-700 dark:text-emerald-400 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 border border-emerald-600/20"
+                    className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 border ${
+                      vehicleLhAccepted 
+                        ? 'bg-emerald-600/10 hover:bg-emerald-600/20 text-emerald-700 dark:text-emerald-400 border-emerald-600/20 cursor-pointer' 
+                        : 'opacity-50 cursor-not-allowed bg-surface border-outline-variant text-secondary'
+                    }`}
                   >
                     <Check className="w-4 h-4" />
                     Confirm & Stay
                   </button>
                   <button
                     type="button"
+                    disabled={!vehicleLhAccepted}
                     onClick={async () => {
+                      if (!vehicleLhAccepted) return;
                       const orderId = arrivalConfirmOrder.id;
-                      await handleMarkAsArrived(orderId, arrivalQuantities, arrivalRates, actualSupplierBillNo);
+                      const lhRate = parseFloat(vehicleLhRate) || 0;
+                      await handleMarkAsArrived(
+                        orderId, 
+                        arrivalQuantities, 
+                        arrivalRates, 
+                        arrivalSupplierBillNos,
+                        lhRate,
+                        vehicleLhAccepted
+                      );
                       setArrivalConfirmOrder(null);
                       navigate('/arrival-entry');
                     }}
-                    className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md shadow-emerald-600/15 flex items-center justify-center gap-2 cursor-pointer"
+                    className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-2 ${
+                      vehicleLhAccepted 
+                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/15 cursor-pointer' 
+                        : 'opacity-50 cursor-not-allowed bg-surface-container border border-outline-variant text-secondary shadow-none'
+                    }`}
                   >
                     <CheckCircle2 className="w-4 h-4" />
                     Confirm & Proceed to Arrival Entry
@@ -3457,6 +3969,37 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
       <AnimatePresence>
         {a4PreviewOrder && (
           <div className="fixed inset-0 bg-black/75 backdrop-blur-md flex items-center justify-center z-50 p-2 sm:p-4 overflow-y-auto print:p-0 print:bg-white print:static">
+            <style>{`
+              @media print {
+                /* Hide everything across the main document */
+                body * {
+                  visibility: hidden !important;
+                }
+                /* Expose ONLY the physical A4 document container and its elements */
+                #a4-printable-po-document,
+                #a4-printable-po-document * {
+                  visibility: visible !important;
+                }
+                #a4-printable-po-document {
+                  position: fixed !important;
+                  left: 0 !important;
+                  top: 0 !important;
+                  width: 100% !important;
+                  max-width: 100% !important;
+                  min-height: 100% !important;
+                  margin: 0 !important;
+                  padding: 10mm !important;
+                  border: none !important;
+                  box-shadow: none !important;
+                  background: #ffffff !important;
+                  z-index: 9999999 !important;
+                }
+                @page {
+                  size: A4 portrait;
+                  margin: 0;
+                }
+              }
+            `}</style>
             <motion.div 
               initial={{ scale: 0.96, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
@@ -3691,6 +4234,15 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
           </div>
         )}
       </AnimatePresence>
+
+      {selectedOrderForTracking && (
+        <EmailTrackingModal
+          order={selectedOrderForTracking}
+          isOpen={Boolean(selectedOrderForTracking)}
+          onClose={() => setSelectedOrderForTracking(null)}
+          onRefresh={fetchTrackingRecords}
+        />
+      )}
 
       {renderDeleteAllModal()}
       {renderToast()}
