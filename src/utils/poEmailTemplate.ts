@@ -732,7 +732,7 @@ export const generateBuyerConfirmationEmailHtml = (
         <strong>✓ Brokerage Dispatch Notice:</strong> The official Purchase Order has been transmitted to ${supplierName}. You will receive automatic SMS and WhatsApp updates as loading begins.
       </div>
       <div style="margin-top: 24px; text-align: center; font-size: 11px; color: #94a3b8; border-top: 1px solid #f1f5f9; padding-top: 16px;">
-        Tejas Canvassing • Wholesale Grain Brokerage Desk • Phone: +91 98450 12345
+        Tejas Canvassing • Wholesale Grain Brokerage Desk • Phone: +91 99453 51166
       </div>
     </div>
   </div>

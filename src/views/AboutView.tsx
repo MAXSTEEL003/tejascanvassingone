@@ -736,7 +736,7 @@ export default function AboutView() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                     {[
                       { label: "Email Address", key: "email", type: "email", placeholder: "you@example.com" },
-                      { label: "Contact Phone", key: "phone", type: "tel", placeholder: "+91 98450 XXXXX" },
+                      { label: "Contact Phone", key: "phone", type: "tel", placeholder: "+91 99453 XXXXX" },
                     ].map(f => (
                       <div key={f.key}>
                         <label className="text-[9.5px] uppercase tracking-widest text-white/60 block mb-1 font-semibold">{f.label}</label>

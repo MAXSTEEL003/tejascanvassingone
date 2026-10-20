@@ -718,7 +718,7 @@ export default function NotificationSettings() {
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
                       className={cn("w-full bg-surface-container-low border border-outline-variant rounded-xl px-4 py-3 text-xs font-bold outline-none focus:ring-2 transition-all font-mono", isMerchant ? "focus:ring-emerald-500/20 focus:border-emerald-500" : "focus:ring-primary/20")}
-                      placeholder="e.g. +91 98450 12345"
+                      placeholder="e.g. +91 99453 51166"
                     />
                   </div>
 

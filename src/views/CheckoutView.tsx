@@ -35,6 +35,10 @@ import {
 import { generateSupplierPOEmailHtml } from '../utils/poEmailTemplate';
 
 const BUYER_PROFILES_LOOKUP: Record<string, { email: string; phone: string }> = {
+  'TEJAS': { email: 'tejasadinarayan@gmail.com', phone: '9945351166' },
+  'TEJAS CANVASSING': { email: 'nani@tejasc.in', phone: '9945351166' },
+  'TEJAS ADINARAYAN': { email: 'tejasadinarayan@gmail.com', phone: '9945351166' },
+  'VISION STORES': { email: 'visionstores@gmail.com', phone: '9945351166' },
   'G.K.UDYOG': { email: 'hr_hk2005@yahoo.com', phone: '8880088844' },
   'PCB TRADERS': { email: 'pcbtraders@gmail.com', phone: '9844446638' },
   'RAGHURAM ENTERPRISES': { email: 'raghuram.enterprises@gmail.com', phone: '9980137079' },
@@ -77,7 +81,7 @@ const resolveBuyerProfile = (buyerName: string) => {
       if (matched) {
         return {
           email: matched.email || `${norm.toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`,
-          phone: matched.phone || '9845012345'
+          phone: matched.phone || localStorage.getItem('userPhone') || localStorage.getItem('testWhatsappPhone') || '9945351166'
         };
       }
     }
@@ -89,9 +93,11 @@ const resolveBuyerProfile = (buyerName: string) => {
   for (const k of Object.keys(BUYER_PROFILES_LOOKUP)) {
     if (norm.includes(k) || k.includes(norm)) return BUYER_PROFILES_LOOKUP[k];
   }
+
+  const defaultUserPhone = localStorage.getItem('userPhone') || localStorage.getItem('testWhatsappPhone') || '9945351166';
   return {
     email: `${norm.toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`,
-    phone: '9845012345'
+    phone: defaultUserPhone
   };
 };
 
@@ -232,7 +238,7 @@ export default function CheckoutView() {
       
       const buyerText = bulkData?.bulkOrder 
         ? 'Consolidated Batch' 
-        : (localStorage.getItem('userName') || activeLocation.name || 'Authorized Merchant');
+        : (localStorage.getItem('userName') || activeLocation.name || 'TEJAS');
 
       const initials = buyerText
         .split(' ')
@@ -249,6 +255,20 @@ export default function CheckoutView() {
       const supplierVal = sanitizeSupplierName(items[0]?.supplier, 'DIRECT MILL');
 
       const destinationFull = `${activeLocation.name} (${activeLocation.type}) - ${activeLocation.address}`;
+
+      const buyerProf = resolveBuyerProfile(buyerText);
+      const rawCustomerPhone = (
+        localStorage.getItem('userPhone') || 
+        buyerProf.phone || 
+        activeLocation.phone || 
+        localStorage.getItem('testWhatsappPhone') || 
+        '9945351166'
+      ).replace(/[^0-9]/g, '');
+      const customerPhone = rawCustomerPhone.length >= 10 ? rawCustomerPhone.slice(-10) : '9945351166';
+      const finalCustomerWaPhone = `91${customerPhone}`;
+
+      const rawBrandName = items[0]?.name || 'KESHAR KALI';
+      const brandVal = rawBrandName.replace(/\(\d+.*$/, '').trim() || 'KESHAR KALI';
 
       const newOrder = {
         id: finalOrderId,
@@ -271,14 +291,14 @@ export default function CheckoutView() {
         status: 'Pending Approval',
         initials,
         color: 'zinc',
-        product: items[0]?.name || 'Premium Rice',
+        product: brandVal,
         supplier: supplierVal,
         address: activeLocation.address,
         destination: destinationFull,
         deliveryLocationId: activeLocation.id,
         deliveryLocationName: activeLocation.name,
         deliveryLocationType: activeLocation.type,
-        phone: activeLocation.phone || localStorage.getItem('userPhone') || '',
+        phone: customerPhone,
         gstin: localStorage.getItem('userGstin') || '29AAGCV7712M1ZP',
         loadingDays: preferredLoadingDays,
         paymentMethod: 'Pay on Delivery / Mill Settlement'
@@ -291,7 +311,6 @@ export default function CheckoutView() {
       setEmailStatus('sending');
 
       const supplierProf = resolveSupplierProfile(supplierVal);
-      const buyerProf = resolveBuyerProfile(buyerText);
 
       const emailHtml = generateSupplierPOEmailHtml(
         supplierVal,
@@ -299,7 +318,7 @@ export default function CheckoutView() {
         [{
           id: newOrder.id,
           buyer: newOrder.buyer || buyerText,
-          product: newOrder.items || 'KESHAR KALI',
+          product: brandVal,
           qty: orderQty,
           rate: orderRate,
           date: newOrder.date || new Date(),
@@ -325,12 +344,9 @@ export default function CheckoutView() {
         `--\nTejas Canvassing Grain Brokerage`
       );
 
-      const brandVal = (items[0]?.name || newOrder.product || 'keshar kali').replace(/\(\d+.*$/, '').trim();
       const customerWaMsg = `Hello ${newOrder.buyer},\n\nOrder placed successfully.\n\nBrand: ${brandVal}\nQuantity: ${orderQty} QTL\nRate: ₹${orderRate}/QTL\n\nThank you,\nTejas Canvassing`;
       const waMsg = encodeURIComponent(customerWaMsg);
 
-      const customerPhone = (activeLocation.phone || localStorage.getItem('userPhone') || supplierProf.phone || '9945351166').replace(/[^0-9]/g, '');
-      const finalCustomerWaPhone = customerPhone.length === 10 ? `91${customerPhone}` : customerPhone;
       setDirectWaLink(`https://wa.me/${finalCustomerWaPhone}?text=${waMsg}`);
       setDirectSmsLink(`sms:+${finalCustomerWaPhone}?body=${waMsg}`);
 
@@ -361,12 +377,11 @@ export default function CheckoutView() {
       });
 
       // 2. Automatic Meta WhatsApp Order Notification Trigger (order_notify template)
-      const waRecipient = activeLocation.phone || localStorage.getItem('userPhone') || supplierProf.phone || '9945351166';
       fetch('/api/dispatch-whatsapp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          to: waRecipient,
+          to: finalCustomerWaPhone,
           buyerName: newOrder.buyer,
           brand: brandVal,
           qty: String(orderQty),

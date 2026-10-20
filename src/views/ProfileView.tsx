@@ -598,7 +598,7 @@ export default function ProfileView() {
                       maxLength={10}
                       value={tempPhone}
                       onChange={(e) => setTempPhone(e.target.value.replace(/\D/g, ''))}
-                      placeholder="9845012345"
+                      placeholder="9945351166"
                       className="w-full pl-11 pr-3 py-2 text-xs font-semibold rounded-xl bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#C22424]/30 focus:border-[#C22424] transition-all font-sans"
                     />
                   </div>

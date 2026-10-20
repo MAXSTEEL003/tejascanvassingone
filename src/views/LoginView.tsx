@@ -232,7 +232,23 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
       }
 
       localStorage.setItem('tejas_intro_viewed', 'true');
-      if (resolvedPhone) localStorage.setItem('userPhone', resolvedPhone);
+      let userPhoneVal = resolvedPhone;
+      if (!userPhoneVal) {
+        if (resolvedName.toUpperCase().includes('TEJAS') || resolvedName.toUpperCase().includes('VISION')) {
+          userPhoneVal = '9945351166';
+        } else {
+          try {
+            const saved = localStorage.getItem('stakeholders_v2');
+            if (saved) {
+              const parsed = JSON.parse(saved);
+              const buyers = parsed.buyers || [];
+              const matched = buyers.find((b: any) => (b.name || '').trim().toUpperCase() === resolvedName.trim().toUpperCase());
+              if (matched?.phone) userPhoneVal = matched.phone;
+            }
+          } catch {}
+        }
+      }
+      if (userPhoneVal) localStorage.setItem('userPhone', userPhoneVal);
 
       window.dispatchEvent(new Event('role-changed'));
 
@@ -791,7 +807,7 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
                         required
                         value={identifier}
                         onChange={(e) => setIdentifier(e.target.value)}
-                        placeholder="e.g. 9845012345 or Firm Name"
+                        placeholder="e.g. 9945351166 or Firm Name"
                         className="w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-[#1A1A1A] border border-neutral-200 dark:border-[#2A2A2A] text-xs text-neutral-900 dark:text-white outline-none focus:border-[#C22424] focus:ring-1 focus:ring-[#C22424] transition-all placeholder:text-neutral-400"
                       />
                       <div className="absolute left-3 text-neutral-400 pointer-events-none">
@@ -1248,7 +1264,7 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
                     required
                     value={empRequestPhone}
                     onChange={(e) => setEmpRequestPhone(e.target.value)}
-                    placeholder="e.g. 9845012345"
+                    placeholder="e.g. 9945351166"
                     className="w-full px-3 py-2 bg-neutral-50 dark:bg-[#1A1A1A] border border-neutral-200 dark:border-[#2A2A2A] rounded-xl text-xs font-medium text-neutral-900 dark:text-white outline-none focus:border-[#C22424] focus:ring-1 focus:ring-[#C22424]"
                   />
                 </div>

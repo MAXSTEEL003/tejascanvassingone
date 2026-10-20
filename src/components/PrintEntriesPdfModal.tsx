@@ -272,7 +272,7 @@ export default function PrintEntriesPdfModal({
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8.8);
       doc.setTextColor(226, 232, 240);
-      doc.text('APMC Yard, Yeshwanthpur, Bangalore - 560022 • Phone: +91 98450 12345 • GSTIN: 29AAGCV7712M1ZP', 7, 20.5);
+      doc.text('APMC Yard, Yeshwanthpur, Bangalore - 560022 • Phone: +91 99453 51166 • GSTIN: 29AAGCV7712M1ZP', 7, 20.5);
 
       // Report Audit Badge (Right-aligned in header)
       doc.setFont('helvetica', 'bold');

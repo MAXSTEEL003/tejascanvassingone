@@ -52,7 +52,12 @@ const orders: any[] = [];
 
 const ARCHIVED_ACCEPTED_ORDERS: any[] = [];
 
-const BUYER_PROFILES_LOOKUP: Record<string, { email: string; phone: string }> = {};
+const BUYER_PROFILES_LOOKUP: Record<string, { email: string; phone: string }> = {
+  'TEJAS': { email: 'tejasadinarayan@gmail.com', phone: '9945351166' },
+  'TEJAS CANVASSING': { email: 'nani@tejasc.in', phone: '9945351166' },
+  'TEJAS ADINARAYAN': { email: 'tejasadinarayan@gmail.com', phone: '9945351166' },
+  'VISION STORES': { email: 'visionstores@gmail.com', phone: '9945351166' },
+};
 
 const SUPPLIER_PROFILES_LOOKUP: Record<string, { email: string; phone: string }> = {};
 
@@ -75,7 +80,7 @@ const resolveBuyerProfile = (buyerName: string) => {
       if (matched) {
         return {
           email: matched.email || `${(norm || '').toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`,
-          phone: matched.phone || '9845012345'
+          phone: matched.phone || localStorage.getItem('userPhone') || localStorage.getItem('testWhatsappPhone') || '9945351166'
         };
       }
     }
@@ -87,9 +92,11 @@ const resolveBuyerProfile = (buyerName: string) => {
   for (const k of Object.keys(BUYER_PROFILES_LOOKUP)) {
     if (norm.includes(k) || k.includes(norm)) return BUYER_PROFILES_LOOKUP[k];
   }
+
+  const defaultUserPhone = localStorage.getItem('userPhone') || localStorage.getItem('testWhatsappPhone') || '9945351166';
   return {
     email: `${(norm || '').toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`,
-    phone: '9845012345'
+    phone: defaultUserPhone
   };
 };
 
@@ -301,7 +308,7 @@ export default function OrdersDashboard() {
     let profile: any = { 
       name: buyerName, 
       email: `${(buyerName || '').toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`, 
-      phone: '+91 98450 ' + Math.floor(10000 + Math.random() * 90000), 
+      phone: resolveBuyerProfile(buyerName).phone ? `+91 ${resolveBuyerProfile(buyerName).phone.replace(/^91/, '')}` : '+91 99453 51166', 
       address: 'No. 15, APMC Yard, Yeshwanthpur, Bangalore, Karnataka - 560022', 
       gstin: '29AAGCV7712M1ZP' 
     };
@@ -1246,7 +1253,10 @@ export default function OrdersDashboard() {
 
     const buyerProfiles = uniqueBuyers.map(b => {
       const prof = resolveBuyerProfile(b);
-      return { name: b, email: prof.email, phone: prof.phone };
+      const matchedOrder = selected.find(s => (s.buyer || '').trim().toLowerCase() === b.trim().toLowerCase());
+      const orderPhone = (matchedOrder?.phone || '').replace(/[^0-9]/g, '');
+      const finalPhone = (orderPhone && orderPhone !== '9845012345' && orderPhone !== '9845000000' && orderPhone !== '919845000000') ? orderPhone : prof.phone;
+      return { name: b, email: prof.email, phone: finalPhone };
     });
 
     const supplierProfile = resolveSupplierProfile(assignedBatchSupplier);
@@ -1970,7 +1980,7 @@ export default function OrdersDashboard() {
                                 type="button"
                                 onClick={() => {
                                   const buyerProf = resolveBuyerProfile(order.buyer);
-                                  const phone = buyerProf?.phone || '919845000000';
+                                  const phone = buyerProf?.phone || localStorage.getItem('userPhone') || '9945351166';
                                   const cleanPhone = phone.replace(/[^0-9]/g, '');
                                   const finalPhone = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
                                   const brand = ((order as any).product || 'keshar kali').replace(/\(\d+.*$/, '').trim();
@@ -2682,7 +2692,7 @@ export default function OrdersDashboard() {
                     <p className="text-xs text-secondary mt-1 font-medium flex items-center gap-3">
                       <span>GSTIN: <span className="font-mono font-bold text-on-surface">{merchantHistory?.profile?.gstin || '29AAGCV7712M1ZP'}</span></span>
                       <span className="opacity-30">•</span>
-                      <span>Phone: <span className="font-mono font-bold text-on-surface">{merchantHistory?.profile?.phone || '+91 98450 12345'}</span></span>
+                      <span>Phone: <span className="font-mono font-bold text-on-surface">{merchantHistory?.profile?.phone || '+91 99453 51166'}</span></span>
                     </p>
                   </div>
                 </div>

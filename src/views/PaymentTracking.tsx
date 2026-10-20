@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback, useMemo, memo } from 'react';
-import { 
-  CreditCard, 
-  DollarSign, 
-  ArrowUpRight, 
-  ArrowDownLeft, 
-  Search, 
-  Filter, 
+import {
+  CreditCard,
+  DollarSign,
+  ArrowUpRight,
+  ArrowDownLeft,
+  Search,
+  Filter,
   Download,
   AlertCircle,
   AlertTriangle,
@@ -43,21 +43,25 @@ import { getCollectionDocs, syncCollection, setCollectionDoc } from '../lib/fire
 import { recordPaymentClearedForPatti, unmarkPaymentClearedForPatti } from '../utils/pattiBookManager';
 import { PRELOADED_TRANSACTIONS } from '../lib/analyticsEngine';
 import InlinePattiSlip from '../components/InlinePattiSlip';
-import { 
-  dateToTimestamp, 
-  formatDateDisplay, 
+import {
+  dateToTimestamp,
+  formatDateDisplay,
   formatDateDDMMYYYY as formatIndianDate,
   computeDaysPending,
   normalizeDate
 } from '../utils/dateUtils';
-import { 
-  ArrivalSheet, 
-  getCurrentMonthYearSheetName, 
-  organizeArrivalSheetsByMonth, 
-  isMeaningfulRow 
+import {
+  ArrivalSheet,
+  getCurrentMonthYearSheetName,
+  organizeArrivalSheetsByMonth,
+  isMeaningfulRow
 } from '../utils/arrivalSheetsManager';
 
 const BUYER_PROFILES_LOOKUP: Record<string, { email: string; phone: string }> = {
+  'TEJAS': { email: 'tejas@riceaggregator.com', phone: '9945351166' },
+  'TEJAS CANVASSING': { email: 'tejascanvassing@gmail.com', phone: '9945351166' },
+  'TEJAS ADINARAYAN': { email: 'tejasadinarayan@gmail.com', phone: '9945351166' },
+  'VISION STORES': { email: 'visionstores.trade@gmail.com', phone: '9945351166' },
   'G.K.UDYOG': { email: 'hr_hk2005@yahoo.com', phone: '8880088844' },
   'PCB TRADERS': { email: 'pcbtraders@gmail.com', phone: '9844446638' },
   'RAGHURAM ENTERPRISES': { email: 'raghuram.enterprises@gmail.com', phone: '9980137079' },
@@ -93,7 +97,7 @@ const resolveBuyerProfile = (buyerName: string) => {
       if (matched) {
         return {
           email: matched.email || `${norm.toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`,
-          phone: matched.phone || '9845012345'
+          phone: matched.phone || localStorage.getItem('userPhone') || '9945351166'
         };
       }
     }
@@ -107,7 +111,7 @@ const resolveBuyerProfile = (buyerName: string) => {
   }
   return {
     email: `${norm.toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`,
-    phone: '9845012345'
+    phone: localStorage.getItem('userPhone') || '9945351166'
   };
 };
 
@@ -222,27 +226,27 @@ interface PaymentRowProps {
   onGeneratePatti: (txn: any) => void;
 }
 
-const PaymentRow = memo(function PaymentRow({ 
-  txn, 
-  isSelected, 
-  onSelect, 
-  onOpenPayment, 
+const PaymentRow = memo(function PaymentRow({
+  txn,
+  isSelected,
+  onSelect,
+  onOpenPayment,
   onReversePayment,
   onGeneratePatti
 }: PaymentRowProps) {
-  
+
   const isCleared = txn.status === 'Cleared';
   const over60 = txn.daysOutstanding > 60;
   const isShipmentArrived = true; // Arrived Orders view only lists already arrived orders
 
   return (
     <React.Fragment>
-      <tr 
+      <tr
         onClick={() => onSelect(txn)}
         className={cn(
           "interactive-tr border-l-4 group/row cursor-pointer select-none",
-          isCleared 
-            ? "border-l-emerald-500 hover:border-l-emerald-600 dark:bg-neutral-900/10" 
+          isCleared
+            ? "border-l-emerald-500 hover:border-l-emerald-600 dark:bg-neutral-900/10"
             : "border-l-amber-500 hover:border-l-amber-600 dark:bg-neutral-900/30"
         )}
       >
@@ -281,7 +285,7 @@ const PaymentRow = memo(function PaymentRow({
                 {txn.buyer}
               </span>
               {txn.isLifted && (
-                <span 
+                <span
                   className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-purple-500/10 text-purple-700 dark:text-purple-300 border border-purple-500/20 text-[8px] font-black tracking-widest uppercase"
                   title={`Redirected Load${txn.originalBuyer ? ` from ${txn.originalBuyer}` : ''}`}
                 >
@@ -290,7 +294,7 @@ const PaymentRow = memo(function PaymentRow({
                 </span>
               )}
               {txn.isDiscrepancy && (
-                <span 
+                <span
                   className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 text-[8px] font-black tracking-widest uppercase cursor-help"
                   title={`Reconciliation discrepancy: Ordered ${txn.orderedWeight} QTLS, Arrived ${txn.qty} QTLS`}
                 >
@@ -318,31 +322,31 @@ const PaymentRow = memo(function PaymentRow({
           <div className="flex flex-col items-center justify-center gap-1 text-center">
             <span className={cn(
               "inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border",
-              isCleared 
-                ? 'bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-950/20 dark:border-emerald-900/30' 
-                : over60 
+              isCleared
+                ? 'bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-950/20 dark:border-emerald-900/30'
+                : over60
                   ? 'bg-rose-50 text-rose-600 border-rose-200 dark:bg-rose-950/30 dark:border-rose-900/50'
                   : 'bg-amber-50 text-amber-600 border-amber-100 dark:bg-amber-950/20 dark:border-amber-900/40'
             )}>
               <span className={cn(
-                "w-1.5 h-1.5 rounded-full", 
-                isCleared 
-                  ? "bg-emerald-500" 
-                  : over60 
-                    ? "bg-rose-500 animate-pulse" 
+                "w-1.5 h-1.5 rounded-full",
+                isCleared
+                  ? "bg-emerald-500"
+                  : over60
+                    ? "bg-rose-500 animate-pulse"
                     : "bg-amber-500 animate-pulse"
               )} />
-              {txn.daysOutstanding !== undefined && txn.daysOutstanding > 0 
+              {txn.daysOutstanding !== undefined && txn.daysOutstanding > 0
                 ? `${txn.daysOutstanding} ${txn.daysOutstanding === 1 ? 'DAY' : 'DAYS'}`
                 : '0 DAYS'
               }
             </span>
             <span className={cn(
               "text-[9px] font-mono font-bold tracking-tight px-1.5 py-0.5 rounded uppercase",
-              isCleared 
-                ? "text-emerald-600 dark:text-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/10" 
-                : over60 
-                  ? "text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/20 font-black animate-pulse" 
+              isCleared
+                ? "text-emerald-600 dark:text-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/10"
+                : over60
+                  ? "text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/20 font-black animate-pulse"
                   : "text-neutral-500 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-800"
             )}>
               {isCleared ? 'CLEARED' : 'PENDING'}
@@ -354,15 +358,15 @@ const PaymentRow = memo(function PaymentRow({
         <td className="p-4 text-right">
           <div className="flex items-center justify-end gap-2">
             {!isCleared ? (
-              <button 
-                onClick={(e) => { 
-                  e.stopPropagation(); 
-                  onOpenPayment(txn); 
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenPayment(txn);
                 }}
                 className={cn(
                   "btn-tactile px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-sm hover:shadow cursor-pointer",
-                  isShipmentArrived 
-                    ? "bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white shadow-emerald-500/10" 
+                  isShipmentArrived
+                    ? "bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white shadow-emerald-500/10"
                     : "bg-neutral-100 dark:bg-neutral-800 text-neutral-400 dark:text-neutral-500 border border-neutral-200 dark:border-neutral-700/50 cursor-not-allowed"
                 )}
                 title={isShipmentArrived ? "Log settlement payment" : "Locked: Payments can only be collected after the shipment arrives"}
@@ -370,7 +374,7 @@ const PaymentRow = memo(function PaymentRow({
                 {isShipmentArrived ? "Log Credit" : "Locked"}
               </button>
             ) : (
-              <button 
+              <button
                 onClick={(e) => { e.stopPropagation(); onReversePayment(txn); }}
                 className="btn-tactile px-2.5 py-1.5 bg-neutral-50 dark:bg-neutral-800 text-neutral-500 hover:text-rose-500 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all border border-neutral-200/50 dark:border-neutral-700/50 inline-flex items-center gap-1 cursor-pointer"
                 title="Mark this transaction back as outstanding"
@@ -378,8 +382,8 @@ const PaymentRow = memo(function PaymentRow({
                 <Undo2 className="w-3.5 h-3.5" />
               </button>
             )}
-            <button 
-              onClick={(e) => { 
+            <button
+              onClick={(e) => {
                 e.stopPropagation();
                 const buyerProfile = resolveBuyerProfile(txn.buyer);
                 const formattedAmt = formatINR(txn.amount);
@@ -394,10 +398,10 @@ const PaymentRow = memo(function PaymentRow({
               <MessageSquare className="w-3.5 h-3.5" />
               WhatsApp
             </button>
-            <button 
-              onClick={(e) => { 
-                e.stopPropagation(); 
-                onSelect(txn); 
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelect(txn);
               }}
               className={cn(
                 "btn-tactile px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-sm cursor-pointer",
@@ -419,15 +423,15 @@ const PaymentRow = memo(function PaymentRow({
         {isSelected && (
           <tr className="table-dropdown-drawer">
             <td colSpan={6} className="p-0 bg-neutral-50/50 dark:bg-neutral-950/40">
-              <motion.div 
+              <motion.div
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
                 transition={{ duration: 0.22, ease: "easeInOut" }}
                 className="overflow-hidden"
               >
-                <InlinePattiSlip 
-                  txn={txn} 
+                <InlinePattiSlip
+                  txn={txn}
                   onOpenFullPatti={onGeneratePatti}
                   onClose={() => onSelect(txn)}
                 />
@@ -456,7 +460,7 @@ export default function PaymentTracking() {
       if (single) {
         return [single];
       }
-    } catch {}
+    } catch { }
     return ['running-month'];
   });
   const [isSheetSelectorOpen, setIsSheetSelectorOpen] = useState(false);
@@ -475,7 +479,7 @@ export default function PaymentTracking() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'cleared' | 'discrepancy' | 'lifted'>('all');
   const [warningAlert, setWarningAlert] = useState<string | null>(null);
-  
+
   const [selectedTxn, setSelectedTxn] = useState<any>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentData, setPaymentData] = useState({
@@ -522,7 +526,7 @@ export default function PaymentTracking() {
     setSelectedSheets(next);
     try {
       localStorage.setItem('payment_tracking_selected_sheets', JSON.stringify(next));
-    } catch {}
+    } catch { }
   }, []);
 
   const handleSelectRunningMonthOnly = useCallback(() => {
@@ -530,7 +534,7 @@ export default function PaymentTracking() {
     setSelectedSheets(next);
     try {
       localStorage.setItem('payment_tracking_selected_sheets', JSON.stringify(next));
-    } catch {}
+    } catch { }
   }, []);
 
   // Display label for the multi-sheet selector trigger
@@ -588,14 +592,14 @@ export default function PaymentTracking() {
     const resolvedChqDt = chqDtDirect || extractChequeDate(row);
     const hasChq = Boolean(resolvedChqDt && String(resolvedChqDt).trim() !== '');
 
-    const isCleared = isClearedDirect !== undefined 
-      ? isClearedDirect 
+    const isCleared = isClearedDirect !== undefined
+      ? isClearedDirect
       : (
-          row.noOfDayRec === 'Cleared' || 
-          /^(cleared|clear|paid)$/i.test(String(row.noOfDayRec || '')) ||
-          /^(cleared|clear|paid)$/i.test(String(row.noOfDays || '')) ||
-          hasChq
-        );
+        row.noOfDayRec === 'Cleared' ||
+        /^(cleared|clear|paid)$/i.test(String(row.noOfDayRec || '')) ||
+        /^(cleared|clear|paid)$/i.test(String(row.noOfDays || '')) ||
+        hasChq
+      );
 
     // If row already has an explicit numeric noOfDays in ArrivalEntry
     const explicitDays = String(row.noOfDays ?? '').trim();
@@ -649,7 +653,7 @@ export default function PaymentTracking() {
         if (stored) {
           rawLocalSheets = JSON.parse(stored);
         }
-      } catch {}
+      } catch { }
 
       // Fallback: if arrival_entry_sheets_v4 is empty, check arrival_entry_data_v4
       if (!rawLocalSheets || rawLocalSheets.length === 0) {
@@ -662,7 +666,7 @@ export default function PaymentTracking() {
               data: singleSheetData
             }];
           }
-        } catch {}
+        } catch { }
       }
 
       const [cloudArrival, cloudSheetsMeta] = await Promise.all([
@@ -672,10 +676,10 @@ export default function PaymentTracking() {
 
       // Organize all arrival records into month sheets using the official organizeArrivalSheetsByMonth
       const organized = organizeArrivalSheetsByMonth(
-        rawLocalSheets, 
-        cloudArrival, 
-        40, 
-        undefined, 
+        rawLocalSheets,
+        cloudArrival,
+        40,
+        undefined,
         cloudSheetsMeta
       );
       // Auto-sanitize legacy records where payment discount was accidentally copied to cc
@@ -695,7 +699,7 @@ export default function PaymentTracking() {
       // Update localStorage so arrival_entry_sheets_v4 is consistent
       try {
         localStorage.setItem('arrival_entry_sheets_v4', JSON.stringify(sheetsList));
-      } catch {}
+      } catch { }
 
       setCloudStatus('synced');
     } catch (err) {
@@ -707,13 +711,13 @@ export default function PaymentTracking() {
   useEffect(() => {
     loadData();
     window.addEventListener('storage', loadData);
-    
+
     // Command palette listen event
     const handleGotoArrival = () => {
       loadData();
     };
     window.addEventListener('goto-arrival-event', handleGotoArrival);
-    
+
     return () => {
       window.removeEventListener('storage', loadData);
       window.removeEventListener('goto-arrival-event', handleGotoArrival);
@@ -808,23 +812,23 @@ export default function PaymentTracking() {
         }
 
         const calculatedNet = parseFloat(row.netAmt) || parseFloat(row.amount) || ((parseFloat(row.qty) || 0) * (parseFloat(row.rate) || 0)) || 0;
-        
+
         const resolvedChqDt = extractChequeDate(row, matchingOrder);
         const resolvedChqNo = extractChequeNumber(row, matchingOrder);
         const resolvedChqAm = extractChequeAmount(row, matchingOrder);
         const resolvedBank = extractBankName(row, matchingOrder);
 
-        const hasAnyChqDetail = 
+        const hasAnyChqDetail =
           (resolvedChqAm > 0) ||
           (resolvedChqNo !== '') ||
           (resolvedChqDt !== '') ||
           (resolvedBank !== '');
 
-        const isCleared = row.noOfDayRec === 'Cleared' || 
-                          /^(cleared|clear|paid)$/i.test(String(row.noOfDayRec || '')) ||
-                          /^(cleared|clear|paid)$/i.test(String(row.noOfDays || '')) ||
-                          hasAnyChqDetail || 
-                          (matchingOrder && (matchingOrder.paymentStatus === 'Received' || matchingOrder.paymentStatus === 'Settled' || matchingOrder.paymentStatus === 'Cleared'));
+        const isCleared = row.noOfDayRec === 'Cleared' ||
+          /^(cleared|clear|paid)$/i.test(String(row.noOfDayRec || '')) ||
+          /^(cleared|clear|paid)$/i.test(String(row.noOfDays || '')) ||
+          hasAnyChqDetail ||
+          (matchingOrder && (matchingOrder.paymentStatus === 'Received' || matchingOrder.paymentStatus === 'Settled' || matchingOrder.paymentStatus === 'Cleared'));
         const daysCount = calculatePendingDays(row, isCleared, resolvedChqDt);
 
         const rawBill = row.billNo || matchingOrder?.billNo || '';
@@ -872,7 +876,7 @@ export default function PaymentTracking() {
 
         // Redirected shop / new buyer name
         const redirectedShop = liftingRecord?.shopName || matchingOrder?.currentShop || matchingOrder?.redirectedShop || row?.redirectedTo || (row?.isLifted && row?.partyName ? row.partyName : null);
-        
+
         // Original buyer before lifting
         const originalBuyer = liftingRecord?.originalBuyer || row?.originalBuyer || (matchingOrder?.buyer && matchingOrder.buyer !== redirectedShop ? matchingOrder.buyer : (row?.partyName !== redirectedShop ? row?.partyName : ''));
 
@@ -977,7 +981,7 @@ export default function PaymentTracking() {
   // Handle fuzzy searching and quick filters with memoization
   const filteredTxns = useMemo(() => {
     const currentList = contractTxns;
-    
+
     const getTxnTimestamp = (obj: any): number => {
       if (!obj) return -1;
       const d = obj.date || obj.chqDt || obj.rawRow?.date || obj.rawOrder?.date;
@@ -988,7 +992,7 @@ export default function PaymentTracking() {
     const filtered = currentList.filter(txn => {
       // 1. Text Searching filter
       const query = searchQuery.toLowerCase().trim();
-      const matchText = query === '' || 
+      const matchText = query === '' ||
         txn.buyer.toLowerCase().includes(query) ||
         txn.supplier.toLowerCase().includes(query) ||
         txn.id.toLowerCase().includes(query) ||
@@ -1029,7 +1033,7 @@ export default function PaymentTracking() {
   const handleGeneratePatti = useCallback((txn: any) => {
     // 1. Get the underlying arrival entry (either from txn.rawRow if it is an arrival entry, or txn.matchingArrival if it is a contract order)
     const arrival = txn.isArrival ? txn.rawRow : txn.matchingArrival;
-    
+
     // Helper function to dynamically check and match column keys of the arrival entry row
     const getArrivalValue = (possibleKeys: string[], fallback: string = ''): string => {
       if (!arrival) return fallback;
@@ -1047,10 +1051,10 @@ export default function PaymentTracking() {
     const arrivalDt = getArrivalValue(['date', 'arrivalDt', 'arrival_date'], txn.date || '');
     const rateQty = getArrivalValue(['qty', 'rateQty', 'quantity'], String(txn.qty || '100'));
     const rateRate = getArrivalValue(['rate', 'rateRate', 'price'], String(txn.rate || '4200'));
-    
+
     // Deductions & Charges matching columns:
     const lorrySmall = getArrivalValue(['lh', 'lorrySmall', 'lorry_hire', 'freight'], '0');
-    
+
     // Seller Commission: ONLY consider if explicitly present as sellerCom in the arrival entry row.
     // In arrival entry, there is no seller commission (C.C. is canvassing commission, not seller commission).
     // If sellerCom does not exist in arrival entry, it is strictly 0.
@@ -1065,18 +1069,18 @@ export default function PaymentTracking() {
     const discountAmount = getArrivalValue(['tds', 'discountAmount', 'discount'], '0');
     const manualShortage = getArrivalValue(['shortage', 'manualShortage', 'shortage_val'], '0');
     const qDiff = getArrivalValue(['diffIn', 'qDiff', 'diff_in', 'quality_difference'], '0');
-    
+
     // Total gross calculation matching original amount
     const qtyNum = parseFloat(rateQty) || 0;
     const rateNum = parseFloat(rateRate) || 0;
     const computedAmount = qtyNum * rateNum;
     const rateAmount = getArrivalValue(['amount', 'rateAmount', 'total'], computedAmount.toFixed(2));
-    
+
     // 3. Mathematical Alignment: Calculate dynamic discountPct such that the dynamic computation computes the exact same TDS amount
     const amtForDiscount = parseFloat(rateAmount) || computedAmount || 1;
     const tdsVal = parseFloat(discountAmount) || 0;
     const computedPct = amtForDiscount > 0 ? (tdsVal / amtForDiscount) : 0;
-    
+
     // Settlement options
     const chqAm = getArrivalValue(['chqAm', 'chq_am', 'cheque_amount', 'chequeAmount'], '0');
     const chqNo = getArrivalValue(['chqNo', 'chq_no', 'cheque_no', 'chequeNumber'], '');
@@ -1085,11 +1089,11 @@ export default function PaymentTracking() {
     const billNumber = getArrivalValue(['billNo', 'bill_no', 'billNo', 'billNumber'], txn.billNo || '');
 
     // 4. Recount summary items for explicit client-side sync
-    const expensesSumVal = (parseFloat(lorrySmall) || 0) + 
-                           tdsVal + 
-                           (parseFloat(sellerCom) || 0) + 
-                           (parseFloat(manualShortage) || 0) + 
-                           (parseFloat(qDiff) || 0);
+    const expensesSumVal = (parseFloat(lorrySmall) || 0) +
+      tdsVal +
+      (parseFloat(sellerCom) || 0) +
+      (parseFloat(manualShortage) || 0) +
+      (parseFloat(qDiff) || 0);
 
     const netAmountVal = amtForDiscount - expensesSumVal;
 
@@ -1136,10 +1140,10 @@ export default function PaymentTracking() {
 
     // Auto-select discount percentage based on credit timeline (Outstanding Days)
     const defaultDiscountPercent = txn.daysOutstanding <= 14 ? 4
-                                 : txn.daysOutstanding <= 21 ? 3
-                                 : txn.daysOutstanding <= 30 ? 2
-                                 : txn.daysOutstanding <= 45 ? 1
-                                 : 0;
+      : txn.daysOutstanding <= 21 ? 3
+        : txn.daysOutstanding <= 30 ? 2
+          : txn.daysOutstanding <= 45 ? 1
+            : 0;
 
     const defaultDiscountAmount = Math.round((txn.amount * defaultDiscountPercent) / 100);
     const initialNetAmount = Math.max(0, txn.amount - defaultDiscountAmount);
@@ -1180,9 +1184,9 @@ export default function PaymentTracking() {
             const targetIdx = (originalIndex !== undefined && originalIndex >= 0 && originalIndex < updatedData.length)
               ? originalIndex
               : updatedData.findIndex(r => r && (
-                  (r.billNo && selectedTxn.billNo && String(r.billNo).trim().toLowerCase() === String(selectedTxn.billNo).trim().toLowerCase()) ||
-                  (r.purchaseOrderNo && String(r.purchaseOrderNo).trim() === String(selectedTxn.id).trim())
-                ));
+                (r.billNo && selectedTxn.billNo && String(r.billNo).trim().toLowerCase() === String(selectedTxn.billNo).trim().toLowerCase()) ||
+                (r.purchaseOrderNo && String(r.purchaseOrderNo).trim() === String(selectedTxn.id).trim())
+              ));
 
             if (targetIdx !== -1 && targetIdx < updatedData.length) {
               const currentAmt = parseFloat(updatedData[targetIdx].amount) || 0;
@@ -1230,7 +1234,7 @@ export default function PaymentTracking() {
                 chqDt: paymentData.date,
                 bank: paymentData.bank,
                 rawRow: updatedRow
-              }).catch(() => {});
+              }).catch(() => { });
 
               return { ...sheet, data: updatedData };
             }
@@ -1270,7 +1274,7 @@ export default function PaymentTracking() {
                   discountPercent: paymentData.discountPercent
                 }
               };
-              setCollectionDoc('placed_orders', String(p.id), upd).catch(() => {});
+              setCollectionDoc('placed_orders', String(p.id), upd).catch(() => { });
               return upd;
             }
             return p;
@@ -1296,7 +1300,7 @@ export default function PaymentTracking() {
                 discountPercent: paymentData.discountPercent
               }
             };
-            setCollectionDoc('placed_orders', String(p.id), upd).catch(() => {});
+            setCollectionDoc('placed_orders', String(p.id), upd).catch(() => { });
 
             // Remember cleared placed order for Patti Book
             recordPaymentClearedForPatti({
@@ -1313,7 +1317,7 @@ export default function PaymentTracking() {
               chqDt: paymentData.date,
               bank: paymentData.bank,
               rawRow: p
-            }).catch(() => {});
+            }).catch(() => { });
 
             return upd;
           }
@@ -1361,7 +1365,7 @@ export default function PaymentTracking() {
                 updatedData[matchingIndex] = updatedRow;
 
                 const docId = updatedRow.id || `row-${matchingIndex}`;
-                setCollectionDoc('arrival_entries', docId, updatedRow).catch(() => {});
+                setCollectionDoc('arrival_entries', docId, updatedRow).catch(() => { });
 
                 recordPaymentClearedForPatti({
                   sourceType: 'arrival_entry',
@@ -1379,7 +1383,7 @@ export default function PaymentTracking() {
                   chqDt: paymentData.date,
                   bank: paymentData.bank,
                   rawRow: updatedRow
-                }).catch(() => {});
+                }).catch(() => { });
 
                 return { ...sheet, data: updatedData };
               }
@@ -1418,9 +1422,9 @@ export default function PaymentTracking() {
             const targetIdx = (originalIndex !== undefined && originalIndex >= 0 && originalIndex < updatedData.length)
               ? originalIndex
               : updatedData.findIndex(r => r && (
-                  (r.billNo && txn.billNo && String(r.billNo).trim().toLowerCase() === String(txn.billNo).trim().toLowerCase()) ||
-                  (r.purchaseOrderNo && String(r.purchaseOrderNo).trim() === String(txn.id).trim())
-                ));
+                (r.billNo && txn.billNo && String(r.billNo).trim().toLowerCase() === String(txn.billNo).trim().toLowerCase()) ||
+                (r.purchaseOrderNo && String(r.purchaseOrderNo).trim() === String(txn.id).trim())
+              ));
 
             if (targetIdx !== -1 && targetIdx < updatedData.length) {
               const updatedRow = {
@@ -1441,7 +1445,7 @@ export default function PaymentTracking() {
               });
 
               // Clean up or unmark cleared record in Patti Book
-              unmarkPaymentClearedForPatti(docId, targetSheetId).catch(() => {});
+              unmarkPaymentClearedForPatti(docId, targetSheetId).catch(() => { });
 
               return { ...sheet, data: updatedData };
             }
@@ -1471,7 +1475,7 @@ export default function PaymentTracking() {
                 paymentStatus: 'Awaiting Settlement',
                 paymentDetails: undefined
               };
-              setCollectionDoc('placed_orders', String(p.id), upd).catch(() => {});
+              setCollectionDoc('placed_orders', String(p.id), upd).catch(() => { });
               return upd;
             }
             return p;
@@ -1488,8 +1492,8 @@ export default function PaymentTracking() {
               paymentStatus: 'Awaiting Settlement',
               paymentDetails: undefined
             };
-            setCollectionDoc('placed_orders', String(p.id), upd).catch(() => {});
-            unmarkPaymentClearedForPatti(String(p.id)).catch(() => {});
+            setCollectionDoc('placed_orders', String(p.id), upd).catch(() => { });
+            unmarkPaymentClearedForPatti(String(p.id)).catch(() => { });
             return upd;
           }
           return p;
@@ -1524,8 +1528,8 @@ export default function PaymentTracking() {
               updatedData[matchingIndex] = updatedRow;
 
               const docId = updatedRow.id || `row-${matchingIndex}`;
-              setCollectionDoc('arrival_entries', docId, updatedRow).catch(() => {});
-              unmarkPaymentClearedForPatti(docId, targetSheetId).catch(() => {});
+              setCollectionDoc('arrival_entries', docId, updatedRow).catch(() => { });
+              unmarkPaymentClearedForPatti(docId, targetSheetId).catch(() => { });
 
               return { ...sheet, data: updatedData };
             }
@@ -1592,7 +1596,7 @@ export default function PaymentTracking() {
 
   return (
     <div className="p-4 md:p-8 space-y-8 max-w-7xl mx-auto">
-      
+
       {/* Header section */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
@@ -1603,8 +1607,8 @@ export default function PaymentTracking() {
             <span className={cn(
               "px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider flex items-center gap-1.5",
               cloudStatus === 'synced' ? "bg-emerald-50 text-emerald-600 border border-emerald-100" :
-              cloudStatus === 'syncing' ? "bg-primary/5 text-primary border border-primary/10 animate-pulse" :
-              "bg-rose-50 text-rose-500 border border-rose-100"
+                cloudStatus === 'syncing' ? "bg-primary/5 text-primary border border-primary/10 animate-pulse" :
+                  "bg-rose-50 text-rose-500 border border-rose-100"
             )}>
               <RefreshCw className={cn("w-3 h-3", cloudStatus === 'syncing' && "animate-spin")} />
               {cloudStatus === 'synced' ? 'Live Cloud Synced' : cloudStatus === 'syncing' ? 'Syncing...' : 'Disconnected/Local'}
@@ -1616,7 +1620,7 @@ export default function PaymentTracking() {
           </p>
         </div>
         <div className="flex gap-3">
-          <button 
+          <button
             onClick={exportCurrentPipeline}
             className="flex items-center gap-2 px-5 py-3 bg-white hover:bg-neutral-50 dark:bg-neutral-900 dark:hover:bg-neutral-800 border border-neutral-200 dark:border-neutral-800 text-neutral-800 dark:text-white rounded-2xl shadow-sm transition-all text-xs font-black uppercase tracking-widest hover:scale-[1.01]"
           >
@@ -1629,7 +1633,7 @@ export default function PaymentTracking() {
       {/* Alert Notification banner */}
       <AnimatePresence>
         {warningAlert && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: -20, height: 0 }}
             animate={{ opacity: 1, y: 0, height: 'auto' }}
             exit={{ opacity: 0, y: -20, height: 0 }}
@@ -1644,7 +1648,7 @@ export default function PaymentTracking() {
                 <p className="text-xs font-semibold">{warningAlert}</p>
               </div>
             </div>
-            <button 
+            <button
               onClick={() => setWarningAlert(null)}
               className="p-1 px-3 hover:bg-amber-500/20 rounded-lg text-xs font-bold font-mono transition-colors shrink-0"
             >
@@ -1656,7 +1660,7 @@ export default function PaymentTracking() {
 
       {/* Overdue Alerts (> 60 Days) */}
       {overdueTxns.length > 0 ? (
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
           className="bg-rose-50/50 dark:bg-rose-950/10 border border-rose-500/20 rounded-2xl p-4 shadow-sm overflow-hidden transition-all"
@@ -1738,7 +1742,7 @@ export default function PaymentTracking() {
                       {overdueTxns.map((txn, index) => {
                         const formattedDate = formatDateDisplay(txn.date);
                         return (
-                          <tr 
+                          <tr
                             key={`${txn.id || 'overdue'}-${index}`}
                             className="hover:bg-rose-500/5 transition-colors group"
                           >
@@ -1809,7 +1813,7 @@ export default function PaymentTracking() {
           </AnimatePresence>
         </motion.div>
       ) : (
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
           className="bg-emerald-50/50 dark:bg-emerald-950/10 border border-emerald-500/15 rounded-xl p-3 shadow-sm overflow-hidden"
@@ -1838,58 +1842,58 @@ export default function PaymentTracking() {
       {/* Financial Overview Cards - Bento Presentation */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         {[
-          { 
-            label: 'Outstanding Settlements', 
-            value: `₹${formatINR(financialSummary.pendingAmt)}`, 
-            icon: AlertCircle, 
-            sub: 'Owed by Buyers for Arrived Orders', 
+          {
+            label: 'Outstanding Settlements',
+            value: `₹${formatINR(financialSummary.pendingAmt)}`,
+            icon: AlertCircle,
+            sub: 'Owed by Buyers for Arrived Orders',
             color: 'text-amber-500',
             border: 'hover:border-amber-500/30',
             bg: 'bg-amber-50 dark:bg-amber-950/20',
             filterKey: 'pending' as const
           },
-          { 
-            label: 'Total Liquid Cleared', 
-            value: `₹${formatINR(financialSummary.clearedAmt)}`, 
-            icon: ShieldCheck, 
-            sub: 'Completed Bank Receipts', 
+          {
+            label: 'Total Liquid Cleared',
+            value: `₹${formatINR(financialSummary.clearedAmt)}`,
+            icon: ShieldCheck,
+            sub: 'Completed Bank Receipts',
             color: 'text-emerald-600',
             border: 'hover:border-emerald-500/30',
             bg: 'bg-emerald-50 dark:bg-emerald-950/20',
             filterKey: 'cleared' as const
           },
-          { 
-            label: 'Total Arrived Volume', 
-            value: `₹${formatINR(financialSummary.totalAmt)}`, 
-            icon: Coins, 
-            sub: 'Cumulative Value of Entered Cargo', 
+          {
+            label: 'Total Arrived Volume',
+            value: `₹${formatINR(financialSummary.totalAmt)}`,
+            icon: Coins,
+            sub: 'Cumulative Value of Entered Cargo',
             color: 'text-primary',
             border: 'hover:border-primary/40',
             bg: 'bg-primary/5',
             filterKey: 'all' as const
           },
-          { 
-            label: 'Reconciliation Flags', 
-            value: `${financialSummary.discrepancyCount} Alerts`, 
-            icon: AlertTriangle, 
-            sub: `${financialSummary.totalDifference.toFixed(2)} QTLS Discrepancy Vol`, 
+          {
+            label: 'Reconciliation Flags',
+            value: `${financialSummary.discrepancyCount} Alerts`,
+            icon: AlertTriangle,
+            sub: `${financialSummary.totalDifference.toFixed(2)} QTLS Discrepancy Vol`,
             color: 'text-rose-500 dark:text-rose-400',
             border: 'hover:border-rose-500/30',
             bg: 'bg-rose-50 dark:bg-rose-950/20',
             filterKey: 'discrepancy' as const
           },
-          { 
-            label: 'Lifted Orders Payments', 
-            value: `₹${formatINR(liftedSummary.totalAmt)}`, 
-            icon: Truck, 
-            sub: `${liftedSummary.count} Redirected Vehicle Loads`, 
+          {
+            label: 'Lifted Orders Payments',
+            value: `₹${formatINR(liftedSummary.totalAmt)}`,
+            icon: Truck,
+            sub: `${liftedSummary.count} Redirected Vehicle Loads`,
             color: 'text-purple-600 dark:text-purple-400',
             border: 'hover:border-purple-500/30',
             bg: 'bg-purple-50 dark:bg-purple-950/20',
             filterKey: 'lifted' as const
           },
         ].map((card, i) => (
-          <motion.div 
+          <motion.div
             key={i}
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
@@ -1904,15 +1908,15 @@ export default function PaymentTracking() {
           >
             <div className="absolute -right-6 -bottom-6 w-24 h-24 rounded-full blur-2xl pointer-events-none opacity-20 transition-opacity group-hover:opacity-40 bg-amber-500/80 dark:bg-primary/40" />
             <div className="flex justify-between items-start relative z-10">
-               <div className={cn("p-2.5 rounded-xl transition-transform group-hover:scale-105 duration-200", card.bg)}>
-                  <card.icon className={cn("w-5 h-5", card.color)} />
-               </div>
-               <span className="text-[9px] font-black tracking-widest uppercase text-neutral-400 dark:text-neutral-500">Ledger</span>
+              <div className={cn("p-2.5 rounded-xl transition-transform group-hover:scale-105 duration-200", card.bg)}>
+                <card.icon className={cn("w-5 h-5", card.color)} />
+              </div>
+              <span className="text-[9px] font-black tracking-widest uppercase text-neutral-400 dark:text-neutral-500">Ledger</span>
             </div>
             <div className="text-left mt-2 relative z-10">
-               <p className="text-[10px] font-black text-neutral-400 dark:text-neutral-500 uppercase tracking-widest mb-1">{card.label}</p>
-               <h3 className="text-xl font-black text-neutral-900 dark:text-white font-mono leading-none">{card.value}</h3>
-               <p className="text-[10px] font-semibold text-neutral-500 dark:text-neutral-400 mt-1.5">{card.sub}</p>
+              <p className="text-[10px] font-black text-neutral-400 dark:text-neutral-500 uppercase tracking-widest mb-1">{card.label}</p>
+              <h3 className="text-xl font-black text-neutral-900 dark:text-white font-mono leading-none">{card.value}</h3>
+              <p className="text-[10px] font-semibold text-neutral-500 dark:text-neutral-400 mt-1.5">{card.sub}</p>
             </div>
           </motion.div>
         ))}
@@ -1920,233 +1924,233 @@ export default function PaymentTracking() {
 
       {/* Main Pipeline Panel */}
       <div className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-sm overflow-hidden">
-        
+
         {/* Pipeline Controls */}
         <div className="p-6 border-b border-neutral-100 dark:border-neutral-800 space-y-6">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-             
-             {/* Consolidated Title Indicator & Multi-Sheet Selector */}
-             <div className="flex items-center gap-2.5 flex-wrap">
-               <div className="flex items-center gap-2 bg-neutral-100 dark:bg-neutral-950 px-4 py-2.5 rounded-2xl border border-neutral-200/50 dark:border-neutral-800">
-                 <CreditCard className="w-4 h-4 text-primary shrink-0" />
-                 <span className="text-xs font-black uppercase tracking-widest text-neutral-800 dark:text-neutral-200">
-                   Arrived Orders Ledger ({contractTxns.length})
-                 </span>
-               </div>
 
-               {/* Multi-Sheet Selector Dropdown / Popover */}
-               <div className="relative" ref={sheetSelectorRef}>
-                 <button
-                   type="button"
-                   onClick={() => setIsSheetSelectorOpen(prev => !prev)}
-                   className={cn(
-                     "flex items-center gap-2 px-3.5 py-2.5 rounded-2xl border text-xs font-bold transition-all shadow-sm cursor-pointer select-none",
-                     isSheetSelectorOpen 
-                       ? "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500/50 text-emerald-800 dark:text-emerald-300 ring-2 ring-emerald-500/20" 
-                       : "bg-neutral-100 hover:bg-neutral-200/70 dark:bg-neutral-950 dark:hover:bg-neutral-900 border-neutral-200/80 dark:border-neutral-800 text-neutral-800 dark:text-neutral-200"
-                   )}
-                   title="Click to select one or multiple sheets to track payments (persists across reloads)"
-                 >
-                   <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                   <span className="text-[10px] font-black uppercase tracking-wider text-neutral-500 dark:text-neutral-400 shrink-0">
-                     Sheets:
-                   </span>
-                   <span className="truncate max-w-[210px] font-extrabold text-neutral-900 dark:text-white">
-                     {selectedSheetsLabel}
-                   </span>
-                   <ChevronDown className={cn("w-3.5 h-3.5 text-neutral-500 transition-transform duration-150 shrink-0", isSheetSelectorOpen && "rotate-180")} />
-                 </button>
+            {/* Consolidated Title Indicator & Multi-Sheet Selector */}
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <div className="flex items-center gap-2 bg-neutral-100 dark:bg-neutral-950 px-4 py-2.5 rounded-2xl border border-neutral-200/50 dark:border-neutral-800">
+                <CreditCard className="w-4 h-4 text-primary shrink-0" />
+                <span className="text-xs font-black uppercase tracking-widest text-neutral-800 dark:text-neutral-200">
+                  Arrived Orders Ledger ({contractTxns.length})
+                </span>
+              </div>
 
-                 <AnimatePresence>
-                   {isSheetSelectorOpen && (
-                     <motion.div
-                       initial={{ opacity: 0, y: 8, scale: 0.98 }}
-                       animate={{ opacity: 1, y: 0, scale: 1 }}
-                       exit={{ opacity: 0, y: 8, scale: 0.98 }}
-                       transition={{ duration: 0.15 }}
-                       className="absolute left-0 top-full mt-2 w-72 sm:w-80 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-2xl z-50 overflow-hidden"
-                     >
-                       <div className="p-3 bg-neutral-50 dark:bg-neutral-950/80 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
-                         <span className="text-[11px] font-black uppercase tracking-wider text-neutral-800 dark:text-neutral-200">
-                           Select Sheets to Track
-                         </span>
-                         <span className="text-[9px] font-bold text-neutral-500 dark:text-neutral-400 bg-neutral-200/70 dark:bg-neutral-800 px-2 py-0.5 rounded-full">
-                           Multi-Sheet
-                         </span>
-                       </div>
+              {/* Multi-Sheet Selector Dropdown / Popover */}
+              <div className="relative" ref={sheetSelectorRef}>
+                <button
+                  type="button"
+                  onClick={() => setIsSheetSelectorOpen(prev => !prev)}
+                  className={cn(
+                    "flex items-center gap-2 px-3.5 py-2.5 rounded-2xl border text-xs font-bold transition-all shadow-sm cursor-pointer select-none",
+                    isSheetSelectorOpen
+                      ? "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500/50 text-emerald-800 dark:text-emerald-300 ring-2 ring-emerald-500/20"
+                      : "bg-neutral-100 hover:bg-neutral-200/70 dark:bg-neutral-950 dark:hover:bg-neutral-900 border-neutral-200/80 dark:border-neutral-800 text-neutral-800 dark:text-neutral-200"
+                  )}
+                  title="Click to select one or multiple sheets to track payments (persists across reloads)"
+                >
+                  <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <span className="text-[10px] font-black uppercase tracking-wider text-neutral-500 dark:text-neutral-400 shrink-0">
+                    Sheets:
+                  </span>
+                  <span className="truncate max-w-[210px] font-extrabold text-neutral-900 dark:text-white">
+                    {selectedSheetsLabel}
+                  </span>
+                  <ChevronDown className={cn("w-3.5 h-3.5 text-neutral-500 transition-transform duration-150 shrink-0", isSheetSelectorOpen && "rotate-180")} />
+                </button>
 
-                       {/* Quick action buttons */}
-                       <div className="p-2 border-b border-neutral-100 dark:border-neutral-800 flex items-center gap-1.5 bg-neutral-50/40 dark:bg-neutral-950/40">
-                         <button
-                           type="button"
-                           onClick={handleSelectRunningMonthOnly}
-                           className={cn(
-                             "flex-1 py-1.5 px-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-colors cursor-pointer",
-                             selectedSheets.length === 1 && selectedSheets[0] === 'running-month'
-                               ? "bg-emerald-600 text-white shadow-sm"
-                               : "bg-white dark:bg-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 border border-neutral-200/60 dark:border-neutral-700"
-                           )}
-                         >
-                           Running Month
-                         </button>
-                         <button
-                           type="button"
-                           onClick={handleSelectAllSheets}
-                           className={cn(
-                             "flex-1 py-1.5 px-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-colors cursor-pointer",
-                             selectedSheets.includes('all')
-                               ? "bg-emerald-600 text-white shadow-sm"
-                               : "bg-white dark:bg-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 border border-neutral-200/60 dark:border-neutral-700"
-                           )}
-                         >
-                           All Sheets
-                         </button>
-                       </div>
-
-                       {/* Sheet checkboxes list */}
-                       <div className="max-h-60 overflow-y-auto p-2 space-y-1">
-                         {/* Running month option */}
-                         {(() => {
-                           const isChecked = selectedSheets.includes('all') || selectedSheets.includes('running-month');
-                           return (
-                             <div
-                               onClick={() => handleToggleSheet('running-month')}
-                               className={cn(
-                                 "flex items-center justify-between p-2 rounded-xl text-xs font-semibold cursor-pointer transition-colors select-none",
-                                 isChecked
-                                   ? "bg-emerald-50/80 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200"
-                                   : "hover:bg-neutral-100 dark:hover:bg-neutral-800/60 text-neutral-700 dark:text-neutral-300"
-                               )}
-                             >
-                               <div className="flex items-center gap-2.5">
-                                 <div className={cn(
-                                   "w-4 h-4 rounded-md border flex items-center justify-center transition-colors shrink-0",
-                                   isChecked
-                                     ? "bg-emerald-600 border-emerald-600 text-white"
-                                     : "border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800"
-                                 )}>
-                                   {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
-                                 </div>
-                                 <span className="font-extrabold truncate max-w-[170px]">
-                                   Current Month ({currentRunningMonthName})
-                                 </span>
-                               </div>
-                               <span className="text-[9px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950 px-1.5 py-0.5 rounded">
-                                 Default
-                               </span>
-                             </div>
-                           );
-                         })()}
-
-                         {/* Individual Month Sheets */}
-                         {allSheets.map(sheet => {
-                           const isRunning = sheet.name.trim().toLowerCase() === currentRunningMonthName.toLowerCase();
-                           if (isRunning) return null; // Listed as current month option
-
-                           const isChecked = selectedSheets.includes('all') || selectedSheets.includes(sheet.id);
-                           const rowCount = Array.isArray(sheet.data) ? sheet.data.filter(isMeaningfulRow).length : 0;
-
-                           return (
-                             <div
-                               key={sheet.id}
-                               onClick={() => handleToggleSheet(sheet.id)}
-                               className={cn(
-                                 "flex items-center justify-between p-2 rounded-xl text-xs font-semibold cursor-pointer transition-colors select-none",
-                                 isChecked
-                                   ? "bg-emerald-50/80 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200"
-                                   : "hover:bg-neutral-100 dark:hover:bg-neutral-800/60 text-neutral-700 dark:text-neutral-300"
-                               )}
-                             >
-                               <div className="flex items-center gap-2.5">
-                                 <div className={cn(
-                                   "w-4 h-4 rounded-md border flex items-center justify-center transition-colors shrink-0",
-                                   isChecked
-                                     ? "bg-emerald-600 border-emerald-600 text-white"
-                                     : "border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800"
-                                 )}>
-                                   {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
-                                 </div>
-                                 <span className="font-bold truncate max-w-[170px]">
-                                   {sheet.name}
-                                 </span>
-                               </div>
-                               <span className="text-[10px] font-mono font-semibold text-neutral-400 dark:text-neutral-500 shrink-0">
-                                 {rowCount} records
-                               </span>
-                             </div>
-                           );
-                         })}
-                       </div>
-
-                       {/* Done Footer */}
-                       <div className="p-2 border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50/60 dark:bg-neutral-950/60 flex items-center justify-between">
-                         <span className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400 pl-1">
-                           Auto-saved to preferences
-                         </span>
-                         <button
-                           type="button"
-                           onClick={() => setIsSheetSelectorOpen(false)}
-                           className="px-3.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition-colors cursor-pointer"
-                         >
-                           Done
-                         </button>
-                       </div>
-                     </motion.div>
-                   )}
-                 </AnimatePresence>
-               </div>
-             </div>
-
-             {/* Search and Quick Filters */}
-             <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
-                
-                {/* Prominent High-Visibility Search Box */}
-                <div className="relative flex-1 sm:flex-none sm:w-80 lg:w-96 group">
-                   <div className="absolute left-2.5 top-1/2 -translate-y-1/2 p-1.5 rounded-xl bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary transition-colors shadow-sm pointer-events-none group-focus-within:bg-primary group-focus-within:text-white">
-                     <Search className="w-4 h-4" />
-                   </div>
-                   <input 
-                     type="text" 
-                     placeholder="Search Party, Miller, Bill No, Area, Sheet..." 
-                     value={searchQuery}
-                     onChange={(e) => setSearchQuery(e.target.value)}
-                     className="w-full bg-white dark:bg-neutral-950 border-2 border-primary/35 hover:border-primary/60 focus:border-primary dark:border-primary/40 dark:hover:border-primary/70 dark:focus:border-primary rounded-2xl py-2.5 pl-11 pr-10 text-xs sm:text-sm font-bold text-neutral-900 dark:text-white placeholder:text-neutral-400 dark:placeholder:text-neutral-500 outline-none shadow-sm shadow-primary/5 focus:ring-4 focus:ring-primary/15 transition-all" 
-                   />
-                   {searchQuery ? (
-                     <button 
-                       type="button"
-                       onClick={() => setSearchQuery('')} 
-                       className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-neutral-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer"
-                       title="Clear search"
-                     >
-                       <X className="w-3.5 h-3.5" />
-                     </button>
-                   ) : (
-                     <span className="hidden sm:inline-flex absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-mono font-bold text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-neutral-800 px-1.5 py-0.5 rounded border border-neutral-200/80 dark:border-neutral-700/80 pointer-events-none">
-                       /
-                     </span>
-                   )}
-                </div>
-
-                {/* Filter segments */}
-                <div className="flex border border-neutral-200 dark:border-neutral-800 rounded-xl overflow-hidden text-xs bg-neutral-50 dark:bg-neutral-950 p-0.5">
-                  {(['all', 'pending', 'cleared', 'discrepancy', 'lifted'] as const).map(st => (
-                    <button
-                      key={st}
-                      onClick={() => setStatusFilter(st)}
-                      className={cn(
-                        "px-3 py-1.5 font-black uppercase tracking-wider rounded-lg transition-all flex items-center gap-1.5 cursor-pointer",
-                        statusFilter === st 
-                          ? "bg-white dark:bg-neutral-900 text-primary shadow-sm" 
-                          : "text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-                      )}
+                <AnimatePresence>
+                  {isSheetSelectorOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                      transition={{ duration: 0.15 }}
+                      className="absolute left-0 top-full mt-2 w-72 sm:w-80 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-2xl z-50 overflow-hidden"
                     >
-                      {st === 'lifted' && <Truck className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0" />}
-                      {st === 'all' ? 'All' : st === 'pending' ? 'Pending' : st === 'cleared' ? 'Cleared' : st === 'discrepancy' ? 'Discrepancies' : 'Lifted Orders'}
-                    </button>
-                  ))}
+                      <div className="p-3 bg-neutral-50 dark:bg-neutral-950/80 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
+                        <span className="text-[11px] font-black uppercase tracking-wider text-neutral-800 dark:text-neutral-200">
+                          Select Sheets to Track
+                        </span>
+                        <span className="text-[9px] font-bold text-neutral-500 dark:text-neutral-400 bg-neutral-200/70 dark:bg-neutral-800 px-2 py-0.5 rounded-full">
+                          Multi-Sheet
+                        </span>
+                      </div>
+
+                      {/* Quick action buttons */}
+                      <div className="p-2 border-b border-neutral-100 dark:border-neutral-800 flex items-center gap-1.5 bg-neutral-50/40 dark:bg-neutral-950/40">
+                        <button
+                          type="button"
+                          onClick={handleSelectRunningMonthOnly}
+                          className={cn(
+                            "flex-1 py-1.5 px-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-colors cursor-pointer",
+                            selectedSheets.length === 1 && selectedSheets[0] === 'running-month'
+                              ? "bg-emerald-600 text-white shadow-sm"
+                              : "bg-white dark:bg-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 border border-neutral-200/60 dark:border-neutral-700"
+                          )}
+                        >
+                          Running Month
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleSelectAllSheets}
+                          className={cn(
+                            "flex-1 py-1.5 px-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-colors cursor-pointer",
+                            selectedSheets.includes('all')
+                              ? "bg-emerald-600 text-white shadow-sm"
+                              : "bg-white dark:bg-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 border border-neutral-200/60 dark:border-neutral-700"
+                          )}
+                        >
+                          All Sheets
+                        </button>
+                      </div>
+
+                      {/* Sheet checkboxes list */}
+                      <div className="max-h-60 overflow-y-auto p-2 space-y-1">
+                        {/* Running month option */}
+                        {(() => {
+                          const isChecked = selectedSheets.includes('all') || selectedSheets.includes('running-month');
+                          return (
+                            <div
+                              onClick={() => handleToggleSheet('running-month')}
+                              className={cn(
+                                "flex items-center justify-between p-2 rounded-xl text-xs font-semibold cursor-pointer transition-colors select-none",
+                                isChecked
+                                  ? "bg-emerald-50/80 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200"
+                                  : "hover:bg-neutral-100 dark:hover:bg-neutral-800/60 text-neutral-700 dark:text-neutral-300"
+                              )}
+                            >
+                              <div className="flex items-center gap-2.5">
+                                <div className={cn(
+                                  "w-4 h-4 rounded-md border flex items-center justify-center transition-colors shrink-0",
+                                  isChecked
+                                    ? "bg-emerald-600 border-emerald-600 text-white"
+                                    : "border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800"
+                                )}>
+                                  {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
+                                </div>
+                                <span className="font-extrabold truncate max-w-[170px]">
+                                  Current Month ({currentRunningMonthName})
+                                </span>
+                              </div>
+                              <span className="text-[9px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950 px-1.5 py-0.5 rounded">
+                                Default
+                              </span>
+                            </div>
+                          );
+                        })()}
+
+                        {/* Individual Month Sheets */}
+                        {allSheets.map(sheet => {
+                          const isRunning = sheet.name.trim().toLowerCase() === currentRunningMonthName.toLowerCase();
+                          if (isRunning) return null; // Listed as current month option
+
+                          const isChecked = selectedSheets.includes('all') || selectedSheets.includes(sheet.id);
+                          const rowCount = Array.isArray(sheet.data) ? sheet.data.filter(isMeaningfulRow).length : 0;
+
+                          return (
+                            <div
+                              key={sheet.id}
+                              onClick={() => handleToggleSheet(sheet.id)}
+                              className={cn(
+                                "flex items-center justify-between p-2 rounded-xl text-xs font-semibold cursor-pointer transition-colors select-none",
+                                isChecked
+                                  ? "bg-emerald-50/80 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200"
+                                  : "hover:bg-neutral-100 dark:hover:bg-neutral-800/60 text-neutral-700 dark:text-neutral-300"
+                              )}
+                            >
+                              <div className="flex items-center gap-2.5">
+                                <div className={cn(
+                                  "w-4 h-4 rounded-md border flex items-center justify-center transition-colors shrink-0",
+                                  isChecked
+                                    ? "bg-emerald-600 border-emerald-600 text-white"
+                                    : "border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800"
+                                )}>
+                                  {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
+                                </div>
+                                <span className="font-bold truncate max-w-[170px]">
+                                  {sheet.name}
+                                </span>
+                              </div>
+                              <span className="text-[10px] font-mono font-semibold text-neutral-400 dark:text-neutral-500 shrink-0">
+                                {rowCount} records
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Done Footer */}
+                      <div className="p-2 border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50/60 dark:bg-neutral-950/60 flex items-center justify-between">
+                        <span className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400 pl-1">
+                          Auto-saved to preferences
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setIsSheetSelectorOpen(false)}
+                          className="px-3.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition-colors cursor-pointer"
+                        >
+                          Done
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
+
+            {/* Search and Quick Filters */}
+            <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+
+              {/* Prominent High-Visibility Search Box */}
+              <div className="relative flex-1 sm:flex-none sm:w-80 lg:w-96 group">
+                <div className="absolute left-2.5 top-1/2 -translate-y-1/2 p-1.5 rounded-xl bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary transition-colors shadow-sm pointer-events-none group-focus-within:bg-primary group-focus-within:text-white">
+                  <Search className="w-4 h-4" />
                 </div>
-             </div>
+                <input
+                  type="text"
+                  placeholder="Search Party, Miller, Bill No, Area, Sheet..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full bg-white dark:bg-neutral-950 border-2 border-primary/35 hover:border-primary/60 focus:border-primary dark:border-primary/40 dark:hover:border-primary/70 dark:focus:border-primary rounded-2xl py-2.5 pl-11 pr-10 text-xs sm:text-sm font-bold text-neutral-900 dark:text-white placeholder:text-neutral-400 dark:placeholder:text-neutral-500 outline-none shadow-sm shadow-primary/5 focus:ring-4 focus:ring-primary/15 transition-all"
+                />
+                {searchQuery ? (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-neutral-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer"
+                    title="Clear search"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                ) : (
+                  <span className="hidden sm:inline-flex absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-mono font-bold text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-neutral-800 px-1.5 py-0.5 rounded border border-neutral-200/80 dark:border-neutral-700/80 pointer-events-none">
+                    /
+                  </span>
+                )}
+              </div>
+
+              {/* Filter segments */}
+              <div className="flex border border-neutral-200 dark:border-neutral-800 rounded-xl overflow-hidden text-xs bg-neutral-50 dark:bg-neutral-950 p-0.5">
+                {(['all', 'pending', 'cleared', 'discrepancy', 'lifted'] as const).map(st => (
+                  <button
+                    key={st}
+                    onClick={() => setStatusFilter(st)}
+                    className={cn(
+                      "px-3 py-1.5 font-black uppercase tracking-wider rounded-lg transition-all flex items-center gap-1.5 cursor-pointer",
+                      statusFilter === st
+                        ? "bg-white dark:bg-neutral-900 text-primary shadow-sm"
+                        : "text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                    )}
+                  >
+                    {st === 'lifted' && <Truck className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0" />}
+                    {st === 'all' ? 'All' : st === 'pending' ? 'Pending' : st === 'cleared' ? 'Cleared' : st === 'discrepancy' ? 'Discrepancies' : 'Lifted Orders'}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
           {/* Guidelines info banners */}
@@ -2213,7 +2217,7 @@ export default function PaymentTracking() {
               </thead>
               <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800/60">
                 {filteredTxns.map((txn, index) => (
-                  <PaymentRow 
+                  <PaymentRow
                     key={`${txn.id}-${index}`}
                     txn={txn}
                     isSelected={selectedTxn?.id === txn.id}
@@ -2233,259 +2237,259 @@ export default function PaymentTracking() {
       <AnimatePresence>
         {showPaymentModal && selectedTxn && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-neutral-950/70 backdrop-blur-md">
-            <motion.div 
-               initial={{ scale: 0.96, opacity: 0, y: 15 }}
-               animate={{ scale: 1, opacity: 1, y: 0 }}
-               exit={{ scale: 0.96, opacity: 0, y: 15 }}
-               transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-               className="bg-white dark:bg-neutral-900 rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-neutral-200 dark:border-neutral-800"
+            <motion.div
+              initial={{ scale: 0.96, opacity: 0, y: 15 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.96, opacity: 0, y: 15 }}
+              transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+              className="bg-white dark:bg-neutral-900 rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-neutral-200 dark:border-neutral-800"
             >
-               {/* Modal Header */}
-               <div className="px-6 py-5 border-b border-neutral-200 dark:border-neutral-800 flex justify-between items-center bg-neutral-50 dark:bg-neutral-950">
-                  <div className="flex items-center gap-3">
-                     <div className="p-2.5 bg-emerald-100 dark:bg-emerald-950/30 rounded-xl text-emerald-600">
-                        <DollarSign className="w-5 h-5" />
-                     </div>
-                     <div className="text-left">
-                        <h3 className="text-xs font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500">Commercial Treasury Vault</h3>
-                        <h4 className="text-sm font-black text-neutral-800 dark:text-neutral-100">Log Settlement: {selectedTxn.id}</h4>
-                     </div>
+              {/* Modal Header */}
+              <div className="px-6 py-5 border-b border-neutral-200 dark:border-neutral-800 flex justify-between items-center bg-neutral-50 dark:bg-neutral-950">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-emerald-100 dark:bg-emerald-950/30 rounded-xl text-emerald-600">
+                    <DollarSign className="w-5 h-5" />
                   </div>
-                  <button 
-                    onClick={() => setShowPaymentModal(false)} 
-                    className="p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-full transition-colors"
-                  >
-                     <X className="w-5 h-5 text-neutral-400" />
-                  </button>
-               </div>
-               
-               {/* Payout Form */}
-               <form onSubmit={handleUpdatePayment} className="p-6 space-y-5">
-                  
-                  {/* Ledger Summary Info Drawer */}
-                  <div className="p-4 bg-neutral-50 dark:bg-neutral-1000 border border-neutral-250/20 dark:border-neutral-800 rounded-2xl text-xs space-y-2 text-left">
-                    {selectedTxn.isLifted && (
-                      <div className="p-2.5 mb-2 rounded-xl bg-purple-500/10 border border-purple-500/20 text-xs text-purple-900 dark:text-purple-200 space-y-1">
-                        <div className="flex items-center gap-1.5 font-black uppercase text-[10px] text-purple-700 dark:text-purple-300">
-                          <Truck className="w-3.5 h-3.5 text-purple-600 shrink-0" />
-                          LIFTED LOAD — COLLECT FROM NEW BUYER
-                        </div>
-                        <p className="text-[11px] font-medium leading-tight">
-                          Collecting payment from <strong>{selectedTxn.buyer}</strong> {selectedTxn.originalBuyer ? `(Redirected load ex: ${selectedTxn.originalBuyer})` : ''}
-                        </p>
+                  <div className="text-left">
+                    <h3 className="text-xs font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500">Commercial Treasury Vault</h3>
+                    <h4 className="text-sm font-black text-neutral-800 dark:text-neutral-100">Log Settlement: {selectedTxn.id}</h4>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowPaymentModal(false)}
+                  className="p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-full transition-colors"
+                >
+                  <X className="w-5 h-5 text-neutral-400" />
+                </button>
+              </div>
+
+              {/* Payout Form */}
+              <form onSubmit={handleUpdatePayment} className="p-6 space-y-5">
+
+                {/* Ledger Summary Info Drawer */}
+                <div className="p-4 bg-neutral-50 dark:bg-neutral-1000 border border-neutral-250/20 dark:border-neutral-800 rounded-2xl text-xs space-y-2 text-left">
+                  {selectedTxn.isLifted && (
+                    <div className="p-2.5 mb-2 rounded-xl bg-purple-500/10 border border-purple-500/20 text-xs text-purple-900 dark:text-purple-200 space-y-1">
+                      <div className="flex items-center gap-1.5 font-black uppercase text-[10px] text-purple-700 dark:text-purple-300">
+                        <Truck className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                        LIFTED LOAD — COLLECT FROM NEW BUYER
                       </div>
-                    )}
-                    <div className="flex justify-between items-center">
-                      <span className="font-bold text-neutral-500 uppercase tracking-wider text-[9px]">Buyer Party (Collecting From):</span>
-                      <span className="font-black text-neutral-800 dark:text-neutral-100 uppercase">{selectedTxn.buyer}</span>
+                      <p className="text-[11px] font-medium leading-tight">
+                        Collecting payment from <strong>{selectedTxn.buyer}</strong> {selectedTxn.originalBuyer ? `(Redirected load ex: ${selectedTxn.originalBuyer})` : ''}
+                      </p>
                     </div>
-                    <div className="flex justify-between items-center">
-                      <span className="font-bold text-neutral-500 uppercase tracking-wider text-[9px]">Outstanding Aging Period:</span>
-                      <span className="text-rose-500 font-extrabold font-mono">{selectedTxn.daysOutstanding} Days Pending</span>
+                  )}
+                  <div className="flex justify-between items-center">
+                    <span className="font-bold text-neutral-500 uppercase tracking-wider text-[9px]">Buyer Party (Collecting From):</span>
+                    <span className="font-black text-neutral-800 dark:text-neutral-100 uppercase">{selectedTxn.buyer}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="font-bold text-neutral-500 uppercase tracking-wider text-[9px]">Outstanding Aging Period:</span>
+                    <span className="text-rose-500 font-extrabold font-mono">{selectedTxn.daysOutstanding} Days Pending</span>
+                  </div>
+                  {selectedTxn.isArrival && (
+                    <div className="flex justify-between items-center border-t border-neutral-200 dark:border-neutral-800 pt-2 mt-2">
+                      <span className="font-bold text-neutral-500 uppercase tracking-wider text-[9px]">Total Cargo Weight:</span>
+                      <span className="font-black text-primary font-mono">{selectedTxn.qty} QTLS</span>
                     </div>
-                    {selectedTxn.isArrival && (
-                      <div className="flex justify-between items-center border-t border-neutral-200 dark:border-neutral-800 pt-2 mt-2">
-                        <span className="font-bold text-neutral-500 uppercase tracking-wider text-[9px]">Total Cargo Weight:</span>
-                        <span className="font-black text-primary font-mono">{selectedTxn.qty} QTLS</span>
+                  )}
+                </div>
+
+                <div className="space-y-4 text-left">
+
+                  {/* Segmented Payment instrument Selector */}
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 px-1">Instrument Route</label>
+                    <div className="flex gap-1.5 p-1 bg-neutral-100 dark:bg-neutral-950 rounded-2xl border border-neutral-200 dark:border-neutral-800">
+                      {['RTGS', 'NEFT', 'Cheque', 'Cash'].map(m => (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() => setPaymentData({ ...paymentData, method: m })}
+                          className={cn(
+                            "flex-1 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all",
+                            paymentData.method === m
+                              ? "bg-white dark:bg-neutral-800 text-primary shadow-sm"
+                              : "text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200"
+                          )}
+                        >
+                          {m}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+
+                    {/* Deposit/Clearance Bank */}
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 px-1">Issuing Bank Reference</label>
+                      <div className="relative group">
+                        <Building className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400 group-focus-within:text-primary transition-colors shrink-0" />
+                        <input
+                          required
+                          type="text"
+                          placeholder="e.g. State Bank of India, Khanna Central"
+                          value={paymentData.bank}
+                          onChange={(e) => setPaymentData({ ...paymentData, bank: e.target.value })}
+                          className="w-full bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-2xl pl-12 pr-4 py-3 text-xs font-bold outline-none focus:ring-2 focus:ring-primary/20 transition-all text-neutral-900 dark:text-neutral-100"
+                        />
                       </div>
-                    )}
+                    </div>
+
+                    {/* Reference / UTR string */}
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 px-1">UTR Sequence / Instrument No.</label>
+                      <input
+                        required
+                        type="text"
+                        placeholder="e.g. UTR-994825591"
+                        value={paymentData.refNo}
+                        onChange={(e) => setPaymentData({ ...paymentData, refNo: e.target.value })}
+                        className="w-full bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-2xl px-4 py-3 text-xs font-bold outline-none focus:ring-2 focus:ring-primary/20 transition-all font-mono text-neutral-900 dark:text-neutral-100"
+                      />
+                    </div>
+
+                    {/* Date and Shortage Weight Adjustments */}
+                    {/* Date field */}
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 px-1">Clearing Date</label>
+                      <div className="relative group">
+                        <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400 group-focus-within:text-primary transition-colors shrink-0" />
+                        <input
+                          required
+                          type="date"
+                          value={paymentData.date}
+                          onChange={(e) => setPaymentData({ ...paymentData, date: e.target.value })}
+                          className="w-full bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-2xl pl-12 pr-4 py-3 text-xs font-bold outline-none focus:ring-2 focus:ring-primary/20 transition-all font-mono text-neutral-900 dark:text-neutral-100"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Cash Discount Percentage & Calculated Discount Amount */}
+                    <div className="space-y-2.5 p-3.5 bg-blue-50/40 dark:bg-neutral-950/40 border border-blue-500/10 dark:border-neutral-800 rounded-2xl">
+                      <div className="flex justify-between items-center">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500">
+                          Cash Discount (CC Column)
+                        </label>
+                        <span className="text-[10px] font-black text-blue-600 dark:text-blue-400 font-mono">
+                          ₹{parseFloat(paymentData.discountAmount).toLocaleString('en-IN')} Calculated
+                        </span>
+                      </div>
+
+                      {/* Beautiful Selection Grid of Pills */}
+                      <div className="flex gap-1.5">
+                        {[4, 3, 2, 1, 0].map(pct => {
+                          const isSelected = paymentData.discountPercent === pct;
+                          const label = pct === 0 ? 'No Disc' : `${pct}%`;
+                          return (
+                            <button
+                              key={pct}
+                              type="button"
+                              onClick={() => {
+                                const discountAmt = Math.round((selectedTxn.amount * pct) / 100);
+                                const newNetAmt = Math.max(0, selectedTxn.amount - discountAmt);
+                                setPaymentData({
+                                  ...paymentData,
+                                  discountPercent: pct,
+                                  discountAmount: String(discountAmt),
+                                  amount: String(newNetAmt)
+                                });
+                              }}
+                              className={cn(
+                                "flex-1 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all border cursor-pointer",
+                                isSelected
+                                  ? "bg-blue-600 border-blue-600 text-white shadow-sm shadow-blue-500/10"
+                                  : "bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800"
+                              )}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Custom Manual Discount input for override precision */}
+                      <div className="grid grid-cols-2 gap-3 pt-1.5 border-t border-neutral-100 dark:border-neutral-800/40 mt-1">
+                        <div className="space-y-1">
+                          <span className="text-[8px] font-bold text-neutral-400 uppercase tracking-wider">Custom Discount %</span>
+                          <input
+                            type="number"
+                            placeholder="e.g. 1.5"
+                            value={paymentData.discountPercent || ''}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              const pct = parseFloat(val) || 0;
+                              const discountAmt = Math.round((selectedTxn.amount * pct) / 100);
+                              const newNetAmt = Math.max(0, selectedTxn.amount - discountAmt);
+                              setPaymentData({
+                                ...paymentData,
+                                discountPercent: pct,
+                                discountAmount: String(discountAmt),
+                                amount: String(newNetAmt)
+                              });
+                            }}
+                            className="w-full bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-xl px-2.5 py-1.5 text-[11px] font-mono font-black outline-none focus:ring-1 focus:ring-blue-500/20 text-neutral-800 dark:text-neutral-200"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <span className="text-[8px] font-bold text-neutral-400 uppercase tracking-wider">Discount Amt (₹)</span>
+                          <input
+                            type="number"
+                            placeholder="0"
+                            value={paymentData.discountAmount}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              const parsedAmt = parseFloat(val) || 0;
+                              const newNetAmt = Math.max(0, selectedTxn.amount - parsedAmt);
+                              const estimatedPct = selectedTxn.amount > 0 ? parseFloat(((parsedAmt / selectedTxn.amount) * 100).toFixed(2)) : 0;
+                              setPaymentData({
+                                ...paymentData,
+                                discountAmount: val,
+                                discountPercent: estimatedPct,
+                                amount: String(newNetAmt)
+                              });
+                            }}
+                            className="w-full bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-xl px-2.5 py-1.5 text-[11px] font-mono font-black outline-none focus:ring-1 focus:ring-blue-500/20 text-right text-neutral-800 dark:text-neutral-200"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Actual amount to receive ledger clearance */}
+                    <div className="space-y-2 bg-emerald-500/10 dark:bg-emerald-950/20 p-4 rounded-2xl border border-emerald-500/20 mt-2">
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-emerald-800 dark:text-emerald-300">Net Cleared Bank Amount (₹)</label>
+                        <button
+                          type="button"
+                          onClick={() => setPaymentData({ ...paymentData, amount: String(selectedTxn.amount) })}
+                          className="text-[9px] font-black uppercase text-primary tracking-wider hover:underline flex items-center gap-1 transition-all"
+                        >
+                          <Sparkles className="w-3 h-3 shrink-0" />
+                          Settlement Full Balance
+                        </button>
+                      </div>
+                      <input
+                        required
+                        type="number"
+                        placeholder="0.00"
+                        value={paymentData.amount}
+                        onChange={(e) => setPaymentData({ ...paymentData, amount: e.target.value })}
+                        className="w-full bg-white dark:bg-neutral-900 border border-emerald-600/30 rounded-2xl px-4 py-3 text-sm font-black outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all text-emerald-600 font-mono text-right"
+                      />
+                    </div>
+
                   </div>
+                </div>
 
-                  <div className="space-y-4 text-left">
-                     
-                     {/* Segmented Payment instrument Selector */}
-                     <div className="space-y-1.5">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 px-1">Instrument Route</label>
-                        <div className="flex gap-1.5 p-1 bg-neutral-100 dark:bg-neutral-950 rounded-2xl border border-neutral-200 dark:border-neutral-800">
-                           {['RTGS', 'NEFT', 'Cheque', 'Cash'].map(m => (
-                              <button 
-                                 key={m} 
-                                 type="button"
-                                 onClick={() => setPaymentData({...paymentData, method: m})}
-                                 className={cn(
-                                    "flex-1 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all",
-                                    paymentData.method === m 
-                                      ? "bg-white dark:bg-neutral-800 text-primary shadow-sm" 
-                                      : "text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200"
-                                 )}
-                              >
-                                 {m}
-                              </button>
-                           ))}
-                        </div>
-                     </div>
-
-                     <div className="space-y-3">
-                        
-                        {/* Deposit/Clearance Bank */}
-                        <div className="space-y-1.5">
-                           <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 px-1">Issuing Bank Reference</label>
-                           <div className="relative group">
-                              <Building className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400 group-focus-within:text-primary transition-colors shrink-0" />
-                              <input 
-                                 required
-                                 type="text" 
-                                 placeholder="e.g. State Bank of India, Khanna Central" 
-                                 value={paymentData.bank}
-                                 onChange={(e) => setPaymentData({...paymentData, bank: e.target.value})}
-                                 className="w-full bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-2xl pl-12 pr-4 py-3 text-xs font-bold outline-none focus:ring-2 focus:ring-primary/20 transition-all text-neutral-900 dark:text-neutral-100"
-                              />
-                           </div>
-                        </div>
-
-                        {/* Reference / UTR string */}
-                        <div className="space-y-1.5">
-                           <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 px-1">UTR Sequence / Instrument No.</label>
-                           <input 
-                              required
-                              type="text" 
-                              placeholder="e.g. UTR-994825591" 
-                              value={paymentData.refNo}
-                              onChange={(e) => setPaymentData({...paymentData, refNo: e.target.value})}
-                              className="w-full bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-2xl px-4 py-3 text-xs font-bold outline-none focus:ring-2 focus:ring-primary/20 transition-all font-mono text-neutral-900 dark:text-neutral-100"
-                           />
-                        </div>
-
-                        {/* Date and Shortage Weight Adjustments */}
-                        {/* Date field */}
-                        <div className="space-y-1.5">
-                           <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 px-1">Clearing Date</label>
-                           <div className="relative group">
-                              <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400 group-focus-within:text-primary transition-colors shrink-0" />
-                              <input 
-                                 required
-                                 type="date" 
-                                 value={paymentData.date}
-                                 onChange={(e) => setPaymentData({...paymentData, date: e.target.value})}
-                                 className="w-full bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-2xl pl-12 pr-4 py-3 text-xs font-bold outline-none focus:ring-2 focus:ring-primary/20 transition-all font-mono text-neutral-900 dark:text-neutral-100"
-                              />
-                           </div>
-                        </div>
-
-                        {/* Cash Discount Percentage & Calculated Discount Amount */}
-                        <div className="space-y-2.5 p-3.5 bg-blue-50/40 dark:bg-neutral-950/40 border border-blue-500/10 dark:border-neutral-800 rounded-2xl">
-                           <div className="flex justify-between items-center">
-                              <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500">
-                                 Cash Discount (CC Column)
-                              </label>
-                              <span className="text-[10px] font-black text-blue-600 dark:text-blue-400 font-mono">
-                                 ₹{parseFloat(paymentData.discountAmount).toLocaleString('en-IN')} Calculated
-                              </span>
-                           </div>
-                           
-                           {/* Beautiful Selection Grid of Pills */}
-                           <div className="flex gap-1.5">
-                              {[4, 3, 2, 1, 0].map(pct => {
-                                 const isSelected = paymentData.discountPercent === pct;
-                                 const label = pct === 0 ? 'No Disc' : `${pct}%`;
-                                 return (
-                                    <button
-                                       key={pct}
-                                       type="button"
-                                       onClick={() => {
-                                          const discountAmt = Math.round((selectedTxn.amount * pct) / 100);
-                                          const newNetAmt = Math.max(0, selectedTxn.amount - discountAmt);
-                                          setPaymentData({
-                                             ...paymentData,
-                                             discountPercent: pct,
-                                             discountAmount: String(discountAmt),
-                                             amount: String(newNetAmt)
-                                          });
-                                       }}
-                                       className={cn(
-                                          "flex-1 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all border cursor-pointer",
-                                          isSelected
-                                             ? "bg-blue-600 border-blue-600 text-white shadow-sm shadow-blue-500/10"
-                                             : "bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800"
-                                       )}
-                                    >
-                                       {label}
-                                    </button>
-                                 );
-                              })}
-                           </div>
-
-                           {/* Custom Manual Discount input for override precision */}
-                           <div className="grid grid-cols-2 gap-3 pt-1.5 border-t border-neutral-100 dark:border-neutral-800/40 mt-1">
-                              <div className="space-y-1">
-                                 <span className="text-[8px] font-bold text-neutral-400 uppercase tracking-wider">Custom Discount %</span>
-                                 <input
-                                    type="number"
-                                    placeholder="e.g. 1.5"
-                                    value={paymentData.discountPercent || ''}
-                                    onChange={(e) => {
-                                       const val = e.target.value;
-                                       const pct = parseFloat(val) || 0;
-                                       const discountAmt = Math.round((selectedTxn.amount * pct) / 100);
-                                       const newNetAmt = Math.max(0, selectedTxn.amount - discountAmt);
-                                       setPaymentData({
-                                          ...paymentData,
-                                          discountPercent: pct,
-                                          discountAmount: String(discountAmt),
-                                          amount: String(newNetAmt)
-                                       });
-                                    }}
-                                    className="w-full bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-xl px-2.5 py-1.5 text-[11px] font-mono font-black outline-none focus:ring-1 focus:ring-blue-500/20 text-neutral-800 dark:text-neutral-200"
-                                 />
-                              </div>
-                              <div className="space-y-1">
-                                 <span className="text-[8px] font-bold text-neutral-400 uppercase tracking-wider">Discount Amt (₹)</span>
-                                 <input
-                                    type="number"
-                                    placeholder="0"
-                                    value={paymentData.discountAmount}
-                                    onChange={(e) => {
-                                       const val = e.target.value;
-                                       const parsedAmt = parseFloat(val) || 0;
-                                       const newNetAmt = Math.max(0, selectedTxn.amount - parsedAmt);
-                                       const estimatedPct = selectedTxn.amount > 0 ? parseFloat(((parsedAmt / selectedTxn.amount) * 100).toFixed(2)) : 0;
-                                       setPaymentData({
-                                          ...paymentData,
-                                          discountAmount: val,
-                                          discountPercent: estimatedPct,
-                                          amount: String(newNetAmt)
-                                       });
-                                    }}
-                                    className="w-full bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-xl px-2.5 py-1.5 text-[11px] font-mono font-black outline-none focus:ring-1 focus:ring-blue-500/20 text-right text-neutral-800 dark:text-neutral-200"
-                                 />
-                              </div>
-                           </div>
-                        </div>
-
-                        {/* Actual amount to receive ledger clearance */}
-                        <div className="space-y-2 bg-emerald-500/10 dark:bg-emerald-950/20 p-4 rounded-2xl border border-emerald-500/20 mt-2">
-                           <div className="flex justify-between items-center mb-1">
-                             <label className="text-[10px] font-black uppercase tracking-widest text-emerald-800 dark:text-emerald-300">Net Cleared Bank Amount (₹)</label>
-                             <button
-                               type="button"
-                               onClick={() => setPaymentData({...paymentData, amount: String(selectedTxn.amount)})}
-                               className="text-[9px] font-black uppercase text-primary tracking-wider hover:underline flex items-center gap-1 transition-all"
-                             >
-                                <Sparkles className="w-3 h-3 shrink-0" />
-                                Settlement Full Balance
-                             </button>
-                           </div>
-                           <input 
-                              required
-                              type="number" 
-                              placeholder="0.00" 
-                              value={paymentData.amount}
-                              onChange={(e) => setPaymentData({...paymentData, amount: e.target.value})}
-                              className="w-full bg-white dark:bg-neutral-900 border border-emerald-600/30 rounded-2xl px-4 py-3 text-sm font-black outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all text-emerald-600 font-mono text-right"
-                           />
-                        </div>
-
-                     </div>
-                  </div>
-
-                  <button 
-                     type="submit" 
-                     className="w-full bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white py-4 rounded-2xl font-black uppercase tracking-widest text-xs shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center gap-2 hover:scale-[1.008]"
-                  >
-                     <Check className="w-4 h-4" />
-                     Commit & Reconcile Account
-                  </button>
-               </form>
+                <button
+                  type="submit"
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white py-4 rounded-2xl font-black uppercase tracking-widest text-xs shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center gap-2 hover:scale-[1.008]"
+                >
+                  <Check className="w-4 h-4" />
+                  Commit & Reconcile Account
+                </button>
+              </form>
             </motion.div>
           </div>
         )}
