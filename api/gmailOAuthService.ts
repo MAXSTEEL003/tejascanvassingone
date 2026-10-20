@@ -39,11 +39,11 @@ export function getStoredOAuthCredentials(): GmailOAuthCredentials {
     return cachedCreds;
   }
 
-  // 1. Check process.env first
-  let envClientId = (process.env.GMAIL_CLIENT_ID || "").trim();
-  let envClientSecret = (process.env.GMAIL_CLIENT_SECRET || "").trim();
-  let envRefreshToken = (process.env.GMAIL_REFRESH_TOKEN || "").trim();
-  let envRedirectUri = (process.env.GMAIL_REDIRECT_URI || "https://app.tejasc.in/api/auth/gmail/callback").trim();
+  // 1. Check process.env first (support both GMAIL_OAUTH_* and GMAIL_* naming)
+  let envClientId = (process.env.GMAIL_CLIENT_ID || process.env.GMAIL_OAUTH_CLIENT_ID || "").trim();
+  let envClientSecret = (process.env.GMAIL_CLIENT_SECRET || process.env.GMAIL_OAUTH_CLIENT_SECRET || "").trim();
+  let envRefreshToken = (process.env.GMAIL_REFRESH_TOKEN || process.env.GMAIL_OAUTH_REFRESH_TOKEN || "").trim();
+  let envRedirectUri = (process.env.GMAIL_REDIRECT_URI || process.env.GMAIL_OAUTH_REDIRECT_URI || "https://app.tejasc.in/api/auth/gmail/callback").trim();
 
   // 2. Check local .env candidates if environment variables are not yet loaded
   const envCandidates = [
@@ -56,13 +56,13 @@ export function getStoredOAuthCredentials(): GmailOAuthCredentials {
     if (fs.existsSync(envFile)) {
       try {
         const content = fs.readFileSync(envFile, "utf-8");
-        const mClient = content.match(/^GMAIL_CLIENT_ID=(.*)$/m);
+        const mClient = content.match(/^GMAIL(?:_OAUTH)?_CLIENT_ID=(.*)$/m);
         if (mClient && mClient[1].trim() && !envClientId) envClientId = mClient[1].trim();
-        const mSecret = content.match(/^GMAIL_CLIENT_SECRET=(.*)$/m);
+        const mSecret = content.match(/^GMAIL(?:_OAUTH)?_CLIENT_SECRET=(.*)$/m);
         if (mSecret && mSecret[1].trim() && !envClientSecret) envClientSecret = mSecret[1].trim();
-        const mRefresh = content.match(/^GMAIL_REFRESH_TOKEN=(.*)$/m);
+        const mRefresh = content.match(/^GMAIL(?:_OAUTH)?_REFRESH_TOKEN=(.*)$/m);
         if (mRefresh && mRefresh[1].trim() && !envRefreshToken) envRefreshToken = mRefresh[1].trim();
-        const mRedirect = content.match(/^GMAIL_REDIRECT_URI=(.*)$/m);
+        const mRedirect = content.match(/^GMAIL(?:_OAUTH)?_REDIRECT_URI=(.*)$/m);
         if (mRedirect && mRedirect[1].trim() && !envRedirectUri) envRedirectUri = mRedirect[1].trim();
       } catch {}
     }
