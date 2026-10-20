@@ -1918,23 +1918,23 @@ function formatPhoneNumber(phone: string) {
 }
 
 export function getMetaWhatsAppCredentials() {
-  let phoneId = (process.env.META_WHATSAPP_PHONE_NUMBER_ID || "").trim();
-  let token = (process.env.META_WHATSAPP_TOKEN || "").trim();
-  let templateName = (process.env.META_WHATSAPP_TEMPLATE_NAME || "").trim();
-  let businessAccountId = (process.env.META_WHATSAPP_BUSINESS_ACCOUNT_ID || "").trim();
+  let phoneId = (process.env.META_WHATSAPP_PHONE_NUMBER_ID || process.env.WHATSAPP_PHONE_NUMBER_ID || "").trim();
+  let token = (process.env.META_WHATSAPP_TOKEN || process.env.WHATSAPP_TOKEN || process.env.META_ACCESS_TOKEN || "").trim();
+  let templateName = (process.env.META_WHATSAPP_TEMPLATE_NAME || process.env.WHATSAPP_TEMPLATE_NAME || "").trim();
+  let businessAccountId = (process.env.META_WHATSAPP_BUSINESS_ACCOUNT_ID || process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || "").trim();
 
   for (const envFile of envCandidates) {
     if (fs.existsSync(envFile)) {
       try {
         const content = fs.readFileSync(envFile, "utf-8");
-        const mPhone = content.match(/^META_WHATSAPP_PHONE_NUMBER_ID=(.*)$/m);
-        if (mPhone && mPhone[1].trim()) phoneId = mPhone[1].trim();
-        const mToken = content.match(/^META_WHATSAPP_TOKEN=(.*)$/m);
-        if (mToken && mToken[1].trim()) token = mToken[1].trim();
-        const mTemplate = content.match(/^META_WHATSAPP_TEMPLATE_NAME=(.*)$/m);
-        if (mTemplate && mTemplate[1].trim()) templateName = mTemplate[1].trim();
-        const mWaba = content.match(/^META_WHATSAPP_BUSINESS_ACCOUNT_ID=(.*)$/m);
-        if (mWaba && mWaba[1].trim()) businessAccountId = mWaba[1].trim();
+        const mPhone = content.match(/^(?:META_)?WHATSAPP_PHONE_NUMBER_ID=(.*)$/m);
+        if (mPhone && mPhone[1].trim() && !phoneId) phoneId = mPhone[1].trim();
+        const mToken = content.match(/^(?:META_)?(?:WHATSAPP_TOKEN|ACCESS_TOKEN)=(.*)$/m);
+        if (mToken && mToken[1].trim() && !token) token = mToken[1].trim();
+        const mTemplate = content.match(/^(?:META_)?WHATSAPP_TEMPLATE_NAME=(.*)$/m);
+        if (mTemplate && mTemplate[1].trim() && !templateName) templateName = mTemplate[1].trim();
+        const mWaba = content.match(/^(?:META_)?WHATSAPP_BUSINESS_ACCOUNT_ID=(.*)$/m);
+        if (mWaba && mWaba[1].trim() && !businessAccountId) businessAccountId = mWaba[1].trim();
       } catch {}
     }
   }
