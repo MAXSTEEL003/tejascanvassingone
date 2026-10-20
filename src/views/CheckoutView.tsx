@@ -423,43 +423,8 @@ export default function CheckoutView() {
         setEmailStatus('sent');
       });
 
-      // 2. Automatic Meta WhatsApp Order Notification Trigger (order_notify template)
-      setWaDispatchResult({ status: 'sending', phone: finalCustomerWaPhone });
-      fetch('/api/dispatch-whatsapp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          to: finalCustomerWaPhone,
-          buyerName: newOrder.buyer,
-          brand: brandVal,
-          qty: String(orderQty),
-          rate: String(orderRate),
-          orderId: newOrder.id,
-          poNumber: newOrder.id,
-          message: customerWaMsg,
-          templateName: 'order_notify',
-          templateId: '1016669984165776',
-          templateParams: [newOrder.buyer, brandVal, String(orderQty), String(orderRate)],
-          languageCode: 'en'
-        })
-      })
-      .then(res => res.json())
-      .then(data => {
-        console.log('[Checkout WhatsApp Dispatch Result]:', data);
-        if (data.isLiveSent) {
-          setWaDispatchResult({ status: 'sent', message: `Delivered to +${data.formattedPhone || finalCustomerWaPhone}`, phone: data.formattedPhone || finalCustomerWaPhone });
-        } else if (data.isSimulated) {
-          setWaDispatchResult({ status: 'simulated', message: 'Simulated mode (Meta token not configured in Vercel settings)', phone: finalCustomerWaPhone });
-        } else if (data.error) {
-          setWaDispatchResult({ status: 'error', message: data.error, phone: finalCustomerWaPhone });
-        } else {
-          setWaDispatchResult({ status: 'sent', phone: finalCustomerWaPhone });
-        }
-      })
-      .catch(err => {
-        console.warn('[Checkout WhatsApp Dispatch Error]:', err);
-        setWaDispatchResult({ status: 'error', message: err?.message || 'Network error', phone: finalCustomerWaPhone });
-      });
+      // Note: WhatsApp confirmation will be dispatched once the admin reviews and places the order from Orders Dashboard
+      setWaDispatchResult({ status: 'idle', message: 'Will be sent upon admin order placement', phone: finalCustomerWaPhone });
     }, 1200);
   };
 
@@ -549,25 +514,15 @@ export default function CheckoutView() {
 
             <div className="flex items-center justify-between pb-2.5 border-b border-[#E5E7EB] dark:border-[#262626]">
               <span className="text-xs text-[#6B7280] dark:text-neutral-400">WhatsApp Alert</span>
-              <span className={cn(
-                "font-bold text-[11px] flex items-center gap-1",
-                waDispatchResult.status === 'sent' && "text-emerald-600 dark:text-emerald-400",
-                waDispatchResult.status === 'error' && "text-rose-600 dark:text-rose-400",
-                waDispatchResult.status === 'simulated' && "text-amber-600 dark:text-amber-400",
-                waDispatchResult.status === 'sending' && "text-blue-600 animate-pulse"
-              )}>
-                {waDispatchResult.status === 'sending' && "Sending to phone..."}
-                {waDispatchResult.status === 'sent' && `✓ Sent to +${waDispatchResult.phone}`}
-                {waDispatchResult.status === 'simulated' && "⚠️ Simulated (No Vercel Token)"}
-                {waDispatchResult.status === 'error' && `⚠️ ${waDispatchResult.message}`}
-                {waDispatchResult.status === 'idle' && "Pending"}
+              <span className="font-bold text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                ⏳ Dispatched on Admin Order Placement
               </span>
             </div>
 
             <div className="flex items-center justify-between">
               <span className="text-xs text-[#6B7280] dark:text-neutral-400">Status</span>
-              <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 font-bold text-[10px] border border-emerald-200 dark:border-emerald-800">
-                Pending Mill Confirmation
+              <span className="px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 font-bold text-[10px] border border-amber-200 dark:border-amber-800">
+                Pending Admin Approval & Placement
               </span>
             </div>
           </div>
