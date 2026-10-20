@@ -162,6 +162,7 @@ export default function CheckoutView() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [emailStatus, setEmailStatus] = useState<'idle' | 'sending' | 'sent'>('idle');
+  const [waDispatchResult, setWaDispatchResult] = useState<{ status: 'idle' | 'sending' | 'sent' | 'simulated' | 'error'; message?: string; phone?: string }>({ status: 'idle' });
   const [createdOrderRef, setCreatedOrderRef] = useState<string>('');
   const [directWaLink, setDirectWaLink] = useState<string>('');
   const [directSmsLink, setDirectSmsLink] = useState<string>('');
@@ -423,6 +424,7 @@ export default function CheckoutView() {
       });
 
       // 2. Automatic Meta WhatsApp Order Notification Trigger (order_notify template)
+      setWaDispatchResult({ status: 'sending', phone: finalCustomerWaPhone });
       fetch('/api/dispatch-whatsapp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -442,8 +444,22 @@ export default function CheckoutView() {
         })
       })
       .then(res => res.json())
-      .then(data => console.log('[Checkout WhatsApp Dispatch Result]:', data))
-      .catch(err => console.warn('[Checkout WhatsApp Dispatch Error]:', err));
+      .then(data => {
+        console.log('[Checkout WhatsApp Dispatch Result]:', data);
+        if (data.isLiveSent) {
+          setWaDispatchResult({ status: 'sent', message: `Delivered to +${data.formattedPhone || finalCustomerWaPhone}`, phone: data.formattedPhone || finalCustomerWaPhone });
+        } else if (data.isSimulated) {
+          setWaDispatchResult({ status: 'simulated', message: 'Simulated mode (Meta token not configured in Vercel settings)', phone: finalCustomerWaPhone });
+        } else if (data.error) {
+          setWaDispatchResult({ status: 'error', message: data.error, phone: finalCustomerWaPhone });
+        } else {
+          setWaDispatchResult({ status: 'sent', phone: finalCustomerWaPhone });
+        }
+      })
+      .catch(err => {
+        console.warn('[Checkout WhatsApp Dispatch Error]:', err);
+        setWaDispatchResult({ status: 'error', message: err?.message || 'Network error', phone: finalCustomerWaPhone });
+      });
     }, 1200);
   };
 
@@ -528,6 +544,23 @@ export default function CheckoutView() {
               <span className="text-xs text-[#6B7280] dark:text-neutral-400">Deliver To</span>
               <span className="font-bold text-xs text-[#111827] dark:text-white truncate max-w-[200px]">
                 {activeLocation.name} ({activeLocation.type})
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between pb-2.5 border-b border-[#E5E7EB] dark:border-[#262626]">
+              <span className="text-xs text-[#6B7280] dark:text-neutral-400">WhatsApp Alert</span>
+              <span className={cn(
+                "font-bold text-[11px] flex items-center gap-1",
+                waDispatchResult.status === 'sent' && "text-emerald-600 dark:text-emerald-400",
+                waDispatchResult.status === 'error' && "text-rose-600 dark:text-rose-400",
+                waDispatchResult.status === 'simulated' && "text-amber-600 dark:text-amber-400",
+                waDispatchResult.status === 'sending' && "text-blue-600 animate-pulse"
+              )}>
+                {waDispatchResult.status === 'sending' && "Sending to phone..."}
+                {waDispatchResult.status === 'sent' && `✓ Sent to +${waDispatchResult.phone}`}
+                {waDispatchResult.status === 'simulated' && "⚠️ Simulated (No Vercel Token)"}
+                {waDispatchResult.status === 'error' && `⚠️ ${waDispatchResult.message}`}
+                {waDispatchResult.status === 'idle' && "Pending"}
               </span>
             </div>
 

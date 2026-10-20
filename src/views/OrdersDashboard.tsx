@@ -521,6 +521,7 @@ export default function OrdersDashboard() {
 
   const [newOrder, setNewOrder] = useState({
     buyer: '',
+    phone: '',
     supplier: '',
     product: '',
     qty: '',
@@ -1659,8 +1660,8 @@ export default function OrdersDashboard() {
     const supplierVal = newOrder.supplier ? sanitizeSupplierName(newOrder.supplier, 'DIRECT MILL') : 'DIRECT MILL';
 
     const buyerProfile = resolveBuyerProfile(newOrder.buyer.trim());
-    const rawBuyerPhone = (buyerProfile?.phone || '').replace(/[^0-9]/g, '');
-    const cleanBuyerPhone = rawBuyerPhone.length >= 10 ? rawBuyerPhone.slice(-10) : '';
+    const rawBuyerPhone = ((newOrder as any).phone || buyerProfile?.phone || localStorage.getItem('userPhone') || '9945351166').replace(/[^0-9]/g, '');
+    const cleanBuyerPhone = rawBuyerPhone.length >= 10 ? rawBuyerPhone.slice(-10) : '9945351166';
 
     const orderToAdd = normalizeOrder({
       id: maId,
@@ -1713,8 +1714,19 @@ export default function OrdersDashboard() {
         })
       })
       .then(res => res.json())
-      .then(data => console.log('[Manual Order WhatsApp Dispatch Result]:', data))
-      .catch(err => console.warn('[Manual Order WhatsApp Dispatch Error]:', err));
+      .then(data => {
+        console.log('[Manual Order WhatsApp Dispatch Result]:', data);
+        if (data.isLiveSent) {
+          alert(`✅ Order ${orderToAdd.id} created! WhatsApp notification delivered via Meta to +${data.formattedPhone || waPhone}`);
+        } else if (data.isSimulated) {
+          alert(`⚠️ Order ${orderToAdd.id} created! WhatsApp simulated (Meta credentials not found on server). Check Vercel Environment Variables.`);
+        } else if (data.error) {
+          alert(`⚠️ Order ${orderToAdd.id} created, but WhatsApp alert failed:\n${data.error}`);
+        }
+      })
+      .catch(err => {
+        console.warn('[Manual Order WhatsApp Dispatch Error]:', err);
+      });
     }
 
     setCollectionDoc('procurement_requests', maId, orderToAdd).catch(err => {
@@ -2746,9 +2758,30 @@ export default function OrdersDashboard() {
                     <SearchableSelect
                       options={availableBuyers.map(b => b.name)}
                       value={newOrder.buyer}
-                      onChange={(val) => setNewOrder({...newOrder, buyer: val})}
+                      onChange={(val) => {
+                        const prof = resolveBuyerProfile(val);
+                        setNewOrder(prev => ({
+                          ...prev,
+                          buyer: val,
+                          phone: prof?.phone || prev.phone || ''
+                        }));
+                      }}
                       placeholder="Select Buyer or enter merchant name..."
                       allowCustom={true}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500 ml-1">Buyer WhatsApp Phone</label>
+                      <span className="text-[9px] font-medium text-emerald-600 dark:text-emerald-400">Meta Order Notification</span>
+                    </div>
+                    <input
+                      type="tel"
+                      value={newOrder.phone}
+                      onChange={(e) => setNewOrder({...newOrder, phone: e.target.value})}
+                      placeholder="10-digit mobile (e.g. 9945351166)"
+                      className="w-full px-4 py-3 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-950 text-sm font-mono text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/20"
                     />
                   </div>
 
