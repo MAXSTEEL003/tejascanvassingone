@@ -4,7 +4,7 @@ import path from "path";
 import dotenv from "dotenv";
 
 const GMAIL_SENDER = "nani@tejasc.in";
-const DATA_DIR = path.join(process.cwd(), "data");
+const DATA_DIR = process.env.VERCEL ? "/tmp" : path.join(process.cwd(), "data");
 const OAUTH_FILE = path.join(DATA_DIR, "gmail_oauth.json");
 
 export interface GmailOAuthCredentials {
@@ -40,10 +40,33 @@ export function getStoredOAuthCredentials(): GmailOAuthCredentials {
   }
 
   // 1. Check process.env first
-  const envClientId = (process.env.GMAIL_CLIENT_ID || "").trim();
-  const envClientSecret = (process.env.GMAIL_CLIENT_SECRET || "").trim();
-  const envRefreshToken = (process.env.GMAIL_REFRESH_TOKEN || "").trim();
-  const envRedirectUri = (process.env.GMAIL_REDIRECT_URI || "https://app.tejasc.in/api/auth/gmail/callback").trim();
+  let envClientId = (process.env.GMAIL_CLIENT_ID || "").trim();
+  let envClientSecret = (process.env.GMAIL_CLIENT_SECRET || "").trim();
+  let envRefreshToken = (process.env.GMAIL_REFRESH_TOKEN || "").trim();
+  let envRedirectUri = (process.env.GMAIL_REDIRECT_URI || "https://app.tejasc.in/api/auth/gmail/callback").trim();
+
+  // 2. Check local .env candidates if environment variables are not yet loaded
+  const envCandidates = [
+    path.join(process.cwd(), ".env"),
+    path.join(process.cwd(), "tejascanvassingone-main", ".env"),
+    path.join(typeof __dirname !== "undefined" ? __dirname : process.cwd(), ".env"),
+    path.join(typeof __dirname !== "undefined" ? __dirname : process.cwd(), "..", ".env"),
+  ];
+  for (const envFile of envCandidates) {
+    if (fs.existsSync(envFile)) {
+      try {
+        const content = fs.readFileSync(envFile, "utf-8");
+        const mClient = content.match(/^GMAIL_CLIENT_ID=(.*)$/m);
+        if (mClient && mClient[1].trim() && !envClientId) envClientId = mClient[1].trim();
+        const mSecret = content.match(/^GMAIL_CLIENT_SECRET=(.*)$/m);
+        if (mSecret && mSecret[1].trim() && !envClientSecret) envClientSecret = mSecret[1].trim();
+        const mRefresh = content.match(/^GMAIL_REFRESH_TOKEN=(.*)$/m);
+        if (mRefresh && mRefresh[1].trim() && !envRefreshToken) envRefreshToken = mRefresh[1].trim();
+        const mRedirect = content.match(/^GMAIL_REDIRECT_URI=(.*)$/m);
+        if (mRedirect && mRedirect[1].trim() && !envRedirectUri) envRedirectUri = mRedirect[1].trim();
+      } catch {}
+    }
+  }
 
   let fileCreds: Partial<GmailOAuthCredentials> = {};
   try {
@@ -62,7 +85,7 @@ export function getStoredOAuthCredentials(): GmailOAuthCredentials {
     refreshToken: envRefreshToken || fileCreds.refreshToken || "",
     accessToken: fileCreds.accessToken || "",
     tokenExpiry: fileCreds.tokenExpiry || 0,
-    authorizedEmail: fileCreds.authorizedEmail || GMAIL_SENDER,
+    authorizedEmail: fileCreds.authorizedEmail || (process.env.GMAIL_SENDER || GMAIL_SENDER),
     redirectUri: envRedirectUri || fileCreds.redirectUri || "https://app.tejasc.in/api/auth/gmail/callback",
     updatedAt: fileCreds.updatedAt || new Date().toISOString(),
   };

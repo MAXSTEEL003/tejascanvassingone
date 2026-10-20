@@ -48,7 +48,7 @@ export interface PoEmailTrackingRecord {
   notes?: string;
 }
 
-const DATA_DIR = path.join(process.cwd(), "data");
+const DATA_DIR = process.env.VERCEL ? "/tmp" : path.join(process.cwd(), "data");
 const TRACKING_FILE = path.join(DATA_DIR, "po_email_tracking.json");
 
 // In-memory record store

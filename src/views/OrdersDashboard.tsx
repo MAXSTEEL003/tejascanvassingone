@@ -71,17 +71,18 @@ const resolveBuyerProfile = (buyerName: string) => {
     const saved = localStorage.getItem('stakeholders_v2');
     if (saved) {
       const parsed = JSON.parse(saved);
-      const buyers = parsed.buyers || [];
+      const buyers = Array.isArray(parsed.buyers) ? parsed.buyers : [];
       const matched = buyers.find((b: any) => {
         const bNorm = (b.name || '').trim().toUpperCase()
           .replace(/\s*\(LLC\)/gi, '')
           .replace(/\.$/, '');
         return bNorm === norm || bNorm.includes(norm) || norm.includes(bNorm);
       });
-      if (matched) {
+      if (matched && matched.phone) {
+        const cleanPhone = String(matched.phone).replace(/[^0-9]/g, '');
         return {
           email: matched.email || `${(norm || '').toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`,
-          phone: matched.phone || localStorage.getItem('userPhone') || localStorage.getItem('testWhatsappPhone') || '9945351166'
+          phone: cleanPhone.length >= 10 ? cleanPhone.slice(-10) : cleanPhone
         };
       }
     }
@@ -89,12 +90,27 @@ const resolveBuyerProfile = (buyerName: string) => {
     console.warn("Error resolving dynamic buyer profile from localStorage:", e);
   }
 
+  try {
+    const regReqs = JSON.parse(localStorage.getItem('buyer_registration_requests') || '[]');
+    const matchedReq = regReqs.find((b: any) => {
+      const bNorm = (b.name || '').trim().toUpperCase();
+      return bNorm === norm || bNorm.includes(norm) || norm.includes(bNorm);
+    });
+    if (matchedReq && matchedReq.phone) {
+      const cleanPhone = String(matchedReq.phone).replace(/[^0-9]/g, '');
+      return {
+        email: matchedReq.email || `${(norm || '').toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`,
+        phone: cleanPhone.length >= 10 ? cleanPhone.slice(-10) : cleanPhone
+      };
+    }
+  } catch (e) {}
+
   if (BUYER_PROFILES_LOOKUP[norm]) return BUYER_PROFILES_LOOKUP[norm];
   for (const k of Object.keys(BUYER_PROFILES_LOOKUP)) {
     if (norm.includes(k) || k.includes(norm)) return BUYER_PROFILES_LOOKUP[k];
   }
 
-  const defaultUserPhone = localStorage.getItem('userPhone') || localStorage.getItem('testWhatsappPhone') || '9945351166';
+  const defaultUserPhone = (localStorage.getItem('userPhone') || localStorage.getItem('testWhatsappPhone') || '9945351166').replace(/[^0-9]/g, '').slice(-10);
   return {
     email: `${(norm || '').toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`,
     phone: defaultUserPhone
@@ -1377,8 +1393,11 @@ export default function OrdersDashboard() {
       const prof = resolveBuyerProfile(b);
       const matchedOrder = selected.find(s => (s.buyer || '').trim().toLowerCase() === b.trim().toLowerCase());
       const orderPhone = (matchedOrder?.phone || '').replace(/[^0-9]/g, '');
-      const finalPhone = (orderPhone && orderPhone !== '9845012345' && orderPhone !== '9845000000' && orderPhone !== '919845000000') ? orderPhone : prof.phone;
-      return { name: b, email: prof.email, phone: finalPhone };
+      const rawFinalPhone = (orderPhone && orderPhone.length >= 10 && orderPhone !== '9845012345' && orderPhone !== '9845000000' && orderPhone !== '919845000000') 
+        ? orderPhone 
+        : (prof.phone || '').replace(/[^0-9]/g, '');
+      const cleanPhone = rawFinalPhone.length >= 10 ? rawFinalPhone.slice(-10) : '9945351166';
+      return { name: b, email: prof.email, phone: `91${cleanPhone}` };
     });
 
     const supplierProfile = resolveSupplierProfile(assignedBatchSupplier);
@@ -1639,6 +1658,10 @@ export default function OrdersDashboard() {
 
     const supplierVal = newOrder.supplier ? sanitizeSupplierName(newOrder.supplier, 'DIRECT MILL') : 'DIRECT MILL';
 
+    const buyerProfile = resolveBuyerProfile(newOrder.buyer.trim());
+    const rawBuyerPhone = (buyerProfile?.phone || '').replace(/[^0-9]/g, '');
+    const cleanBuyerPhone = rawBuyerPhone.length >= 10 ? rawBuyerPhone.slice(-10) : '';
+
     const orderToAdd = normalizeOrder({
       id: maId,
       date: dateStr,
@@ -1651,7 +1674,8 @@ export default function OrdersDashboard() {
       rate: parseFloat(newOrder.rate) || 0,
       urgency: newOrder.urgency || 'Standard',
       status: 'Pending Approval',
-      color: newOrder.urgency === 'Critical' ? 'red' : newOrder.urgency === 'High' ? 'orange' : 'zinc'
+      color: newOrder.urgency === 'Critical' ? 'red' : newOrder.urgency === 'High' ? 'orange' : 'zinc',
+      phone: cleanBuyerPhone || undefined
     });
 
     const updatedOrders = [orderToAdd, ...currentOrders.filter(o => o && String(o.id).toLowerCase() !== maId.toLowerCase())];
@@ -1664,6 +1688,34 @@ export default function OrdersDashboard() {
     setFilterSupplier('');
     setFilterProduct('');
     setSearchQuery('');
+
+    // Dispatch WhatsApp order notification directly to the buyer's phone
+    if (cleanBuyerPhone) {
+      const waPhone = `91${cleanBuyerPhone}`;
+      const customerWaMsg = `Hello ${orderToAdd.buyer},\n\nOrder placed successfully.\n\nBrand: ${orderToAdd.product}\nQuantity: ${orderToAdd.qty} QTL\nRate: ₹${orderToAdd.rate}/QTL\n\nThank you,\nTejas Canvassing`;
+
+      fetch('/api/dispatch-whatsapp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: waPhone,
+          buyerName: orderToAdd.buyer,
+          brand: orderToAdd.product,
+          qty: String(orderToAdd.qty),
+          rate: String(orderToAdd.rate),
+          orderId: orderToAdd.id,
+          poNumber: orderToAdd.id,
+          message: customerWaMsg,
+          templateName: 'order_notify',
+          templateId: '1016669984165776',
+          templateParams: [orderToAdd.buyer, orderToAdd.product, String(orderToAdd.qty), String(orderToAdd.rate)],
+          languageCode: 'en'
+        })
+      })
+      .then(res => res.json())
+      .then(data => console.log('[Manual Order WhatsApp Dispatch Result]:', data))
+      .catch(err => console.warn('[Manual Order WhatsApp Dispatch Error]:', err));
+    }
 
     setCollectionDoc('procurement_requests', maId, orderToAdd).catch(err => {
       console.warn('Firestore sync notice for manual order (saved locally):', err?.message || err);

@@ -71,17 +71,18 @@ const resolveBuyerProfile = (buyerName: string) => {
     const saved = localStorage.getItem('stakeholders_v2');
     if (saved) {
       const parsed = JSON.parse(saved);
-      const buyers = parsed.buyers || [];
+      const buyers = Array.isArray(parsed.buyers) ? parsed.buyers : [];
       const matched = buyers.find((b: any) => {
         const bNorm = (b.name || '').trim().toUpperCase()
           .replace(/\s*\(LLC\)/gi, '')
           .replace(/\.$/, '');
         return bNorm === norm || bNorm.includes(norm) || norm.includes(bNorm);
       });
-      if (matched) {
+      if (matched && matched.phone) {
+        const cleanPhone = String(matched.phone).replace(/[^0-9]/g, '');
         return {
           email: matched.email || `${norm.toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`,
-          phone: matched.phone || localStorage.getItem('userPhone') || localStorage.getItem('testWhatsappPhone') || '9945351166'
+          phone: cleanPhone.length >= 10 ? cleanPhone.slice(-10) : cleanPhone
         };
       }
     }
@@ -89,12 +90,27 @@ const resolveBuyerProfile = (buyerName: string) => {
     console.warn("Error resolving dynamic buyer profile from localStorage:", e);
   }
 
+  try {
+    const regReqs = JSON.parse(localStorage.getItem('buyer_registration_requests') || '[]');
+    const matchedReq = regReqs.find((b: any) => {
+      const bNorm = (b.name || '').trim().toUpperCase();
+      return bNorm === norm || bNorm.includes(norm) || norm.includes(bNorm);
+    });
+    if (matchedReq && matchedReq.phone) {
+      const cleanPhone = String(matchedReq.phone).replace(/[^0-9]/g, '');
+      return {
+        email: matchedReq.email || `${norm.toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`,
+        phone: cleanPhone.length >= 10 ? cleanPhone.slice(-10) : cleanPhone
+      };
+    }
+  } catch (e) {}
+
   if (BUYER_PROFILES_LOOKUP[norm]) return BUYER_PROFILES_LOOKUP[norm];
   for (const k of Object.keys(BUYER_PROFILES_LOOKUP)) {
     if (norm.includes(k) || k.includes(norm)) return BUYER_PROFILES_LOOKUP[k];
   }
 
-  const defaultUserPhone = localStorage.getItem('userPhone') || localStorage.getItem('testWhatsappPhone') || '9945351166';
+  const defaultUserPhone = (localStorage.getItem('userPhone') || localStorage.getItem('testWhatsappPhone') || '9945351166').replace(/[^0-9]/g, '').slice(-10);
   return {
     email: `${norm.toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`,
     phone: defaultUserPhone
@@ -171,12 +187,21 @@ export default function CheckoutView() {
     isDefault: true
   };
 
+  const [recipientPhone, setRecipientPhone] = useState<string>(() => {
+    const raw = activeLocation.phone || localStorage.getItem('userPhone') || '9945351166';
+    const clean = raw.replace(/[^0-9]/g, '');
+    return clean.length >= 10 ? clean.slice(-10) : '9945351166';
+  });
+  const [isEditingPhone, setIsEditingPhone] = useState(false);
+
   const handleSelectLocation = (loc: DeliveryLocation) => {
     setSelectedLocationId(loc.id);
     setSelectedDeliveryLocationId(loc.id);
     localStorage.setItem('userAddress', loc.address);
     if (loc.phone) {
       localStorage.setItem('userPhone', loc.phone);
+      const clean = loc.phone.replace(/[^0-9]/g, '');
+      if (clean.length >= 10) setRecipientPhone(clean.slice(-10));
     }
     setIsAddressModalOpen(false);
   };
@@ -199,6 +224,8 @@ export default function CheckoutView() {
     localStorage.setItem('userAddress', created.address);
     if (created.phone) {
       localStorage.setItem('userPhone', created.phone);
+      const clean = created.phone.replace(/[^0-9]/g, '');
+      if (clean.length >= 10) setRecipientPhone(clean.slice(-10));
     }
 
     setNewLocName('');
@@ -258,9 +285,10 @@ export default function CheckoutView() {
 
       const buyerProf = resolveBuyerProfile(buyerText);
       const rawCustomerPhone = (
-        localStorage.getItem('userPhone') || 
+        recipientPhone ||
         buyerProf.phone || 
         activeLocation.phone || 
+        localStorage.getItem('userPhone') || 
         localStorage.getItem('testWhatsappPhone') || 
         '9945351166'
       ).replace(/[^0-9]/g, '');
@@ -611,7 +639,42 @@ export default function CheckoutView() {
               </p>
               <div className="pt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[#6B7280] dark:text-neutral-400 font-sans">
                 <span>GSTIN: <span className="font-sans font-bold text-[#111827] dark:text-neutral-200">{localStorage.getItem('userGstin') || '29AAGCV7712M1ZP'}</span></span>
-                <span>Phone: <span className="font-sans font-bold text-[#111827] dark:text-neutral-200">{(activeLocation.phone || localStorage.getItem('userPhone')) ? `+91 ${activeLocation.phone || localStorage.getItem('userPhone')}` : 'Not Specified'}</span></span>
+                <span className="flex items-center gap-1.5">
+                  <span>WhatsApp Alert:</span>
+                  {isEditingPhone ? (
+                    <span className="inline-flex items-center gap-1">
+                      <span className="font-bold text-[#111827] dark:text-white">+91</span>
+                      <input
+                        type="tel"
+                        value={recipientPhone}
+                        onChange={(e) => setRecipientPhone(e.target.value.replace(/[^0-9]/g, ''))}
+                        maxLength={10}
+                        placeholder="10-digit number"
+                        className="bg-neutral-100 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-600 rounded px-1.5 py-0.5 text-[11px] font-bold text-[#111827] dark:text-white w-24 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingPhone(false)}
+                        className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer"
+                      >
+                        Done
+                      </button>
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1">
+                      <span className="font-sans font-bold text-[#111827] dark:text-neutral-200">
+                        +91 {recipientPhone.slice(-10)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingPhone(true)}
+                        className="text-[10px] font-bold text-[#C22424] hover:underline cursor-pointer ml-1"
+                      >
+                        (Edit)
+                      </button>
+                    </span>
+                  )}
+                </span>
               </div>
             </div>
           </section>

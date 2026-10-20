@@ -3,7 +3,7 @@ import fs from "fs";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 
-const currentDir = typeof __dirname !== "undefined" ? __dirname : (import.meta.url ? path.dirname(fileURLToPath(import.meta.url)) : process.cwd());
+const currentDir = typeof __dirname !== "undefined" ? __dirname : process.cwd();
 
 const envCandidates = [
   path.join(process.cwd(), ".env"),

@@ -26,7 +26,7 @@ import {
   verifyAcknowledgementToken,
 } from "./poEmailTrackingStore.js";
 
-const currentDir = typeof __dirname !== "undefined" ? __dirname : (import.meta.url ? path.dirname(fileURLToPath(import.meta.url)) : process.cwd());
+const currentDir = typeof __dirname !== "undefined" ? __dirname : process.cwd();
 
 const envCandidates = [
   path.join(process.cwd(), ".env"),
@@ -981,9 +981,9 @@ const app = express();
 
 // Normalize req.url when rewritten by Vercel serverless proxy (/api/(.*) -> /api)
 app.use((req, _res, next) => {
-  const matched = (req.headers["x-matched-path"] || req.headers["x-vercel-matched-path"]) as string | undefined;
-  if (matched && (req.url === "/" || req.url === "/api" || req.url === "")) {
-    req.url = matched;
+  const invokePath = (req.headers["x-invoke-path"] || req.headers["x-forwarded-uri"] || req.headers["x-matched-path"] || req.headers["x-vercel-matched-path"]) as string | undefined;
+  if (invokePath && invokePath !== "/" && invokePath !== "/api" && invokePath !== "") {
+    req.url = invokePath;
   }
   next();
 });
@@ -999,7 +999,7 @@ app.use(
 );
 
 // Server-side Authentication & Session Authorization routes
-app.use("/api/auth", authRouter);
+app.use(["/api/auth", "/auth"], authRouter);
 
 // Meta WhatsApp Cloud API Webhooks (GET verification & POST event reception)
 // Support both /api/webhooks/whatsapp and /webhooks/whatsapp for local and Vercel serverless rewrites
@@ -1011,7 +1011,7 @@ app.all(["/api/health", "/health", "/healthz", "/_ah/health", "/readyz", "/livez
 });
 
 // AI Chat Bot endpoint for business data insights
-app.post("/api/chat", async (req, res) => {
+app.post(["/api/chat", "/chat"], async (req, res) => {
   try {
     const { message, history, context } = req.body;
 
@@ -1204,7 +1204,7 @@ setStatusUpdateListener((metaMessageId, status, timestamp, errors) => {
 // ==========================================================================
 
 // 1. AUTOMATIC PO DISPATCHING ENDPOINT (Section 5, 6, 9)
-app.post(["/api/dispatch-po", "/api/send-po-email"], async (req, res) => {
+app.post(["/api/dispatch-po", "/api/send-po-email", "/dispatch-po", "/send-po-email"], async (req, res) => {
   try {
     const { 
       to, 
@@ -1427,7 +1427,7 @@ app.post(["/api/dispatch-po", "/api/send-po-email"], async (req, res) => {
 });
 
 // 2. GMAIL OAUTH AUTHORIZATION URL ROUTE (Section 6)
-app.get("/api/auth/gmail/authorize", (req, res) => {
+app.get(["/api/auth/gmail/authorize", "/auth/gmail/authorize"], (req, res) => {
   try {
     const host = req.get("host") || "app.tejasc.in";
     const protocol = req.protocol === "https" || req.headers["x-forwarded-proto"] === "https" || host.includes("tejasc.in") ? "https" : "http";
@@ -1441,7 +1441,7 @@ app.get("/api/auth/gmail/authorize", (req, res) => {
 });
 
 // 3. GMAIL OAUTH CALLBACK ROUTE (Section 6)
-app.get("/api/auth/gmail/callback", async (req, res) => {
+app.get(["/api/auth/gmail/callback", "/auth/gmail/callback"], async (req, res) => {
   const { code, error } = req.query;
 
   if (error) {
@@ -1468,7 +1468,7 @@ app.get("/api/auth/gmail/callback", async (req, res) => {
 });
 
 // 4. GMAIL OAUTH STATUS ROUTE (Section 6)
-app.get("/api/auth/gmail/status", (req, res) => {
+app.get(["/api/auth/gmail/status", "/auth/gmail/status"], (req, res) => {
   const creds = getStoredOAuthCredentials();
   const configured = isGmailOAuthConfigured();
   return res.json({
@@ -1483,7 +1483,7 @@ app.get("/api/auth/gmail/status", (req, res) => {
 });
 
 // 5. UPDATE GMAIL OAUTH CREDENTIALS ROUTE (Section 6)
-app.post("/api/update-gmail-oauth-credentials", (req, res) => {
+app.post(["/api/update-gmail-oauth-credentials", "/update-gmail-oauth-credentials"], (req, res) => {
   if (!verifyAdminRequest(req)) {
     return res.status(403).json({
       success: false,
@@ -1515,7 +1515,7 @@ app.post("/api/update-gmail-oauth-credentials", (req, res) => {
 });
 
 // 6. PO EMAIL TRACKING LIST & STATS (Section 7, 10)
-app.get("/api/po-tracking", (req, res) => {
+app.get(["/api/po-tracking", "/po-tracking"], (req, res) => {
   const records = getAllTrackingRecords();
   const stats = {
     total: records.length,
@@ -1536,7 +1536,7 @@ app.get("/api/po-tracking", (req, res) => {
 });
 
 // 7. CHECK GMAIL MAILBOX FOR BOUNCES (Section 8)
-app.get("/api/po-tracking/check-bounces", async (req, res) => {
+app.get(["/api/po-tracking/check-bounces", "/po-tracking/check-bounces"], async (req, res) => {
   if (!isGmailOAuthConfigured()) {
     return res.json({ success: false, error: "Gmail OAuth not configured." });
   }
@@ -1585,7 +1585,7 @@ app.get("/api/po-tracking/check-bounces", async (req, res) => {
 });
 
 // 8. GET SPECIFIC PO TRACKING RECORD (Section 7)
-app.get("/api/po-tracking/:orderId", (req, res) => {
+app.get(["/api/po-tracking/:orderId", "/po-tracking/:orderId"], (req, res) => {
   const orderId = req.params.orderId;
   const record = getTrackingRecord(orderId);
   if (!record) {
@@ -1595,7 +1595,7 @@ app.get("/api/po-tracking/:orderId", (req, res) => {
 });
 
 // 9. MANUAL RETRY ACTION FOR RECOVERY AFTER FAILURE (Section 9, 12)
-app.post("/api/po-tracking/:orderId/retry", async (req, res) => {
+app.post(["/api/po-tracking/:orderId/retry", "/po-tracking/:orderId/retry"], async (req, res) => {
   const orderId = req.params.orderId;
   const record = getTrackingRecord(orderId);
   if (!record) {
@@ -1664,7 +1664,7 @@ app.post("/api/po-tracking/:orderId/retry", async (req, res) => {
 });
 
 // 9B. COMMERCIAL QUOTE DETAILS DISPATCHER (TRANSMITS DETAILS TO EMAIL)
-app.post("/api/dispatch-quote", async (req, res) => {
+app.post(["/api/dispatch-quote", "/dispatch-quote"], async (req, res) => {
   try {
     const { name, company, email, phone, riceType, quantity, message } = req.body;
 
@@ -1814,7 +1814,7 @@ app.post("/api/dispatch-quote", async (req, res) => {
 });
 
 // 10. PUBLIC SUPPLIER ACKNOWLEDGEMENT DETAILS ENDPOINT (Section 8)
-app.get("/api/acknowledge-po-details", (req, res) => {
+app.get(["/api/acknowledge-po-details", "/acknowledge-po-details"], (req, res) => {
   const { po, t, d } = req.query;
   const orderId = String(po || "").trim();
   const token = String(t || "").trim();
@@ -1848,7 +1848,7 @@ app.get("/api/acknowledge-po-details", (req, res) => {
 });
 
 // 11. CONFIRM SUPPLIER ACKNOWLEDGEMENT (Section 8)
-app.post("/api/acknowledge-po", (req, res) => {
+app.post(["/api/acknowledge-po", "/acknowledge-po"], (req, res) => {
   const { po, t, d, notes } = req.body;
   const orderId = String(po || "").trim();
   const token = String(t || "").trim();
@@ -1883,7 +1883,7 @@ app.post("/api/acknowledge-po", (req, res) => {
 });
 
 // 12. 1x1 TRANSPARENT TRACKING PIXEL (Section 8)
-app.get("/api/track-open", (req, res) => {
+app.get(["/api/track-open", "/track-open"], (req, res) => {
   const { po } = req.query;
   const orderId = String(po || "").trim();
 
@@ -1939,6 +1939,11 @@ export function getMetaWhatsAppCredentials() {
     }
   }
 
+  // Standard defaults for public identifiers if not set in environment
+  if (!phoneId) phoneId = "1335387812999639";
+  if (!businessAccountId) businessAccountId = "1395351100324748";
+  if (!templateName) templateName = "order_notify";
+
   return { phoneId, token: token.replace(/^["']|["']$/g, ''), templateName, businessAccountId };
 }
 
@@ -1948,7 +1953,7 @@ export function getMetaTemplateName(): string {
 }
 
 // REAL DISPATCH ROUTER: WHATSAPP NOTIFICATIONS via Meta WhatsApp Cloud API or Direct WhatsApp
-app.post("/api/dispatch-whatsapp", async (req, res) => {
+app.post(["/api/dispatch-whatsapp", "/dispatch-whatsapp"], async (req, res) => {
   const { 
     to, 
     buyerName, 
@@ -2270,7 +2275,7 @@ app.post("/api/dispatch-whatsapp", async (req, res) => {
 });
 
 // REAL DISPATCH ROUTER: SMS NOTIFICATIONS
-app.post("/api/dispatch-sms", async (req, res) => {
+app.post(["/api/dispatch-sms", "/dispatch-sms"], async (req, res) => {
   const { to, recipientName, message } = req.body;
 
   if (!to || !message) {
@@ -2330,7 +2335,7 @@ export function verifyAdminRequest(req: express.Request): boolean {
 }
 
 // DISPATCH HISTORY & LIVE TEST BENCH ROUTE
-app.get("/api/dispatch-history", (req, res) => {
+app.get(["/api/dispatch-history", "/dispatch-history"], (req, res) => {
   const smtpConfigured = !!(
     process.env.SMTP_HOST &&
     process.env.SMTP_USER &&
@@ -2435,11 +2440,10 @@ const handleUpdateMetaWhatsapp = async (req: any, res: any) => {
   });
 };
 
-app.post("/api/update-meta-whatsapp-credentials", handleUpdateMetaWhatsapp);
-app.post("/api/update-aisensy-credentials", handleUpdateMetaWhatsapp);
+app.post(["/api/update-meta-whatsapp-credentials", "/update-meta-whatsapp-credentials", "/api/update-aisensy-credentials", "/update-aisensy-credentials"], handleUpdateMetaWhatsapp);
 
 // UPDATE & TEST SMTP CREDENTIALS ROUTE
-app.post("/api/update-smtp-credentials", async (req, res) => {
+app.post(["/api/update-smtp-credentials", "/update-smtp-credentials"], async (req, res) => {
   if (!verifyAdminRequest(req)) {
     return res.status(403).json({
       success: false,
@@ -2532,7 +2536,7 @@ app.post("/api/update-smtp-credentials", async (req, res) => {
 });
 
 // MANIFEST OCR & PARSING ROUTE: Parses camera photos of shipment paper manifests
-app.post("/api/scan-manifest", async (req, res) => {
+app.post(["/api/scan-manifest", "/scan-manifest"], async (req, res) => {
   try {
     const { image, mimeType } = req.body;
 
