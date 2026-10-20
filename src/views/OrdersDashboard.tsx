@@ -1445,7 +1445,51 @@ export default function OrdersDashboard() {
 
     const isSingleOrder = selected.length === 1;
 
-    // DISPATCH OFFICIAL PURCHASE ORDER EMAIL TO ASSIGNED SUPPLIER (ONLY EMAIL TO SUPPLIER)
+    // 1. DISPATCH WHATSAPP & SMS TO ALL BUYERS IMMEDIATELY (NO EMAIL SENT ON APPROVAL)
+    buyerProfiles.forEach(bp => {
+      const buyerOrders = selected.filter(s => (s.buyer || '').trim().toLowerCase() === bp.name.trim().toLowerCase());
+
+      const bpOrder = buyerOrders[0] || groupedOrder;
+      const bpBrand = (bpOrder.product || groupedOrder.product || 'keshar kali').replace(/\(\d+.*$/, '').trim();
+      const bpQtyNum = buyerOrders.reduce((sum, o) => sum + (Number(o.qty) || 0), 0) || Number(groupedOrder.qty) || 40;
+      const bpRateNum = bpOrder.rate || groupedOrder.rate || 10000;
+
+      const buyerWhatsappMsg = `Hello ${bp.name},\n\nOrder placed successfully.\n\nBrand: ${bpBrand}\nQuantity: ${bpQtyNum} QTL\nRate: ₹${bpRateNum}/QTL\n\nThank you,\nTejas Canvassing`;
+
+      fetch('/api/dispatch-whatsapp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: bp.phone,
+          buyerName: bp.name,
+          brand: bpBrand,
+          qty: String(bpQtyNum),
+          rate: String(bpRateNum),
+          orderId: groupedOrder.id,
+          poNumber: groupedOrder.id,
+          message: buyerWhatsappMsg,
+          templateName: 'order_notify',
+          templateId: '1016669984165776',
+          templateParams: [bp.name, bpBrand, String(bpQtyNum), String(bpRateNum)],
+          languageCode: 'en'
+        })
+      })
+      .then(res => res.json())
+      .then(data => console.log(`[Placed Order WhatsApp Result for ${bp.name}]:`, data))
+      .catch(err => console.warn(`WhatsApp dispatch note for ${bp.name}:`, err?.message || err));
+
+      fetch('/api/dispatch-sms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: bp.phone,
+          recipientName: bp.name,
+          message: `Tejas Canvassing: Order placed under ${isSingleOrder ? 'PO' : 'Batch PO'} ${groupedOrder.id} (${groupedOrder.qty} QTLS) arriving in 3-5 days.`
+        })
+      }).catch(err => console.warn(`SMS dispatch note for ${bp.name}:`, err?.message || err));
+    });
+
+    // 2. DISPATCH OFFICIAL PURCHASE ORDER EMAIL TO ASSIGNED SUPPLIER (ONLY EMAIL TO SUPPLIER, NO WHATSAPP)
     if (supplierProfile.email) {
       const subOrders = selected.map((s: any) => ({
         id: s.id,

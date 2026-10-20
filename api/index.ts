@@ -98,7 +98,7 @@ function ensureDataDir() {
     if (!fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
-  } catch {}
+  } catch { }
 }
 
 function savePersistedEmployees() {
@@ -375,7 +375,7 @@ authRouter.post("/login", (req, res) => {
 // 2. GET /api/auth/verify (Token verification)
 authRouter.get("/verify", (req, res) => {
   const authHeader = req.headers.authorization || req.headers["x-auth-token"];
-  const token = typeof authHeader === "string" 
+  const token = typeof authHeader === "string"
     ? (authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : authHeader.trim())
     : null;
 
@@ -403,7 +403,7 @@ authRouter.get("/verify", (req, res) => {
 // 3. POST /api/auth/verify-action (Admin sensitive action authorization)
 authRouter.post("/verify-action", (req, res) => {
   const authHeader = req.headers.authorization || req.headers["x-auth-token"];
-  const token = typeof authHeader === "string" 
+  const token = typeof authHeader === "string"
     ? (authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : authHeader.trim())
     : null;
 
@@ -438,7 +438,7 @@ authRouter.post("/verify-action", (req, res) => {
 // 4. POST /api/auth/manage-employee (Admin employee creation / update with secure server-side hashing)
 authRouter.post("/manage-employee", (req, res) => {
   const authHeader = req.headers.authorization || req.headers["x-auth-token"];
-  const token = typeof authHeader === "string" 
+  const token = typeof authHeader === "string"
     ? (authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : authHeader.trim())
     : null;
 
@@ -500,7 +500,7 @@ authRouter.post("/manage-employee", (req, res) => {
 // 5. GET /api/auth/employees (List staff accounts without exposing passwords)
 authRouter.get("/employees", (req, res) => {
   const authHeader = req.headers.authorization || req.headers["x-auth-token"];
-  const token = typeof authHeader === "string" 
+  const token = typeof authHeader === "string"
     ? (authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : authHeader.trim())
     : null;
 
@@ -749,8 +749,8 @@ export function handleGetVerification(req: express.Request, res: express.Respons
   const token = req.query["hub.verify_token"] as string | undefined;
   const challenge = req.query["hub.challenge"] as string | undefined;
 
-  const expectedToken = 
-    process.env.META_WHATSAPP_VERIFY_TOKEN || 
+  const expectedToken =
+    process.env.META_WHATSAPP_VERIFY_TOKEN ||
     (process.env.NODE_ENV !== "test" ? "tejas_wa_verify_2026_mandi" : undefined);
 
   if (!expectedToken) {
@@ -1017,8 +1017,8 @@ app.post(["/api/chat", "/chat"], async (req, res) => {
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      return res.status(500).json({ 
-        error: "GEMINI_API_KEY environment variable is not configured. Please define it in your Secrets panel." 
+      return res.status(500).json({
+        error: "GEMINI_API_KEY environment variable is not configured. Please define it in your Secrets panel."
       });
     }
 
@@ -1093,13 +1093,13 @@ Write a polite, precise, and professional response that solves the user's specif
         try {
           return await fn();
         } catch (err: any) {
-          const isRateLimit = 
-            err?.status === 429 || 
-            err?.code === 429 || 
-            String(err?.message || "").toLowerCase().includes("rate") || 
-            String(err?.message || "").toLowerCase().includes("quota") || 
+          const isRateLimit =
+            err?.status === 429 ||
+            err?.code === 429 ||
+            String(err?.message || "").toLowerCase().includes("rate") ||
+            String(err?.message || "").toLowerCase().includes("quota") ||
             String(err?.message || "").toLowerCase().includes("resource_exhausted");
-          
+
           if (isRateLimit && attempt < maxRetries - 1) {
             console.warn(`[Gemini API] Rate limit hit on /api/chat. Retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})...`);
             await new Promise((resolve) => setTimeout(resolve, delay));
@@ -1125,15 +1125,15 @@ Write a polite, precise, and professional response that solves the user's specif
     res.json({ text: response.text });
   } catch (error: any) {
     console.error("Gemini API Error in Express router /api/chat:", error);
-    const isRateLimit = 
-      error?.status === 429 || 
-      error?.code === 429 || 
-      String(error?.message || "").toLowerCase().includes("rate") || 
-      String(error?.message || "").toLowerCase().includes("quota") || 
+    const isRateLimit =
+      error?.status === 429 ||
+      error?.code === 429 ||
+      String(error?.message || "").toLowerCase().includes("rate") ||
+      String(error?.message || "").toLowerCase().includes("quota") ||
       String(error?.message || "").toLowerCase().includes("resource_exhausted");
-    
+
     if (isRateLimit) {
-      return res.status(429).json({ 
+      return res.status(429).json({
         error: "AI request rate limit reached. Please wait a few seconds and try again.",
         isRateLimit: true
       });
@@ -1206,18 +1206,18 @@ setStatusUpdateListener((metaMessageId, status, timestamp, errors) => {
 // 1. AUTOMATIC PO DISPATCHING ENDPOINT (Section 5, 6, 9)
 app.post(["/api/dispatch-po", "/api/send-po-email", "/dispatch-po", "/send-po-email"], async (req, res) => {
   try {
-    const { 
-      to, 
-      supplierName: reqSupplierName, 
-      subject, 
-      htmlContent, 
-      textContent, 
-      poNumber: reqPoNumber, 
-      html, 
-      text, 
-      batchId, 
+    const {
+      to,
+      supplierName: reqSupplierName,
+      subject,
+      htmlContent,
+      textContent,
+      poNumber: reqPoNumber,
+      html,
+      text,
+      batchId,
       orderId: reqOrderId,
-      pdfBase64, 
+      pdfBase64,
       pdfFilename,
       isManualRetry,
       orderDetails
@@ -1935,7 +1935,7 @@ export function getMetaWhatsAppCredentials() {
         if (mTemplate && mTemplate[1].trim() && !templateName) templateName = mTemplate[1].trim();
         const mWaba = content.match(/^(?:META_)?WHATSAPP_BUSINESS_ACCOUNT_ID=(.*)$/m);
         if (mWaba && mWaba[1].trim() && !businessAccountId) businessAccountId = mWaba[1].trim();
-      } catch {}
+      } catch { }
     }
   }
 
@@ -1957,15 +1957,15 @@ export function getMetaTemplateName(): string {
 
 // REAL DISPATCH ROUTER: WHATSAPP NOTIFICATIONS via Meta WhatsApp Cloud API or Direct WhatsApp
 app.post(["/api/dispatch-whatsapp", "/dispatch-whatsapp"], async (req, res) => {
-  const { 
-    to, 
-    buyerName, 
-    message, 
+  const {
+    to,
+    buyerName,
+    message,
     orderId,
     poNumber,
-    contentSid, 
-    phoneNumberId: reqPhoneId, 
-    accessToken: reqToken, 
+    contentSid,
+    phoneNumberId: reqPhoneId,
+    accessToken: reqToken,
     templateName: reqTemplate,
     templateId: reqTemplateId,
     templateParams: reqTemplateParams,
@@ -1989,9 +1989,9 @@ app.post(["/api/dispatch-whatsapp", "/dispatch-whatsapp"], async (req, res) => {
     activeTemplate === "1016669984165776" ||
     activeTemplate === "order_notification" ||
     activeTemplate === "order_placed_notification" ||
-    activeTemplate === "2124215635129424" || 
-    activeTemplate === "1085184067841699" || 
-    activeTemplate === "28756429200686824" || 
+    activeTemplate === "2124215635129424" ||
+    activeTemplate === "1085184067841699" ||
+    activeTemplate === "28756429200686824" ||
     /^\d{10,}$/.test(activeTemplate)
   ) {
     activeTemplate = "order_notify";
@@ -2099,9 +2099,9 @@ app.post(["/api/dispatch-whatsapp", "/dispatch-whatsapp"], async (req, res) => {
                   parameters: Array.isArray(templateParams) && templateParams.length > 0
                     ? templateParams.map((p: any) => ({ type: "text", text: String(p) }))
                     : [
-                        { type: "text", text: String(buyerName || "Valued Merchant") },
-                        { type: "text", text: String(orderId || poNumber || message || "Rice procurement update from Tejas Canvassing.").substring(0, 1024) }
-                      ]
+                      { type: "text", text: String(buyerName || "Valued Merchant") },
+                      { type: "text", text: String(orderId || poNumber || message || "Rice procurement update from Tejas Canvassing.").substring(0, 1024) }
+                    ]
                 }
               ]
             })
@@ -2398,7 +2398,7 @@ const handleUpdateMetaWhatsapp = async (req: any, res: any) => {
 
   const { phoneNumberId, accessToken, wabaId, templateName, apiKey } = req.body;
   const token = accessToken || apiKey; // Support either field name
-  
+
   if (!phoneNumberId || !token) {
     return res.status(400).json({ error: "Meta WhatsApp Phone Number ID and Access Token are required." });
   }
@@ -2486,15 +2486,15 @@ app.post(["/api/update-smtp-credentials", "/update-smtp-credentials"], async (re
     const nodemailer = await import("nodemailer");
     const transporter = cleanHost.includes("gmail")
       ? nodemailer.createTransport({
-          service: "gmail",
-          auth: { user: cleanUser, pass: cleanPass },
-        })
+        service: "gmail",
+        auth: { user: cleanUser, pass: cleanPass },
+      })
       : nodemailer.createTransport({
-          host: cleanHost,
-          port: cleanPort,
-          secure: cleanPort === 465,
-          auth: { user: cleanUser, pass: cleanPass },
-        });
+        host: cleanHost,
+        port: cleanPort,
+        secure: cleanPort === 465,
+        auth: { user: cleanUser, pass: cleanPass },
+      });
 
     // Test verify the connection with SMTP server
     await transporter.verify();
@@ -2518,7 +2518,7 @@ app.post(["/api/update-smtp-credentials", "/update-smtp-credentials"], async (re
         if (fs.existsSync(envPath)) {
           envContent = fs.readFileSync(envPath, "utf-8");
         }
-        
+
         const updateOrAdd = (key: string, val: string, text: string) => {
           const regex = new RegExp(`^${key}=.*$`, "m");
           if (regex.test(text)) {
@@ -2566,8 +2566,8 @@ app.post(["/api/scan-manifest", "/scan-manifest"], async (req, res) => {
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      return res.status(500).json({ 
-        error: "GEMINI_API_KEY environment variable is not configured. Please define it in your Secrets panel." 
+      return res.status(500).json({
+        error: "GEMINI_API_KEY environment variable is not configured. Please define it in your Secrets panel."
       });
     }
 
@@ -2641,13 +2641,13 @@ Rules:
         try {
           return await fn();
         } catch (err: any) {
-          const isRateLimit = 
-            err?.status === 429 || 
-            err?.code === 429 || 
-            String(err?.message || "").toLowerCase().includes("rate") || 
-            String(err?.message || "").toLowerCase().includes("quota") || 
+          const isRateLimit =
+            err?.status === 429 ||
+            err?.code === 429 ||
+            String(err?.message || "").toLowerCase().includes("rate") ||
+            String(err?.message || "").toLowerCase().includes("quota") ||
             String(err?.message || "").toLowerCase().includes("resource_exhausted");
-          
+
           if (isRateLimit && attempt < maxRetries - 1) {
             console.warn(`[Gemini API] Rate limit hit on /api/scan-manifest. Retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})...`);
             await new Promise((resolve) => setTimeout(resolve, delay));
@@ -2705,11 +2705,11 @@ Rules:
     });
   } catch (error: any) {
     console.error("Error in /api/scan-manifest:", error);
-    const isRateLimit = 
-      error?.status === 429 || 
-      error?.code === 429 || 
-      String(error?.message || "").toLowerCase().includes("rate") || 
-      String(error?.message || "").toLowerCase().includes("quota") || 
+    const isRateLimit =
+      error?.status === 429 ||
+      error?.code === 429 ||
+      String(error?.message || "").toLowerCase().includes("rate") ||
+      String(error?.message || "").toLowerCase().includes("quota") ||
       String(error?.message || "").toLowerCase().includes("resource_exhausted");
 
     if (isRateLimit) {
