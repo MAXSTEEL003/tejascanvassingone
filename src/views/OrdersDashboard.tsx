@@ -8,6 +8,7 @@ import { useCart } from '../context/CartContext';
 import { getCollectionDocs, syncCollection, setCollectionDoc, deleteCollectionDoc, createLedgerEntriesForOrder, db } from '../lib/firebase';
 import { doc, deleteDoc, collection, getDocs, onSnapshot } from 'firebase/firestore';
 import SearchableSelect from '../components/SearchableSelect';
+import { generateSupplierPOEmailHtml } from '../utils/poEmailTemplate';
 
 
 const trendData = [
@@ -100,6 +101,21 @@ const resolveBuyerProfile = (buyerName: string) => {
   };
 };
 
+export const isPendingApproval = (status?: string): boolean => {
+  const s = String(status || '').trim().toLowerCase();
+  return !s || 
+         s === 'pending approval' || 
+         s === 'pending' || 
+         s === 'awaiting approval' || 
+         s === 'pending confirmation' || 
+         s === 'pending batch' || 
+         s === 'unassigned' || 
+         s === 'draft order' || 
+         s === 'draft' ||
+         s === 'new' || 
+         s === 'submitted';
+};
+
 export const normalizeOrder = (raw: any): any => {
   if (!raw || typeof raw !== 'object') return raw;
 
@@ -147,7 +163,8 @@ export const normalizeOrder = (raw: any): any => {
   }
   if (!date) date = 'Today';
 
-  const status = raw.status || 'Pending Approval';
+  const rawStatus = String(raw.status || '').trim();
+  const status = isPendingApproval(rawStatus) ? 'Pending Approval' : (rawStatus || 'Pending Approval');
   let rawSupplier = raw.supplier || raw.millerName || raw.assignedSupplier || '';
   const supplier = sanitizeSupplierName(rawSupplier, 'Pending');
 
@@ -764,28 +781,48 @@ export default function OrdersDashboard() {
     } catch (e) {}
   };
 
+  const removeDeletedProcurementId = (id: string) => {
+    try {
+      const current = getDeletedProcurementIds();
+      const norm = String(id).trim().toLowerCase().replace(/^#/, '');
+      if (current.has(norm)) {
+        current.delete(norm);
+        localStorage.setItem('deleted_procurement_ids', JSON.stringify(Array.from(current)));
+      }
+    } catch (e) {}
+  };
+
   // Load from localStorage (strictly active procurement requests)
   const [currentOrders, setCurrentOrders] = useState(() => {
     const deletedSet = getDeletedProcurementIds();
-    const saved = JSON.parse(localStorage.getItem('procurement_requests') || '[]')
+    let saved: any[] = [];
+    try {
+      const raw = localStorage.getItem('procurement_requests');
+      saved = raw ? JSON.parse(raw) : [];
+    } catch {}
+
+    if (saved.length > 0) {
+      localStorage.removeItem('cleared_procurement_requests');
+    }
+
+    return saved
       .filter((o: any) => {
-        if (!o) return false;
+        if (!o || !o.id) return false;
         if (o.status === 'Rejected' || o.status === 'Completed' || o.status === 'Archived' || o.isArchived || String(o.id).startsWith('#ORD-99') || String(o.id).startsWith('TC-0000')) return false;
         const oNorm = String(o.id || '').trim().toLowerCase().replace(/^#/, '');
         return !deletedSet.has(oNorm);
       })
       .map(normalizeOrder);
-    return saved;
   });
 
   // Dynamic statistics calculations
   const activeOrdersCount = currentOrders.length;
-  const approvalPendingCount = currentOrders.filter((o: any) => o.status === 'Pending Approval' || o.status === 'Pending Batch' || o.status === 'Unassigned').length;
+  const approvalPendingCount = currentOrders.filter((o: any) => isPendingApproval(o.status)).length;
   const averageQtySold = currentOrders.length > 0 
     ? (currentOrders.reduce((sum: number, o: any) => sum + (Number(o.qty) || 0), 0) / currentOrders.length).toFixed(1) 
     : '0.0';
   const totalPendingPayments = currentOrders
-    .filter((o: any) => o.status === 'Pending Approval' || o.status === 'Pending Batch' || o.status === 'Unassigned' || o.status === 'Draft Order')
+    .filter((o: any) => isPendingApproval(o.status))
     .reduce((sum: number, o: any) => sum + ((Number(o.qty) || 0) * (Number(o.rate) || 0)), 0);
 
   const stats = [
@@ -795,7 +832,7 @@ export default function OrdersDashboard() {
     { label: 'Pending Payments', value: `₹ ${formatINR(totalPendingPayments)}`, sub: 'Outstanding cycle value', icon: CreditCard, color: 'text-blue-500' },
   ];
 
-  // Sync with Firestore in Real-Time for Active Orders
+  // Sync with Firestore in Real-Time for Active Orders, seamlessly merging with local changes
   useEffect(() => {
     let isMounted = true;
     let unsubscribe: (() => void) | null = null;
@@ -815,8 +852,41 @@ export default function OrdersDashboard() {
             }
           }
         });
-        if (cloudOrdersMap.size > 0 || localStorage.getItem('cleared_procurement_requests') === 'true') {
-          setCurrentOrders(Array.from(cloudOrdersMap.values()));
+
+        // Read local storage orders as well to merge
+        let localSaved: any[] = [];
+        try {
+          localSaved = JSON.parse(localStorage.getItem('procurement_requests') || '[]');
+        } catch {}
+
+        if (localSaved.length > 0) {
+          localStorage.removeItem('cleared_procurement_requests');
+        }
+
+        // Merge cloud and local
+        const mergedMap = new Map<string, any>();
+        // Add cloud orders
+        cloudOrdersMap.forEach((ord, key) => mergedMap.set(key, ord));
+
+        // Add local orders that are not in cloud yet
+        localSaved.forEach((raw: any) => {
+          if (!raw || !raw.id) return;
+          const normKey = String(raw.id).trim().toLowerCase().replace(/^#/, '');
+          if (deletedSet.has(normKey)) return;
+          if (raw.status === 'Rejected' || raw.status === 'Completed' || raw.status === 'Archived' || raw.isArchived) return;
+          if (String(raw.id).startsWith('#ORD-99') || String(raw.id).startsWith('TC-0000')) return;
+
+          if (!mergedMap.has(normKey)) {
+            mergedMap.set(normKey, normalizeOrder(raw));
+          }
+        });
+
+        const mergedList = Array.from(mergedMap.values());
+        if (mergedList.length > 0 || localStorage.getItem('cleared_procurement_requests') === 'true') {
+          setCurrentOrders(mergedList);
+          if (mergedList.length > 0) {
+            localStorage.setItem('procurement_requests', JSON.stringify(mergedList));
+          }
         }
       }, (err) => {
         console.warn('Real-time subscription notice in OrdersDashboard:', err?.message || err);
@@ -832,6 +902,51 @@ export default function OrdersDashboard() {
     return () => {
       isMounted = false;
       if (unsubscribe) unsubscribe();
+    };
+  }, []);
+
+  // Listen for storage & procurement sync events across tabs / components
+  useEffect(() => {
+    const handleProcurementSync = () => {
+      const deletedSet = getDeletedProcurementIds();
+      let localSaved: any[] = [];
+      try {
+        localSaved = JSON.parse(localStorage.getItem('procurement_requests') || '[]');
+      } catch {}
+
+      if (localSaved.length > 0) {
+        localStorage.removeItem('cleared_procurement_requests');
+      }
+
+      setCurrentOrders(prev => {
+        const mergedMap = new Map<string, any>();
+        prev.forEach(o => {
+          if (!o || !o.id) return;
+          const normKey = String(o.id).trim().toLowerCase().replace(/^#/, '');
+          if (!deletedSet.has(normKey)) mergedMap.set(normKey, o);
+        });
+
+        localSaved.forEach((raw: any) => {
+          if (!raw || !raw.id) return;
+          const normKey = String(raw.id).trim().toLowerCase().replace(/^#/, '');
+          if (deletedSet.has(normKey)) return;
+          if (raw.status === 'Rejected' || raw.status === 'Completed' || raw.status === 'Archived' || raw.isArchived) return;
+          if (String(raw.id).startsWith('#ORD-99') || String(raw.id).startsWith('TC-0000')) return;
+
+          if (!mergedMap.has(normKey)) {
+            mergedMap.set(normKey, normalizeOrder(raw));
+          }
+        });
+
+        return Array.from(mergedMap.values());
+      });
+    };
+
+    window.addEventListener('storage', handleProcurementSync);
+    window.addEventListener('procurement-updated', handleProcurementSync);
+    return () => {
+      window.removeEventListener('storage', handleProcurementSync);
+      window.removeEventListener('procurement-updated', handleProcurementSync);
     };
   }, []);
 
@@ -1136,6 +1251,10 @@ export default function OrdersDashboard() {
     const now = new Date();
     const dateStr = `${now.getDate().toString().padStart(2, '0')}-${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][now.getMonth()]}-${now.getFullYear()}`;
     
+    // Purge new ID from deleted set and remove clear flag
+    removeDeletedProcurementId(newOrderId);
+    localStorage.removeItem('cleared_procurement_requests');
+
     const clonedOrder = normalizeOrder({
       ...archivedItem,
       id: newOrderId,
@@ -1145,11 +1264,14 @@ export default function OrdersDashboard() {
       isArchived: false
     });
 
-    const updated = [clonedOrder, ...currentOrders];
+    const updated = [clonedOrder, ...currentOrders.filter(o => o && String(o.id).toLowerCase() !== newOrderId.toLowerCase())];
     setCurrentOrders(updated);
     localStorage.setItem('procurement_requests', JSON.stringify(updated));
     await setCollectionDoc('procurement_requests', newOrderId, clonedOrder).catch(() => {});
     
+    window.dispatchEvent(new Event('storage'));
+    window.dispatchEvent(new Event('procurement-updated'));
+
     setArchivedFeedback(`Cloned order ${archivedItem.id} into active intent ${newOrderId}!`);
     setTimeout(() => setArchivedFeedback(null), 4000);
   };
@@ -1350,27 +1472,43 @@ export default function OrdersDashboard() {
       }).catch(err => console.warn(`SMS dispatch note for ${bp.name}:`, err?.message || err));
     });
 
-    // 3. DISPATCH WHATSAPP PURCHASE ORDER NOTIFICATION TO ASSIGNED SUPPLIER
-    if (supplierProfile.phone) {
-      const supplierWhatsappMsg = `Tejas Canvassing Official PO: ${isSingleOrder ? 'Purchase Order' : 'Batch PO'} ${groupedOrder.id} (${groupedOrder.qty} QTLS) has been issued to supplier ${assignedBatchSupplier}.\n\n📦 *Order details*:\n🌾 Brand: ${groupedOrder.product || 'Premium Rice'}\n⚖️ Quantity: ${groupedOrder.qty} QTLS\n💰 Value: ${groupedOrder.total}\n📍 Destination: ${groupedOrder.destination || 'Consolidated Hub'}\n\nOfficial PO document transmitted to ${supplierProfile.email}.`;
+    // 2. DISPATCH OFFICIAL PURCHASE ORDER EMAIL TO ASSIGNED SUPPLIER (ONLY EMAIL TO SUPPLIER, NO WHATSAPP)
+    if (supplierProfile.email) {
+      const subOrders = selected.map((s: any) => ({
+        id: s.id,
+        buyer: s.buyer || 'Authorized Merchant',
+        product: (s.product || groupedOrder.product || 'Premium Rice').replace(/\(\d+.*$/, '').trim(),
+        qty: Number(s.qty) || 0,
+        rate: Number(s.rate) || avgRate,
+        date: s.date || groupedOrder.date,
+        loadingDays: s.loadingDays !== undefined ? s.loadingDays : 3,
+        unloadingPoint: s.unloadingPoint || 'shop'
+      }));
 
-      fetch('/api/dispatch-whatsapp', {
+      const emailHtml = generateSupplierPOEmailHtml(assignedBatchSupplier, groupedOrder, subOrders);
+      const poSubject = `Tejas Canvassing: Purchase Order ${groupedOrder.id} - ${assignedBatchSupplier}`;
+
+      fetch('/api/dispatch-po', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          to: supplierProfile.phone,
-          buyerName: assignedBatchSupplier,
-          orderId: groupedOrder.id,
+          to: supplierProfile.email,
+          from: localStorage.getItem('companyEmail') || 'nani@tejasc.in',
+          cc: localStorage.getItem('companyEmail') || 'nani@tejasc.in',
+          subject: poSubject,
+          html: emailHtml,
+          htmlContent: emailHtml,
+          textContent: `Tejas Canvassing: Official Purchase Order ${groupedOrder.id}\n\nDear ${assignedBatchSupplier},\n\nOrder for ${groupedOrder.qty} QTLS has been confirmed. Please find purchase order details enclosed.`,
+          batchId: groupedOrder.id,
           poNumber: groupedOrder.id,
-          message: supplierWhatsappMsg,
-          templateName: 'order_notification',
-          templateParams: [assignedBatchSupplier, groupedOrder.id],
-          languageCode: 'en_US'
+          orderId: groupedOrder.id,
+          supplierName: assignedBatchSupplier,
+          orderDetails: groupedOrder
         })
       })
       .then(res => res.json())
-      .then(data => console.log(`Approved Supplier WhatsApp Result for ${assignedBatchSupplier}:`, data))
-      .catch(err => console.warn(`Supplier WhatsApp dispatch note for ${assignedBatchSupplier}:`, err?.message || err));
+      .then(data => console.log(`Approved Supplier PO Email Result for ${assignedBatchSupplier}:`, data))
+      .catch(err => console.warn(`Supplier PO email error for ${assignedBatchSupplier}:`, err?.message || err));
     }
 
     // Step 1: Profile resolution update (300ms)
@@ -1380,24 +1518,24 @@ export default function OrdersDashboard() {
         return {
           ...prev,
           progress: 25,
-          currentAction: "Compiling purchase order documents..."
+          currentAction: "Compiling official purchase order documents..."
         };
       });
     }, 300);
 
-    // Step 2: System allocation update (600ms)
+    // Step 2: System allocation & Mill PO Email update (600ms)
     setTimeout(() => {
       setAutoDispatchStatus(prev => {
         if (!prev) return prev;
         return {
           ...prev,
           progress: 55,
-          currentAction: "Registering approved batch allocation in system..."
+          currentAction: "Transmitting official Purchase Order to supplier via Gmail SMTP..."
         };
       });
     }, 600);
 
-    // Step 3: SMTP PO sent update (900ms)
+    // Step 3: Buyer WhatsApp notifications (900ms)
     setTimeout(() => {
       setAutoDispatchStatus(prev => {
         if (!prev) return prev;
@@ -1409,14 +1547,14 @@ export default function OrdersDashboard() {
       });
     }, 900);
 
-    // Step 4: WhatsApp notifications sent update (1200ms)
+    // Step 4: Notifications completed (1200ms)
     setTimeout(() => {
       setAutoDispatchStatus(prev => {
         if (!prev) return prev;
         return {
           ...prev,
           progress: 100,
-          currentAction: "All automatic alerts sent successfully!"
+          currentAction: "Purchase Order emailed to supplier; buyer confirmations sent!"
         };
       });
     }, 1200);
@@ -1472,53 +1610,67 @@ export default function OrdersDashboard() {
   };
 
   const handleCreateOrder = () => {
-    if (!newOrder.buyer || !newOrder.qty || !newOrder.rate || !newOrder.product) return;
+    if (!newOrder.buyer?.trim() || !newOrder.qty || !newOrder.rate || !newOrder.product?.trim()) {
+      alert("Please enter Buyer, Product Variety, Volume (Qty), and Rate to create an order.");
+      return;
+    }
 
     const saved = JSON.parse(localStorage.getItem('procurement_requests') || '[]');
-    const maOrders = saved.filter((o: any) => o.id && o.id.includes('MA-'));
-    let maxIdx = 0;
-    maOrders.forEach((o: any) => {
-      const match = o.id.match(/MA[_-](\d+)/);
-      if (match) {
-        const idx = parseInt(match[1]);
-        if (idx > maxIdx) maxIdx = idx;
-      }
-    });
-    const nextNum = maxIdx + 1;
-    const maId = `MA-${String(nextNum).padStart(4, '0')}`;
-    const initials = newOrder.buyer.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
     
-    const orderToAdd = {
+    // Generate a unique collision-free ID that will never conflict with previously deleted IDs
+    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+    const maId = `MA-${randomSuffix}`;
+
+    // Purge new ID from deleted set and clear cleared flag
+    removeDeletedProcurementId(maId);
+    localStorage.removeItem('cleared_procurement_requests');
+
+    const initials = newOrder.buyer.split(' ').filter(Boolean).map(n => n[0]).join('').toUpperCase().slice(0, 2) || 'TC';
+    
+    const now = new Date();
+    const day = now.getDate();
+    const monthNames = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+    const m = monthNames[now.getMonth()];
+    const yyyy = now.getFullYear();
+    const dateStr = `${day}-${m}-${yyyy}`;
+
+    const supplierVal = newOrder.supplier ? sanitizeSupplierName(newOrder.supplier, 'DIRECT MILL') : 'DIRECT MILL';
+
+    const orderToAdd = normalizeOrder({
       id: maId,
-      date: (() => {
-        const d = new Date();
-        const day = d.getDate();
-        const monthNames = [
-          'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-          'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-        ];
-        const m = monthNames[d.getMonth()];
-        const yyyy = d.getFullYear();
-        return `${day}-${m}-${yyyy}`;
-      })(),
-      buyer: newOrder.buyer,
-      supplier: newOrder.supplier,
-      product: newOrder.product,
+      date: dateStr,
+      createdAt: now.toISOString(),
+      buyer: newOrder.buyer.trim(),
+      supplier: supplierVal,
+      product: newOrder.product.trim(),
       initials,
-      qty: parseFloat(newOrder.qty),
-      rate: parseFloat(newOrder.rate),
-      urgency: newOrder.urgency,
+      qty: parseFloat(newOrder.qty) || 0,
+      rate: parseFloat(newOrder.rate) || 0,
+      urgency: newOrder.urgency || 'Standard',
       status: 'Pending Approval',
       color: newOrder.urgency === 'Critical' ? 'red' : newOrder.urgency === 'High' ? 'orange' : 'zinc'
-    };
+    });
 
-    const updatedOrders = [orderToAdd, ...currentOrders];
+    const updatedOrders = [orderToAdd, ...currentOrders.filter(o => o && String(o.id).toLowerCase() !== maId.toLowerCase())];
     setCurrentOrders(updatedOrders);
     
-    localStorage.setItem('procurement_requests', JSON.stringify([orderToAdd, ...saved]));
+    const updatedSaved = [orderToAdd, ...saved.filter((o: any) => o && String(o.id).toLowerCase() !== maId.toLowerCase())];
+    localStorage.setItem('procurement_requests', JSON.stringify(updatedSaved));
+
+    // Reset filters so the new order is immediately visible on the table!
+    setFilterSupplier('');
+    setFilterProduct('');
+    setSearchQuery('');
+
     setCollectionDoc('procurement_requests', maId, orderToAdd).catch(err => {
-      console.error('Failed to write manual order to Firestore:', err);
+      console.warn('Firestore sync notice for manual order (saved locally):', err?.message || err);
     });
+
+    window.dispatchEvent(new Event('storage'));
+    window.dispatchEvent(new Event('procurement-updated'));
 
     setIsCreateModalOpen(false);
     setNewOrder({ buyer: '', supplier: '', product: '', qty: '', rate: '', urgency: 'Standard' });
@@ -1718,6 +1870,28 @@ export default function OrdersDashboard() {
                   <span>{selectionWarning}</span>
                </div>
                <button onClick={() => setSelectionWarning(null)} className="text-[10px] font-black hover:opacity-80 scale-105 transition-transform bg-orange-500/15 text-orange-600 dark:text-orange-400 px-2 py-1.5 rounded-lg border border-orange-500/20">CONFIRM</button>
+              </motion.div>
+            )}
+
+           {currentOrders.length > 0 && filteredOrders.length === 0 && (
+             <motion.div
+               initial={{ opacity: 0, y: -4 }}
+               animate={{ opacity: 1, y: 0 }}
+               className="my-3 mx-6 p-4 bg-amber-500/10 border border-amber-500/25 text-amber-800 dark:text-amber-300 rounded-2xl text-xs font-semibold flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs"
+             >
+               <div className="flex items-center gap-2.5">
+                 <Filter className="w-4 h-4 text-amber-600 shrink-0" />
+                 <span>
+                   <strong>{currentOrders.length} order{currentOrders.length !== 1 ? 's' : ''}</strong> currently active, but hidden by your filter ({[filterSupplier, filterProduct, searchQuery].filter(Boolean).join(', ')}).
+                 </span>
+               </div>
+               <button
+                 type="button"
+                 onClick={() => { setFilterSupplier(''); setFilterProduct(''); setSearchQuery(''); }}
+                 className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-[10px] uppercase tracking-wider rounded-xl transition-colors cursor-pointer shrink-0 self-start sm:self-auto"
+               >
+                 Show All Orders ({currentOrders.length})
+               </button>
              </motion.div>
            )}
 
@@ -1861,7 +2035,7 @@ export default function OrdersDashboard() {
                     </td>
                     <td className="px-6 py-4.5 text-right" onClick={(e) => e.stopPropagation()}>
                       <div className="flex justify-end items-center gap-2">
-                         {order.status === 'Pending Approval' ? (
+                         {isPendingApproval(order.status) ? (
                            <>
                               <button 
                                 onClick={() => handleAction(order.id, 'accept')}
@@ -2021,7 +2195,7 @@ export default function OrdersDashboard() {
                             </div>
 
                             <div className="flex items-center gap-2">
-                              {order.status === 'Pending Approval' && (
+                              {isPendingApproval(order.status) && (
                                 <>
                                   <button
                                     type="button"
@@ -2521,7 +2695,8 @@ export default function OrdersDashboard() {
                       options={availableBuyers.map(b => b.name)}
                       value={newOrder.buyer}
                       onChange={(val) => setNewOrder({...newOrder, buyer: val})}
-                      placeholder="e.g. Rice House Ind. (LLC)"
+                      placeholder="Select Buyer or enter merchant name..."
+                      allowCustom={true}
                     />
                   </div>
 
@@ -2538,7 +2713,8 @@ export default function OrdersDashboard() {
                       options={availableSuppliers.map(s => s.name)}
                       value={newOrder.supplier}
                       onChange={handleSupplierChange}
-                      placeholder="Select Supplier First"
+                      placeholder="Select Mill/Supplier (or type custom)..."
+                      allowCustom={true}
                     />
                   </div>
 
@@ -2572,27 +2748,49 @@ export default function OrdersDashboard() {
 
                   <div className="space-y-2">
                     <div className="flex justify-between items-center">
-                      <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500 ml-1">Brand Name</label>
+                      <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500 ml-1">Brand Name / Product</label>
                       {newOrder.supplier ? (
                         <span className="text-[9px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full font-mono">
                           {availableBrands.length} Brand{availableBrands.length !== 1 ? 's' : ''} Available
                         </span>
                       ) : (
-                        <span className="text-[9px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full">
-                          Select Supplier First
+                        <span className="text-[9px] font-bold text-neutral-500 bg-neutral-100 dark:bg-neutral-800 px-2 py-0.5 rounded-full">
+                          All Varieties
                         </span>
                       )}
                     </div>
                     <SearchableSelect
-                      options={availableBrands}
+                      options={
+                        newOrder.supplier && availableBrands.length > 0
+                          ? availableBrands
+                          : Array.from(new Set([
+                              ...availableBrands,
+                              ...inventoryProducts.map(p => p.name?.trim()).filter(Boolean),
+                              '1121 Sella Rice',
+                              'Sona Masoori Steam',
+                              'KESHAR KALI',
+                              'KESHAR MADHURAM',
+                              'JMR',
+                              'Vaishnavi Steam Rice'
+                            ]))
+                      }
                       value={newOrder.product}
-                      onChange={(val) => setNewOrder({...newOrder, product: val})}
-                      placeholder={newOrder.supplier ? `Select Brand for ${newOrder.supplier}...` : "Select Supplier First"}
-                      disabled={!newOrder.supplier}
+                      onChange={(val) => {
+                        if (!newOrder.supplier) {
+                          const match = inventoryProducts.find(p => p.name?.trim().toLowerCase() === val.trim().toLowerCase());
+                          if (match?.supplier) {
+                            setNewOrder(prev => ({ ...prev, product: val, supplier: match.supplier }));
+                            return;
+                          }
+                        }
+                        setNewOrder(prev => ({ ...prev, product: val }));
+                      }}
+                      placeholder={newOrder.supplier ? `Select Brand for ${newOrder.supplier}...` : "Select or type rice variety..."}
+                      allowCustom={true}
                     />
                     {newOrder.supplier && (
                       <p className="text-[9px] font-medium text-neutral-500 ml-1">
-                        Showing only brands associated with <strong className="text-neutral-700 dark:text-neutral-300">{newOrder.supplier}</strong>
+                        Showing brands for <strong className="text-neutral-700 dark:text-neutral-300">{newOrder.supplier}</strong> (or type custom variety)
                       </p>
                     )}
                   </div>

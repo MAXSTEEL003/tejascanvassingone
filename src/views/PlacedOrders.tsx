@@ -1619,44 +1619,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
         setPoLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Mail Confirmation Copy routed to: ${poData.confirmationEmail}`]);
       }
 
-      // 2. Dispatch WhatsApp confirmation to buyer phone
-      const primaryBuyer = subOrders[0]?.buyer || poOrder.buyer || 'Vision stores';
-      const targetPhone = poOrder.phone || localStorage.getItem('userPhone') || '';
-      const orderBrand = (subOrders[0]?.product || poOrder.product || 'keshar kali').replace(/\(\d+.*$/, '').trim();
-      const orderRate = subOrders[0]?.rate || poOrder.rate || 10000;
-      const whatsappMsg = `Hello ${primaryBuyer},\n\nOrder placed successfully.\n\nBrand: ${orderBrand}\nQuantity: ${totalQty} QTL\nRate: ₹${orderRate}/QTL\n\nThank you,\nTejas Canvassing`;
-
-      const waRes = await fetch('/api/dispatch-whatsapp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          to: targetPhone,
-          buyerName: primaryBuyer,
-          brand: orderBrand,
-          qty: String(totalQty),
-          rate: String(orderRate),
-          orderId: poOrder.id,
-          poNumber: poOrder.id,
-          message: whatsappMsg,
-          templateName: 'order_notify',
-          templateId: '1016669984165776',
-          templateParams: [primaryBuyer, orderBrand, String(totalQty), String(orderRate)],
-          languageCode: 'en'
-        })
-      });
-      const waData = await waRes.json();
-      setPoLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Phone Message Dispatch: ${waData.message || 'Queued for delivery'} (${waData.status || 'OK'})`]);
-
-      // 3. Dispatch SMS confirmation
-      await fetch('/api/dispatch-sms', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          to: targetPhone,
-          recipientName: primaryBuyer,
-          message: `Tejas Canvassing: PO ${poOrder.id} issued for ${totalQty} QTLS to ${supplierName}. Total ₹${formatINR(calculatedAmt)}.`
-        })
-      }).catch(() => {});
+      // Supplier only receives official PO Email; no WhatsApp is sent to supplier.
 
       const updatedOrder = {
         ...poOrder,

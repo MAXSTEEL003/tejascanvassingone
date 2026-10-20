@@ -231,9 +231,9 @@ export default function CheckoutView() {
           if (idx > maxIdx) maxIdx = idx;
         }
       });
-      const nextNum = maxIdx + 1;
-      const oniId = `ONI-${String(nextNum).padStart(4, '0')}`;
-      const finalOrderId = bulkData?.bulkOrder ? `TC-${Math.floor(1000 + Math.random() * 9000)}` : oniId;
+      const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+      const oniId = `ONI-${randomSuffix}`;
+      const finalOrderId = bulkData?.bulkOrder ? `TC-${randomSuffix}` : oniId;
       setCreatedOrderRef(finalOrderId);
       
       const buyerText = bulkData?.bulkOrder 
@@ -304,8 +304,26 @@ export default function CheckoutView() {
         paymentMethod: 'Pay on Delivery / Mill Settlement'
       };
 
-      localStorage.setItem('procurement_requests', JSON.stringify([newOrder, ...existing]));
+      // Purge from deleted_procurement_ids in case past deletion exists
+      try {
+        const delRaw = localStorage.getItem('deleted_procurement_ids');
+        if (delRaw) {
+          const delList: string[] = JSON.parse(delRaw);
+          const normId = String(finalOrderId).trim().toLowerCase().replace(/^#/, '');
+          const filteredDel = delList.filter(id => String(id).trim().toLowerCase().replace(/^#/, '') !== normId);
+          localStorage.setItem('deleted_procurement_ids', JSON.stringify(filteredDel));
+        }
+      } catch (e) {}
+
+      // Remove cleared flag so orders are displayed on dashboard
+      localStorage.removeItem('cleared_procurement_requests');
+
+      localStorage.setItem('procurement_requests', JSON.stringify([newOrder, ...existing.filter((o: any) => o && o.id !== newOrder.id)]));
       setCollectionDoc('procurement_requests', newOrder.id, newOrder);
+
+      // Trigger cross-tab and component sync
+      window.dispatchEvent(new Event('storage'));
+      window.dispatchEvent(new CustomEvent('procurement-updated', { detail: { type: 'create', order: newOrder } }));
       
       clearCart();
       setEmailStatus('sending');

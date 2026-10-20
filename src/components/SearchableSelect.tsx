@@ -49,11 +49,9 @@ export default function SearchableSelect({
     return found ? found.label : value;
   }, [normalizedOptions, value]);
 
-  // Keep search in sync with standard input value when focused
+  // Keep search in sync with standard input value when focused or closed
   useEffect(() => {
-    if (isOpen) {
-      setSearch('');
-    } else {
+    if (!isOpen) {
       setSearch(selectedLabel || '');
     }
   }, [isOpen, selectedLabel]);
@@ -71,16 +69,20 @@ export default function SearchableSelect({
     setHighlightedIndex(0);
   }, [search]);
 
-  // Close when clicking outside
+  // Close when clicking outside and commit custom value if typed
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        if (allowCustom && search.trim()) {
+          const exactMatch = normalizedOptions.find(opt => String(opt?.label || '').toLowerCase() === search.trim().toLowerCase());
+          onChange(exactMatch ? exactMatch.value : search.trim());
+        }
         setIsOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [allowCustom, search, normalizedOptions, onChange]);
 
   const handleSelect = (option: Option) => {
     onChange(option.value);
@@ -114,12 +116,11 @@ export default function SearchableSelect({
         if (filteredOptions[highlightedIndex]) {
           handleSelect(filteredOptions[highlightedIndex]);
         } else if (search.trim()) {
-          // Fallback / custom typing option: allow accepting custom filter if appropriate
-          const exactMatch = normalizedOptions.find(opt => String(opt?.label || '').toLowerCase() === (search || '').toLowerCase());
+          const exactMatch = normalizedOptions.find(opt => String(opt?.label || '').toLowerCase() === search.trim().toLowerCase());
           if (exactMatch) {
             handleSelect(exactMatch);
           } else if (allowCustom) {
-            onChange(search);
+            onChange(search.trim());
             setIsOpen(false);
           }
         }
@@ -130,12 +131,22 @@ export default function SearchableSelect({
         e.preventDefault();
         break;
       case 'Tab':
+        if (allowCustom && search.trim()) {
+          const exactMatch = normalizedOptions.find(opt => String(opt?.label || '').toLowerCase() === search.trim().toLowerCase());
+          onChange(exactMatch ? exactMatch.value : search.trim());
+        }
         setIsOpen(false);
         break;
       default:
         break;
     }
   };
+
+  const hasExactMatch = React.useMemo(() => {
+    const q = (search || '').trim().toLowerCase();
+    if (!q) return true;
+    return normalizedOptions.some(opt => String(opt?.label || '').toLowerCase() === q);
+  }, [normalizedOptions, search]);
 
   return (
     <div ref={containerRef} className={cn("relative w-full", className)}>
@@ -158,8 +169,20 @@ export default function SearchableSelect({
           onChange={(e) => {
             if (!isOpen) setIsOpen(true);
             setSearch(e.target.value);
+            if (allowCustom) {
+              onChange(e.target.value);
+            }
           }}
-          onFocus={() => setIsOpen(true)}
+          onFocus={() => {
+            setIsOpen(true);
+            setSearch(selectedLabel || '');
+          }}
+          onBlur={() => {
+            if (allowCustom && search.trim()) {
+              const exactMatch = normalizedOptions.find(opt => String(opt?.label || '').toLowerCase() === search.trim().toLowerCase());
+              onChange(exactMatch ? exactMatch.value : search.trim());
+            }
+          }}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
           disabled={disabled}
@@ -167,7 +190,7 @@ export default function SearchableSelect({
         />
         
         <div className="absolute right-4 flex items-center gap-1">
-          {(!disabled && value) && (
+          {(!disabled && (value || search)) && (
             <button 
               type="button"
               onClick={(e) => {
@@ -193,18 +216,23 @@ export default function SearchableSelect({
             transition={{ duration: 0.15 }}
             className="absolute left-0 right-0 z-50 mt-2 max-h-60 overflow-y-auto rounded-2xl bg-surface border border-outline-variant/50 shadow-2xl p-2 scrollbar-thin"
           >
+            {/* Show custom option pill if allowCustom is true and user typed non-matching text */}
+            {allowCustom && search.trim() && !hasExactMatch && (
+              <div 
+                className="flex items-center justify-between px-4 py-2.5 rounded-xl text-xs font-bold text-primary hover:bg-primary/10 cursor-pointer border border-dashed border-primary/30 mb-1.5 transition-all"
+                onClick={() => {
+                  onChange(search.trim());
+                  setSearch(search.trim());
+                  setIsOpen(false);
+                }}
+              >
+                <span>Use custom: <strong className="text-on-surface">"{search.trim()}"</strong></span>
+                <span className="text-[9px] uppercase tracking-wider bg-primary/15 text-primary px-2 py-0.5 rounded-md font-mono">Select</span>
+              </div>
+            )}
+
             {filteredOptions.length === 0 ? (
-              allowCustom && search.trim() ? (
-                <div 
-                  className="px-4 py-3 text-xs text-secondary/70 italic font-semibold text-center cursor-pointer hover:bg-primary/5 hover:text-primary rounded-xl"
-                  onClick={() => {
-                    onChange(search.trim());
-                    setIsOpen(false);
-                  }}
-                >
-                  Choose custom option: "{search.trim()}"
-                </div>
-              ) : (
+              allowCustom && search.trim() ? null : (
                 <div className="px-4 py-3 text-xs text-secondary/50 font-bold text-center">
                   No matching options registered
                 </div>
