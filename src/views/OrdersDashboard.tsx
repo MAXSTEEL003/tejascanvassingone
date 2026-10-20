@@ -1046,49 +1046,6 @@ export default function OrdersDashboard() {
         if (orderToUpdate) {
           const approvedObj = { ...orderToUpdate, status: 'Approved', approvedAt: new Date().toISOString() };
           await setCollectionDoc('procurement_requests', id, approvedObj);
-
-          // Dispatch official WhatsApp order confirmation directly to the buyer
-          const prof = resolveBuyerProfile(orderToUpdate.buyer);
-          const rawPhone = (orderToUpdate.phone || prof?.phone || localStorage.getItem('userPhone') || '9945351166').replace(/[^0-9]/g, '');
-          const cleanPhone = rawPhone.length >= 10 ? rawPhone.slice(-10) : '9945351166';
-          const waPhone = `91${cleanPhone}`;
-          const brandVal = (orderToUpdate.product || 'Premium Rice').replace(/\(\d+.*$/, '').trim();
-          const pQty = String(orderToUpdate.qty || 40);
-          const pRate = String(orderToUpdate.rate || 10000);
-          const customerWaMsg = `Hello ${orderToUpdate.buyer},\n\nOrder placed successfully.\n\nBrand: ${brandVal}\nQuantity: ${pQty} QTL\nRate: ₹${pRate}/QTL\n\nThank you,\nTejas Canvassing`;
-
-          fetch('/api/dispatch-whatsapp', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              to: waPhone,
-              buyerName: orderToUpdate.buyer,
-              brand: brandVal,
-              qty: pQty,
-              rate: pRate,
-              orderId: orderToUpdate.id,
-              poNumber: orderToUpdate.id,
-              message: customerWaMsg,
-              templateName: 'order_notify',
-              templateId: '1016669984165776',
-              templateParams: [orderToUpdate.buyer, brandVal, pQty, pRate],
-              languageCode: 'en'
-            })
-          })
-          .then(res => res.json())
-          .then(data => {
-            console.log(`[Order ${id} Approved WhatsApp Result]:`, data);
-            if (data.isLiveSent) {
-              alert(`✅ Order ${orderToUpdate.id} Approved!\nWhatsApp confirmation delivered via Meta to +${data.formattedPhone || waPhone}`);
-            } else if (data.isSimulated) {
-              alert(`⚠️ Order ${orderToUpdate.id} Approved!\nNote: WhatsApp is in simulated mode because Meta WhatsApp credentials are not configured in Vercel settings.`);
-            } else if (data.error) {
-              alert(`⚠️ Order Approved, but WhatsApp failed:\n${data.error}`);
-            }
-          })
-          .catch(err => {
-            console.warn('[Order Approval WhatsApp Error]:', err);
-          });
         }
       }
     } catch (err) {
@@ -1488,51 +1445,7 @@ export default function OrdersDashboard() {
 
     const isSingleOrder = selected.length === 1;
 
-    // 1. DISPATCH WHATSAPP & SMS TO ALL BUYERS IMMEDIATELY (NO EMAIL SENT ON APPROVAL)
-    buyerProfiles.forEach(bp => {
-      const buyerOrders = selected.filter(s => (s.buyer || '').trim().toLowerCase() === bp.name.trim().toLowerCase());
-
-      const bpOrder = buyerOrders[0] || groupedOrder;
-      const bpBrand = (bpOrder.product || groupedOrder.product || 'keshar kali').replace(/\(\d+.*$/, '').trim();
-      const bpQtyNum = buyerOrders.reduce((sum, o) => sum + (Number(o.qty) || 0), 0) || Number(groupedOrder.qty) || 40;
-      const bpRateNum = bpOrder.rate || groupedOrder.rate || 10000;
-
-      const buyerWhatsappMsg = `Hello ${bp.name},\n\nOrder placed successfully.\n\nBrand: ${bpBrand}\nQuantity: ${bpQtyNum} QTL\nRate: ₹${bpRateNum}/QTL\n\nThank you,\nTejas Canvassing`;
-
-      fetch('/api/dispatch-whatsapp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          to: bp.phone,
-          buyerName: bp.name,
-          brand: bpBrand,
-          qty: String(bpQtyNum),
-          rate: String(bpRateNum),
-          orderId: groupedOrder.id,
-          poNumber: groupedOrder.id,
-          message: buyerWhatsappMsg,
-          templateName: 'order_notify',
-          templateId: '1016669984165776',
-          templateParams: [bp.name, bpBrand, String(bpQtyNum), String(bpRateNum)],
-          languageCode: 'en'
-        })
-      })
-      .then(res => res.json())
-      .then(data => console.log(`Approved WhatsApp Result for ${bp.name}:`, data))
-      .catch(err => console.warn(`WhatsApp dispatch note for ${bp.name}:`, err?.message || err));
-
-      fetch('/api/dispatch-sms', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          to: bp.phone,
-          recipientName: bp.name,
-          message: `Tejas Canvassing: Order placed under ${isSingleOrder ? 'PO' : 'Batch PO'} ${groupedOrder.id} (${groupedOrder.qty} QTLS) arriving in 3-5 days.`
-        })
-      }).catch(err => console.warn(`SMS dispatch note for ${bp.name}:`, err?.message || err));
-    });
-
-    // 2. DISPATCH OFFICIAL PURCHASE ORDER EMAIL TO ASSIGNED SUPPLIER (ONLY EMAIL TO SUPPLIER, NO WHATSAPP)
+    // DISPATCH OFFICIAL PURCHASE ORDER EMAIL TO ASSIGNED SUPPLIER (ONLY EMAIL TO SUPPLIER)
     if (supplierProfile.email) {
       const subOrders = selected.map((s: any) => ({
         id: s.id,
@@ -1729,45 +1642,6 @@ export default function OrdersDashboard() {
     setFilterSupplier('');
     setFilterProduct('');
     setSearchQuery('');
-
-    // Dispatch WhatsApp order notification directly to the buyer's phone
-    if (cleanBuyerPhone) {
-      const waPhone = `91${cleanBuyerPhone}`;
-      const customerWaMsg = `Hello ${orderToAdd.buyer},\n\nOrder placed successfully.\n\nBrand: ${orderToAdd.product}\nQuantity: ${orderToAdd.qty} QTL\nRate: ₹${orderToAdd.rate}/QTL\n\nThank you,\nTejas Canvassing`;
-
-      fetch('/api/dispatch-whatsapp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          to: waPhone,
-          buyerName: orderToAdd.buyer,
-          brand: orderToAdd.product,
-          qty: String(orderToAdd.qty),
-          rate: String(orderToAdd.rate),
-          orderId: orderToAdd.id,
-          poNumber: orderToAdd.id,
-          message: customerWaMsg,
-          templateName: 'order_notify',
-          templateId: '1016669984165776',
-          templateParams: [orderToAdd.buyer, orderToAdd.product, String(orderToAdd.qty), String(orderToAdd.rate)],
-          languageCode: 'en'
-        })
-      })
-      .then(res => res.json())
-      .then(data => {
-        console.log('[Manual Order WhatsApp Dispatch Result]:', data);
-        if (data.isLiveSent) {
-          alert(`✅ Order ${orderToAdd.id} created! WhatsApp notification delivered via Meta to +${data.formattedPhone || waPhone}`);
-        } else if (data.isSimulated) {
-          alert(`⚠️ Order ${orderToAdd.id} created! WhatsApp simulated (Meta credentials not found on server). Check Vercel Environment Variables.`);
-        } else if (data.error) {
-          alert(`⚠️ Order ${orderToAdd.id} created, but WhatsApp alert failed:\n${data.error}`);
-        }
-      })
-      .catch(err => {
-        console.warn('[Manual Order WhatsApp Dispatch Error]:', err);
-      });
-    }
 
     setCollectionDoc('procurement_requests', maId, orderToAdd).catch(err => {
       console.warn('Firestore sync notice for manual order (saved locally):', err?.message || err);
