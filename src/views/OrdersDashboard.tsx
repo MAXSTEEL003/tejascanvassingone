@@ -1047,8 +1047,48 @@ export default function OrdersDashboard() {
           const approvedObj = { ...orderToUpdate, status: 'Approved', approvedAt: new Date().toISOString() };
           await setCollectionDoc('procurement_requests', id, approvedObj);
 
-          // Indent is approved and ready in procurement requests.
-          // It will only be added to Placed Orders when explicitly grouped and placed via Group & Place Orders.
+          // Dispatch official WhatsApp order confirmation directly to the buyer
+          const prof = resolveBuyerProfile(orderToUpdate.buyer);
+          const rawPhone = (orderToUpdate.phone || prof?.phone || localStorage.getItem('userPhone') || '9945351166').replace(/[^0-9]/g, '');
+          const cleanPhone = rawPhone.length >= 10 ? rawPhone.slice(-10) : '9945351166';
+          const waPhone = `91${cleanPhone}`;
+          const brandVal = (orderToUpdate.product || 'Premium Rice').replace(/\(\d+.*$/, '').trim();
+          const pQty = String(orderToUpdate.qty || 40);
+          const pRate = String(orderToUpdate.rate || 10000);
+          const customerWaMsg = `Hello ${orderToUpdate.buyer},\n\nOrder placed successfully.\n\nBrand: ${brandVal}\nQuantity: ${pQty} QTL\nRate: ₹${pRate}/QTL\n\nThank you,\nTejas Canvassing`;
+
+          fetch('/api/dispatch-whatsapp', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              to: waPhone,
+              buyerName: orderToUpdate.buyer,
+              brand: brandVal,
+              qty: pQty,
+              rate: pRate,
+              orderId: orderToUpdate.id,
+              poNumber: orderToUpdate.id,
+              message: customerWaMsg,
+              templateName: 'order_notify',
+              templateId: '1016669984165776',
+              templateParams: [orderToUpdate.buyer, brandVal, pQty, pRate],
+              languageCode: 'en'
+            })
+          })
+          .then(res => res.json())
+          .then(data => {
+            console.log(`[Order ${id} Approved WhatsApp Result]:`, data);
+            if (data.isLiveSent) {
+              alert(`✅ Order ${orderToUpdate.id} Approved!\nWhatsApp confirmation delivered via Meta to +${data.formattedPhone || waPhone}`);
+            } else if (data.isSimulated) {
+              alert(`⚠️ Order ${orderToUpdate.id} Approved!\nNote: WhatsApp is in simulated mode because Meta WhatsApp credentials are not configured in Vercel settings.`);
+            } else if (data.error) {
+              alert(`⚠️ Order Approved, but WhatsApp failed:\n${data.error}`);
+            }
+          })
+          .catch(err => {
+            console.warn('[Order Approval WhatsApp Error]:', err);
+          });
         }
       }
     } catch (err) {
@@ -1737,7 +1777,7 @@ export default function OrdersDashboard() {
     window.dispatchEvent(new Event('procurement-updated'));
 
     setIsCreateModalOpen(false);
-    setNewOrder({ buyer: '', supplier: '', product: '', qty: '', rate: '', urgency: 'Standard' });
+    setNewOrder({ buyer: '', phone: '', supplier: '', product: '', qty: '', rate: '', urgency: 'Standard' });
   };
 
   return (
