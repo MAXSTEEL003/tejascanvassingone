@@ -377,7 +377,8 @@ export default function ArrivalEntry() {
 
   // Due List PDF Options Modal state
   const [isDueListModalOpen, setIsDueListModalOpen] = useState(false);
-  const [dueListRoad, setDueListRoad] = useState<string>('All');
+  const [selectedDueListRoads, setSelectedDueListRoads] = useState<string[]>([]);
+  const [dueListRoadSearch, setDueListRoadSearch] = useState<string>('');
   const [dueListScope, setDueListScope] = useState<'all_sheets' | 'current_sheet'>('all_sheets');
   const [selectedDueListMonths, setSelectedDueListMonths] = useState<string[]>([]);
   const [dueListStatus, setDueListStatus] = useState<'All' | 'Pending' | 'Cleared'>('Pending');
@@ -1812,12 +1813,13 @@ export default function ArrivalEntry() {
 
     let candidateRows = rawCandidates;
 
-    // 2. Filter by Road
-    if (dueListRoad !== 'All') {
+    // 2. Filter by Road(s) (Multiple tick box selection: empty array means All Roads)
+    if (selectedDueListRoads.length > 0) {
+      const roadSet = new Set(selectedDueListRoads.map(r => r.trim().toLowerCase()));
       candidateRows = candidateRows.filter(row => {
-        const roadVal = row.road ? String(row.road).trim() : '';
-        const areaVal = row.area ? String(row.area).trim() : '';
-        return roadVal === dueListRoad || areaVal === dueListRoad;
+        const roadVal = row.road ? String(row.road).trim().toLowerCase() : '';
+        const areaVal = row.area ? String(row.area).trim().toLowerCase() : '';
+        return (roadVal && roadSet.has(roadVal)) || (areaVal && roadSet.has(areaVal));
       });
     }
 
@@ -1978,7 +1980,13 @@ export default function ArrivalEntry() {
       ? 'Due Days (Highest)' 
       : 'Amount (Highest)';
 
-    const line1 = `Road: ${dueListRoad}  |  Status: ${dueListStatus === 'Pending' ? 'Pending (Uncollected)' : dueListStatus}  |  Months: ${monthLabel}`;
+    const roadLabel = selectedDueListRoads.length === 0
+      ? 'All Roads'
+      : selectedDueListRoads.length <= 3
+      ? selectedDueListRoads.join(', ')
+      : `${selectedDueListRoads.slice(0, 3).join(', ')} (+${selectedDueListRoads.length - 3} more)`;
+
+    const line1 = `Road(s): ${roadLabel}  |  Status: ${dueListStatus === 'Pending' ? 'Pending (Uncollected)' : dueListStatus}  |  Months: ${monthLabel}`;
     const line2 = `Scope: ${dueListScope === 'all_sheets' || selectedDueListMonths.length > 0 ? 'All Sheets' : currentSheet.name}  |  Sort: ${sortLabel}  |  Matching Records: ${sortedRows.length}`;
 
     doc.text(line1, 10, 31.5);
@@ -3082,7 +3090,7 @@ export default function ArrivalEntry() {
                   <button
                     type="button"
                     onClick={() => {
-                      setDueListRoad(quickRoad);
+                      setSelectedDueListRoads(quickRoad && quickRoad !== 'All' ? [quickRoad] : []);
                       setDueListScope('all_sheets');
                       setIsDueListModalOpen(true);
                     }}
@@ -3182,9 +3190,9 @@ export default function ArrivalEntry() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-surface border border-outline-variant rounded-2xl shadow-2xl p-6 w-full max-w-lg text-on-surface"
+              className="bg-surface border border-outline-variant rounded-2xl shadow-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto text-on-surface custom-scrollbar"
             >
-              <div className="flex items-center justify-between pb-3 mb-4 border-b border-outline-variant/30">
+              <div className="flex items-center justify-between pb-3 mb-4 border-b border-outline-variant/30 sticky -top-6 bg-surface z-10 pt-1">
                 <div className="flex items-center gap-2.5">
                   <div className="p-2.5 rounded-xl bg-rose-500/10 text-rose-600">
                     <FileText className="w-5 h-5" />
@@ -3205,21 +3213,140 @@ export default function ArrivalEntry() {
               </div>
 
               <div className="space-y-4">
-                {/* Option 1: Road */}
+                {/* Option 1: Road (Tick Boxes for Multiple Selection) */}
                 <div>
-                  <label className="text-[11px] font-bold text-secondary uppercase block mb-1">
-                    Road
-                  </label>
-                  <select
-                    value={dueListRoad}
-                    onChange={(e) => setDueListRoad(e.target.value)}
-                    className="w-full px-3 py-2 bg-surface-container-low border border-outline-variant rounded-xl text-xs font-bold text-on-surface focus:outline-none focus:ring-2 focus:ring-rose-500 cursor-pointer"
-                  >
-                    <option value="All">All Roads</option>
-                    {uniqueRoads.map(r => (
-                      <option key={r} value={r}>{r}</option>
-                    ))}
-                  </select>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-[11px] font-bold text-secondary uppercase flex items-center gap-1.5">
+                      <span>Select Road(s)</span>
+                      {selectedDueListRoads.length > 0 && (
+                        <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-rose-500/10 text-rose-600 font-black">
+                          {selectedDueListRoads.length} Selected
+                        </span>
+                      )}
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedDueListRoads([])}
+                        className={cn(
+                          "text-[10px] font-bold transition-colors cursor-pointer",
+                          selectedDueListRoads.length === 0
+                            ? "text-rose-600 font-black"
+                            : "text-secondary hover:text-on-surface"
+                        )}
+                        title="Include all roads without filtering"
+                      >
+                        All Roads ({uniqueRoads.length})
+                      </button>
+                      <span className="text-outline-variant/60 text-[10px]">|</span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedDueListRoads([...uniqueRoads])}
+                        className="text-[10px] font-bold text-secondary hover:text-on-surface cursor-pointer"
+                        title="Check all individual road tick boxes"
+                      >
+                        Select All
+                      </button>
+                      {selectedDueListRoads.length > 0 && (
+                        <>
+                          <span className="text-outline-variant/60 text-[10px]">|</span>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedDueListRoads([])}
+                            className="text-[10px] font-bold text-rose-600 hover:text-rose-700 cursor-pointer"
+                            title="Reset to All Roads"
+                          >
+                            Clear
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Road Quick Search Filter */}
+                  {uniqueRoads.length > 6 && (
+                    <div className="relative mb-2">
+                      <Search className="w-3.5 h-3.5 text-secondary absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      <input
+                        type="text"
+                        placeholder="Search roads..."
+                        value={dueListRoadSearch}
+                        onChange={(e) => setDueListRoadSearch(e.target.value)}
+                        className="w-full pl-8 pr-7 py-1.5 bg-surface-container-low border border-outline-variant rounded-xl text-xs text-on-surface placeholder:text-secondary/60 focus:outline-none focus:ring-1 focus:ring-rose-500"
+                      />
+                      {dueListRoadSearch && (
+                        <button
+                          type="button"
+                          onClick={() => setDueListRoadSearch('')}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-secondary hover:text-on-surface p-0.5"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Tick Box Options List */}
+                  <div className="p-2 bg-surface-container-low border border-outline-variant rounded-xl max-h-40 overflow-y-auto space-y-1 custom-scrollbar">
+                    {/* "All Roads (Consolidated)" Tick Box */}
+                    <div
+                      onClick={() => setSelectedDueListRoads([])}
+                      className={cn(
+                        "flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs transition-all cursor-pointer select-none border",
+                        selectedDueListRoads.length === 0
+                          ? "bg-rose-500/10 border-rose-500 text-rose-700 dark:text-rose-400 font-bold shadow-2xs"
+                          : "bg-surface border-transparent text-secondary hover:text-on-surface hover:bg-surface-container"
+                      )}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedDueListRoads.length === 0}
+                        onChange={() => setSelectedDueListRoads([])}
+                        className="rounded border-outline-variant text-rose-600 focus:ring-rose-500 cursor-pointer accent-rose-600 w-4 h-4"
+                      />
+                      <span className="font-bold flex-1">All Roads (Consolidated)</span>
+                      <span className="text-[10px] opacity-70 font-semibold">{uniqueRoads.length} total</span>
+                    </div>
+
+                    {/* Individual Road Tick Boxes */}
+                    {uniqueRoads
+                      .filter(r => !dueListRoadSearch || r.toLowerCase().includes(dueListRoadSearch.toLowerCase()))
+                      .map(r => {
+                        const isChecked = selectedDueListRoads.includes(r);
+                        return (
+                          <div
+                            key={r}
+                            onClick={() => {
+                              setSelectedDueListRoads(prev => {
+                                if (prev.includes(r)) {
+                                  return prev.filter(item => item !== r);
+                                } else {
+                                  return [...prev, r];
+                                }
+                              });
+                            }}
+                            className={cn(
+                              "flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs transition-all cursor-pointer select-none border",
+                              isChecked
+                                ? "bg-rose-500/10 border-rose-500 text-rose-700 dark:text-rose-400 font-bold shadow-2xs"
+                                : "bg-surface border-transparent text-secondary hover:text-on-surface hover:bg-surface-container"
+                            )}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => {}} // Handled by parent container onClick
+                              className="rounded border-outline-variant text-rose-600 focus:ring-rose-500 cursor-pointer accent-rose-600 w-4 h-4"
+                            />
+                            <span className="truncate flex-1 font-medium">{r}</span>
+                          </div>
+                        );
+                      })}
+
+                    {uniqueRoads.filter(r => !dueListRoadSearch || r.toLowerCase().includes(dueListRoadSearch.toLowerCase())).length === 0 && (
+                      <p className="text-xs text-secondary italic py-2 text-center">No roads matching &quot;{dueListRoadSearch}&quot;</p>
+                    )}
+                  </div>
                 </div>
 
                 {/* Option 2: Scope (All Months across all sheets vs Current Sheet) */}
