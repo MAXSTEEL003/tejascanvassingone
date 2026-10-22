@@ -1886,17 +1886,25 @@ export default function ArrivalEntry() {
       return;
     }
 
-    // Sort according to user preference (Default: Ascending Party / Buyer name)
+    // Sort according to user preference (Default: Ascending Party / Buyer name, then Date)
     const sortedRows = [...candidateRows].sort((a, b) => {
       if (dueListSortOrder === 'buyer_asc') {
         const nameA = String(a.partyName || '').trim().toUpperCase();
         const nameB = String(b.partyName || '').trim().toUpperCase();
-        return nameA.localeCompare(nameB);
+        const cmp = nameA.localeCompare(nameB);
+        if (cmp !== 0) return cmp;
+        const tA = Number.isFinite(new Date(a.date || 0).getTime()) ? new Date(a.date || 0).getTime() : 0;
+        const tB = Number.isFinite(new Date(b.date || 0).getTime()) ? new Date(b.date || 0).getTime() : 0;
+        return tA - tB;
       }
       if (dueListSortOrder === 'buyer_desc') {
         const nameA = String(a.partyName || '').trim().toUpperCase();
         const nameB = String(b.partyName || '').trim().toUpperCase();
-        return nameB.localeCompare(nameA);
+        const cmp = nameB.localeCompare(nameA);
+        if (cmp !== 0) return cmp;
+        const tA = Number.isFinite(new Date(a.date || 0).getTime()) ? new Date(a.date || 0).getTime() : 0;
+        const tB = Number.isFinite(new Date(b.date || 0).getTime()) ? new Date(b.date || 0).getTime() : 0;
+        return tA - tB;
       }
       if (dueListSortOrder === 'date_desc') {
         const tA = Number.isFinite(new Date(a.date || 0).getTime()) ? new Date(a.date || 0).getTime() : 0;
@@ -1926,235 +1934,137 @@ export default function ArrivalEntry() {
     const mm = String(now.getMonth() + 1).padStart(2, '0');
     const yyyy = now.getFullYear();
 
-    // Executive Slate Top Banner (210 x 25 mm)
-    doc.setFillColor(15, 23, 42); // slate-900
-    doc.rect(0, 0, 210, 25, 'F');
-
-    // Crimson Accent Stripe (1.2mm)
-    doc.setFillColor(190, 24, 93); // rose-700
-    doc.rect(0, 23.8, 210, 1.2, 'F');
-
-    // Header Branding & Title
-    doc.setTextColor(241, 245, 249);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9.5);
-    doc.text('TEJAS CANVASSING • COMMODITY BROKERAGE', 7, 8);
-
-    doc.setTextColor(255, 255, 255);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(15);
-    const scopeTitle = (dueListScope === 'all_sheets' || selectedDueListMonths.length > 0)
-      ? 'DUE LIST STATEMENT • CONSOLIDATED'
-      : `DUE LIST STATEMENT • ${currentSheet.name.toUpperCase()}`;
-    doc.text(scopeTitle, 7, 16);
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9.5);
-    doc.setTextColor(226, 232, 240);
-    doc.text(`Generated: ${dd}-${mm}-${yyyy} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`, 203, 16, { align: 'right' });
-
-    // Context / Filter Summary Card (Soft slate-50 background, 196mm wide)
-    doc.setFillColor(248, 250, 252); // slate-50
-    doc.setDrawColor(203, 213, 225); // slate-300
-    doc.roundedRect(7, 27.0, 196, 11.5, 1.2, 1.2, 'FD');
-
-    // Filter Badges inside Context Card
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8.8);
-    doc.setTextColor(15, 23, 42);
-    
-    const monthLabel = selectedDueListMonths.length === 0 
-      ? 'All Recorded Months' 
-      : selectedDueListMonths.map(k => {
-          const item = availableDueListMonths.find(m => m.key === k);
-          return item ? item.label : k;
-        }).join(', ');
-
-    const sortLabel = dueListSortOrder === 'buyer_asc' 
-      ? 'Buyer Name (A to Z)' 
-      : dueListSortOrder === 'buyer_desc' 
-      ? 'Buyer Name (Z to A)' 
-      : dueListSortOrder === 'date_desc' 
-      ? 'Date (Newest)' 
-      : dueListSortOrder === 'days_desc' 
-      ? 'Due Days (Highest)' 
-      : 'Amount (Highest)';
-
-    const roadLabel = selectedDueListRoads.length === 0
-      ? 'All Roads'
-      : selectedDueListRoads.length <= 3
-      ? selectedDueListRoads.join(', ')
-      : `${selectedDueListRoads.slice(0, 3).join(', ')} (+${selectedDueListRoads.length - 3} more)`;
-
-    const line1 = `Road(s): ${roadLabel}  |  Status: ${dueListStatus === 'Pending' ? 'Pending (Uncollected)' : dueListStatus}  |  Months: ${monthLabel}`;
-    const line2 = `Scope: ${dueListScope === 'all_sheets' || selectedDueListMonths.length > 0 ? 'All Sheets' : currentSheet.name}  |  Sort: ${sortLabel}  |  Matching Records: ${sortedRows.length}`;
-
-    doc.text(line1, 10, 31.5);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8.2);
-    doc.setTextColor(51, 65, 85);
-    doc.text(line2, 10, 36.2);
-
-    // Exact 10 Columns fitting 196mm total printable width
-    // Date (15) + Party Name (38) + Party Loc (17) + Miller Name (26) + Due Days (16) + Bill No (14) + QTLs (14) + Rate (16) + Amount (23) + LH (17) = 196mm
+    // Exact 10 Columns matching due list template blindly
     const tableHeaders = [
-      'Date',
-      'Party Name',
-      'Party Loc',
-      'Miller Name',
-      'Due Days',
-      'Bill No',
-      'QTLs',
-      'Rate (Rs)',
-      'Amount (Rs)',
-      'LH (Rs)'
+      'DATE',
+      'BUYER NAMER',
+      'MILLER NAME',
+      'NO OF D',
+      'ROAD',
+      'B.NO',
+      'qtls',
+      'Rate',
+      'Amount',
+      'L.H.'
     ];
 
-    let totalQtls = 0;
-    let totalAmount = 0;
-    let totalLh = 0;
+    // Helper: Format date to exact DD-Mon-YY format (e.g. 04-Mar-25)
+    const formatDueListDate = (val: any): string => {
+      if (val === null || val === undefined || val === '') return '';
+      const d = parseAnyDate(val);
+      if (d && !isNaN(d.getTime())) {
+        const day = String(d.getDate()).padStart(2, '0');
+        const mIdx = d.getMonth();
+        const monthShort = MONTH_NAMES[mIdx] ? MONTH_NAMES[mIdx].slice(0, 3) : 'Jan';
+        const monthCap = monthShort.charAt(0).toUpperCase() + monthShort.slice(1).toLowerCase();
+        const yearTwoDigit = String(d.getFullYear()).slice(-2);
+        return `${day}-${monthCap}-${yearTwoDigit}`;
+      }
+      return String(val).trim();
+    };
 
-    const formatCleanNum = (val: number | null | undefined): string => {
-      const n = Number(val ?? 0);
-      if (!Number.isFinite(n) || n === 0) return '-';
-      return n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    // Helper: Exact clean number representation without currency symbols or thousands commas
+    const formatTemplateNum = (val: any): string => {
+      if (val === null || val === undefined || val === '') return '';
+      const clean = String(val).replace(/[₹,\s]/g, '');
+      const n = parseFloat(clean);
+      if (isNaN(n) || n === 0) return '';
+      const rounded = Math.round(n * 100) / 100;
+      return rounded.toString();
     };
 
     const tableBody = sortedRows.map(row => {
-      const formattedDate = formatDateToDDMMYYYY(row.date);
-      const partyName = row.partyName || '-';
-      const partyLoc = row.area || row.road || '-';
-      const millerName = compactMillerName(row.millerName || '', 24);
-      
+      const formattedDate = formatDueListDate(row.date);
+      const buyerName = String(row.partyName || '').trim().toUpperCase();
+      const millerName = String(row.millerName || '').trim().toUpperCase();
+
       const isCleared = (row.noOfDayRec || 'Not Cleared') === 'Cleared';
       const daysPending = getDaysPendingNum(row);
-      const daysPendingText = isCleared ? 'Cleared' : `${daysPending} D`;
+      const daysText = isCleared ? 'CLEARED' : `${daysPending} DAYS PENDING`;
+
+      const roadVal = String(row.road || row.area || '').trim().toUpperCase();
 
       const billNoVal = row.billNo
         ? String(row.billNo).trim().replace(/^(bill[-.\s]*|bil[-.\s]*|tc[-.\s]*|invoice[-.\s]*)/i, '')
-        : '-';
+        : '';
 
-      const qClean = String(row.qty || 0).replace(/[,\s]/g, '');
-      const qVal = parseFloat(qClean) || 0;
-      totalQtls += qVal;
-      const qtlsText = qVal > 0 ? formatCleanNum(qVal) : (row.qty ? String(row.qty).trim() : '-');
+      const qVal = formatTemplateNum(row.qty);
+      const qtlsText = qVal !== '' ? qVal : (row.qty ? String(row.qty).trim() : '');
 
-      const rateClean = String(row.rate || 0).replace(/[₹,\s]/g, '');
-      const rateVal = parseFloat(rateClean) || 0;
-      const rateText = rateVal > 0 ? formatCleanNum(rateVal) : (row.rate ? String(row.rate).trim() : '-');
+      const rVal = formatTemplateNum(row.rate);
+      const rateText = rVal !== '' ? rVal : (row.rate ? String(row.rate).trim() : '');
 
       const amtClean = String(row.amount || 0).replace(/[₹,\s]/g, '');
-      const amtVal = parseFloat(amtClean) || (qVal * rateVal) || 0;
-      totalAmount += amtVal;
-      const amountText = amtVal > 0 ? formatCleanNum(amtVal) : (row.amount ? String(row.amount).trim() : '-');
+      const parsedAmt = parseFloat(amtClean) || (parseFloat(String(row.qty || 0)) * parseFloat(String(row.rate || 0))) || 0;
+      const amtText = formatTemplateNum(parsedAmt);
 
-      const lhClean = String(row.lh || 0).replace(/[₹,\s]/g, '');
-      const lhVal = parseFloat(lhClean) || 0;
-      totalLh += lhVal;
-      const lhText = lhVal > 0 ? formatCleanNum(lhVal) : (row.lh ? String(row.lh).trim() : '-');
+      const lhText = formatTemplateNum(row.lh);
 
       return [
         formattedDate,
-        partyName,
-        partyLoc,
+        buyerName,
         millerName,
-        daysPendingText,
+        daysText,
+        roadVal,
         billNoVal,
         qtlsText,
         rateText,
-        amountText,
+        amtText,
         lhText
       ];
     });
 
     autoTable(doc, {
-      startY: 41,
+      startY: 8,
       head: [tableHeaders],
       body: tableBody,
-      foot: [
-        [
-          'TOTAL',
-          `${sortedRows.length} Rows`,
-          '',
-          '',
-          '',
-          '',
-          totalQtls > 0 ? formatCleanNum(totalQtls) : '-',
-          '',
-          totalAmount > 0 ? formatCleanNum(totalAmount) : '-',
-          totalLh > 0 ? formatCleanNum(totalLh) : '-'
-        ]
-      ],
       theme: 'grid',
       headStyles: {
-        fillColor: [15, 23, 42], // slate-900
-        textColor: [255, 255, 255],
+        fillColor: [255, 255, 255],
+        textColor: [0, 0, 0],
         fontStyle: 'bold',
         fontSize: 7.2,
-        cellPadding: { top: 2.2, bottom: 2.2, left: 0.8, right: 0.8 },
-        lineColor: [51, 65, 85],
-        lineWidth: 0.1,
-        valign: 'middle',
-        overflow: 'ellipsize'
-      },
-      footStyles: {
-        fillColor: [241, 245, 249], // slate-100
-        textColor: [15, 23, 42],
-        fontStyle: 'bold',
-        fontSize: 7.2,
-        cellPadding: { top: 2.0, bottom: 2.0, left: 0.8, right: 0.8 },
-        lineColor: [203, 213, 225],
+        lineColor: [0, 0, 0],
         lineWidth: 0.15,
-        valign: 'middle'
+        cellPadding: { top: 1.2, bottom: 1.2, left: 0.8, right: 0.8 },
+        valign: 'middle',
+        overflow: 'hidden'
       },
       styles: {
-        fontSize: 7.0,
-        textColor: [15, 23, 42], // slate-900 dark text
-        cellPadding: { top: 1.6, bottom: 1.6, left: 0.8, right: 0.8 },
+        font: 'helvetica',
+        fontSize: 6.8,
+        textColor: [0, 0, 0],
+        lineColor: [0, 0, 0],
+        lineWidth: 0.1,
+        cellPadding: { top: 0.8, bottom: 0.8, left: 0.8, right: 0.8 },
         valign: 'middle',
-        overflow: 'ellipsize', // Enforce exactly 1 row per entry
-        lineColor: [226, 232, 240], // crisp light slate grid
-        lineWidth: 0.1
+        overflow: 'hidden'
       },
       alternateRowStyles: {
-        fillColor: [248, 250, 252] // slate-50 soft alternate
+        fillColor: [255, 255, 255]
       },
       columnStyles: {
-        0: { cellWidth: 15, halign: 'center' }, // Date
-        1: { cellWidth: 38, halign: 'left', fontStyle: 'bold' }, // Party Name
-        2: { cellWidth: 17, halign: 'left' },   // Party Loc
-        3: { cellWidth: 26, halign: 'left' },   // Miller Name
-        4: { cellWidth: 16, halign: 'center' }, // Due Days
-        5: { cellWidth: 14, halign: 'center' }, // Bill No
-        6: { cellWidth: 14, halign: 'right' },  // QTLs
-        7: { cellWidth: 16, halign: 'right' },  // Rate (Rs)
-        8: { cellWidth: 23, halign: 'right', fontStyle: 'bold' }, // Amount (Rs)
-        9: { cellWidth: 17, halign: 'right' }   // LH (Rs)
+        0: { cellWidth: 17, halign: 'left' },   // DATE
+        1: { cellWidth: 33, halign: 'left' },   // BUYER NAMER
+        2: { cellWidth: 39, halign: 'left' },   // MILLER NAME
+        3: { cellWidth: 14, halign: 'left' },   // NO OF D
+        4: { cellWidth: 11, halign: 'left' },   // ROAD
+        5: { cellWidth: 12, halign: 'right' },  // B.NO
+        6: { cellWidth: 14, halign: 'right' },  // qtls
+        7: { cellWidth: 14, halign: 'right' },  // Rate
+        8: { cellWidth: 22, halign: 'right' },  // Amount
+        9: { cellWidth: 18, halign: 'right' }   // L.H.
       },
       didParseCell: (data) => {
-        // Enforce strict matching alignment across head, body, and foot
         const colIdx = data.column.index;
-        if ([0, 4, 5].includes(colIdx)) {
-          data.cell.styles.halign = 'center';
-        } else if ([1, 2, 3].includes(colIdx)) {
+        if ([0, 1, 2, 3, 4].includes(colIdx)) {
           data.cell.styles.halign = 'left';
-        } else if ([6, 7, 8, 9].includes(colIdx)) {
+        } else {
           data.cell.styles.halign = 'right';
         }
       },
-      didDrawPage: (data) => {
-        // Subtle footer rule
-        doc.setDrawColor(203, 213, 225);
-        doc.line(7, 290, 203, 290);
-
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(8.5);
-        doc.setTextColor(71, 85, 105);
-        doc.text('TEJAS CANVASSING • Commercial Due List Statement', 7, 294);
-        doc.text(`Page ${data.pageNumber}`, 203, 294, { align: 'right' });
-      },
-      tableWidth: 196,
-      margin: { left: 7, right: 7, bottom: 12 }
+      tableWidth: 194,
+      margin: { left: 8, right: 8, top: 8, bottom: 8 }
     });
 
     const cleanSheetName = currentSheet.name.replace(/[^a-zA-Z0-9_-]/g, '_');
