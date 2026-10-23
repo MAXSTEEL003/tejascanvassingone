@@ -3041,27 +3041,6 @@ export default function OrdersDashboard() {
                       allowCustom={true}
                     />
                   </div>
-
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500 ml-1">Urgency Tier</label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {(['Standard', 'High', 'Critical'] as const).map((tier) => (
-                        <button
-                          key={tier}
-                          onClick={() => setNewOrder({...newOrder, urgency: tier})}
-                          type="button"
-                          className={cn(
-                            "py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all",
-                            newOrder.urgency === tier 
-                              ? "bg-primary text-on-primary border-primary shadow-lg shadow-primary/20" 
-                              : "bg-neutral-50 dark:bg-neutral-950 text-neutral-500 border-neutral-200 dark:border-neutral-800 hover:border-primary/30"
-                          )}
-                        >
-                          {tier}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
                 </div>
 
                 {/* Right Column: Specifications & Live Financial Calculation */}
