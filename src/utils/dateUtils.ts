@@ -322,14 +322,17 @@ export function computeDaysPending(dateVal: any, statusVal?: string, chqDtVal?: 
   const [y, m, d] = iso.split('-').map(Number);
   const arrTime = Date.UTC(y, m - 1, d);
 
-  const status = statusVal || 'Not Cleared';
-  if (status === 'Cleared' && chqDtVal) {
-    const chqIso = normalizeDate(chqDtVal);
-    if (chqIso) {
-      const [cy, cm, cd] = chqIso.split('-').map(Number);
-      const chqTime = Date.UTC(cy, cm - 1, cd);
-      const diffDays = Math.floor((chqTime - arrTime) / (1000 * 60 * 60 * 24));
-      return Math.max(0, diffDays);
+  const status = String(statusVal || '').trim();
+  const isCleared = /^(cleared|clear|paid)$/i.test(status);
+  if (isCleared) {
+    if (chqDtVal) {
+      const chqIso = normalizeDate(chqDtVal);
+      if (chqIso) {
+        const [cy, cm, cd] = chqIso.split('-').map(Number);
+        const chqTime = Date.UTC(cy, cm - 1, cd);
+        const diffDays = Math.floor((chqTime - arrTime) / (1000 * 60 * 60 * 24));
+        return Math.max(0, diffDays);
+      }
     }
     return 0;
   }

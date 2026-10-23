@@ -36,13 +36,16 @@ import {
   ArrowLeft,
   ArrowRight,
   RefreshCw,
-  Activity
+  Activity,
+  Plus,
+  PlusCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { cn, formatINR, getRegisteredSuppliers, sanitizeSupplierName } from '../lib/utils';
-import { getCollectionDocs, setCollectionDoc, deleteCollectionDoc, markLedgerEntriesAsArrived, autoCreateArrivalEntryForIncomingLog, updateLedgersForLifting } from '../lib/firebase';
+import { getCollectionDocs, setCollectionDoc, deleteCollectionDoc, markLedgerEntriesAsArrived, autoCreateArrivalEntryForIncomingLog, updateLedgersForLifting, db } from '../lib/firebase';
+import { collection, onSnapshot } from 'firebase/firestore';
 import { verifyActionWithServer } from '../lib/auth';
 import { generateSupplierPOEmailHtml, generateSupplierPOA4PrintHtml, printPoDocument, resolveBuyerProfile, formatPoDate } from '../utils/poEmailTemplate';
 import { buildPoPdfDocument, getPoPdfFileName } from '../utils/poPdfGenerator';
@@ -1045,15 +1048,15 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
       const key = String(proc.id).trim().toLowerCase().replace(/^#/, '');
       if (isMerchantMatch(proc)) {
         const batchInfo = batchStatusMap.get(key);
-        // Procurement indents only appear in Placed Orders once placed into a PO!
-        if (!batchInfo) {
+        // Procurement indents appear in Placed Orders once approved or placed into a PO!
+        if (!batchInfo && !isApprovedStatus(proc.status)) {
           return;
         }
 
         const orderObj = {
           ...proc,
-          status: batchInfo?.status || 'Awaiting Settlement',
-          progress: batchInfo?.progress || proc.progress || 25,
+          status: batchInfo?.status || proc.status || 'Approved',
+          progress: batchInfo?.progress || (isApprovedStatus(proc.status) ? 35 : proc.progress) || 25,
           supplier: batchInfo?.supplier || proc.supplier || 'Direct Mill',
           billNo: batchInfo?.billNo || proc.billNo || proc.id,
           origin: batchInfo?.origin || proc.origin || 'Mill Dispatch Hub',
@@ -1166,16 +1169,24 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
         !String(o.id).startsWith('TC-0000') && 
         o.status !== 'Pending Approval' && 
         o.status !== 'Draft Order' && 
-        o.status !== 'Rejected' &&
-        String(o.status || '').trim().toLowerCase() !== 'approved' &&
-        String(o.status || '').trim().toLowerCase() !== 'accepted'
+        o.status !== 'Rejected'
     );
 
     const validPlaced = filterIgnored(placedList);
 
-    // Only orders that were explicitly placed (e.g. Batch POs created via Group & Place Orders) belong in Placed Orders.
-    // Procurement requests that are merely approved remain in procurement_requests waiting to be placed.
-    let combined = [...validPlaced];
+    // Include approved procurement requests so they immediately appear in Placed Orders across devices
+    const approvedProc = (procList || []).filter(
+      (o: any) => o && 
+        o.id !== 'ORD-TC-1024' && 
+        !String(o.id).startsWith('#ORD-99') && 
+        !String(o.id).startsWith('TC-0000') && 
+        isApprovedStatus(o.status) &&
+        o.status !== 'Pending Approval' &&
+        o.status !== 'Draft Order' &&
+        o.status !== 'Rejected'
+    );
+
+    let combined = [...validPlaced, ...approvedProc];
 
     const uniqueMap = new Map<string, any>();
     combined.forEach(item => {
@@ -1256,19 +1267,14 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
       const merchantUserId = (localStorage.getItem('userId') || '').trim().toLowerCase();
 
       const savedPlaced = JSON.parse(localStorage.getItem('placed_orders') || '[]');
-      // Clean up any stray unplaced/approved indents from placed_orders cache
-      const cleanedSavedPlaced = savedPlaced.filter((o: any) => o && String(o.status || '').trim().toLowerCase() !== 'approved');
-      if (cleanedSavedPlaced.length !== savedPlaced.length) {
-        localStorage.setItem('placed_orders', JSON.stringify(cleanedSavedPlaced));
-      }
 
       // 1. Read local storage first for INSTANT local rendering (0ms delay)
       const savedProcurements = JSON.parse(localStorage.getItem('procurement_requests') || '[]');
       const localArrivals = JSON.parse(localStorage.getItem('arrival_entry_data_v4') || '[]');
 
       const localOrders = isMerchant
-        ? buildMerchantOrders(cleanedSavedPlaced, savedProcurements, localArrivals, merchantName, merchantEmail, merchantUserId)
-        : buildAdminOrders(cleanedSavedPlaced, savedProcurements, localArrivals);
+        ? buildMerchantOrders(savedPlaced, savedProcurements, localArrivals, merchantName, merchantEmail, merchantUserId)
+        : buildAdminOrders(savedPlaced, savedProcurements, localArrivals);
 
       if (localOrders.length > 0) {
         setCurrentPlacedOrders(localOrders);
@@ -1283,13 +1289,6 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
         getCollectionDocs('procurement_requests').catch(() => []),
         getCollectionDocs('arrival_entries').catch(() => [])
       ]);
-
-      // Purge any accidental 'Approved' unplaced docs from cloud placed_orders collection
-      cloudPlaced.forEach((cp: any) => {
-        if (cp && cp.id && String(cp.status || '').trim().toLowerCase() === 'approved') {
-          deleteCollectionDoc('placed_orders', cp.id).catch(() => {});
-        }
-      });
 
       let finalArrivals = [...localArrivals];
       if (cloudArrivals && cloudArrivals.length > 0) {
@@ -1333,6 +1332,31 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
 
   useEffect(() => {
     loadOrders();
+  }, [isMerchant]);
+
+  // Real-time Firestore listeners for immediate cross-device sync
+  useEffect(() => {
+    let isMounted = true;
+    let unsubPlaced: (() => void) | null = null;
+    let unsubProc: (() => void) | null = null;
+
+    try {
+      unsubPlaced = onSnapshot(collection(db, 'placed_orders'), () => {
+        if (isMounted) loadOrders();
+      }, (err) => console.warn('Placed orders snapshot notice:', err?.message || err));
+
+      unsubProc = onSnapshot(collection(db, 'procurement_requests'), () => {
+        if (isMounted) loadOrders();
+      }, (err) => console.warn('Procurement requests snapshot notice in PlacedOrders:', err?.message || err));
+    } catch (e) {
+      console.warn('Real-time listener setup notice in PlacedOrders:', e);
+    }
+
+    return () => {
+      isMounted = false;
+      if (unsubPlaced) unsubPlaced();
+      if (unsubProc) unsubProc();
+    };
   }, [isMerchant]);
 
   // Intercept Ctrl+P / Cmd+P while A4 Purchase Order preview modal is open
@@ -1422,6 +1446,50 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
     }
     setIsMailCopied(true);
     setTimeout(() => setIsMailCopied(false), 2000);
+  };
+
+  const handleUpdatePoDetail = (subIdx: number, field: 'loadingDays' | 'unloadingPoint', val: any) => {
+    if (!poOrder) return;
+    const currentSubs = (poOrder.originalOrders && poOrder.originalOrders.length > 0)
+      ? poOrder.originalOrders.map((sub: any) => ({ ...sub }))
+      : [{
+          id: poOrder.id,
+          buyer: poOrder.buyer || "Authorized Merchant",
+          product: poOrder.items?.replace(/\(\d+.*$/, '').trim() || poOrder.product || "KESHAR KALI",
+          qty: parseFloat(poOrder.qty || poOrder.items?.match(/\d+/)?.[0] || '80'),
+          rate: parseFloat(poOrder.rate || '8400') || 8400,
+          date: poOrder.date || new Date(),
+          loadingDays: poOrder.loadingDays !== undefined ? poOrder.loadingDays : 3,
+          unloadingPoint: poOrder.unloadingPoint || 'shop'
+        }];
+
+    if (currentSubs[subIdx]) {
+      currentSubs[subIdx][field] = val;
+    }
+
+    const updatedPo = {
+      ...poOrder,
+      originalOrders: currentSubs,
+      loadingDays: field === 'loadingDays' ? val : (poOrder.loadingDays !== undefined ? poOrder.loadingDays : 3),
+      unloadingPoint: field === 'unloadingPoint' ? val : (poOrder.unloadingPoint || 'shop')
+    };
+
+    setPoOrder(updatedPo);
+
+    try {
+      const raw = localStorage.getItem('placed_orders');
+      if (raw) {
+        const list = JSON.parse(raw);
+        const idx = list.findIndex((o: any) => String(o.id) === String(poOrder.id));
+        if (idx !== -1) {
+          list[idx] = { ...list[idx], ...updatedPo };
+          localStorage.setItem('placed_orders', JSON.stringify(list));
+        }
+      }
+      setCurrentPlacedOrders(prev => prev.map(o => String(o.id) === String(poOrder.id) ? { ...o, ...updatedPo } : o));
+    } catch (e) {
+      console.warn("Error updating placed_orders with edited PO details:", e);
+    }
   };
 
   const handleOpenA4Preview = (order: any, e?: React.MouseEvent) => {
@@ -2141,7 +2209,16 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
           <h1 className="text-3xl font-black tracking-tight">Logistics Pipeline</h1>
           <p className="text-secondary text-sm font-medium">Tracking and history of all procurement shipments with Firestore integration.</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          <button 
+            type="button"
+            onClick={() => navigate('/orders')}
+            className="flex items-center gap-2 px-5 py-2.5 bg-primary hover:bg-primary/95 text-on-primary rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md shadow-primary/20 hover:scale-105 active:scale-95 cursor-pointer"
+            title="Create and book a manual procurement order"
+          >
+            <Plus className="w-4 h-4 text-on-primary" />
+            <span>Create Manual Order</span>
+          </button>
           <button 
             type="button"
             onClick={() => {
@@ -2548,7 +2625,17 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {/* View / Edit PO button */}
+                        <button 
+                          onClick={(e) => handleOpenPO(order, e)}
+                          className="btn-tactile flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 hover:bg-primary text-primary hover:text-on-primary rounded-lg text-[10px] font-black uppercase tracking-wider transition-all border border-primary/25 cursor-pointer shadow-xs hover:scale-105"
+                          title="Open Purchase Order to edit loading days, unloading point, and dispatch to supplier"
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                          View / Edit PO
+                        </button>
+
                         {/* Share summary button */}
                         <button 
                           onClick={(e) => handleOpenShare(order, e)}
@@ -2808,17 +2895,15 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
               }];
 
           const handleCopyEmailHTML = () => {
-            const htmlContainer = document.getElementById('po-email-preview-container');
-            if (!htmlContainer) return;
-            const htmlContent = htmlContainer.innerHTML;
+            const emailHtml = generateSupplierPOEmailHtml(supplierName, poOrder, subOrders);
             const textContent = `Tejas Canvassing\nBangalore\n\nDear ${supplierName.toUpperCase()},\n\nToday's orders:\n\n` + 
               subOrders.map((s: any) => {
                 const profile = getBuyerProfile(s.buyer);
-                return `- ${s.buyer} (${s.product || 'KESHAR KALI'}): ${s.qty} QTLS @ Rate ${s.rate || 8000}\n  Address: ${profile.address}\n  GSTIN: ${profile.gstin} | Phone: ${profile.phone}`;
+                return `- ${s.buyer} (${s.product || 'KESHAR KALI'}): ${s.qty} QTLS @ Rate ${s.rate || 8000}\n  Address: ${profile.address}\n  GSTIN: ${profile.gstin} | Phone: ${profile.phone}\n  Loading days: ${s.loadingDays !== undefined ? s.loadingDays : 3} | Unloading point: ${s.unloadingPoint || 'shop'}`;
               }).join('\n\n');
             
-            if (navigator.clipboard && window.ClipboardItem) {
-              const blobHTML = new Blob([htmlContent], { type: 'text/html' });
+            try {
+              const blobHTML = new Blob([emailHtml], { type: 'text/html' });
               const blobText = new Blob([textContent], { type: 'text/plain' });
               const item = new ClipboardItem({
                 'text/html': blobHTML,
@@ -2829,12 +2914,12 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                 setTimeout(() => setIsMailCopied(false), 2000);
               }).catch(err => {
                 console.error("Failed to copy rich HTML email:", err);
-                navigator.clipboard.writeText(htmlContent);
+                navigator.clipboard.writeText(emailHtml);
                 setIsMailCopied(true);
                 setTimeout(() => setIsMailCopied(false), 2000);
               });
-            } else {
-              navigator.clipboard.writeText(htmlContent);
+            } catch (e) {
+              navigator.clipboard.writeText(emailHtml);
               setIsMailCopied(true);
               setTimeout(() => setIsMailCopied(false), 2000);
             }
@@ -3040,13 +3125,66 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                                       <td className="p-3.5 border border-[#b0b0b0] text-center font-normal text-black">
                                         {subRate}
                                       </td>
-                                      <td className="p-3.5 border border-[#b0b0b0] text-left text-black space-y-1 text-xs leading-normal">
+                                      <td className="p-3.5 border border-[#b0b0b0] text-left text-black space-y-2 text-xs leading-normal bg-amber-50/20">
                                         <div>
-                                          <strong className="font-bold">No of days for loading:</strong><br/>
-                                          <span>{loadingDays}</span>
+                                          <strong className="font-bold text-[11px] block text-black">No of days for loading:</strong>
+                                          <div className="flex items-center gap-1.5 mt-1">
+                                            <input
+                                              type="number"
+                                              min="0"
+                                              max="30"
+                                              value={loadingDays}
+                                              onChange={(e) => handleUpdatePoDetail(sIdx, 'loadingDays', parseInt(e.target.value) || 0)}
+                                              className="w-16 px-2 py-1 text-xs font-bold border border-slate-400 rounded bg-white text-black outline-none focus:ring-2 focus:ring-primary font-mono shadow-2xs"
+                                              title="Click to edit loading days"
+                                            />
+                                            <span className="text-[10px] text-slate-600 font-semibold">days</span>
+                                          </div>
+                                          <div className="flex gap-1 pt-1 flex-wrap">
+                                            {[1, 2, 3, 5, 7].map((d) => (
+                                              <button
+                                                key={d}
+                                                type="button"
+                                                onClick={() => handleUpdatePoDetail(sIdx, 'loadingDays', d)}
+                                                className={cn(
+                                                  "text-[9px] px-1.5 py-0.5 rounded border transition-colors cursor-pointer",
+                                                  loadingDays === d
+                                                    ? "bg-amber-600 text-white border-amber-600 font-bold"
+                                                    : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
+                                                )}
+                                              >
+                                                {d}d
+                                              </button>
+                                            ))}
+                                          </div>
                                         </div>
-                                        <div className="pt-0.5">
-                                          <strong className="font-bold">Unloading Point:</strong> {unloadingPoint}
+                                        <div className="pt-1.5 border-t border-dashed border-slate-300 space-y-1">
+                                          <strong className="font-bold text-[11px] block text-black">Unloading Point:</strong>
+                                          <input
+                                            type="text"
+                                            value={unloadingPoint}
+                                            onChange={(e) => handleUpdatePoDetail(sIdx, 'unloadingPoint', e.target.value)}
+                                            placeholder="shop, godown..."
+                                            className="w-full px-2 py-1 text-xs border border-slate-400 rounded bg-white text-black outline-none focus:ring-2 focus:ring-primary shadow-2xs font-medium"
+                                            title="Click to edit unloading point"
+                                          />
+                                          <div className="flex gap-1 pt-0.5 flex-wrap">
+                                            {['shop', 'godown', 'warehouse', 'APMC Yard'].map((pt) => (
+                                              <button
+                                                key={pt}
+                                                type="button"
+                                                onClick={() => handleUpdatePoDetail(sIdx, 'unloadingPoint', pt)}
+                                                className={cn(
+                                                  "text-[9px] px-1.5 py-0.5 rounded border transition-colors cursor-pointer",
+                                                  (unloadingPoint || '').toLowerCase() === pt.toLowerCase()
+                                                    ? "bg-amber-600 text-white border-amber-600 font-bold"
+                                                    : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
+                                                )}
+                                              >
+                                                {pt}
+                                              </button>
+                                            ))}
+                                          </div>
                                         </div>
                                       </td>
                                     </tr>

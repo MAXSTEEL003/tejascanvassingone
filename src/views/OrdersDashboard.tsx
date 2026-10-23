@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { ShoppingCart, TrendingUp, Activity, ChevronRight, MoreVertical, Package, Truck, AlertCircle, Search, Filter, CheckCircle2, ChevronDown, ChevronUp, Plus, X, Lock, CreditCard, RefreshCw, Trash2, Loader2, Clock, History, Eye, ArrowUpRight, Archive, Copy, MessageSquare, User, Inbox, Check } from 'lucide-react';
+import { ShoppingCart, TrendingUp, Activity, ChevronRight, MoreVertical, Package, Truck, AlertCircle, Search, Filter, CheckCircle2, ChevronDown, ChevronUp, Plus, PlusCircle, X, Lock, CreditCard, RefreshCw, Trash2, Loader2, Clock, History, Eye, ArrowUpRight, Archive, Copy, MessageSquare, User, Inbox, Check, Edit3 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { AreaChart, Area, XAxis, ResponsiveContainer, Tooltip, CartesianGrid } from 'recharts';
 import { cn, formatINR, getRegisteredSuppliers, getPrimaryRegisteredSupplier, sanitizeSupplierName } from '../lib/utils';
@@ -184,9 +184,23 @@ export const normalizeOrder = (raw: any): any => {
   let rawSupplier = raw.supplier || raw.millerName || raw.assignedSupplier || '';
   const supplier = sanitizeSupplierName(rawSupplier, 'Pending');
 
+  let orderType = raw.orderType;
+  if (!orderType) {
+    if (
+      String(raw.id || '').toUpperCase().startsWith('MA-') ||
+      raw.isManual === true ||
+      raw.source === 'manual'
+    ) {
+      orderType = 'manual';
+    } else {
+      orderType = 'store';
+    }
+  }
+
   return {
     ...raw,
     id: raw.id,
+    orderType,
     buyer,
     product,
     qty,
@@ -196,7 +210,9 @@ export const normalizeOrder = (raw: any): any => {
     initials,
     date,
     status,
-    supplier
+    supplier,
+    loadingDays: raw.loadingDays !== undefined ? raw.loadingDays : 3,
+    unloadingPoint: raw.unloadingPoint || 'shop'
   };
 };
 
@@ -246,6 +262,7 @@ export default function OrdersDashboard() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterSupplier, setFilterSupplier] = useState('');
   const [filterProduct, setFilterProduct] = useState('');
+  const [filterOrderType, setFilterOrderType] = useState<'all' | 'manual' | 'store'>('all');
   const [assignedBatchSupplier, setAssignedBatchSupplier] = useState(() => getPrimaryRegisteredSupplier(''));
   const [autoDispatchStatus, setAutoDispatchStatus] = useState<{
     isSending: boolean;
@@ -526,8 +543,45 @@ export default function OrdersDashboard() {
     product: '',
     qty: '',
     rate: '',
-    urgency: 'Standard' as 'Critical' | 'Standard' | 'High'
+    urgency: 'Standard' as 'Critical' | 'Standard' | 'High',
+    loadingDays: 3,
+    unloadingPoint: 'shop'
   });
+
+  const [editingLogisticsId, setEditingLogisticsId] = useState<string | null>(null);
+  const [editLogisticsDays, setEditLogisticsDays] = useState<number>(3);
+  const [editLogisticsPoint, setEditLogisticsPoint] = useState<string>('shop');
+
+  const handleSaveOrderLogistics = (orderId: string) => {
+    const updated = currentOrders.map(o => {
+      if (String(o.id) === String(orderId)) {
+        return {
+          ...o,
+          loadingDays: editLogisticsDays,
+          unloadingPoint: editLogisticsPoint
+        };
+      }
+      return o;
+    });
+    setCurrentOrders(updated);
+    try {
+      const raw = localStorage.getItem('procurement_requests');
+      if (raw) {
+        const saved = JSON.parse(raw);
+        const nextSaved = saved.map((o: any) => 
+          String(o.id) === String(orderId) ? { ...o, loadingDays: editLogisticsDays, unloadingPoint: editLogisticsPoint } : o
+        );
+        localStorage.setItem('procurement_requests', JSON.stringify(nextSaved));
+      }
+      const targetOrder = updated.find(o => String(o.id) === String(orderId));
+      if (targetOrder) {
+        setCollectionDoc('procurement_requests', orderId, targetOrder).catch(() => {});
+      }
+    } catch (e) {
+      console.warn("Error saving order logistics:", e);
+    }
+    setEditingLogisticsId(null);
+  };
 
   const [inventoryProducts, setInventoryProducts] = useState<any[]>(() => {
     try {
@@ -825,7 +879,16 @@ export default function OrdersDashboard() {
     return saved
       .filter((o: any) => {
         if (!o || !o.id) return false;
-        if (o.status === 'Rejected' || o.status === 'Completed' || o.status === 'Archived' || o.isArchived || String(o.id).startsWith('#ORD-99') || String(o.id).startsWith('TC-0000')) return false;
+        if (
+          o.status === 'Approved' || 
+          o.status === 'Accepted' || 
+          o.status === 'Rejected' || 
+          o.status === 'Completed' || 
+          o.status === 'Archived' || 
+          o.isArchived || 
+          String(o.id).startsWith('#ORD-99') || 
+          String(o.id).startsWith('TC-0000')
+        ) return false;
         const oNorm = String(o.id || '').trim().toLowerCase().replace(/^#/, '');
         return !deletedSet.has(oNorm);
       })
@@ -861,7 +924,17 @@ export default function OrdersDashboard() {
         const cloudOrdersMap = new Map<string, any>();
         snapshot.forEach((doc) => {
           const data = doc.data();
-          if (data && data.status !== 'Rejected' && data.status !== 'Completed' && data.status !== 'Archived' && !data.isArchived && !String(doc.id).startsWith('#ORD-99') && !String(doc.id).startsWith('TC-0000')) {
+          if (
+            data && 
+            data.status !== 'Approved' &&
+            data.status !== 'Accepted' &&
+            data.status !== 'Rejected' && 
+            data.status !== 'Completed' && 
+            data.status !== 'Archived' && 
+            !data.isArchived && 
+            !String(doc.id).startsWith('#ORD-99') && 
+            !String(doc.id).startsWith('TC-0000')
+          ) {
             const rawObj = normalizeOrder({ id: doc.id, ...data });
             const normKey = String(rawObj.id || doc.id).trim().toLowerCase().replace(/^#/, '');
             if (!deletedSet.has(normKey) && !cloudOrdersMap.has(normKey)) {
@@ -890,7 +963,14 @@ export default function OrdersDashboard() {
           if (!raw || !raw.id) return;
           const normKey = String(raw.id).trim().toLowerCase().replace(/^#/, '');
           if (deletedSet.has(normKey)) return;
-          if (raw.status === 'Rejected' || raw.status === 'Completed' || raw.status === 'Archived' || raw.isArchived) return;
+          if (
+            raw.status === 'Approved' ||
+            raw.status === 'Accepted' ||
+            raw.status === 'Rejected' || 
+            raw.status === 'Completed' || 
+            raw.status === 'Archived' || 
+            raw.isArchived
+          ) return;
           if (String(raw.id).startsWith('#ORD-99') || String(raw.id).startsWith('TC-0000')) return;
 
           if (!mergedMap.has(normKey)) {
@@ -939,6 +1019,14 @@ export default function OrdersDashboard() {
         const mergedMap = new Map<string, any>();
         prev.forEach(o => {
           if (!o || !o.id) return;
+          if (
+            o.status === 'Approved' ||
+            o.status === 'Accepted' ||
+            o.status === 'Rejected' || 
+            o.status === 'Completed' || 
+            o.status === 'Archived' || 
+            o.isArchived
+          ) return;
           const normKey = String(o.id).trim().toLowerCase().replace(/^#/, '');
           if (!deletedSet.has(normKey)) mergedMap.set(normKey, o);
         });
@@ -947,7 +1035,14 @@ export default function OrdersDashboard() {
           if (!raw || !raw.id) return;
           const normKey = String(raw.id).trim().toLowerCase().replace(/^#/, '');
           if (deletedSet.has(normKey)) return;
-          if (raw.status === 'Rejected' || raw.status === 'Completed' || raw.status === 'Archived' || raw.isArchived) return;
+          if (
+            raw.status === 'Approved' ||
+            raw.status === 'Accepted' ||
+            raw.status === 'Rejected' || 
+            raw.status === 'Completed' || 
+            raw.status === 'Archived' || 
+            raw.isArchived
+          ) return;
           if (String(raw.id).startsWith('#ORD-99') || String(raw.id).startsWith('TC-0000')) return;
 
           if (!mergedMap.has(normKey)) {
@@ -1012,41 +1107,75 @@ export default function OrdersDashboard() {
                            idStr.toLowerCase().includes(query);
       const matchesSupplier = filterSupplier === '' || (order as any).supplier === filterSupplier;
       const matchesProduct = filterProduct === '' || (order as any).product === filterProduct;
+      const matchesOrderType = filterOrderType === 'all' || (order as any).orderType === filterOrderType;
       
-      return matchesSearch && matchesSupplier && matchesProduct;
+      return matchesSearch && matchesSupplier && matchesProduct && matchesOrderType;
     }).sort((a, b) => {
       const timeA = parseCustomDate(a);
       const timeB = parseCustomDate(b);
       if (timeA !== timeB) return timeB - timeA;
       return String(b.id || '').localeCompare(String(a.id || ''));
     });
-  }, [currentOrders, searchQuery, filterSupplier, filterProduct]);
+  }, [currentOrders, searchQuery, filterSupplier, filterProduct, filterOrderType]);
 
   const handleAction = async (id: string, action: 'accept' | 'reject') => {
     setActionLoadingId(id);
     try {
       const nextStatus = action === 'accept' ? 'Approved' : 'Rejected';
-      const nextOrders = currentOrders.map(o => {
-        if (o.id === id) {
-          return { ...o, status: nextStatus };
-        }
-        return o;
-      }).filter(o => o.status !== 'Rejected');
-      
+      const orderToUpdate = currentOrders.find(o => o.id === id);
+      const nowIso = new Date().toISOString();
+      const updatedOrder = orderToUpdate 
+        ? { 
+            ...orderToUpdate, 
+            status: nextStatus, 
+            isArchived: true, 
+            approvedAt: action === 'accept' ? nowIso : undefined, 
+            rejectedAt: action === 'reject' ? nowIso : undefined 
+          }
+        : null;
+
+      // 1. Immediately remove from active currentOrders (Active Procurement Requests)
+      const nextOrders = currentOrders.filter(o => o.id !== id);
       setCurrentOrders(nextOrders);
       localStorage.setItem('procurement_requests', JSON.stringify(nextOrders));
 
-      if (action === 'reject') {
-        const orderToUpdate = currentOrders.find(o => o.id === id);
-        if (orderToUpdate) {
-          await setCollectionDoc('procurement_requests', id, { ...orderToUpdate, status: 'Rejected' });
-        }
-      } else {
-        const orderToUpdate = currentOrders.find(o => o.id === id);
-        if (orderToUpdate) {
-          const approvedObj = { ...orderToUpdate, status: 'Approved', approvedAt: new Date().toISOString() };
-          await setCollectionDoc('procurement_requests', id, approvedObj);
-        }
+      // 2. Add to local archivedOrders list immediately so it is available in Archived Orders
+      if (updatedOrder) {
+        const normKey = String(updatedOrder.id).trim().toLowerCase().replace(/^#/, '');
+        setArchivedOrders(prev => [
+          normalizeOrder(updatedOrder),
+          ...prev.filter(o => String(o.id).trim().toLowerCase().replace(/^#/, '') !== normKey)
+        ]);
+      }
+
+      // 3. Persist update to Firestore procurement_requests
+      if (updatedOrder) {
+        await setCollectionDoc('procurement_requests', id, updatedOrder);
+      }
+
+      // 4. If accepted/approved, ALSO save into placed_orders so Placed Orders views show it immediately across all devices
+      if (action === 'accept' && updatedOrder) {
+        const placedDoc = {
+          ...updatedOrder,
+          status: 'Approved',
+          progress: 35,
+          placedAt: nowIso,
+          date: updatedOrder.date || (() => {
+            const d = new Date();
+            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            return `${d.getDate()}-${monthNames[d.getMonth()]}-${d.getFullYear()}`;
+          })()
+        };
+        await setCollectionDoc('placed_orders', id, placedDoc);
+
+        // Also add to local placed_orders in localStorage
+        try {
+          const rawPlaced = localStorage.getItem('placed_orders');
+          const currentPlaced = rawPlaced ? JSON.parse(rawPlaced) : [];
+          const normKey = String(id).trim().toLowerCase().replace(/^#/, '');
+          const filteredPlaced = currentPlaced.filter((p: any) => String(p.id).trim().toLowerCase().replace(/^#/, '') !== normKey);
+          localStorage.setItem('placed_orders', JSON.stringify([placedDoc, ...filteredPlaced]));
+        } catch {}
       }
     } catch (err) {
       console.error('Failed to update action in database:', err);
@@ -1150,6 +1279,7 @@ export default function OrdersDashboard() {
   const [archivedSearchQuery, setArchivedSearchQuery] = useState('');
   const [archivedSupplierFilter, setArchivedSupplierFilter] = useState('');
   const [archivedProductFilter, setArchivedProductFilter] = useState('');
+  const [archivedStatusFilter, setArchivedStatusFilter] = useState<'all' | 'approved' | 'rejected'>('all');
   const [archivedFeedback, setArchivedFeedback] = useState<string | null>(null);
   const [selectedArchivedOrder, setSelectedArchivedOrder] = useState<any | null>(null);
 
@@ -1217,9 +1347,17 @@ export default function OrdersDashboard() {
         }
       });
 
-      // 3. Completed or old accepted from cloud
+      // 3. Completed, Approved, Accepted, or Rejected requests from cloud & local storage
       cloudRequests.forEach((req: any) => {
-        if (req && (req.status === 'Completed' || req.status === 'Archived' || req.status === 'Settled' || req.isArchived)) {
+        if (req && (
+          req.status === 'Approved' ||
+          req.status === 'Accepted' ||
+          req.status === 'Rejected' ||
+          req.status === 'Completed' ||
+          req.status === 'Archived' ||
+          req.status === 'Settled' ||
+          req.isArchived
+        )) {
           const normKey = String(req.id).trim().toLowerCase().replace(/^#/, '');
           if (!map.has(normKey)) {
             map.set(normKey, normalizeOrder({
@@ -1308,9 +1446,18 @@ export default function OrdersDashboard() {
       const matchesSupplier = !archivedSupplierFilter || order.supplier === archivedSupplierFilter;
       const matchesProduct = !archivedProductFilter || order.product === archivedProductFilter;
 
-      return matchesQuery && matchesSupplier && matchesProduct;
+      const s = String(order.status || '').toLowerCase().trim();
+      const isApproved = s === 'approved' || s === 'accepted' || s === 'completed' || s === 'settled';
+      const isRejected = s === 'rejected';
+
+      const matchesStatus = 
+        archivedStatusFilter === 'all' ? true :
+        archivedStatusFilter === 'approved' ? isApproved :
+        archivedStatusFilter === 'rejected' ? isRejected : true;
+
+      return matchesQuery && matchesSupplier && matchesProduct && matchesStatus;
     });
-  }, [archivedOrders, archivedSearchQuery, archivedSupplierFilter, archivedProductFilter]);
+  }, [archivedOrders, archivedSearchQuery, archivedSupplierFilter, archivedProductFilter, archivedStatusFilter]);
 
   const toggleOrder = (id: string) => {
     const order = currentOrders.find(o => o.id === id);
@@ -1660,8 +1807,11 @@ export default function OrdersDashboard() {
     const rawBuyerPhone = ((newOrder as any).phone || buyerProfile?.phone || localStorage.getItem('userPhone') || '9945351166').replace(/[^0-9]/g, '');
     const cleanBuyerPhone = rawBuyerPhone.length >= 10 ? rawBuyerPhone.slice(-10) : '9945351166';
 
+    const loadingDaysNum = parseInt(String(newOrder.loadingDays), 10);
     const orderToAdd = normalizeOrder({
       id: maId,
+      orderType: 'manual',
+      isManual: true,
       date: dateStr,
       createdAt: now.toISOString(),
       buyer: newOrder.buyer.trim(),
@@ -1673,7 +1823,9 @@ export default function OrdersDashboard() {
       urgency: newOrder.urgency || 'Standard',
       status: 'Pending Approval',
       color: newOrder.urgency === 'Critical' ? 'red' : newOrder.urgency === 'High' ? 'orange' : 'zinc',
-      phone: cleanBuyerPhone || undefined
+      phone: cleanBuyerPhone || undefined,
+      loadingDays: isNaN(loadingDaysNum) ? 3 : loadingDaysNum,
+      unloadingPoint: (newOrder.unloadingPoint || 'shop').trim()
     });
 
     const updatedOrders = [orderToAdd, ...currentOrders.filter(o => o && String(o.id).toLowerCase() !== maId.toLowerCase())];
@@ -1685,6 +1837,7 @@ export default function OrdersDashboard() {
     // Reset filters so the new order is immediately visible on the table!
     setFilterSupplier('');
     setFilterProduct('');
+    setFilterOrderType('all');
     setSearchQuery('');
 
     setCollectionDoc('procurement_requests', maId, orderToAdd).catch(err => {
@@ -1695,7 +1848,7 @@ export default function OrdersDashboard() {
     window.dispatchEvent(new Event('procurement-updated'));
 
     setIsCreateModalOpen(false);
-    setNewOrder({ buyer: '', phone: '', supplier: '', product: '', qty: '', rate: '', urgency: 'Standard' });
+    setNewOrder({ buyer: '', phone: '', supplier: '', product: '', qty: '', rate: '', urgency: 'Standard', loadingDays: 3, unloadingPoint: 'shop' });
   };
 
   return (
@@ -1719,10 +1872,11 @@ export default function OrdersDashboard() {
           )}
           <button
             onClick={() => setIsCreateModalOpen(true)}
-            className="bg-primary text-on-primary px-5 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 hover:bg-primary/95 transition-all shadow-md hover:shadow-primary/10 hover:scale-[1.02] active:scale-[0.98]"
+            className="bg-primary hover:bg-primary/90 text-on-primary px-6 py-3.5 sm:px-7 sm:py-3.5 rounded-2xl text-xs sm:text-sm font-black uppercase tracking-wider flex items-center gap-2.5 shadow-xl shadow-primary/25 hover:shadow-primary/40 hover:scale-[1.03] active:scale-[0.97] transition-all cursor-pointer ring-2 ring-primary/30 ring-offset-2 ring-offset-background"
+            title="Create and book a new manual order instantly"
           >
-            <Plus className="w-3.5 h-3.5" />
-            Create Manual Order
+            <PlusCircle className="w-5 h-5 text-on-primary animate-pulse" />
+            <span>Create Manual Order</span>
           </button>
           <div className="bg-amber-500/10 dark:bg-primary/5 px-4 py-2.5 rounded-xl border border-amber-500/20 dark:border-primary/15 flex items-center gap-2.5 shadow-sm">
              <div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
@@ -1817,7 +1971,16 @@ export default function OrdersDashboard() {
                    </h3>
                    <p className="text-[10px] text-slate-500 dark:text-secondary font-semibold uppercase tracking-wider mt-1">Approve, Reject, or Group Active Indents</p>
                 </div>
-                <div className="flex items-center gap-3 self-end sm:self-auto">
+                <div className="flex items-center gap-3 self-end sm:self-auto flex-wrap sm:flex-nowrap">
+                    <button
+                      type="button"
+                      onClick={() => setIsCreateModalOpen(true)}
+                      className="bg-primary hover:bg-primary/90 text-on-primary px-4 py-2.5 sm:px-5 sm:py-2.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 shadow-md shadow-primary/25 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 ring-1 ring-primary/30"
+                      title="Quickly create a manual order right here"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>+ Manual Order</span>
+                    </button>
                     <div className="relative">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 dark:text-secondary/65" />
                       <input 
@@ -1870,9 +2033,23 @@ export default function OrdersDashboard() {
                   <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 dark:text-secondary pointer-events-none" />
                 </div>
 
-                {(filterSupplier || filterProduct || searchQuery) && (
+                {/* Order Type Filter: All / Manual / Store */}
+                <div className="relative">
+                  <select 
+                    value={filterOrderType}
+                    onChange={(e) => setFilterOrderType(e.target.value as 'all' | 'manual' | 'store')}
+                    className="bg-white dark:bg-on-surface/[0.04] hover:bg-slate-50 dark:hover:bg-on-surface/[0.07] border border-slate-200 dark:border-outline-variant/20 rounded-xl py-2 pl-3.5 pr-8 text-[10px] font-bold uppercase tracking-wider outline-none focus:ring-2 focus:ring-primary/15 transition-all appearance-none text-slate-800 dark:text-on-surface cursor-pointer shadow-2xs"
+                  >
+                    <option value="all">All Order Types</option>
+                    <option value="manual">Manual Orders</option>
+                    <option value="store">Store Orders</option>
+                  </select>
+                  <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 dark:text-secondary pointer-events-none" />
+                </div>
+
+                {(filterSupplier || filterProduct || searchQuery || filterOrderType !== 'all') && (
                   <button 
-                    onClick={() => { setFilterSupplier(''); setFilterProduct(''); setSearchQuery(''); }}
+                    onClick={() => { setFilterSupplier(''); setFilterProduct(''); setSearchQuery(''); setFilterOrderType('all'); }}
                     className="text-[9px] font-black uppercase tracking-widest text-primary hover:text-primary/85 bg-primary/10 border border-primary/15 px-3 py-2 rounded-xl transition-all cursor-pointer"
                   >
                     Reset Filters
@@ -2016,8 +2193,18 @@ export default function OrdersDashboard() {
                             >
                               {order.buyer}
                             </button>
-                            <p className="text-[9px] text-secondary/60 font-black uppercase tracking-widest font-mono mt-0.5">
-                              {getOrderBillNo(order.id)} <span className="mx-1 opacity-40">•</span> {order.date}
+                            <p className="text-[9px] text-secondary/60 font-black uppercase tracking-widest font-mono mt-0.5 flex items-center gap-1.5 flex-wrap">
+                              <span>{getOrderBillNo(order.id)}</span>
+                              <span className="opacity-40">•</span>
+                              <span>{order.date}</span>
+                              <span className={cn(
+                                "px-1.5 py-0.2 rounded text-[8px] font-black uppercase tracking-wider inline-flex items-center",
+                                order.orderType === 'manual'
+                                  ? "bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/25"
+                                  : "bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/25"
+                              )}>
+                                {order.orderType === 'manual' ? 'Manual' : 'Store'}
+                              </span>
                             </p>
                          </div>
                       </div>
@@ -2120,6 +2307,9 @@ export default function OrdersDashboard() {
                               <p className="text-sm font-bold text-on-surface uppercase">{order.buyer}</p>
                               <p className="text-[10px] text-secondary/70 font-mono">PO: {getOrderBillNo(order.id)}</p>
                               <p className="text-[10px] text-secondary/70 font-mono">Date: {order.date}</p>
+                              <p className="text-[10px] text-secondary/70 font-mono">
+                                Type: <span className="font-black uppercase text-primary">{order.orderType === 'manual' ? 'Manual Indent' : 'Store Order'}</span>
+                              </p>
                             </div>
 
                             <div className="p-4 rounded-2xl bg-white/5 dark:bg-white/[0.03] border border-white/10 space-y-1.5">
@@ -2157,6 +2347,76 @@ export default function OrdersDashboard() {
                               <p className="text-[10px] text-secondary/70">
                                 {isAccepted ? 'Ready for purchase order grouping' : 'Pending verification review'}
                               </p>
+                            </div>
+
+                            {/* PO Logistics (Loading Days & Unloading Point) */}
+                            <div className="p-4 rounded-2xl bg-amber-500/[0.07] dark:bg-amber-500/[0.04] border border-amber-500/25 space-y-2">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2 text-xs font-bold text-amber-500">
+                                  <Truck className="w-4 h-4" />
+                                  <span>PO Details</span>
+                                </div>
+                                {editingLogisticsId !== order.id ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingLogisticsId(order.id);
+                                      setEditLogisticsDays(order.loadingDays !== undefined ? order.loadingDays : 3);
+                                      setEditLogisticsPoint(order.unloadingPoint || 'shop');
+                                    }}
+                                    className="p-1 rounded-md bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 text-[10px] flex items-center gap-1 font-bold cursor-pointer transition-colors"
+                                    title="Edit loading days and unloading point"
+                                  >
+                                    <Edit3 className="w-3 h-3" />
+                                    <span>Edit</span>
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSaveOrderLogistics(order.id)}
+                                    className="px-2 py-0.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] flex items-center gap-1 font-bold cursor-pointer shadow-xs transition-colors"
+                                  >
+                                    <Check className="w-3 h-3" />
+                                    <span>Save</span>
+                                  </button>
+                                )}
+                              </div>
+
+                              {editingLogisticsId === order.id ? (
+                                <div className="space-y-2 pt-1">
+                                  <div>
+                                    <label className="text-[9px] font-bold text-secondary uppercase block">Loading Days:</label>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      max="30"
+                                      value={editLogisticsDays}
+                                      onChange={(e) => setEditLogisticsDays(parseInt(e.target.value) || 0)}
+                                      className="w-20 px-2 py-1 text-xs font-bold bg-white dark:bg-neutral-900 border border-amber-500/40 rounded text-on-surface font-mono"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-[9px] font-bold text-secondary uppercase block">Unload Point:</label>
+                                    <input
+                                      type="text"
+                                      value={editLogisticsPoint}
+                                      onChange={(e) => setEditLogisticsPoint(e.target.value)}
+                                      className="w-full px-2 py-1 text-xs bg-white dark:bg-neutral-900 border border-amber-500/40 rounded text-on-surface"
+                                    />
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="text-xs space-y-1">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[10px] text-secondary">Loading Days:</span>
+                                    <strong className="font-mono text-amber-700 dark:text-amber-400 font-bold">{order.loadingDays !== undefined ? order.loadingDays : 3} days</strong>
+                                  </div>
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[10px] text-secondary">Unloading:</span>
+                                    <strong className="text-on-surface font-bold capitalize">{order.unloadingPoint || 'shop'}</strong>
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           </div>
 
@@ -2417,9 +2677,23 @@ export default function OrdersDashboard() {
                     <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-secondary pointer-events-none opacity-60" />
                   </div>
 
-                  {(archivedSearchQuery || archivedSupplierFilter) && (
+                  {/* Status Filter: All / Approved / Rejected */}
+                  <div className="relative">
+                    <select 
+                      value={archivedStatusFilter}
+                      onChange={(e) => setArchivedStatusFilter(e.target.value as 'all' | 'approved' | 'rejected')}
+                      className="bg-on-surface/[0.04] hover:bg-on-surface/[0.07] border border-outline-variant/20 rounded-xl py-2 pl-3.5 pr-8 text-[10px] font-black uppercase tracking-wider outline-none focus:ring-2 focus:ring-primary/15 transition-all appearance-none text-on-surface cursor-pointer"
+                    >
+                      <option value="all">All Statuses (Approved & Rejected)</option>
+                      <option value="approved">Approved & Completed</option>
+                      <option value="rejected">Rejected Orders</option>
+                    </select>
+                    <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-secondary pointer-events-none opacity-60" />
+                  </div>
+
+                  {(archivedSearchQuery || archivedSupplierFilter || archivedStatusFilter !== 'all') && (
                     <button 
-                      onClick={() => { setArchivedSearchQuery(''); setArchivedSupplierFilter(''); }}
+                      onClick={() => { setArchivedSearchQuery(''); setArchivedSupplierFilter(''); setArchivedStatusFilter('all'); }}
                       className="text-[9px] font-black uppercase tracking-widest text-primary hover:text-primary/85 bg-primary/10 border border-primary/15 px-3 py-2 rounded-xl transition-all cursor-pointer"
                     >
                       Reset
@@ -2484,10 +2758,17 @@ export default function OrdersDashboard() {
                             </span>
                           </td>
                           <td className="px-6 py-3.5">
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                              <CheckCircle2 className="w-3 h-3" />
-                              {order.status || 'Accepted'}
-                            </span>
+                            {order.status === 'Rejected' ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
+                                <X className="w-3 h-3" />
+                                Rejected
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                                <CheckCircle2 className="w-3 h-3" />
+                                {order.status || 'Approved'}
+                              </span>
+                            )}
                           </td>
                           <td className="px-6 py-3.5 text-right">
                             <div className="flex items-center justify-end gap-2">
@@ -2878,6 +3159,115 @@ export default function OrdersDashboard() {
                   </div>
                 </div>
 
+                {/* Section 03: PO Logistics Details (No of days for loading & Unloading Point) */}
+                <div className="col-span-1 md:col-span-2 pt-4 border-t border-neutral-200 dark:border-neutral-800">
+                  <div className="flex items-center justify-between mb-4 pb-1 border-b border-neutral-100 dark:border-neutral-800">
+                    <h4 className="text-xs font-black uppercase tracking-wider text-primary flex items-center gap-1.5">
+                      <Truck className="w-3.5 h-3.5" />
+                      03. Purchase Order Logistics (PO Details)
+                    </h4>
+                    <span className="text-[10px] text-neutral-500 dark:text-neutral-400 font-semibold">
+                      Directly populates the PO &quot;Details&quot; column
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-amber-500/[0.04] dark:bg-amber-500/[0.02] border border-amber-500/20 p-5 rounded-2xl">
+                    {/* No of days for loading */}
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-neutral-700 dark:text-neutral-300 ml-1">
+                          No of days for loading
+                        </label>
+                        <span className="text-[9px] font-bold text-amber-700 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full font-mono">
+                          {newOrder.loadingDays} Day{newOrder.loadingDays !== 1 ? 's' : ''}
+                        </span>
+                      </div>
+                      <div className="space-y-2">
+                        <input 
+                          type="number" 
+                          min="0"
+                          max="30"
+                          placeholder="3"
+                          value={newOrder.loadingDays}
+                          onChange={(e) => setNewOrder({...newOrder, loadingDays: parseInt(e.target.value) || 0})}
+                          className="w-full bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-primary/20 transition-all text-neutral-900 dark:text-white font-mono"
+                        />
+                        <div className="flex items-center gap-1 flex-wrap">
+                          {[1, 2, 3, 5, 7].map((d) => (
+                            <button
+                              key={d}
+                              type="button"
+                              onClick={() => setNewOrder({...newOrder, loadingDays: d})}
+                              className={cn(
+                                "px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all border cursor-pointer",
+                                newOrder.loadingDays === d
+                                  ? "bg-primary text-on-primary border-primary shadow-xs"
+                                  : "bg-white dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 border-neutral-200 dark:border-neutral-800 hover:border-primary/40"
+                              )}
+                            >
+                              {d}d
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Unloading Point */}
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-neutral-700 dark:text-neutral-300 ml-1">
+                          Unloading Point
+                        </label>
+                        <span className="text-[9px] font-medium text-neutral-500">
+                          Destination
+                        </span>
+                      </div>
+                      <div className="space-y-2">
+                        <input 
+                          type="text" 
+                          placeholder="shop, godown, warehouse..."
+                          value={newOrder.unloadingPoint}
+                          onChange={(e) => setNewOrder({...newOrder, unloadingPoint: e.target.value})}
+                          className="w-full bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-2.5 text-sm font-medium outline-none focus:ring-2 focus:ring-primary/20 transition-all placeholder:text-neutral-400 text-neutral-900 dark:text-white"
+                        />
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {['shop', 'godown', 'warehouse', 'APMC Yard'].map((pt) => (
+                            <button
+                              key={pt}
+                              type="button"
+                              onClick={() => setNewOrder({...newOrder, unloadingPoint: pt})}
+                              className={cn(
+                                "px-2 py-1 rounded-md text-[9px] font-bold uppercase tracking-wider transition-all border cursor-pointer",
+                                (newOrder.unloadingPoint || '').toLowerCase() === pt.toLowerCase()
+                                  ? "bg-amber-600 text-white border-amber-600 shadow-xs"
+                                  : "bg-white dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 border-neutral-200 dark:border-neutral-800 hover:border-amber-500/40"
+                              )}
+                            >
+                              {pt}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Visual PO Preview Tile */}
+                    <div className="space-y-1.5 bg-white dark:bg-neutral-900 p-3.5 rounded-xl border border-neutral-200 dark:border-neutral-800 flex flex-col justify-center">
+                      <span className="text-[9px] font-black uppercase tracking-widest text-neutral-400">
+                        PO Table &quot;Details&quot; Preview:
+                      </span>
+                      <div className="p-2.5 bg-neutral-50 dark:bg-neutral-950 rounded-lg border border-neutral-200/80 dark:border-neutral-800 text-xs font-sans leading-relaxed text-black dark:text-white">
+                        <div>
+                          <strong>No of days for loading:</strong><br />
+                          <span className="font-mono text-amber-600 dark:text-amber-400 font-bold">{newOrder.loadingDays}</span>
+                        </div>
+                        <div className="mt-1 pt-1 border-t border-neutral-200 dark:border-neutral-800">
+                          <strong>Unloading Point:</strong> <span className="font-semibold text-emerald-600 dark:text-emerald-400">{newOrder.unloadingPoint || 'shop'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
               </div>
 
               {/* Action Buttons */}
@@ -2885,16 +3275,17 @@ export default function OrdersDashboard() {
                 <button
                   type="button"
                   onClick={() => setIsCreateModalOpen(false)}
-                  className="px-6 py-3.5 rounded-2xl font-black text-xs uppercase tracking-widest text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-all"
+                  className="px-6 py-3.5 rounded-2xl font-black text-xs uppercase tracking-widest text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-all cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button 
                   onClick={handleCreateOrder}
                   disabled={!newOrder.buyer || !newOrder.qty || !newOrder.rate || !newOrder.product}
-                  className="bg-primary text-on-primary px-8 py-3.5 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:grayscale disabled:scale-100"
+                  className="bg-primary hover:bg-primary/95 text-on-primary px-8 py-4 rounded-2xl font-black text-sm uppercase tracking-wider shadow-xl shadow-primary/25 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:grayscale disabled:scale-100 flex items-center gap-2 cursor-pointer"
                 >
-                  Confirm & Entry System
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Confirm &amp; Book Manual Order</span>
                 </button>
               </div>
             </motion.div>
@@ -3441,6 +3832,22 @@ export default function OrdersDashboard() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Floating Action Button for Instant Manual Order Booking */}
+      <motion.button
+        initial={{ scale: 0, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+        onClick={() => setIsCreateModalOpen(true)}
+        className="fixed bottom-6 right-6 z-40 bg-primary hover:bg-primary/95 text-on-primary pl-4 pr-5 py-3.5 rounded-full shadow-2xl shadow-primary/40 border-2 border-white/20 flex items-center gap-2.5 cursor-pointer backdrop-blur-md group"
+        title="Create Manual Order Instantly"
+      >
+        <div className="w-7 h-7 rounded-full bg-white/20 flex items-center justify-center group-hover:rotate-90 transition-transform duration-300">
+          <Plus className="w-4 h-4 text-white" />
+        </div>
+        <span className="text-xs font-black uppercase tracking-wider text-white">Create Manual Order</span>
+      </motion.button>
     </div>
   );
 }

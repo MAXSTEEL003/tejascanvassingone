@@ -330,7 +330,8 @@ export default function CheckoutView() {
         phone: customerPhone,
         gstin: localStorage.getItem('userGstin') || '29AAGCV7712M1ZP',
         loadingDays: preferredLoadingDays,
-        paymentMethod: 'Pay on Delivery / Mill Settlement'
+        paymentMethod: 'Pay on Delivery / Mill Settlement',
+        orderType: 'store'
       };
 
       // Purge from deleted_procurement_ids in case past deletion exists

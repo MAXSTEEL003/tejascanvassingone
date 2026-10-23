@@ -113,7 +113,7 @@ const DEFAULT_COLS: ColumnConfig[] = [
   { id: 'brand', label: 'BRAND', width: 140, type: 'select', options: BRANDS, group: 'Product' },
   { id: 'partyName', label: 'BUYER (PARTY)', width: 200, type: 'select', options: BUYERS, group: 'Entity' },
   { id: 'noOfDays', label: 'NO. OF DAYS', width: 130, type: 'text', group: 'Logistics' },
-  { id: 'noOfDayRec', label: 'PAYMENT STATUS', width: 140, type: 'select', options: ['Not Cleared', 'Cleared'], group: 'Logistics' },
+  { id: 'noOfDayRec', label: 'PAYMENT STATUS', width: 150, type: 'select', options: ['Not Cleared', 'Cleared'], group: 'Logistics' },
   { id: 'area', label: 'BUYER AREA (SHOP)', width: 160, type: 'text', group: 'Meta' },
   { id: 'billNo', label: 'BILL NO', width: 140, type: 'text', group: 'Meta' },
   { id: 'qty', label: 'QTLS', width: 115, type: 'number', group: 'Weight' },
@@ -845,9 +845,9 @@ export default function ArrivalEntry() {
 
     // 6. Quick Control: Status
     if (quickStatus === 'Not Cleared') {
-      result = result.filter(row => (row?.noOfDayRec || 'Not Cleared') !== 'Cleared');
+      result = result.filter(row => !/^(cleared|clear|paid)$/i.test(String(row?.noOfDayRec || '').trim()));
     } else if (quickStatus === 'Cleared') {
-      result = result.filter(row => row?.noOfDayRec === 'Cleared');
+      result = result.filter(row => /^(cleared|clear|paid)$/i.test(String(row?.noOfDayRec || '').trim()));
     }
 
     // 7. Quick Control: Days Pending
@@ -1059,7 +1059,11 @@ export default function ArrivalEntry() {
     setSelectionRange({ startR: r, startC: c, endR: r, endC: c });
     setIsEditing(true);
 
-    const rawVal = targetRow ? targetRow[col.id] : '';
+    let rawVal = targetRow ? targetRow[col.id] : '';
+    if (col.id === 'noOfDayRec') {
+      const isClr = /^(cleared|clear|paid)$/i.test(String(rawVal || '').trim());
+      rawVal = isClr ? 'Cleared' : 'Not Cleared';
+    }
     setEditValue(rawVal !== undefined && rawVal !== null ? String(rawVal) : '');
 
     setTimeout(() => {
@@ -1684,6 +1688,20 @@ export default function ArrivalEntry() {
           }
           if (col.type === 'date' && val) {
             val = formatDateDisplay(val);
+          } else if (col.id === 'noOfDayRec') {
+            const isCleared = /^(cleared|clear|paid)$/i.test(String(row?.noOfDayRec || '').trim());
+            if (isCleared) {
+              val = 'Cleared';
+            } else if (row && row.date && isValidDate(row.date)) {
+              val = `${getDaysPendingNum(row)} Days Pending`;
+            } else {
+              val = 'Not Cleared';
+            }
+          } else if (col.id === 'noOfDays') {
+            const isCleared = /^(cleared|clear|paid)$/i.test(String(row?.noOfDayRec || '').trim());
+            if (!isCleared && row && row.date && isValidDate(row.date)) {
+              val = `${getDaysPendingNum(row)} Days`;
+            }
           }
           obj[col.label] = val !== undefined && val !== null ? val : '';
         });
@@ -1733,6 +1751,20 @@ export default function ArrivalEntry() {
           }
           if (col.type === 'date' && val) {
             val = formatDateDisplay(val);
+          } else if (col.id === 'noOfDayRec') {
+            const isCleared = /^(cleared|clear|paid)$/i.test(String(row?.noOfDayRec || '').trim());
+            if (isCleared) {
+              val = 'Cleared';
+            } else if (row && row.date && isValidDate(row.date)) {
+              val = `${getDaysPendingNum(row)} Days Pending`;
+            } else {
+              val = 'Not Cleared';
+            }
+          } else if (col.id === 'noOfDays') {
+            const isCleared = /^(cleared|clear|paid)$/i.test(String(row?.noOfDayRec || '').trim());
+            if (!isCleared && row && row.date && isValidDate(row.date)) {
+              val = `${getDaysPendingNum(row)} Days`;
+            }
           }
           return val !== undefined && val !== null ? val : '';
         });
@@ -1851,9 +1883,9 @@ export default function ArrivalEntry() {
 
     // 4. Filter by Status (Pending, Cleared, All)
     if (dueListStatus === 'Pending') {
-      candidateRows = candidateRows.filter(row => (row.noOfDayRec || 'Not Cleared') !== 'Cleared');
+      candidateRows = candidateRows.filter(row => !/^(cleared|clear|paid)$/i.test(String(row.noOfDayRec || '').trim()));
     } else if (dueListStatus === 'Cleared') {
-      candidateRows = candidateRows.filter(row => row.noOfDayRec === 'Cleared');
+      candidateRows = candidateRows.filter(row => /^(cleared|clear|paid)$/i.test(String(row.noOfDayRec || '').trim()));
     }
 
     // 5. Filter by Days Pending
@@ -1978,7 +2010,7 @@ export default function ArrivalEntry() {
       const buyerName = String(row.partyName || '').trim().toUpperCase();
       const millerName = String(row.millerName || '').trim().toUpperCase();
 
-      const isCleared = (row.noOfDayRec || 'Not Cleared') === 'Cleared';
+      const isCleared = /^(cleared|clear|paid)$/i.test(String(row.noOfDayRec || '').trim());
       const daysPending = getDaysPendingNum(row);
       const daysText = isCleared ? 'CLEARED' : `${daysPending} DAYS PENDING`;
 
@@ -2819,8 +2851,9 @@ export default function ArrivalEntry() {
 
                     const hasDate = !!(row && row.date && isValidDate(row.date));
                     const daysNum = getDaysPendingNum(row);
+                    const isRowCleared = /^(cleared|clear|paid)$/i.test(String(row?.noOfDayRec || '').trim());
 
-                    if (explicitVal) {
+                    if (isRowCleared && explicitVal) {
                       displayVal = explicitVal;
                       const matchNum = explicitVal.match(/\d+/);
                       const numForBadge = matchNum ? parseInt(matchNum[0], 10) : NaN;
@@ -2833,7 +2866,7 @@ export default function ArrivalEntry() {
                           daysBadgeClass = "bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300/50 dark:border-rose-800/50 font-bold px-2 py-0.5 rounded text-[11px] leading-tight select-none";
                         }
                       }
-                    } else if (hasDate) {
+                    } else if (hasDate && isMeaningfulRow(row)) {
                       displayVal = `${daysNum} Days`;
                       if (daysNum >= 0 && daysNum <= 14) {
                         daysBadgeClass = "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300/50 dark:border-emerald-800/50 font-bold px-2 py-0.5 rounded text-[11px] leading-tight select-none";
@@ -2842,6 +2875,8 @@ export default function ArrivalEntry() {
                       } else if (daysNum >= 29) {
                         daysBadgeClass = "bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300/50 dark:border-rose-800/50 font-bold px-2 py-0.5 rounded text-[11px] leading-tight select-none";
                       }
+                    } else if (explicitVal) {
+                      displayVal = explicitVal;
                     } else {
                       displayVal = '';
                     }
@@ -2860,7 +2895,7 @@ export default function ArrivalEntry() {
                         "h-full border-r border-outline-variant/20 px-2 flex items-center text-xs truncate relative cursor-cell",
                         isActive && "ring-2 ring-primary ring-inset z-10 bg-primary/[0.04]",
                         isCellInSelection && !isActive && "bg-primary/[0.08]",
-                        col.id === 'noOfDays' ? "justify-center" : (col.type === 'number' || col.type === 'calc' ? "justify-end text-right font-mono" : "justify-start text-on-surface")
+                        (col.id === 'noOfDays' || col.id === 'noOfDayRec') ? "justify-center" : (col.type === 'number' || col.type === 'calc' ? "justify-end text-right font-mono" : "justify-start text-on-surface")
                       )}
                     >
                       {isActive && isEditing ? (
@@ -2904,19 +2939,37 @@ export default function ArrivalEntry() {
                           </span>
                         )
                       ) : col.id === 'noOfDayRec' ? (
-                        displayVal === 'Cleared' ? (
-                          <span className="bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300/50 dark:border-emerald-800/50 font-bold px-2 py-0.5 rounded text-[11px] leading-tight select-none">
-                            Cleared
-                          </span>
-                        ) : displayVal === 'Not Cleared' ? (
-                          <span className="bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300/50 dark:border-amber-800/50 font-bold px-2 py-0.5 rounded text-[11px] leading-tight select-none">
-                            Not Cleared
-                          </span>
-                        ) : (
-                          <span className="text-secondary font-bold text-[11px]">
-                            {String(displayVal ?? '')}
-                          </span>
-                        )
+                        (() => {
+                          const statusStr = String(row?.noOfDayRec || displayVal || '').trim();
+                          const isCleared = /^(cleared|clear|paid)$/i.test(statusStr);
+                          if (isCleared) {
+                            return (
+                              <span className="bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300/50 dark:border-emerald-800/50 font-bold px-2 py-0.5 rounded text-[11px] leading-tight select-none">
+                                Cleared
+                              </span>
+                            );
+                          }
+
+                          const hasMeaningful = isMeaningfulRow(row);
+                          const hasDate = !!(row && row.date && isValidDate(row.date));
+                          if (!hasMeaningful && !hasDate) {
+                            return null;
+                          }
+
+                          const daysNum = getDaysPendingNum(row);
+                          let statusBadgeClass = "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300/50 dark:border-emerald-800/50 font-bold px-2 py-0.5 rounded text-[11px] leading-tight select-none";
+                          if (daysNum >= 15 && daysNum <= 28) {
+                            statusBadgeClass = "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300/50 dark:border-amber-800/50 font-bold px-2 py-0.5 rounded text-[11px] leading-tight select-none";
+                          } else if (daysNum >= 29) {
+                            statusBadgeClass = "bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300/50 dark:border-rose-800/50 font-bold px-2 py-0.5 rounded text-[11px] leading-tight select-none";
+                          }
+
+                          return (
+                            <span className={statusBadgeClass} title={`Arrival: ${row?.date || 'N/A'} - ${daysNum} days elapsed till today`}>
+                              {daysNum} {daysNum === 1 ? 'Day' : 'Days'} Pending
+                            </span>
+                          );
+                        })()
                       ) : col.id === 'billNo' ? (
                         <div className="flex items-center justify-between w-full h-full gap-1 overflow-hidden group/bill">
                           <span className="truncate font-mono font-bold">
