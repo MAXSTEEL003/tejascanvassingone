@@ -3171,7 +3171,7 @@ export default function OrdersDashboard() {
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-amber-500/[0.04] dark:bg-amber-500/[0.02] border border-amber-500/20 p-5 rounded-2xl">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-amber-500/[0.04] dark:bg-amber-500/[0.02] border border-amber-500/20 p-5 rounded-2xl">
                     {/* No of days for loading */}
                     <div className="space-y-2">
                       <div className="flex justify-between items-center">
@@ -3246,22 +3246,6 @@ export default function OrdersDashboard() {
                               {pt}
                             </button>
                           ))}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Visual PO Preview Tile */}
-                    <div className="space-y-1.5 bg-white dark:bg-neutral-900 p-3.5 rounded-xl border border-neutral-200 dark:border-neutral-800 flex flex-col justify-center">
-                      <span className="text-[9px] font-black uppercase tracking-widest text-neutral-400">
-                        PO Table &quot;Details&quot; Preview:
-                      </span>
-                      <div className="p-2.5 bg-neutral-50 dark:bg-neutral-950 rounded-lg border border-neutral-200/80 dark:border-neutral-800 text-xs font-sans leading-relaxed text-black dark:text-white">
-                        <div>
-                          <strong>No of days for loading:</strong><br />
-                          <span className="font-mono text-amber-600 dark:text-amber-400 font-bold">{newOrder.loadingDays}</span>
-                        </div>
-                        <div className="mt-1 pt-1 border-t border-neutral-200 dark:border-neutral-800">
-                          <strong>Unloading Point:</strong> <span className="font-semibold text-emerald-600 dark:text-emerald-400">{newOrder.unloadingPoint || 'shop'}</span>
                         </div>
                       </div>
                     </div>
