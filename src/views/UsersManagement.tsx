@@ -20,13 +20,18 @@ import {
   Lock,
   Users,
   Sparkles,
-  TrendingUp
+  TrendingUp,
+  FileSpreadsheet,
+  Search,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import React, { useState, useEffect } from 'react';
 import { cn, formatINR } from '../lib/utils';
 import { getCollectionDocs, syncCollection, auth, setCollectionDoc, deleteCollectionDoc } from '../lib/firebase';
 import { manageEmployeeServer } from '../lib/auth';
+import ExcelMerchantImportModal from '../components/ExcelMerchantImportModal';
 
 type Category = 'suppliers' | 'buyers' | 'employees';
 
@@ -42,18 +47,26 @@ const initialStakeholders = {
 
 export default function UsersManagement() {
   const [activeTab, setActiveTab] = useState<Category>('buyers');
+  const [isExcelImportOpen, setIsExcelImportOpen] = useState(false);
+  const [tableSearch, setTableSearch] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+
   const [stakeholders, setStakeholders] = useState<any>(() => {
     try {
       const saved = localStorage.getItem('stakeholders_v2');
       const regSuppliers = JSON.parse(localStorage.getItem('registered_suppliers') || '[]');
+
       if (saved) {
         const parsed = JSON.parse(saved);
         const suppliersList = Array.isArray(parsed.suppliers) && parsed.suppliers.length > 0 
           ? parsed.suppliers 
           : (Array.isArray(regSuppliers) ? regSuppliers : []);
+        const buyersList = Array.isArray(parsed.buyers) ? parsed.buyers : [];
+
         return {
           suppliers: suppliersList,
-          buyers: Array.isArray(parsed.buyers) ? parsed.buyers : [],
+          buyers: buyersList,
           employees: Array.isArray(parsed.employees) ? parsed.employees : initialStakeholders.employees
         };
       } else if (Array.isArray(regSuppliers) && regSuppliers.length > 0) {
@@ -289,6 +302,59 @@ export default function UsersManagement() {
     setTimeout(() => setActionSuccessMsg(null), 3000);
 
     window.dispatchEvent(new Event('storage'));
+  };
+
+  const handleImportMerchantsComplete = (imported: any[], mode: 'merge' | 'replace') => {
+    setStakeholders((prev: any) => {
+      let nextBuyers: any[] = [];
+      if (mode === 'replace') {
+        nextBuyers = imported;
+      } else {
+        const existing = [...(prev.buyers || [])];
+        imported.forEach((imp: any) => {
+          const idx = existing.findIndex((e: any) => 
+            (e.id && e.id === imp.id) || 
+            (e.name && e.name.toLowerCase().trim() === imp.name.toLowerCase().trim()) ||
+            (e.gstin && imp.gstin && e.gstin.toLowerCase().trim() === imp.gstin.toLowerCase().trim())
+          );
+          if (idx !== -1) {
+            existing[idx] = { ...existing[idx], ...imp };
+          } else {
+            existing.push(imp);
+          }
+        });
+        nextBuyers = existing;
+      }
+
+      const updated = {
+        ...prev,
+        buyers: nextBuyers
+      };
+
+      try {
+        localStorage.setItem('stakeholders_v2', JSON.stringify(updated));
+      } catch (e) {}
+
+      // Gentle background cloud sync in small batches to preserve browser responsiveness
+      setTimeout(async () => {
+        const CHUNK_SIZE = 10;
+        for (let i = 0; i < imported.length; i += CHUNK_SIZE) {
+          const chunk = imported.slice(i, i + CHUNK_SIZE);
+          await Promise.all(
+            chunk.map(m => setCollectionDoc('stakeholders', m.id, m).catch(() => {}))
+          );
+          await new Promise(r => setTimeout(r, 100));
+        }
+      }, 500);
+
+      setActionSuccessMsg(`Successfully imported ${imported.length} buyers! Total buyers: ${nextBuyers.length}`);
+      setTimeout(() => setActionSuccessMsg(null), 5000);
+
+      window.dispatchEvent(new Event('storage'));
+      window.dispatchEvent(new CustomEvent('stakeholders-updated', { detail: { category: 'buyers' } }));
+
+      return updated;
+    });
   };
 
   useEffect(() => {
@@ -732,17 +798,46 @@ export default function UsersManagement() {
     { id: 'employees', label: 'Employees', icon: Briefcase },
   ];
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab, buyerFilter, tableSearch]);
+
   const filteredItems = (stakeholders[activeTab] || []).filter((item: any) => {
     if (!item) return false;
-    if (activeTab !== 'buyers') return true;
-    if (buyerFilter === 'pending') {
-      return item.status === 'Pending Approval' || item.status === 'pending';
+    if (activeTab === 'buyers') {
+      if (buyerFilter === 'pending') {
+        return item.status === 'Pending Approval' || item.status === 'pending';
+      }
+      if (buyerFilter === 'active') {
+        return item.status !== 'Pending Approval' && item.status !== 'pending';
+      }
     }
-    if (buyerFilter === 'active') {
-      return item.status !== 'Pending Approval' && item.status !== 'pending';
+    if (tableSearch.trim()) {
+      const q = tableSearch.toLowerCase().trim();
+      const name = String(item.name || '').toLowerCase();
+      const id = String(item.id || '').toLowerCase();
+      const gstin = String(item.gstin || '').toLowerCase();
+      const road = String(item.road || '').toLowerCase();
+      const address = String(item.address || '').toLowerCase();
+      const phone = String(item.phone || item.mobile || '').toLowerCase();
+      const email = String(item.email || '').toLowerCase();
+      const mandi = String(item.mandi || '').toLowerCase();
+      return (
+        name.includes(q) ||
+        id.includes(q) ||
+        gstin.includes(q) ||
+        road.includes(q) ||
+        address.includes(q) ||
+        phone.includes(q) ||
+        email.includes(q) ||
+        mandi.includes(q)
+      );
     }
     return true;
   });
+
+  const totalPages = Math.max(1, Math.ceil(filteredItems.length / pageSize));
+  const paginatedItems = filteredItems.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   return (
     <div className="p-4 md:p-8 space-y-6 max-w-7xl mx-auto select-none">
@@ -763,7 +858,14 @@ export default function UsersManagement() {
           <h1 className="text-3xl font-black tracking-tight mt-1 text-on-surface">Stakeholder Directory</h1>
           <p className="text-secondary text-sm font-medium mt-1">Manage institutional profiles, active supplier GSTIN credentials, and buyer billing properties.</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <button 
+            onClick={() => setIsExcelImportOpen(true)}
+            className="flex items-center gap-2 px-5 py-3 bg-surface-container-high border border-outline-variant/30 text-on-surface hover:bg-surface-variant rounded-xl shadow-sm hover:border-primary/40 active:scale-95 transition-all text-xs font-black uppercase tracking-widest cursor-pointer btn-tactile"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-500" />
+            Import from Excel
+          </button>
           <button 
             onClick={() => { setNewUser(prev => ({ ...prev, category: activeTab })); setIsAddModalOpen(true); }}
             className="flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-xl shadow-lg shadow-primary/20 hover:opacity-90 active:scale-95 transition-all text-xs font-black uppercase tracking-widest cursor-pointer btn-tactile"
@@ -974,6 +1076,44 @@ export default function UsersManagement() {
           selectedUser ? "lg:col-span-7" : "lg:col-span-9"
         )}>
           <div className="floating-card liquid-glass rounded-3xl overflow-hidden border border-outline-variant/30 shadow-sm">
+            {/* Table Search & Pagination Toolbar */}
+            <div className="p-4 bg-surface-container-low/60 border-b border-outline-variant/20 flex flex-wrap items-center justify-between gap-3">
+              <div className="relative flex-1 min-w-[220px] max-w-md">
+                <Search className="w-4 h-4 text-secondary absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder={`Search ${activeTab} by name, GSTIN, road, phone...`}
+                  value={tableSearch}
+                  onChange={(e) => setTableSearch(e.target.value)}
+                  className="w-full pl-9 pr-8 py-2 rounded-xl bg-surface-container border border-outline-variant/30 text-xs text-on-surface placeholder:text-secondary/50 font-bold outline-none focus:border-primary/50 transition-all"
+                />
+                {tableSearch && (
+                  <button
+                    onClick={() => setTableSearch('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-secondary hover:text-on-surface cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center gap-3 text-xs text-secondary font-bold">
+                <span>{filteredItems.length} {activeTab}</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                  className="bg-surface-container border border-outline-variant/30 rounded-lg px-2.5 py-1 text-xs font-bold text-on-surface outline-none cursor-pointer"
+                >
+                  <option value={25}>25 / page</option>
+                  <option value={50}>50 / page</option>
+                  <option value={100}>100 / page</option>
+                </select>
+              </div>
+            </div>
+
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
@@ -986,7 +1126,40 @@ export default function UsersManagement() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-outline-variant/10">
-                  {filteredItems.map((item: any) => (
+                  {paginatedItems.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="py-12 text-center text-secondary text-xs">
+                        {tableSearch ? (
+                          <div>
+                            <p className="font-bold text-on-surface">No {activeTab} matched "{tableSearch}"</p>
+                            <button 
+                              onClick={() => setTableSearch('')}
+                              className="text-primary text-xs underline mt-1.5 cursor-pointer font-bold"
+                            >
+                              Clear Search
+                            </button>
+                          </div>
+                        ) : activeTab === 'buyers' ? (
+                          <div className="space-y-3">
+                            <p className="font-bold text-on-surface text-sm">No buyers currently registered in directory</p>
+                            <p className="text-[11px] text-secondary max-w-sm mx-auto">
+                              You can import all 547 Mandi Buyers from your Excel workbook or preloaded directory.
+                            </p>
+                            <button
+                              onClick={() => setIsExcelImportOpen(true)}
+                              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-white text-xs font-black uppercase tracking-wider cursor-pointer shadow-md hover:opacity-90"
+                            >
+                              <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+                              Import Mandi Directory
+                            </button>
+                          </div>
+                        ) : (
+                          <p className="font-bold">No {activeTab} found.</p>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                  {paginatedItems.map((item: any) => (
                     <tr 
                       key={item.id} 
                       onClick={() => {
@@ -1124,8 +1297,41 @@ export default function UsersManagement() {
                 </tbody>
               </table>
             </div>
-            <div className="p-4 bg-surface-container-low/30 border-t border-outline-variant/10 text-[11px] font-bold text-secondary text-center">
-              Total {activeTab.toUpperCase()} listed: {filteredItems.length}
+            {/* Pagination Controls & Total Footer */}
+            <div className="p-3.5 bg-surface-container-low/40 border-t border-outline-variant/10 flex flex-wrap items-center justify-between gap-3 text-xs font-bold text-secondary">
+              <div>
+                {filteredItems.length > 0 ? (
+                  <span>
+                    Showing <span className="text-on-surface font-mono">{(currentPage - 1) * pageSize + 1}</span> - <span className="text-on-surface font-mono">{Math.min(currentPage * pageSize, filteredItems.length)}</span> of <span className="text-on-surface font-mono">{filteredItems.length}</span> {activeTab}
+                  </span>
+                ) : (
+                  <span>0 {activeTab} listed</span>
+                )}
+              </div>
+
+              {totalPages > 1 && (
+                <div className="flex items-center gap-2">
+                  <button
+                    disabled={currentPage <= 1}
+                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    className="p-1.5 px-3 rounded-lg bg-surface-container border border-outline-variant/30 text-on-surface disabled:opacity-30 disabled:cursor-not-allowed hover:bg-surface-container-high transition-colors flex items-center gap-1 cursor-pointer"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                    <span>Prev</span>
+                  </button>
+                  <span className="text-on-surface font-mono font-bold px-2">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <button
+                    disabled={currentPage >= totalPages}
+                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                    className="p-1.5 px-3 rounded-lg bg-surface-container border border-outline-variant/30 text-on-surface disabled:opacity-30 disabled:cursor-not-allowed hover:bg-surface-container-high transition-colors flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>Next</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1859,6 +2065,13 @@ export default function UsersManagement() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <ExcelMerchantImportModal
+        isOpen={isExcelImportOpen}
+        onClose={() => setIsExcelImportOpen(false)}
+        onImportComplete={handleImportMerchantsComplete}
+        existingCount={stakeholders.buyers?.length || 0}
+      />
     </div>
   );
 }

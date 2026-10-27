@@ -42,7 +42,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { getVerifiedUserRole } from '../lib/auth';
-import { cn, formatINR, getRegisteredSuppliers, sanitizeSupplierName } from '../lib/utils';
+import { cn, formatINR, getRegisteredSuppliers, getRegisteredBuyerNames, sanitizeSupplierName } from '../lib/utils';
 import { getCollectionDocs, setCollectionDoc, deleteCollectionDoc, db, invalidateCollectionCache } from '../lib/firebase';
 import { doc, writeBatch, collection, query, where, getDocs } from 'firebase/firestore';
 import * as XLSX from 'xlsx';
@@ -80,11 +80,8 @@ import {
   recalculateRowBusinessLogic 
 } from '../utils/formulaEngine';
 
-// Preset lists matching entities in UsersManagement.tsx and the ecosystem
-const SUPPLIERS = (() => {
-  const reg = getRegisteredSuppliers();
-  return reg.length > 0 ? reg.map(s => s.name) : [];
-})();
+const SUPPLIERS: string[] = [];
+
 
 const BUYERS: string[] = [];
 
@@ -493,8 +490,9 @@ export default function ArrivalEntry() {
       try {
         const cloudDocs = await getCollectionDocs('stakeholders').catch(() => []);
         const reg = getRegisteredSuppliers();
+        const regBuyers = getRegisteredBuyerNames();
         const supSet = new Set<string>(reg.length > 0 ? reg.map(s => s.name) : SUPPLIERS);
-        const buySet = new Set<string>(BUYERS);
+        const buySet = new Set<string>(regBuyers);
         const buyerRoadsSet = new Set<string>();
 
         cloudDocs.forEach(d => {
@@ -2913,7 +2911,7 @@ export default function ArrivalEntry() {
                               className="w-full h-full bg-transparent px-2 text-xs font-bold outline-none text-primary"
                             >
                               <option value="">-- Select --</option>
-                              {(col.options || []).map(opt => (
+                              {(col.id === 'partyName' ? (dynamicBuyers.length > 0 ? dynamicBuyers : (col.options || [])) : col.id === 'millerName' ? (dynamicSuppliers.length > 0 ? dynamicSuppliers : (col.options || [])) : (col.options || [])).map(opt => (
                                 <option key={opt} value={opt}>{opt}</option>
                               ))}
                             </select>

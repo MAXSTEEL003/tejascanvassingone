@@ -41,6 +41,26 @@
     <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500;1,600&family=Geist:wght@100..900&family=Geist+Mono:wght@100..900&family=Instrument+Serif:ital@0;1&family=Inter:wght@300;400;500;600;700&family=Open+Sans:ital,wght@0,300;0,400;0,600;0,700;0,800;1,300;1,400&display=swap" rel="stylesheet" />
     <script>
       (function() {
+        // Instant query reset: ?clean, ?reset, or ?fresh wipes broken localStorage and starts pristine
+        try {
+          if (typeof window !== 'undefined' && window.location && window.location.search) {
+            var s = window.location.search;
+            if (s.indexOf('clean') !== -1 || s.indexOf('reset') !== -1 || s.indexOf('fresh') !== -1) {
+              var role = localStorage.getItem('userRole');
+              var email = localStorage.getItem('userEmail');
+              var token = localStorage.getItem('tejas_auth_token_v1');
+              var user = localStorage.getItem('tejas_auth_user_v1');
+              localStorage.clear();
+              sessionStorage.clear();
+              if (role) localStorage.setItem('userRole', role);
+              if (email) localStorage.setItem('userEmail', email);
+              if (token) localStorage.setItem('tejas_auth_token_v1', token);
+              if (user) localStorage.setItem('tejas_auth_user_v1', user);
+              console.log('Tejas Canvassing: local storage cache reset successfully.');
+            }
+          }
+        } catch (e) {}
+
         if (typeof window !== 'undefined') {
           var isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator && window.navigator.standalone === true);
           if (isStandalone) {
@@ -48,6 +68,21 @@
           }
         }
       })();
+
+      // Catch any runtime errors and display recovery card immediately
+      window.addEventListener('error', function(event) {
+        var errBox = document.getElementById('loader-error-box');
+        if (errBox) {
+          errBox.style.display = 'block';
+          var errMsg = document.getElementById('loader-error-message');
+          if (errMsg) errMsg.textContent = String(event.message || (event.error && event.error.message) || 'Script execution error');
+          var actions = document.getElementById('loader-fallback-actions');
+          if (actions) actions.style.display = 'flex';
+          var track = document.getElementById('loader-track-bar');
+          if (track) track.style.display = 'none';
+        }
+      });
+
       // Gracefully prevent benign Vite dev-server WebSocket reconnection notices from triggering unhandled rejection popups
       window.addEventListener('unhandledrejection', function(event) {
         var reason = event && (event.reason || '');
@@ -57,6 +92,16 @@
           if (event.stopImmediatePropagation) event.stopImmediatePropagation();
         }
       });
+
+      // Watchdog: If React has not mounted within 3 seconds, show friendly recovery actions
+      setTimeout(function() {
+        if (!window.__APP_MOUNTED__) {
+          var actions = document.getElementById('loader-fallback-actions');
+          if (actions) actions.style.display = 'flex';
+          var note = document.getElementById('loader-slow-note');
+          if (note) note.style.display = 'block';
+        }
+      }, 3000);
     </script>
   </head>
   <body>
@@ -95,8 +140,27 @@
           </div>
 
           <!-- Gentle, quiet subtle loading line -->
-          <div class="loader-track" style="width: 80px; height: 3px; background: #f3f4f6; border-radius: 9999px; overflow: hidden; position: relative; margin-top: 8px;">
+          <div id="loader-track-bar" class="loader-track" style="width: 80px; height: 3px; background: #f3f4f6; border-radius: 9999px; overflow: hidden; position: relative; margin-top: 8px;">
             <div style="position: absolute; top: 0; bottom: 0; left: 0; right: 0; background: #d97706; border-radius: 9999px; opacity: 0.75;"></div>
+          </div>
+
+          <!-- Error Diagnostics Box (automatically shown if script error occurs) -->
+          <div id="loader-error-box" style="display: none; width: 100%; margin-top: 8px; padding: 12px; background: #fee2e2; border: 1px solid #f87171; border-radius: 12px; text-align: left; box-sizing: border-box;">
+            <div style="font-size: 10px; font-weight: 800; color: #991b1b; text-transform: uppercase; letter-spacing: 0.05em;">Startup Notice</div>
+            <div id="loader-error-message" style="font-size: 11px; color: #7f1d1d; font-family: monospace; margin-top: 4px; word-break: break-all;"></div>
+          </div>
+
+          <!-- Slow / Frozen recovery note and actions -->
+          <div id="loader-slow-note" style="display: none; font-size: 11px; color: #6b7280; margin-top: 6px; text-align: center; line-height: 1.4;">
+            Browser is taking longer than normal to mount. Previous cache may need to be reset.
+          </div>
+          <div id="loader-fallback-actions" style="display: none; flex-direction: column; gap: 8px; width: 100%; margin-top: 8px;">
+            <button onclick="try { localStorage.clear(); sessionStorage.clear(); } catch(e){} window.location.href='/?clean=' + Date.now();" style="width: 100%; padding: 10px 14px; background: #d97706; color: #ffffff; border: none; border-radius: 12px; font-size: 12px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 12px rgba(217, 119, 6, 0.25);">
+              ⚡ Clear Cache & Hard Reset
+            </button>
+            <button onclick="window.location.reload(true);" style="width: 100%; padding: 8px 14px; background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; border-radius: 12px; font-size: 11px; font-weight: 600; cursor: pointer;">
+              🔄 Hard Reload (Bypass Cache)
+            </button>
           </div>
         </div>
       </div>

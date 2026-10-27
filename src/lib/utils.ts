@@ -142,3 +142,51 @@ export function cleanMerchantDisplayName(name: string): string {
   return s;
 }
 
+export function getRegisteredBuyers(): Array<{
+  id: string;
+  name: string;
+  contact?: string;
+  phone?: string;
+  email?: string;
+  gstin?: string;
+  address?: string;
+  road?: string;
+  mandi?: string;
+  credit?: string;
+  status?: string;
+}> {
+  try {
+    const rawDel = localStorage.getItem('deleted_stakeholder_ids');
+    const deletedIds: string[] = rawDel ? JSON.parse(rawDel) : [];
+    const deletedSet = new Set(
+      deletedIds
+        .map(id => String(id).trim().toLowerCase().replace(/^#/, ''))
+        .filter(id => id !== 'sup-01' && id !== 'buy-01')
+    );
+
+    const raw = localStorage.getItem('stakeholders_v2');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed.buyers) && parsed.buyers.length > 0) {
+        return parsed.buyers.filter((b: any) => b && b.name && b.status !== 'Inactive' && !deletedSet.has(String(b.id || '').toLowerCase()));
+      }
+    }
+
+    const legacyRaw = localStorage.getItem('stakeholders');
+    if (legacyRaw) {
+      const parsed = JSON.parse(legacyRaw);
+      if (parsed && Array.isArray(parsed.buyers) && parsed.buyers.length > 0) {
+        return parsed.buyers.filter((b: any) => b && b.name && b.status !== 'Inactive' && !deletedSet.has(String(b.id || '').toLowerCase()));
+      }
+    }
+  } catch (e) {}
+
+  return [];
+}
+
+export function getRegisteredBuyerNames(): string[] {
+  const buyers = getRegisteredBuyers();
+  return Array.from(new Set(buyers.map(b => String(b.name || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+}
+
+
