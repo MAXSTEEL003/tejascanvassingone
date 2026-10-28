@@ -307,11 +307,17 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
         } catch (e) {}
       }
 
+      const cleanPhoneDigits = phone.replace(/\D/g, '');
+      const defaultUsername = cleanPhoneDigits || name.toLowerCase().replace(/\s+/g, '_');
+      const safeBuyerPass = (passVal.trim() === 'adinarayan1977' || !passVal.trim()) ? '' : passVal.trim();
       const newStakeholder = {
         id: userUid,
         name: name,
         type: 'buyers',
         phone: phone,
+        username: defaultUsername,
+        password: safeBuyerPass,
+        assignedPassword: safeBuyerPass,
         email: emailVal,
         gstin: gstinVal,
         address: 'APMC Yard, Yeshwanthpur, Bangalore, Karnataka - 560022',
@@ -321,6 +327,8 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
         createdAt: new Date().toISOString()
       };
 
+      let targetStakeholder = newStakeholder;
+
       // Ensure new buyer registration is immediately visible in Users Management for Admin approval
       try {
         const existingStakeholdersStr = localStorage.getItem('stakeholders_v2');
@@ -328,24 +336,49 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
           ? JSON.parse(existingStakeholdersStr) 
           : { buyers: [], suppliers: [], employees: [] };
         if (!Array.isArray(parsedStakeholders.buyers)) parsedStakeholders.buyers = [];
-        parsedStakeholders.buyers = [
-          newStakeholder, 
-          ...parsedStakeholders.buyers.filter((b: any) => b.id !== userUid && b.email?.toLowerCase() !== emailVal.toLowerCase())
-        ];
+
+        // Check if buyer profile already exists with same phone number or email to avoid duplicate users
+        const existingBuyerIndex = parsedStakeholders.buyers.findIndex((b: any) => {
+          if (!b) return false;
+          const bDigits = (b.phone || '').replace(/\D/g, '');
+          return (cleanPhoneDigits && bDigits && bDigits === cleanPhoneDigits) || 
+                 (b.id === userUid) || 
+                 (b.email && emailVal && b.email.toLowerCase() === emailVal.toLowerCase());
+        });
+
+        if (existingBuyerIndex >= 0) {
+          const existing = parsedStakeholders.buyers[existingBuyerIndex];
+          targetStakeholder = {
+            ...existing,
+            phone: existing.phone || phone,
+            username: existing.username || defaultUsername,
+            password: safeBuyerPass || existing.password || '',
+            assignedPassword: safeBuyerPass || existing.assignedPassword || '',
+            email: existing.email || emailVal,
+            gstin: existing.gstin || gstinVal,
+            lastLoginAt: new Date().toISOString()
+          };
+          parsedStakeholders.buyers[existingBuyerIndex] = targetStakeholder;
+        } else {
+          parsedStakeholders.buyers = [
+            newStakeholder, 
+            ...parsedStakeholders.buyers.filter((b: any) => b.id !== userUid && b.email?.toLowerCase() !== emailVal.toLowerCase())
+          ];
+        }
         localStorage.setItem('stakeholders_v2', JSON.stringify(parsedStakeholders));
 
         const existingReqs = JSON.parse(localStorage.getItem('buyer_registration_requests') || '[]');
-        const updatedReqs = [newStakeholder, ...existingReqs.filter((r: any) => r.id !== userUid)];
+        const updatedReqs = [targetStakeholder, ...existingReqs.filter((r: any) => r.id !== targetStakeholder.id && (r.phone || '').replace(/\D/g, '') !== cleanPhoneDigits)];
         localStorage.setItem('buyer_registration_requests', JSON.stringify(updatedReqs));
 
         window.dispatchEvent(new Event('storage'));
-        window.dispatchEvent(new CustomEvent('stakeholders-updated', { detail: { category: 'buyers', user: newStakeholder } }));
+        window.dispatchEvent(new CustomEvent('stakeholders-updated', { detail: { category: 'buyers', user: targetStakeholder } }));
       } catch (saveErr) {
         console.warn('Error storing buyer registration in local storage:', saveErr);
       }
 
-      await setCollectionDoc('stakeholders', userUid, newStakeholder).catch(() => {});
-      await setCollectionDoc('buyer_registration_requests', userUid, newStakeholder).catch(() => {});
+      await setCollectionDoc('stakeholders', targetStakeholder.id, targetStakeholder).catch(() => {});
+      await setCollectionDoc('buyer_registration_requests', targetStakeholder.id, targetStakeholder).catch(() => {});
 
       localStorage.setItem('userRole', 'merchant');
       localStorage.setItem('userEmail', emailVal);

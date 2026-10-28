@@ -381,15 +381,6 @@ export default function EmployeePortalView({ defaultTab = 'schedule' }: Employee
         }
       }
 
-      if (loadedProducts.length === 0) {
-        loadedProducts = [
-          { id: 'PROD-1', name: 'KESHAR KALI Premium Rice', category: 'Raw Rice', price: 5400, stock: 650, bagSize: '25kg & 50kg', grade: 'Super Fine 12M Aged', status: 'In Stock' },
-          { id: 'PROD-2', name: '1121 Sella Basmati Rice', category: 'Basmati', price: 8200, stock: 400, bagSize: '30kg Bag', grade: 'Export Quality 8.35mm', status: 'In Stock' },
-          { id: 'PROD-3', name: 'Sona Masoori Old Steam Rice', category: 'Steam Rice', price: 4950, stock: 920, bagSize: '50kg Bag', grade: 'Grade-A Silky Polished', status: 'In Stock' },
-          { id: 'PROD-4', name: 'IR-64 Parboiled Rice', category: 'Parboiled', price: 3850, stock: 500, bagSize: '50kg Bag', grade: 'Sortex 100% Clean', status: 'In Stock' },
-          { id: 'PROD-5', name: 'Broken Rice (100% Sortex)', category: 'Broken Rice', price: 2750, stock: 300, bagSize: '50kg Bag', grade: 'Clean Grain Feed / Industrial', status: 'In Stock' },
-        ];
-      }
       setProducts(loadedProducts);
     } catch (err) {
       console.warn('Error loading employee portal data:', err);

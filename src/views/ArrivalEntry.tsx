@@ -85,13 +85,7 @@ const SUPPLIERS: string[] = [];
 
 const BUYERS: string[] = [];
 
-const BRANDS = [
-  'KESHAR KALI',
-  '1121 Sella Rice',
-  'Sona Masoori (Old)',
-  'Organic Brown Rice',
-  'Broken Rice (100%)'
-];
+const BRANDS: string[] = [];
 
 export interface ColumnConfig {
   id: string;
@@ -464,6 +458,18 @@ export default function ArrivalEntry() {
   // Stakeholders metadata
   const [dynamicSuppliers, setDynamicSuppliers] = useState<string[]>(SUPPLIERS);
   const [dynamicBuyers, setDynamicBuyers] = useState<string[]>(BUYERS);
+  const [dynamicBrands, setDynamicBrands] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem('product_inventory');
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) {
+          return Array.from(new Set(arr.map((p: any) => (p.name || p.brand)?.trim()).filter(Boolean))).sort();
+        }
+      }
+    } catch {}
+    return [];
+  });
   const [registeredBuyerRoads, setRegisteredBuyerRoads] = useState<string[]>([]);
   const [inventoryProducts, setInventoryProducts] = useState<any[]>([]);
 
@@ -509,6 +515,21 @@ export default function ArrivalEntry() {
         setDynamicSuppliers(Array.from(supSet).sort());
         setDynamicBuyers(Array.from(buySet).sort());
         setRegisteredBuyerRoads(Array.from(buyerRoadsSet).sort());
+
+        // Load brands from product_inventory (local and cloud)
+        const rawInv = localStorage.getItem('product_inventory');
+        let invArr: any[] = [];
+        if (rawInv) {
+          try { invArr = JSON.parse(rawInv); } catch {}
+        }
+        const cloudInv = await getCollectionDocs('product_inventory').catch(() => []);
+        const allProds = [...(Array.isArray(invArr) ? invArr : []), ...(Array.isArray(cloudInv) ? cloudInv : [])];
+        const brandsSet = new Set<string>();
+        allProds.forEach((p: any) => {
+          const b = (p?.name || p?.brand || '').trim();
+          if (b && !b.toLowerCase().startsWith('prod-')) brandsSet.add(b);
+        });
+        setDynamicBrands(Array.from(brandsSet).sort());
 
         const orders = await getCollectionDocs('placed_orders').catch(() => []);
         setPlacedOrders(orders);
@@ -2911,7 +2932,7 @@ export default function ArrivalEntry() {
                               className="w-full h-full bg-transparent px-2 text-xs font-bold outline-none text-primary"
                             >
                               <option value="">-- Select --</option>
-                              {(col.id === 'partyName' ? (dynamicBuyers.length > 0 ? dynamicBuyers : (col.options || [])) : col.id === 'millerName' ? (dynamicSuppliers.length > 0 ? dynamicSuppliers : (col.options || [])) : (col.options || [])).map(opt => (
+                              {(col.id === 'partyName' ? (dynamicBuyers.length > 0 ? dynamicBuyers : (col.options || [])) : col.id === 'millerName' ? (dynamicSuppliers.length > 0 ? dynamicSuppliers : (col.options || [])) : col.id === 'brand' ? (dynamicBrands.length > 0 ? dynamicBrands : (col.options || [])) : (col.options || [])).map(opt => (
                                 <option key={opt} value={opt}>{opt}</option>
                               ))}
                             </select>
@@ -3916,7 +3937,7 @@ export default function ArrivalEntry() {
         selectedRowIndex={activeCell?.r}
         knownSuppliers={dynamicSuppliers}
         knownBuyers={dynamicBuyers}
-        knownBrands={BRANDS}
+        knownBrands={dynamicBrands.length > 0 ? dynamicBrands : BRANDS}
       />
 
       {/* Bill Photo Modal */}

@@ -26,28 +26,7 @@ const DEFAULT_SUPPLIERS: { id: string; name: string }[] = [];
 
 const DEFAULT_BUYERS: { id: string; name: string }[] = [];
 
-const BASE_REGISTERED_PRODUCTS: Record<string, string[]> = {
-  'RIDDHE SIDDHE RICE INDUSTRIES PVT LTD': [
-    'KESHAR MADHURAM',
-    '1121 Sella Rice'
-  ],
-  'SAI TEJA PARBOILED RICE MILLS (P) LTD': [
-    'JMR',
-    'Sona Masoori Steam'
-  ],
-  'VAISHNAVI FOOD PRODUCTS PVT LTD': [
-    'VAISHNAVI',
-    'Vaishnavi Steam Rice'
-  ],
-  'BHAGWATHI RICE MILLS': [
-    'KESHAR KALI',
-    'Bhagwathi Sella'
-  ],
-  'NIDHI AGROS': [
-    'Nidhi Premium Raw Rice',
-    'Sona Masoori (New)'
-  ]
-};
+const BASE_REGISTERED_PRODUCTS: Record<string, string[]> = {};
 
 const orders: any[] = [];
 
@@ -586,7 +565,12 @@ export default function OrdersDashboard() {
   const [inventoryProducts, setInventoryProducts] = useState<any[]>(() => {
     try {
       const raw = localStorage.getItem('product_inventory');
-      if (raw) return JSON.parse(raw);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          return parsed.filter((p: any) => p && p.id && !String(p.id).toLowerCase().startsWith('prod-'));
+        }
+      }
     } catch {}
     return [];
   });
@@ -708,14 +692,15 @@ export default function OrdersDashboard() {
           .filter((p: any) => !isDeleted(p));
 
         const uniqueMap = new Map();
-        cloudInv.forEach(p => {
+        localInv.forEach((p: any) => {
           if (p && p.id) {
             uniqueMap.set(p.id, p);
           }
         });
-        localInv.forEach(p => {
-          if (p && p.id && uniqueMap.has(p.id)) {
-            uniqueMap.set(p.id, { ...uniqueMap.get(p.id), ...p });
+        cloudInv.forEach((p: any) => {
+          if (p && p.id) {
+            const existing = uniqueMap.get(p.id) || {};
+            uniqueMap.set(p.id, { ...existing, ...p });
           }
         });
         setInventoryProducts(Array.from(uniqueMap.values()));
@@ -785,27 +770,9 @@ export default function OrdersDashboard() {
     });
 
     matchingProducts.forEach(p => {
-      if (p.name && p.name.trim()) brandSet.add(p.name.trim());
+      const brandName = (p.name || p.brand || '').trim();
+      if (brandName) brandSet.add(brandName);
     });
-
-    // 2. From static base registered products catalog for this specific supplier
-    for (const [key, brands] of Object.entries(BASE_REGISTERED_PRODUCTS)) {
-      const baseSupplierNorm = key.trim().toUpperCase()
-        .replace(/\s*\(LLC\)/gi, '')
-        .replace(/\s*PVT\.?\s*LTD\.?/gi, '')
-        .replace(/\s*\(P\)\s*LTD\.?/gi, '')
-        .replace(/[^A-Z0-9]/g, '');
-
-      if (baseSupplierNorm === normSupplier) {
-        brands.forEach(b => {
-          const bNorm = b.trim().toLowerCase();
-          if (!deletedSet.has(bNorm)) {
-            brandSet.add(b.trim());
-          }
-        });
-        break;
-      }
-    }
 
     return Array.from(brandSet).sort();
   };
@@ -2025,7 +1992,7 @@ export default function OrdersDashboard() {
                     <option value="">All Rice Products</option>
                     {(filterSupplier 
                       ? getBrandsForSupplier(filterSupplier) 
-                      : Array.from(new Set(inventoryProducts.map(p => p.name?.trim()).filter(Boolean)))
+                      : Array.from(new Set(inventoryProducts.map(p => (p.name || p.brand)?.trim()).filter(Boolean))).sort()
                     ).map(brandName => (
                       <option key={brandName} value={brandName}>{brandName}</option>
                     ))}
@@ -3066,21 +3033,12 @@ export default function OrdersDashboard() {
                       options={
                         newOrder.supplier && availableBrands.length > 0
                           ? availableBrands
-                          : Array.from(new Set([
-                              ...availableBrands,
-                              ...inventoryProducts.map(p => p.name?.trim()).filter(Boolean),
-                              '1121 Sella Rice',
-                              'Sona Masoori Steam',
-                              'KESHAR KALI',
-                              'KESHAR MADHURAM',
-                              'JMR',
-                              'Vaishnavi Steam Rice'
-                            ]))
+                          : Array.from(new Set(inventoryProducts.map(p => (p.name || p.brand)?.trim()).filter(Boolean))).sort()
                       }
                       value={newOrder.product}
                       onChange={(val) => {
                         if (!newOrder.supplier) {
-                          const match = inventoryProducts.find(p => p.name?.trim().toLowerCase() === val.trim().toLowerCase());
+                          const match = inventoryProducts.find(p => (p.name || p.brand)?.trim().toLowerCase() === val.trim().toLowerCase());
                           if (match?.supplier) {
                             setNewOrder(prev => ({ ...prev, product: val, supplier: match.supplier }));
                             return;

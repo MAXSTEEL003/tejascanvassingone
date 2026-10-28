@@ -24,7 +24,10 @@ import {
   FileSpreadsheet,
   Search,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  ExternalLink,
+  Copy,
+  Check
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import React, { useState, useEffect } from 'react';
@@ -62,7 +65,18 @@ export default function UsersManagement() {
         const suppliersList = Array.isArray(parsed.suppliers) && parsed.suppliers.length > 0 
           ? parsed.suppliers 
           : (Array.isArray(regSuppliers) ? regSuppliers : []);
-        const buyersList = Array.isArray(parsed.buyers) ? parsed.buyers : [];
+        const rawBuyers = Array.isArray(parsed.buyers) ? parsed.buyers : [];
+        const buyersList = rawBuyers.map((b: any) => {
+          if (!b) return b;
+          if (b.password === 'adinarayan1977' || b.assignedPassword === 'adinarayan1977') {
+            return {
+              ...b,
+              password: b.password === 'adinarayan1977' ? '' : (b.password || ''),
+              assignedPassword: b.assignedPassword === 'adinarayan1977' ? '' : (b.assignedPassword || '')
+            };
+          }
+          return b;
+        });
 
         return {
           suppliers: suppliersList,
@@ -87,13 +101,32 @@ export default function UsersManagement() {
   const [userToDelete, setUserToDelete] = useState<{ id: string; name: string; category: Category } | null>(null);
   const [deleteToast, setDeleteToast] = useState<string | null>(null);
 
+  // Helper to select a user while ensuring buyer password never inherits admin password 'adinarayan1977'
+  const selectUserSafely = (item: any, editing = false) => {
+    if (!item) {
+      setSelectedUser(null);
+      setIsEditing(false);
+      return;
+    }
+    const isBuyer = activeTab === 'buyers' || item.type === 'buyers';
+    const sanitized = isBuyer ? {
+      ...item,
+      password: item.password === 'adinarayan1977' ? '' : (item.password || ''),
+      assignedPassword: item.assignedPassword === 'adinarayan1977' ? '' : (item.assignedPassword || '')
+    } : item;
+    setSelectedUser(sanitized);
+    setIsEditing(editing);
+  };
+
   // Lists for calculations
   const [allOrders, setAllOrders] = useState<any[]>([]);
   const [allArrivals, setAllArrivals] = useState<any[]>([]);
 
-  // Password visibility controls for employee management
+  // Password visibility controls for employee management and buyer store profiles
   const [showEmployeePassword, setShowEmployeePassword] = useState(false);
   const [showEditPassword, setShowEditPassword] = useState(false);
+  const [showBuyerPassword, setShowBuyerPassword] = useState(false);
+  const [copiedCred, setCopiedCred] = useState<string | null>(null);
 
   const [newUser, setNewUser] = useState({
     name: '',
@@ -149,6 +182,18 @@ export default function UsersManagement() {
       const cloudSuppliers = await getCollectionDocs('suppliers').catch(() => []);
       const cloudBuyerRequests = await getCollectionDocs('buyer_registration_requests').catch(() => []);
 
+      // Proactively scrub any buyer in Firestore that accidentally stored the admin password
+      cloudStakeholders.forEach((cs: any) => {
+        if (cs && cs.id && (cs.password === 'adinarayan1977' || cs.assignedPassword === 'adinarayan1977')) {
+          setCollectionDoc('stakeholders', cs.id, { ...cs, password: '', assignedPassword: '' }).catch(() => {});
+        }
+      });
+      cloudBuyerRequests.forEach((cs: any) => {
+        if (cs && cs.id && (cs.password === 'adinarayan1977' || cs.assignedPassword === 'adinarayan1977')) {
+          setCollectionDoc('buyer_registration_requests', cs.id, { ...cs, password: '', assignedPassword: '' }).catch(() => {});
+        }
+      });
+
       const combinedStakeholders = [
         ...cloudStakeholders,
         ...cloudSuppliers,
@@ -200,21 +245,39 @@ export default function UsersManagement() {
                 employees.push({ ...cs, id: cs.id || `EMP-${Date.now()}`, type: 'employees' });
               }
             } else {
-              // Buyers
+              // Buyers: sanitize any accidental admin password
+              const cleanBuyerCs = {
+                ...cs,
+                type: 'buyers',
+                password: cs.password === 'adinarayan1977' ? '' : (cs.password || ''),
+                assignedPassword: cs.assignedPassword === 'adinarayan1977' ? '' : (cs.assignedPassword || '')
+              };
               const idx = buyers.findIndex((b: any) => 
-                (cs.id && b.id === cs.id) || 
-                (cs.email && cs.email.trim() && b.email && b.email.trim().toLowerCase() === cs.email.trim().toLowerCase()) ||
-                (cs.name && cs.name.trim() && b.name && b.name.trim().toLowerCase() === cs.name.trim().toLowerCase())
+                (cleanBuyerCs.id && b.id === cleanBuyerCs.id) || 
+                (cleanBuyerCs.email && cleanBuyerCs.email.trim() && b.email && b.email.trim().toLowerCase() === cleanBuyerCs.email.trim().toLowerCase()) ||
+                (cleanBuyerCs.name && cleanBuyerCs.name.trim() && b.name && b.name.trim().toLowerCase() === cleanBuyerCs.name.trim().toLowerCase())
               );
               if (idx !== -1) {
-                buyers[idx] = { ...buyers[idx], ...cs, type: 'buyers' };
+                buyers[idx] = { ...buyers[idx], ...cleanBuyerCs };
               } else {
-                buyers.unshift({ ...cs, id: cs.id || `BUY-${Date.now()}`, type: 'buyers' });
+                buyers.unshift({ ...cleanBuyerCs, id: cleanBuyerCs.id || `BUY-${Date.now()}` });
               }
             }
           });
 
-          const synced = { buyers, suppliers, employees };
+          // Scrub any residual buyer passwords that match admin credentials
+          const cleanBuyers = buyers.map((b: any) => {
+            if (b && (b.password === 'adinarayan1977' || b.assignedPassword === 'adinarayan1977')) {
+              return {
+                ...b,
+                password: b.password === 'adinarayan1977' ? '' : (b.password || ''),
+                assignedPassword: b.assignedPassword === 'adinarayan1977' ? '' : (b.assignedPassword || '')
+              };
+            }
+            return b;
+          });
+
+          const synced = { buyers: cleanBuyers, suppliers, employees };
           try {
             localStorage.setItem('stakeholders_v2', JSON.stringify(synced));
             if (suppliers.length > 0) {
@@ -422,6 +485,52 @@ export default function UsersManagement() {
   };
 
   useEffect(() => {
+    // Purge any stored admin password 'adinarayan1977' from local buyer profiles
+    try {
+      const saved = localStorage.getItem('stakeholders_v2');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        let changed = false;
+        if (Array.isArray(parsed.buyers)) {
+          parsed.buyers = parsed.buyers.map((b: any) => {
+            if (b && (b.password === 'adinarayan1977' || b.assignedPassword === 'adinarayan1977')) {
+              changed = true;
+              return {
+                ...b,
+                password: '',
+                assignedPassword: ''
+              };
+            }
+            return b;
+          });
+        }
+        if (changed) {
+          localStorage.setItem('stakeholders_v2', JSON.stringify(parsed));
+          setStakeholders(parsed);
+        }
+      }
+
+      const reqsRaw = localStorage.getItem('buyer_registration_requests');
+      if (reqsRaw) {
+        const reqs = JSON.parse(reqsRaw);
+        let reqsChanged = false;
+        const cleanedReqs = reqs.map((r: any) => {
+          if (r && (r.password === 'adinarayan1977' || r.assignedPassword === 'adinarayan1977')) {
+            reqsChanged = true;
+            return {
+              ...r,
+              password: '',
+              assignedPassword: ''
+            };
+          }
+          return r;
+        });
+        if (reqsChanged) {
+          localStorage.setItem('buyer_registration_requests', JSON.stringify(cleanedReqs));
+        }
+      }
+    } catch (e) {}
+
     syncRegisteredCloudStakeholders();
     loadPipelineInfo();
   }, []);
@@ -489,7 +598,18 @@ export default function UsersManagement() {
       } : { 
         contact: newUser.contact 
       }),
-      ...(newUser.category === 'buyers' ? { credit: newUser.credit || '₹ 50.0 Lakh' } : {})
+      ...(newUser.category === 'buyers' ? { 
+        credit: newUser.credit || '₹ 50.0 Lakh',
+        username: (newUser.username || newUser.phone || '').trim(),
+        password: (() => {
+          const p = (newUser.password || '').trim();
+          return p === 'adinarayan1977' ? '' : p;
+        })(),
+        assignedPassword: (() => {
+          const p = (newUser.password || '').trim();
+          return p === 'adinarayan1977' ? '' : p;
+        })()
+      } : {})
     };
 
     const updated = {
@@ -507,8 +627,10 @@ export default function UsersManagement() {
       } catch (e) {}
     }
 
-    // Sync sanitized stakeholder profile to Firestore cloud storage (never store plain passwords in cloud)
-    const { password: _p, assignedPassword: _ap, ...cloudStakeholder } = entry as any;
+    // Sync stakeholder profile to Firestore cloud storage
+    const cloudStakeholder = isEmployee
+      ? (() => { const { password: _p, assignedPassword: _ap, ...rest } = entry; return rest; })()
+      : entry;
     setCollectionDoc('stakeholders', entry.id, { ...cloudStakeholder, type: newUser.category }).catch(err => {
       console.error("Error creating stakeholder in cloud:", err);
     });
@@ -541,12 +663,24 @@ export default function UsersManagement() {
     if (!selectedUser) return;
 
     const isEmployee = activeTab === 'employees';
+    const isBuyer = activeTab === 'buyers';
     const userToSave: any = {
       ...selectedUser,
       email: selectedUser.email ? selectedUser.email.trim() : '',
       ...(isEmployee ? {
         username: (selectedUser.username || '').trim().toLowerCase() || selectedUser.name.trim().toLowerCase().replace(/\s+/g, '_'),
         role: (selectedUser.role || '').trim() || 'Staff'
+      } : {}),
+      ...(isBuyer ? {
+        username: (selectedUser.username || '').trim(),
+        password: (() => {
+          const p = (selectedUser.password !== undefined ? selectedUser.password : (selectedUser.assignedPassword || '')).trim();
+          return p === 'adinarayan1977' ? '' : p;
+        })(),
+        assignedPassword: (() => {
+          const p = (selectedUser.password !== undefined ? selectedUser.password : (selectedUser.assignedPassword || '')).trim();
+          return p === 'adinarayan1977' ? '' : p;
+        })(),
       } : {})
     };
 
@@ -585,8 +719,10 @@ export default function UsersManagement() {
     setSelectedUser(userToSave);
     localStorage.setItem('stakeholders_v2', JSON.stringify(updatedStakeholders));
 
-    // Sync to Firestore cloud storage (never store plain passwords in cloud)
-    const { password: _p, assignedPassword: _ap, ...cloudUserToSave } = userToSave as any;
+    // Sync to Firestore cloud storage
+    const cloudUserToSave = isEmployee 
+      ? (() => { const { password: _p, assignedPassword: _ap, ...rest } = userToSave; return rest; })()
+      : userToSave;
     setCollectionDoc('stakeholders', userToSave.id, { ...cloudUserToSave, type: activeTab }).catch(err => {
       console.error("Error updating stakeholder in cloud:", err);
     });
@@ -867,7 +1003,23 @@ export default function UsersManagement() {
             Import from Excel
           </button>
           <button 
-            onClick={() => { setNewUser(prev => ({ ...prev, category: activeTab })); setIsAddModalOpen(true); }}
+            onClick={() => {
+              setNewUser({
+                name: '',
+                email: '',
+                phone: '',
+                gstin: '',
+                address: '',
+                road: '',
+                role: '',
+                contact: '',
+                credit: '',
+                username: '',
+                password: '',
+                category: activeTab
+              });
+              setIsAddModalOpen(true);
+            }}
             className="flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-xl shadow-lg shadow-primary/20 hover:opacity-90 active:scale-95 transition-all text-xs font-black uppercase tracking-widest cursor-pointer btn-tactile"
           >
             <UserPlus className="w-4 h-4" />
@@ -1163,8 +1315,7 @@ export default function UsersManagement() {
                     <tr 
                       key={item.id} 
                       onClick={() => {
-                        setSelectedUser(item);
-                        setIsEditing(false);
+                        selectUserSafely(item, false);
                       }}
                       className={cn(
                         "interactive-tr group cursor-pointer",
@@ -1226,6 +1377,14 @@ export default function UsersManagement() {
                               <p className="text-primary font-bold text-[10.5px]">Road: {item.road}</p>
                             )}
                             <p className="text-secondary font-medium leading-normal text-[10.5px] line-clamp-1">{item.address || 'N/A'}</p>
+                            {activeTab === 'buyers' && (item.username || item.password || item.assignedPassword) && (
+                              <div className="pt-0.5">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-primary/10 text-primary font-mono text-[9px] font-bold">
+                                  <Key className="w-2.5 h-2.5" />
+                                  {item.username || item.phone}
+                                </span>
+                              </div>
+                            )}
                           </div>
                         )}
                       </td>
@@ -1272,8 +1431,7 @@ export default function UsersManagement() {
                           <button 
                             onClick={(e) => {
                               e.stopPropagation();
-                              setSelectedUser(item);
-                              setIsEditing(true);
+                              selectUserSafely(item, true);
                             }}
                             className="p-2 hover:bg-surface-container rounded-lg transition-colors flex items-center justify-center text-secondary hover:text-primary cursor-pointer btn-tactile"
                             title="Edit User"
@@ -1389,17 +1547,15 @@ export default function UsersManagement() {
 
                       <div className="space-y-1.5">
                         <label className="text-[9px] font-black uppercase tracking-widest text-secondary">Assigned Login Username</label>
-                        <div className="relative">
-                          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-primary font-mono font-bold text-xs">@</span>
-                          <input 
-                            required
-                            type="text" 
-                            placeholder="e.g. vikram_singh"
-                            value={selectedUser.username || ''}
-                            onChange={(e) => setSelectedUser({...selectedUser, username: e.target.value.toLowerCase().replace(/\s+/g, '_')})}
-                            className="w-full bg-surface-container border border-outline-variant/40 rounded-xl pl-8 pr-4 py-2.5 text-xs font-bold font-mono outline-none focus:ring-1 focus:ring-primary"
-                          />
-                        </div>
+                        <input 
+                          required
+                          type="text" 
+                          autoComplete="off"
+                          placeholder="e.g. vikram_singh"
+                          value={selectedUser.username || ''}
+                          onChange={(e) => setSelectedUser({...selectedUser, username: e.target.value.toLowerCase().replace(/\s+/g, '_')})}
+                          className="w-full bg-surface-container border border-outline-variant/40 rounded-xl px-4 py-2.5 text-xs font-bold font-mono outline-none focus:ring-1 focus:ring-primary text-on-surface"
+                        />
                         <p className="text-[9px] text-secondary/70">Used by the employee to log in to the canvassing portal.</p>
                       </div>
 
@@ -1409,6 +1565,7 @@ export default function UsersManagement() {
                           <input 
                             required
                             type={showEditPassword ? "text" : "password"} 
+                            autoComplete="new-password"
                             placeholder="Assign password (e.g. emp1977)"
                             value={selectedUser.password !== undefined ? selectedUser.password : (selectedUser.assignedPassword || '')}
                             onChange={(e) => setSelectedUser({...selectedUser, password: e.target.value, assignedPassword: e.target.value})}
@@ -1493,15 +1650,91 @@ export default function UsersManagement() {
                   )}
 
                   {activeTab === 'buyers' && (
-                    <div className="space-y-1.5">
-                      <label className="text-[9px] font-black uppercase tracking-widest text-secondary">Credit Appraisal Cap</label>
-                      <input 
-                        type="text" 
-                        value={selectedUser.credit || ''}
-                        onChange={(e) => setSelectedUser({...selectedUser, credit: e.target.value})}
-                        className="w-full bg-surface-container border border-outline-variant/40 rounded-xl px-4 py-2.5 text-xs font-bold outline-none"
-                      />
-                    </div>
+                    <>
+                      <div className="space-y-1.5">
+                        <label className="text-[9px] font-black uppercase tracking-widest text-secondary">Credit Appraisal Cap</label>
+                        <input 
+                          type="text" 
+                          value={selectedUser.credit || ''}
+                          onChange={(e) => setSelectedUser({...selectedUser, credit: e.target.value})}
+                          className="w-full bg-surface-container border border-outline-variant/40 rounded-xl px-4 py-2.5 text-xs font-bold outline-none"
+                        />
+                      </div>
+
+                      {/* Store Profile Credentials for Buyers */}
+                      <div className="p-3.5 rounded-2xl bg-primary/[0.04] border border-primary/20 space-y-3 my-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 text-primary">
+                            <Key className="w-3.5 h-3.5" />
+                            <span className="text-[10px] font-black uppercase tracking-wider">Store Profile Login Credentials</span>
+                          </div>
+                          <span className="text-[9px] font-bold text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded-md">
+                            Merchant Store Access
+                          </span>
+                        </div>
+                        <p className="text-[9.5px] text-secondary leading-relaxed">
+                          Assign or update login credentials for this buyer to monitor their store profile and avoid creating duplicate users for the same phone number.
+                        </p>
+
+                        <div className="space-y-1.5">
+                          <div className="flex justify-between items-center">
+                            <label className="text-[9px] font-black uppercase tracking-widest text-secondary">Store Username</label>
+                            {selectedUser.phone && !selectedUser.username && (
+                              <button
+                                type="button"
+                                onClick={() => setSelectedUser({...selectedUser, username: selectedUser.phone.trim()})}
+                                className="text-[9px] text-primary hover:underline font-bold cursor-pointer"
+                              >
+                                Use Phone ({selectedUser.phone})
+                              </button>
+                            )}
+                          </div>
+                          <input 
+                            type="text" 
+                            autoComplete="off"
+                            placeholder="Store username or mobile number (optional)"
+                            value={selectedUser.username || ''}
+                            onChange={(e) => setSelectedUser({...selectedUser, username: e.target.value.trim()})}
+                            className="w-full bg-surface-container border border-outline-variant/40 rounded-xl px-4 py-2.5 text-xs font-bold font-mono outline-none focus:ring-1 focus:ring-primary text-on-surface"
+                          />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <div className="flex justify-between items-center">
+                            <label className="text-[9px] font-black uppercase tracking-widest text-secondary">Store Password / PIN</label>
+                            <span className="text-[8.5px] text-secondary font-medium italic">Default: None (leave blank for none)</span>
+                          </div>
+                          <div className="relative">
+                            <input 
+                              type={showEditPassword ? "text" : "password"} 
+                              autoComplete="new-password"
+                              placeholder="No password assigned (leave blank for none)"
+                              value={
+                                (selectedUser.password && selectedUser.password !== 'adinarayan1977') 
+                                  ? selectedUser.password 
+                                  : (selectedUser.assignedPassword && selectedUser.assignedPassword !== 'adinarayan1977' 
+                                      ? selectedUser.assignedPassword 
+                                      : '')
+                              }
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                const s = val.trim() === 'adinarayan1977' ? '' : val;
+                                setSelectedUser({...selectedUser, password: s, assignedPassword: s});
+                              }}
+                              className="w-full bg-surface-container border border-outline-variant/40 rounded-xl px-4 pr-10 py-2.5 text-xs font-bold font-mono outline-none focus:ring-1 focus:ring-primary text-on-surface"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowEditPassword(!showEditPassword)}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-secondary hover:text-on-surface cursor-pointer"
+                              title={showEditPassword ? "Hide password" : "Show password"}
+                            >
+                              {showEditPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </>
                   )}
 
                   {activeTab === 'employees' && (
@@ -1641,6 +1874,108 @@ export default function UsersManagement() {
                               <span className="font-bold text-on-surface">{selectedUser.role}</span>
                             </div>
                           )}
+                        </div>
+                      )}
+
+                      {/* Store Profile Credentials for Buyers in Details Drawer */}
+                      {activeTab === 'buyers' && (
+                        <div className="p-3 bg-primary/5 rounded-2xl border border-primary/15 space-y-2 mb-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-primary font-black uppercase text-[9px] tracking-wider flex items-center gap-1.5">
+                              <Key className="w-3 h-3" />
+                              Store Profile Login Credentials
+                            </span>
+                            <span className="text-[9px] font-bold text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                              Active Store Profile
+                            </span>
+                          </div>
+
+                          <div className="flex justify-between items-center pt-1 border-t border-primary/10">
+                            <span className="text-secondary font-black uppercase text-[8px] tracking-wider">Username:</span>
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-mono font-black text-primary text-xs">
+                                {selectedUser.username || (selectedUser.phone ? `${selectedUser.phone} (Phone)` : 'Not set')}
+                              </span>
+                              {(selectedUser.username || selectedUser.phone) && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(selectedUser.username || selectedUser.phone);
+                                    setCopiedCred('user');
+                                    setTimeout(() => setCopiedCred(null), 2000);
+                                  }}
+                                  className="text-secondary hover:text-primary p-0.5 cursor-pointer"
+                                  title="Copy username"
+                                >
+                                  {copiedCred === 'user' ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex justify-between items-center">
+                            <span className="text-secondary font-black uppercase text-[8px] tracking-wider">Password:</span>
+                            <div className="flex items-center gap-1.5">
+                              {(() => {
+                                const rawPass = selectedUser.password || selectedUser.assignedPassword;
+                                const validPass = (rawPass && rawPass !== 'adinarayan1977') ? rawPass : '';
+                                return (
+                                  <>
+                                    <span className="font-mono font-bold text-on-surface text-xs">
+                                      {validPass 
+                                        ? (showBuyerPassword ? validPass : '••••••••')
+                                        : <span className="text-secondary/60 italic font-normal">None (Unassigned)</span>}
+                                    </span>
+                                    {validPass && (
+                                      <>
+                                        <button
+                                          type="button"
+                                          onClick={() => setShowBuyerPassword(!showBuyerPassword)}
+                                          className="text-secondary hover:text-primary p-0.5 cursor-pointer"
+                                          title={showBuyerPassword ? "Hide password" : "Show password"}
+                                        >
+                                          {showBuyerPassword ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            navigator.clipboard.writeText(validPass);
+                                            setCopiedCred('pass');
+                                            setTimeout(() => setCopiedCred(null), 2000);
+                                          }}
+                                          className="text-secondary hover:text-primary p-0.5 cursor-pointer"
+                                          title="Copy password"
+                                        >
+                                          {copiedCred === 'pass' ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                                        </button>
+                                      </>
+                                    )}
+                                  </>
+                                );
+                              })()}
+                            </div>
+                          </div>
+
+                          <div className="pt-2 border-t border-primary/10">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                localStorage.setItem('userName', selectedUser.name);
+                                if (selectedUser.phone) localStorage.setItem('userPhone', selectedUser.phone);
+                                if (selectedUser.gstin) localStorage.setItem('userGstin', selectedUser.gstin);
+                                if (selectedUser.address) localStorage.setItem('userAddress', selectedUser.address);
+                                localStorage.setItem('userRole', 'merchant');
+                                window.dispatchEvent(new Event('storage'));
+                                window.dispatchEvent(new CustomEvent('profile-updated'));
+                                window.open('/store', '_blank');
+                              }}
+                              className="w-full py-2 px-3 rounded-xl bg-primary text-white text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-sm hover:opacity-90 transition-all cursor-pointer"
+                              title="Monitor this buyer's store profile, active cart, and order history"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                              Monitor Store Profile
+                            </button>
+                          </div>
                         </div>
                       )}
 
@@ -1912,6 +2247,7 @@ export default function UsersManagement() {
                         <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-outline select-none mt-px" />
                         <input 
                           type="text" 
+                          autoComplete="new-password"
                           placeholder="e.g. emp1977 (default: emp1977)" 
                           value={newUser.password}
                           onChange={(e) => setNewUser({...newUser, password: e.target.value})}
@@ -1972,16 +2308,45 @@ export default function UsersManagement() {
                     </div>
 
                     {newUser.category === 'buyers' && (
-                      <div className="col-span-2 space-y-1.5">
-                        <label className="text-[9px] font-black uppercase tracking-widest text-secondary px-1 font-sans">Credit Appraisal Allowance</label>
-                        <input 
-                          type="text" 
-                          placeholder="e.g. ₹ 75.0 Lakh" 
-                          value={newUser.credit}
-                          onChange={(e) => setNewUser({...newUser, credit: e.target.value})}
-                          className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl px-4 py-3 text-xs font-bold outline-none"
-                        />
-                      </div>
+                      <>
+                        <div className="col-span-2 space-y-1.5">
+                          <label className="text-[9px] font-black uppercase tracking-widest text-secondary px-1 font-sans">Credit Appraisal Allowance</label>
+                          <input 
+                            type="text" 
+                            placeholder="e.g. ₹ 75.0 Lakh" 
+                            value={newUser.credit}
+                            onChange={(e) => setNewUser({...newUser, credit: e.target.value})}
+                            className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl px-4 py-3 text-xs font-bold outline-none"
+                          />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-[9px] font-black uppercase tracking-widest text-secondary px-1 font-sans">Store Username (Optional)</label>
+                          <input 
+                            type="text" 
+                            autoComplete="off"
+                            placeholder="e.g. 9945351166 or merchant_id" 
+                            value={newUser.username}
+                            onChange={(e) => setNewUser({...newUser, username: e.target.value.trim()})}
+                            className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl px-4 py-3 text-xs font-bold font-mono outline-none"
+                          />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-[9px] font-black uppercase tracking-widest text-secondary px-1 font-sans">Store Password / PIN (Optional, Default: None)</label>
+                          <input 
+                            type="password" 
+                            autoComplete="new-password"
+                            placeholder="Leave empty for no password" 
+                            value={newUser.password === 'adinarayan1977' ? '' : newUser.password}
+                            onChange={(e) => {
+                              const val = e.target.value.trim();
+                              setNewUser({...newUser, password: val === 'adinarayan1977' ? '' : val});
+                            }}
+                            className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl px-4 py-3 text-xs font-bold font-mono outline-none"
+                          />
+                        </div>
+                      </>
                     )}
                   </>
                 )}
