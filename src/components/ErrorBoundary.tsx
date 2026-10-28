@@ -35,15 +35,19 @@ export class ErrorBoundary extends Component<Props, State> {
   private handleClearAllAndReload = () => {
     try {
       sessionStorage.clear();
-      // Keep essential login info, reset temporary caches
-      const userRole = localStorage.getItem('userRole');
-      const userName = localStorage.getItem('userName');
-      const theme = localStorage.getItem('theme');
+      // Keep essential login info and core business data, reset only temporary rendering caches
+      const preserveKeys = [
+        'userRole', 'userName', 'userEmail', 'theme', 'tejas_auth_token_v1', 'tejas_auth_user_v1',
+        'stakeholders_v2', 'placed_orders', 'product_inventory', 'registered_suppliers', 'pattis_v2'
+      ];
+      const preserved: Record<string, string> = {};
+      preserveKeys.forEach(k => {
+        const v = localStorage.getItem(k);
+        if (v) preserved[k] = v;
+      });
       
       localStorage.clear();
-      if (userRole) localStorage.setItem('userRole', userRole);
-      if (userName) localStorage.setItem('userName', userName);
-      if (theme) localStorage.setItem('theme', theme);
+      Object.entries(preserved).forEach(([k, v]) => localStorage.setItem(k, v));
     } catch (e) {}
     this.setState({ hasError: false, error: null });
     window.location.href = '/';

@@ -35,12 +35,13 @@ import { cn, formatINR } from '../lib/utils';
 import { getCollectionDocs, syncCollection, auth, setCollectionDoc, deleteCollectionDoc } from '../lib/firebase';
 import { manageEmployeeServer } from '../lib/auth';
 import ExcelMerchantImportModal from '../components/ExcelMerchantImportModal';
+import merchantsDirectory from '../data/merchants_directory.json';
 
 type Category = 'suppliers' | 'buyers' | 'employees';
 
 const initialStakeholders = {
   suppliers: [],
-  buyers: [],
+  buyers: merchantsDirectory as any[],
   employees: [
     { id: 'EMP-01', name: 'Vikram Singh', role: 'Regional Manager', email: 'v.singh@riceaggregator.com', status: 'On Duty', address: 'Punjab Hub' },
     { id: 'EMP-02', name: 'Ananya Sharma', role: 'Procurement Officer', email: 'a.sharma@riceaggregator.com', status: 'Remote', address: 'HQ Office' },
@@ -60,38 +61,56 @@ export default function UsersManagement() {
       const saved = localStorage.getItem('stakeholders_v2');
       const regSuppliers = JSON.parse(localStorage.getItem('registered_suppliers') || '[]');
 
+      // Start with all 547 regional APMC merchants
+      const buyerMap = new Map<string, any>();
+      (merchantsDirectory as any[]).forEach((b: any) => {
+        if (b && b.name) buyerMap.set(b.name.trim().toUpperCase(), b);
+      });
+
       if (saved) {
         const parsed = JSON.parse(saved);
         const suppliersList = Array.isArray(parsed.suppliers) && parsed.suppliers.length > 0 
           ? parsed.suppliers 
           : (Array.isArray(regSuppliers) ? regSuppliers : []);
         const rawBuyers = Array.isArray(parsed.buyers) ? parsed.buyers : [];
-        const buyersList = rawBuyers.map((b: any) => {
-          if (!b) return b;
-          if (b.password === 'adinarayan1977' || b.assignedPassword === 'adinarayan1977') {
-            return {
-              ...b,
-              password: b.password === 'adinarayan1977' ? '' : (b.password || ''),
-              assignedPassword: b.assignedPassword === 'adinarayan1977' ? '' : (b.assignedPassword || '')
-            };
-          }
-          return b;
+        rawBuyers.forEach((b: any) => {
+          if (!b || !b.name) return;
+          const k = b.name.trim().toUpperCase();
+          const existing = buyerMap.get(k);
+          buyerMap.set(k, {
+            ...existing,
+            ...b,
+            password: (b.password === 'adinarayan1977' || b.assignedPassword === 'adinarayan1977') ? '' : (b.password || ''),
+            assignedPassword: (b.assignedPassword === 'adinarayan1977') ? '' : (b.assignedPassword || '')
+          });
         });
 
-        return {
+        const initialData = {
           suppliers: suppliersList,
-          buyers: buyersList,
+          buyers: Array.from(buyerMap.values()),
           employees: Array.isArray(parsed.employees) ? parsed.employees : initialStakeholders.employees
         };
-      } else if (Array.isArray(regSuppliers) && regSuppliers.length > 0) {
-        return {
-          suppliers: regSuppliers,
-          buyers: [],
+        try {
+          localStorage.setItem('stakeholders_v2', JSON.stringify(initialData));
+        } catch (e) {}
+        return initialData;
+      } else {
+        const initialData = {
+          suppliers: Array.isArray(regSuppliers) && regSuppliers.length > 0 ? regSuppliers : [],
+          buyers: Array.from(buyerMap.values()),
           employees: initialStakeholders.employees
         };
+        try {
+          localStorage.setItem('stakeholders_v2', JSON.stringify(initialData));
+        } catch (e) {}
+        return initialData;
       }
     } catch {}
-    return initialStakeholders;
+    return {
+      suppliers: [],
+      buyers: merchantsDirectory as any[],
+      employees: initialStakeholders.employees
+    };
   });
 
   // Modal / Detail / Delete states
@@ -265,19 +284,24 @@ export default function UsersManagement() {
             }
           });
 
-          // Scrub any residual buyer passwords that match admin credentials
-          const cleanBuyers = buyers.map((b: any) => {
-            if (b && (b.password === 'adinarayan1977' || b.assignedPassword === 'adinarayan1977')) {
-              return {
-                ...b,
-                password: b.password === 'adinarayan1977' ? '' : (b.password || ''),
-                assignedPassword: b.assignedPassword === 'adinarayan1977' ? '' : (b.assignedPassword || '')
-              };
+          // Scrub any residual buyer passwords that match admin credentials and ensure full 547 buyers remain present
+          const buyerMap = new Map();
+          (merchantsDirectory as any[]).forEach((b: any) => {
+            const k = (b.name || '').trim().toUpperCase();
+            if (k) buyerMap.set(k, b);
+          });
+          buyers.forEach((b: any) => {
+            if (b && b.name) {
+              const k = b.name.trim().toUpperCase();
+              const existing = buyerMap.get(k);
+              const sanitizedPass = (b.password === 'adinarayan1977' || b.assignedPassword === 'adinarayan1977')
+                ? { password: '', assignedPassword: '' }
+                : {};
+              buyerMap.set(k, { ...existing, ...b, ...sanitizedPass });
             }
-            return b;
           });
 
-          const synced = { buyers: cleanBuyers, suppliers, employees };
+          const synced = { buyers: Array.from(buyerMap.values()), suppliers, employees };
           try {
             localStorage.setItem('stakeholders_v2', JSON.stringify(synced));
             if (suppliers.length > 0) {
@@ -423,6 +447,45 @@ export default function UsersManagement() {
   useEffect(() => {
     localStorage.setItem('stakeholders_v2', JSON.stringify(stakeholders));
   }, [stakeholders]);
+
+  // Automatically seed full 547 APMC merchants directory if buyers list is incomplete
+  useEffect(() => {
+    function ensureBuiltInBuyers() {
+      const currentBuyers = stakeholders.buyers || [];
+      const dirLength = Array.isArray(merchantsDirectory) ? merchantsDirectory.length : 547;
+      if (currentBuyers.length < dirLength) {
+        try {
+          if (Array.isArray(merchantsDirectory) && merchantsDirectory.length > 0) {
+            setStakeholders((prev: any) => {
+              const prevBuyers = prev?.buyers || [];
+              const buyerMap = new Map();
+              (merchantsDirectory as any[]).forEach((b: any) => {
+                const k = (b.name || '').trim().toUpperCase();
+                if (k) buyerMap.set(k, b);
+              });
+              prevBuyers.forEach((b: any) => {
+                if (b && b.name) {
+                  const k = b.name.trim().toUpperCase();
+                  buyerMap.set(k, { ...buyerMap.get(k), ...b });
+                }
+              });
+              const nextBuyers = Array.from(buyerMap.values());
+              const updated = {
+                ...prev,
+                buyers: nextBuyers
+              };
+              localStorage.setItem('stakeholders_v2', JSON.stringify(updated));
+              return updated;
+            });
+            window.dispatchEvent(new Event('storage'));
+          }
+        } catch (e) {
+          console.warn("Auto-seeding merchants into UsersManagement:", e);
+        }
+      }
+    }
+    ensureBuiltInBuyers();
+  }, [stakeholders.buyers?.length]);
 
   // Load pipeline lists to aggregate user stats dynamically on click
   const loadPipelineInfo = async () => {

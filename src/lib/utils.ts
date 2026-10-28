@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import merchantsDirectory from '../data/merchants_directory.json';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -164,24 +165,35 @@ export function getRegisteredBuyers(): Array<{
         .filter(id => id !== 'sup-01' && id !== 'buy-01')
     );
 
+    const buyerMap = new Map<string, any>();
+
+    // Start with all 547 verified APMC merchants from directory
+    if (Array.isArray(merchantsDirectory)) {
+      merchantsDirectory.forEach((b: any) => {
+        if (b && b.name && !deletedSet.has(String(b.id || '').toLowerCase())) {
+          buyerMap.set(b.name.trim().toUpperCase(), b);
+        }
+      });
+    }
+
     const raw = localStorage.getItem('stakeholders_v2');
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed.buyers) && parsed.buyers.length > 0) {
-        return parsed.buyers.filter((b: any) => b && b.name && b.status !== 'Inactive' && !deletedSet.has(String(b.id || '').toLowerCase()));
+      if (Array.isArray(parsed.buyers)) {
+        parsed.buyers.forEach((b: any) => {
+          if (b && b.name && !deletedSet.has(String(b.id || '').toLowerCase())) {
+            const k = b.name.trim().toUpperCase();
+            const existing = buyerMap.get(k);
+            buyerMap.set(k, { ...existing, ...b });
+          }
+        });
       }
     }
 
-    const legacyRaw = localStorage.getItem('stakeholders');
-    if (legacyRaw) {
-      const parsed = JSON.parse(legacyRaw);
-      if (parsed && Array.isArray(parsed.buyers) && parsed.buyers.length > 0) {
-        return parsed.buyers.filter((b: any) => b && b.name && b.status !== 'Inactive' && !deletedSet.has(String(b.id || '').toLowerCase()));
-      }
-    }
+    return Array.from(buyerMap.values()).filter((b: any) => b.status !== 'Inactive');
   } catch (e) {}
 
-  return [];
+  return Array.isArray(merchantsDirectory) ? (merchantsDirectory as any[]) : [];
 }
 
 export function getRegisteredBuyerNames(): string[] {

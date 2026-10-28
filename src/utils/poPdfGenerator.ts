@@ -74,8 +74,24 @@ export function buildPoPdfDocument(order: any, subOrders: any[] = []): jsPDF {
     const product = (sub.product || order?.product || 'KESHAR KALI').toUpperCase();
     const qty = `${sub.qty !== undefined ? sub.qty : 80}`;
     const rate = `${sub.rate !== undefined ? sub.rate : 8400}`;
-    const loading = `Loading Days: ${sub.loadingDays !== undefined ? sub.loadingDays : 0}\nUnloading: ${sub.unloadingPoint || 'shop'}`;
-    const buyerDetails = `${buyerName}\n${profile.address}\nGSTIN: ${profile.gstin} | Ph: ${profile.phone}`;
+    const loadingLines = [
+      `Loading: ${sub.loadingDays !== undefined ? sub.loadingDays : 0}d`,
+      `Unload: ${sub.unloadingPoint || 'shop'}`
+    ];
+    const loading = loadingLines.join('\n');
+
+    const buyerLines = [
+      buyerName,
+      profile.address,
+      `GSTIN: ${profile.gstin} | Ph: ${profile.phone}`
+    ];
+    if (profile.email) {
+      buyerLines.push(`Email: ${profile.email}`);
+    }
+    if (sub.remarks && String(sub.remarks).trim()) {
+      buyerLines.push(`Remarks: ${String(sub.remarks).trim()}`);
+    }
+    const buyerDetails = buyerLines.join('\n');
 
     return [subDate, buyerDetails, product, qty, rate, loading];
   });

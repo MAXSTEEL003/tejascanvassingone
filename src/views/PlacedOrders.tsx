@@ -130,19 +130,7 @@ const getBuyerProfile = (buyerName: string) => {
     }
   }
 
-  let code = 0;
-  for (let i = 0; i < norm.length; i++) {
-    code = (code + norm.charCodeAt(i)) % 10000;
-  }
-  const randomPhone = `984${String(code).padStart(4, '0')}${String((code * 17) % 1000).padStart(3, '0')}`;
-  const mockGSTIN = `29AA${String.fromCharCode(65 + (code % 26))}${String.fromCharCode(65 + ((code + 7) % 26))}${String.fromCharCode(65 + ((code + 15) % 26))}${code}M1Z${code % 10}`;
-  
-  return {
-    address: `${10 + (code % 90)}th Main, APMC Yard, Yeshwanthpur, Bangalore, Karnataka - 560022`,
-    gstin: mockGSTIN,
-    phone: randomPhone,
-    email: `${norm.toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`,
-  };
+  return resolveBuyerProfile(buyerName);
 };
 
 const formatDateLong = (dateStr: string | any): string => {
@@ -1431,7 +1419,8 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
           rate: parseFloat(poOrder.rate || '8400') || 8400,
           date: poOrder.date || new Date(),
           loadingDays: poOrder.loadingDays !== undefined ? poOrder.loadingDays : 0,
-          unloadingPoint: poOrder.unloadingPoint || 'shop'
+          unloadingPoint: poOrder.unloadingPoint || 'shop',
+          remarks: poOrder.remarks || ''
         }];
 
     const emailHtml = generateSupplierPOEmailHtml(supplierName, poOrder, subOrders);
@@ -1448,7 +1437,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
     setTimeout(() => setIsMailCopied(false), 2000);
   };
 
-  const handleUpdatePoDetail = (subIdx: number, field: 'loadingDays' | 'unloadingPoint', val: any) => {
+  const handleUpdatePoDetail = (subIdx: number, field: 'loadingDays' | 'unloadingPoint' | 'remarks', val: any) => {
     if (!poOrder) return;
     const currentSubs = (poOrder.originalOrders && poOrder.originalOrders.length > 0)
       ? poOrder.originalOrders.map((sub: any) => ({ ...sub }))
@@ -1460,7 +1449,8 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
           rate: parseFloat(poOrder.rate || '8400') || 8400,
           date: poOrder.date || new Date(),
           loadingDays: poOrder.loadingDays !== undefined ? poOrder.loadingDays : 3,
-          unloadingPoint: poOrder.unloadingPoint || 'shop'
+          unloadingPoint: poOrder.unloadingPoint || 'shop',
+          remarks: poOrder.remarks || ''
         }];
 
     if (currentSubs[subIdx]) {
@@ -1471,7 +1461,8 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
       ...poOrder,
       originalOrders: currentSubs,
       loadingDays: field === 'loadingDays' ? val : (poOrder.loadingDays !== undefined ? poOrder.loadingDays : 3),
-      unloadingPoint: field === 'unloadingPoint' ? val : (poOrder.unloadingPoint || 'shop')
+      unloadingPoint: field === 'unloadingPoint' ? val : (poOrder.unloadingPoint || 'shop'),
+      remarks: field === 'remarks' ? val : (poOrder.remarks || '')
     };
 
     setPoOrder(updatedPo);
@@ -1504,7 +1495,8 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
           rate: parseFloat(order.rate || '8400') || 8400,
           date: order.date || new Date(),
           loadingDays: order.loadingDays !== undefined ? order.loadingDays : 0,
-          unloadingPoint: order.unloadingPoint || 'shop'
+          unloadingPoint: order.unloadingPoint || 'shop',
+          remarks: order.remarks || ''
         }];
 
     setA4PreviewOrder(order);
@@ -1658,7 +1650,8 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
             rate: parseFloat(poOrder.rate || '8400') || 8400,
             date: poOrder.date || new Date(),
             loadingDays: poOrder.loadingDays !== undefined ? poOrder.loadingDays : 0,
-            unloadingPoint: poOrder.unloadingPoint || 'shop'
+            unloadingPoint: poOrder.unloadingPoint || 'shop',
+            remarks: poOrder.remarks || ''
           }];
 
       const calculatedAmt = subOrders.reduce((sum: number, sub: any) => sum + ((parseFloat(sub.qty) || 0) * (parseFloat(sub.rate) || 8400)), 0);
@@ -2891,7 +2884,8 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                 rate: 8000,
                 date: poOrder.date || '12 June, 2026',
                 loadingDays: 0,
-                unloadingPoint: 'shop'
+                unloadingPoint: 'shop',
+                remarks: poOrder.remarks || ''
               }];
 
           const handleCopyEmailHTML = () => {
@@ -2899,7 +2893,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
             const textContent = `Tejas Canvassing\nBangalore\n\nDear ${supplierName.toUpperCase()},\n\nToday's orders:\n\n` + 
               subOrders.map((s: any) => {
                 const profile = getBuyerProfile(s.buyer);
-                return `- ${s.buyer} (${s.product || 'KESHAR KALI'}): ${s.qty} QTLS @ Rate ${s.rate || 8000}\n  Address: ${profile.address}\n  GSTIN: ${profile.gstin} | Phone: ${profile.phone}\n  Loading days: ${s.loadingDays !== undefined ? s.loadingDays : 3} | Unloading point: ${s.unloadingPoint || 'shop'}`;
+                return `- ${s.buyer} (${s.product || 'KESHAR KALI'}): ${s.qty} QTLS @ Rate ${s.rate || 8000}\n  Address: ${profile.address}\n  GSTIN: ${profile.gstin} | Phone: ${profile.phone}${profile.email ? ` | Email: ${profile.email}` : ''}${s.remarks ? `\n  Remarks: ${s.remarks}` : ''}\n  Loading days: ${s.loadingDays !== undefined ? s.loadingDays : 3} | Unloading point: ${s.unloadingPoint || 'shop'}`;
               }).join('\n\n');
             
             try {
@@ -3112,6 +3106,22 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                                           <div><span className="font-bold">GSTIN:</span> <span>{profile.gstin}</span></div>
                                           <div><span className="font-bold">Phone:</span> <span>{profile.phone}</span></div>
                                           <div><span className="font-bold">Email:</span> {profile.email ? <a href={`mailto:${profile.email}`} className="text-[#0070f3] hover:underline">{profile.email}</a> : null}</div>
+                                        </div>
+                                        <div className="pt-2">
+                                          <div className="p-2 rounded bg-amber-50/90 border border-amber-300 border-l-[3px] border-l-amber-600 shadow-2xs">
+                                            <div className="flex items-center justify-between text-[10px] font-bold text-amber-900 uppercase tracking-wider mb-1">
+                                              <span>Remarks:</span>
+                                              {sub.remarks ? <span className="text-[9px] font-medium text-amber-700 normal-case italic">included in PO</span> : null}
+                                            </div>
+                                            <input
+                                              type="text"
+                                              value={sub.remarks || ''}
+                                              onChange={(e) => handleUpdatePoDetail(sIdx, 'remarks', e.target.value)}
+                                              placeholder="e.g. 50kg bags, mill direct..."
+                                              className="w-full px-2 py-1 text-xs font-semibold bg-white border border-amber-300 rounded text-amber-950 placeholder:text-amber-800/40 outline-none focus:ring-1 focus:ring-amber-500 shadow-inner"
+                                              title="Click to edit remarks for this buyer"
+                                            />
+                                          </div>
                                         </div>
                                       </td>
                                       <td className="p-3.5 border border-[#b0b0b0] text-left text-black uppercase font-normal leading-tight">
@@ -4251,9 +4261,14 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                                     {profile.address}
                                   </div>
                                   <div className="mt-1.5 pt-1 border-t border-dashed border-slate-300 text-[9.5px] text-slate-700 leading-tight">
-                                    <span><strong>GSTIN:</strong> {profile.gstin}</span>
-                                    <span className="mx-1">&bull;</span>
-                                    <span><strong>Phone:</strong> {profile.phone}</span>
+                                    <div><strong>GSTIN:</strong> {profile.gstin}</div>
+                                    <div className="mt-0.5"><strong>Phone:</strong> {profile.phone} &nbsp;|&nbsp; <strong>Email:</strong> {profile.email || 'N/A'}</div>
+                                    {sub.remarks && (
+                                      <div className="mt-1.5 px-2 py-0.5 rounded bg-amber-50 border border-amber-300 border-l-[3px] border-l-amber-600 text-amber-950 font-medium text-[9.5px] leading-tight">
+                                        <strong className="text-amber-900 uppercase text-[8.5px] tracking-wide">Remarks: </strong>
+                                        <span className="font-bold text-slate-950">{sub.remarks}</span>
+                                      </div>
+                                    )}
                                   </div>
                                 </td>
                                 <td className="p-2.5 border border-slate-800 font-black text-slate-950 uppercase align-top">

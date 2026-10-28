@@ -1,4 +1,5 @@
 import { sanitizeSupplierName } from '../lib/utils';
+import merchantsDirectory from '../data/merchants_directory.json';
 
 export interface BuyerProfileData {
   address: string;
@@ -61,6 +62,20 @@ export const resolveBuyerProfile = (buyerName: string): BuyerProfileData => {
     if (norm.includes(k) || k.includes(norm)) {
       return DEFAULT_BUYER_PROFILES[k];
     }
+  }
+
+  // Fallback to verified 547 APMC merchants directory
+  const dirMatch = (merchantsDirectory as any[]).find((b: any) => {
+    const bName = (b.name || '').trim().toUpperCase();
+    return bName === norm || bName.includes(norm) || norm.includes(bName);
+  });
+  if (dirMatch) {
+    return {
+      address: dirMatch.address || 'APMC Yard, Yeshwanthpur, Bangalore, Karnataka - 560022',
+      gstin: dirMatch.gstin || '',
+      phone: dirMatch.phone || '',
+      email: dirMatch.email || '',
+    };
   }
 
   return {
@@ -194,6 +209,7 @@ export const generateSupplierPOEmailHtml = (
         date: order?.date || new Date(),
         loadingDays: order?.loadingDays !== undefined ? order.loadingDays : 0,
         unloadingPoint: order?.unloadingPoint || 'shop',
+        remarks: order?.remarks || '',
       }];
 
   const tableRowsHtml = itemsList.map((sub: any) => {
@@ -232,6 +248,12 @@ export const generateSupplierPOEmailHtml = (
             <div><strong>GSTIN:</strong> ${profile.gstin || ''}</div>
             <div><strong>Phone:</strong> ${phoneHtml}</div>
             <div><strong>Email:</strong> ${emailHtml}</div>
+            ${sub.remarks ? `
+              <div style="margin-top: 6px; padding: 3px 8px; background-color: #fef3c7; border: 1px solid #fde68a; border-left: 3px solid #d97706; border-radius: 4px; font-size: 11px; line-height: 1.35; color: #78350f; display: inline-block;">
+                <strong style="color: #92400e; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px;">Remarks:</strong>
+                <span style="font-weight: 600; color: #1c1917;">${sub.remarks}</span>
+              </div>
+            ` : ''}
           </div>
         </td>
         <td style="padding: 12px 14px; border: 1px solid #b0b0b0; vertical-align: top; text-align: left; font-size: 13px; line-height: 1.4; color: #000000; width: 14%;">
@@ -334,6 +356,7 @@ export const generateSupplierPOA4PrintHtml = (
         date: order?.date || new Date(),
         loadingDays: order?.loadingDays !== undefined ? order.loadingDays : 0,
         unloadingPoint: order?.unloadingPoint || 'shop',
+        remarks: order?.remarks || '',
       }];
 
   const totalQty = itemsList.reduce((sum: number, item: any) => sum + (parseFloat(item.qty) || 0), 0);
@@ -359,6 +382,12 @@ export const generateSupplierPOA4PrintHtml = (
           <div style="border-top: 1px dashed #9ca3af; padding-top: 5px; font-size: 9.5px; color: #111827; line-height: 1.45;">
             <div><strong>GSTIN:</strong> ${profile.gstin}</div>
             <div><strong>Phone:</strong> ${profile.phone} &nbsp;|&nbsp; <strong>Email:</strong> ${profile.email}</div>
+            ${sub.remarks ? `
+              <div style="margin-top: 5px; padding: 2px 6px; background-color: #fef3c7; border: 1px solid #fde68a; border-left: 3px solid #d97706; border-radius: 3px; font-size: 9.5px; line-height: 1.3; color: #78350f; display: inline-block;">
+                <strong style="color: #92400e; text-transform: uppercase; font-size: 8.5px; letter-spacing: 0.4px;">Remarks:</strong>
+                <span style="font-weight: 700; color: #1c1917;">${sub.remarks}</span>
+              </div>
+            ` : ''}
           </div>
         </td>
         <td style="padding: 10px 12px; border: 1px solid #1f2937; vertical-align: top; font-weight: 800; color: #000000; text-transform: uppercase; font-size: 11.5px;">

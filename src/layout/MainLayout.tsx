@@ -15,6 +15,7 @@ import { getDeliveryLocations, saveDeliveryLocations, addDeliveryLocation, remov
 import PwaInstallModal from '../components/PwaInstallModal';
 import MerchantNotificationsModal from '../components/MerchantNotificationsModal';
 import { getBroadcastNotifications, getReadNotificationIds } from '../utils/storeNotifications';
+import PageFallback from '../components/PageFallback';
 
 function MerchantHeader({ onSearchClick }: { onSearchClick?: () => void }) {
   const navigate = useNavigate();
@@ -790,7 +791,9 @@ function MainLayoutContent({ onSearchClick }: { onSearchClick: () => void }) {
                 }}
                 className="w-full h-full"
               >
-                <Outlet />
+                <React.Suspense fallback={<PageFallback />}>
+                  <Outlet />
+                </React.Suspense>
               </motion.div>
             </AnimatePresence>
           </main>
@@ -824,7 +827,9 @@ function MainLayoutContent({ onSearchClick }: { onSearchClick: () => void }) {
                 }}
                 className="w-full h-full"
               >
-                <Outlet />
+                <React.Suspense fallback={<PageFallback />}>
+                  <Outlet />
+                </React.Suspense>
               </motion.div>
             </AnimatePresence>
           </main>
@@ -891,7 +896,9 @@ function MainLayoutContent({ onSearchClick }: { onSearchClick: () => void }) {
             }}
             className={cn("w-full", location.pathname === '/arrival-entry' ? "h-full flex-1 flex flex-col min-h-0 overflow-hidden" : "h-full")}
           >
-            <Outlet />
+            <React.Suspense fallback={<PageFallback />}>
+              <Outlet />
+            </React.Suspense>
           </motion.div>
         </AnimatePresence>
       </main>

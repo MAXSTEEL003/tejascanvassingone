@@ -1,4 +1,4 @@
-import { initializeApp } from 'firebase/app';
+import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getAnalytics, isSupported, Analytics } from 'firebase/analytics';
 import { 
@@ -15,27 +15,45 @@ import {
   updateDoc,
   getDoc,
   getDocFromServer,
-  writeBatch
+  writeBatch,
+  Firestore
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { sanitizeSupplierName } from './utils';
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
+// Initialize Firebase App safely (singleton)
+const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
-let localCacheSetting: any = undefined;
+// Initialize Firestore safely with fallback to getFirestore if already initialized
+let firestoreInstance: Firestore;
 try {
+  let localCacheSetting: any = undefined;
   if (typeof window !== 'undefined') {
-    localCacheSetting = persistentLocalCache({ tabManager: persistentMultipleTabManager() });
+    try {
+      localCacheSetting = persistentLocalCache({ tabManager: persistentMultipleTabManager() });
+    } catch (cacheErr) {
+      console.warn("Firestore persistent cache notice:", cacheErr);
+    }
   }
-} catch (e) {
-  console.warn("Firestore persistent cache notice:", e);
+
+  firestoreInstance = initializeFirestore(app, {
+    ...(localCacheSetting ? { localCache: localCacheSetting } : {}),
+    experimentalAutoDetectLongPolling: true,
+  }, firebaseConfig.firestoreDatabaseId);
+} catch (err: any) {
+  // If initializeFirestore() was already called with different options (e.g. HMR, multiple imports, or re-renders):
+  // Gracefully return the existing instance via getFirestore() as instructed by Firebase
+  console.info("Firestore already initialized, using existing instance:", err?.message || err);
+  try {
+    firestoreInstance = firebaseConfig.firestoreDatabaseId 
+      ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
+      : getFirestore(app);
+  } catch (fallbackErr) {
+    firestoreInstance = getFirestore(app);
+  }
 }
 
-export const db = initializeFirestore(app, {
-  ...(localCacheSetting ? { localCache: localCacheSetting } : {}),
-  experimentalAutoDetectLongPolling: true,
-}, firebaseConfig.firestoreDatabaseId);
+export const db = firestoreInstance;
 
 export const auth = getAuth(app);
 

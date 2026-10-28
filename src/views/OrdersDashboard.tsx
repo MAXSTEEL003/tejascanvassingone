@@ -9,6 +9,7 @@ import { getCollectionDocs, syncCollection, setCollectionDoc, deleteCollectionDo
 import { doc, deleteDoc, collection, getDocs, onSnapshot } from 'firebase/firestore';
 import SearchableSelect from '../components/SearchableSelect';
 import { generateSupplierPOEmailHtml } from '../utils/poEmailTemplate';
+import merchantsDirectory from '../data/merchants_directory.json';
 
 
 const trendData = [
@@ -24,7 +25,10 @@ const trendData = [
 // Default base suppliers and buyers fallback
 const DEFAULT_SUPPLIERS: { id: string; name: string }[] = [];
 
-const DEFAULT_BUYERS: { id: string; name: string }[] = [];
+const DEFAULT_BUYERS: { id: string; name: string }[] = (merchantsDirectory as any[]).map((b: any) => ({
+  id: b.id || `BUY-${b.name}`,
+  name: b.name
+}));
 
 const BASE_REGISTERED_PRODUCTS: Record<string, string[]> = {};
 
@@ -83,6 +87,21 @@ const resolveBuyerProfile = (buyerName: string) => {
       };
     }
   } catch (e) {}
+
+  // Fallback to verified merchants directory
+  const dirMatch = (merchantsDirectory as any[]).find((b: any) => {
+    const bNorm = (b.name || '').trim().toUpperCase()
+      .replace(/\s*\(LLC\)/gi, '')
+      .replace(/\.$/, '');
+    return bNorm === norm || bNorm.includes(norm) || norm.includes(bNorm);
+  });
+  if (dirMatch && dirMatch.phone) {
+    const cleanPhone = String(dirMatch.phone).replace(/[^0-9]/g, '');
+    return {
+      email: dirMatch.email || `${(norm || '').toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`,
+      phone: cleanPhone.length >= 10 ? cleanPhone.slice(-10) : cleanPhone
+    };
+  }
 
   if (BUYER_PROFILES_LOOKUP[norm]) return BUYER_PROFILES_LOOKUP[norm];
   for (const k of Object.keys(BUYER_PROFILES_LOOKUP)) {
@@ -191,7 +210,8 @@ export const normalizeOrder = (raw: any): any => {
     status,
     supplier,
     loadingDays: raw.loadingDays !== undefined ? raw.loadingDays : 3,
-    unloadingPoint: raw.unloadingPoint || 'shop'
+    unloadingPoint: raw.unloadingPoint || 'shop',
+    remarks: raw.remarks !== undefined ? raw.remarks : ''
   };
 };
 
@@ -524,12 +544,14 @@ export default function OrdersDashboard() {
     rate: '',
     urgency: 'Standard' as 'Critical' | 'Standard' | 'High',
     loadingDays: 3,
-    unloadingPoint: 'shop'
+    unloadingPoint: 'shop',
+    remarks: ''
   });
 
   const [editingLogisticsId, setEditingLogisticsId] = useState<string | null>(null);
   const [editLogisticsDays, setEditLogisticsDays] = useState<number>(3);
   const [editLogisticsPoint, setEditLogisticsPoint] = useState<string>('shop');
+  const [editLogisticsRemarks, setEditLogisticsRemarks] = useState<string>('');
 
   const handleSaveOrderLogistics = (orderId: string) => {
     const updated = currentOrders.map(o => {
@@ -537,7 +559,8 @@ export default function OrdersDashboard() {
         return {
           ...o,
           loadingDays: editLogisticsDays,
-          unloadingPoint: editLogisticsPoint
+          unloadingPoint: editLogisticsPoint,
+          remarks: editLogisticsRemarks.trim()
         };
       }
       return o;
@@ -548,7 +571,7 @@ export default function OrdersDashboard() {
       if (raw) {
         const saved = JSON.parse(raw);
         const nextSaved = saved.map((o: any) => 
-          String(o.id) === String(orderId) ? { ...o, loadingDays: editLogisticsDays, unloadingPoint: editLogisticsPoint } : o
+          String(o.id) === String(orderId) ? { ...o, loadingDays: editLogisticsDays, unloadingPoint: editLogisticsPoint, remarks: editLogisticsRemarks.trim() } : o
         );
         localStorage.setItem('procurement_requests', JSON.stringify(nextSaved));
       }
@@ -632,6 +655,32 @@ export default function OrdersDashboard() {
               buyMap.set(d.name.trim().toUpperCase(), { id: d.id || `BUY-${Date.now()}`, name: d.name.trim() });
             }
           });
+        }
+
+        // Automatically incorporate full 547 APMC merchants directory so all buyers are always available
+        try {
+          if (Array.isArray(merchantsDirectory) && merchantsDirectory.length > 0) {
+            merchantsDirectory.forEach((b: any) => {
+              if (b && b.name && !deletedSet.has(String(b.id || '').toLowerCase())) {
+                const normName = b.name.trim().toUpperCase();
+                if (!buyMap.has(normName)) {
+                  buyMap.set(normName, { id: b.id || `BUY-${Date.now()}`, name: b.name.trim() });
+                }
+              }
+            });
+            const currentStakeholders = JSON.parse(localStorage.getItem('stakeholders_v2') || '{}');
+            if (!currentStakeholders.buyers || currentStakeholders.buyers.length < merchantsDirectory.length) {
+              const nextStakeholders = {
+                ...currentStakeholders,
+                buyers: merchantsDirectory,
+                suppliers: currentStakeholders.suppliers || Array.from(supMap.values()),
+                employees: currentStakeholders.employees || []
+              };
+              localStorage.setItem('stakeholders_v2', JSON.stringify(nextStakeholders));
+            }
+          }
+        } catch (e) {
+          console.warn("Auto-loading merchants directory in OrdersDashboard:", e);
         }
 
         // Only incorporate inventory suppliers if no suppliers registered yet
@@ -1613,7 +1662,8 @@ export default function OrdersDashboard() {
         rate: Number(s.rate) || avgRate,
         date: s.date || groupedOrder.date,
         loadingDays: s.loadingDays !== undefined ? s.loadingDays : 3,
-        unloadingPoint: s.unloadingPoint || 'shop'
+        unloadingPoint: s.unloadingPoint || 'shop',
+        remarks: s.remarks || ''
       }));
 
       const emailHtml = generateSupplierPOEmailHtml(assignedBatchSupplier, groupedOrder, subOrders);
@@ -1792,7 +1842,8 @@ export default function OrdersDashboard() {
       color: newOrder.urgency === 'Critical' ? 'red' : newOrder.urgency === 'High' ? 'orange' : 'zinc',
       phone: cleanBuyerPhone || undefined,
       loadingDays: isNaN(loadingDaysNum) ? 3 : loadingDaysNum,
-      unloadingPoint: (newOrder.unloadingPoint || 'shop').trim()
+      unloadingPoint: (newOrder.unloadingPoint || 'shop').trim(),
+      remarks: (newOrder.remarks || '').trim()
     });
 
     const updatedOrders = [orderToAdd, ...currentOrders.filter(o => o && String(o.id).toLowerCase() !== maId.toLowerCase())];
@@ -1815,7 +1866,7 @@ export default function OrdersDashboard() {
     window.dispatchEvent(new Event('procurement-updated'));
 
     setIsCreateModalOpen(false);
-    setNewOrder({ buyer: '', phone: '', supplier: '', product: '', qty: '', rate: '', urgency: 'Standard', loadingDays: 3, unloadingPoint: 'shop' });
+    setNewOrder({ buyer: '', phone: '', supplier: '', product: '', qty: '', rate: '', urgency: 'Standard', loadingDays: 3, unloadingPoint: 'shop', remarks: '' });
   };
 
   return (
@@ -2330,6 +2381,7 @@ export default function OrdersDashboard() {
                                       setEditingLogisticsId(order.id);
                                       setEditLogisticsDays(order.loadingDays !== undefined ? order.loadingDays : 3);
                                       setEditLogisticsPoint(order.unloadingPoint || 'shop');
+                                      setEditLogisticsRemarks(order.remarks || '');
                                     }}
                                     className="p-1 rounded-md bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 text-[10px] flex items-center gap-1 font-bold cursor-pointer transition-colors"
                                     title="Edit loading days and unloading point"
@@ -2371,6 +2423,16 @@ export default function OrdersDashboard() {
                                       className="w-full px-2 py-1 text-xs bg-white dark:bg-neutral-900 border border-amber-500/40 rounded text-on-surface"
                                     />
                                   </div>
+                                  <div>
+                                    <label className="text-[9px] font-bold text-secondary uppercase block">Remarks:</label>
+                                    <input
+                                      type="text"
+                                      value={editLogisticsRemarks}
+                                      onChange={(e) => setEditLogisticsRemarks(e.target.value)}
+                                      placeholder="e.g. 50kg bags, special gate..."
+                                      className="w-full px-2 py-1 text-xs bg-white dark:bg-neutral-900 border border-amber-500/40 rounded text-on-surface"
+                                    />
+                                  </div>
                                 </div>
                               ) : (
                                 <div className="text-xs space-y-1">
@@ -2382,6 +2444,12 @@ export default function OrdersDashboard() {
                                     <span className="text-[10px] text-secondary">Unloading:</span>
                                     <strong className="text-on-surface font-bold capitalize">{order.unloadingPoint || 'shop'}</strong>
                                   </div>
+                                  {order.remarks && (
+                                    <div className="flex items-start justify-between pt-1 border-t border-amber-500/10 text-[10px]">
+                                      <span className="text-secondary shrink-0">Remarks:</span>
+                                      <span className="text-on-surface font-medium truncate ml-2 text-right" title={order.remarks}>{order.remarks}</span>
+                                    </div>
+                                  )}
                                 </div>
                               )}
                             </div>
@@ -3185,6 +3253,25 @@ export default function OrdersDashboard() {
                           ))}
                         </div>
                       </div>
+                    </div>
+
+                    {/* Remarks / Excess Details */}
+                    <div className="col-span-1 md:col-span-2 space-y-1.5 pt-3 border-t border-amber-500/15">
+                      <div className="flex justify-between items-center">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-neutral-700 dark:text-neutral-300 ml-1">
+                          Remarks
+                        </label>
+                        <span className="text-[9px] text-neutral-400 font-medium">
+                          Optional • Notes for PO
+                        </span>
+                      </div>
+                      <input 
+                        type="text" 
+                        placeholder="e.g. 50kg bags, extra stitches, direct mill loading, specific gate..."
+                        value={newOrder.remarks || ''}
+                        onChange={(e) => setNewOrder({...newOrder, remarks: e.target.value})}
+                        className="w-full bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-primary/20 transition-all placeholder:text-neutral-400 text-neutral-900 dark:text-white"
+                      />
                     </div>
                   </div>
                 </div>

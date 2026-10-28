@@ -1,34 +1,36 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { getVerifiedUserRole } from './lib/auth';
 import { AdminRoute, StaffRoute, MerchantRoute } from './components/RouteGuards';
 import { CartProvider } from './context/CartContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
-
-import LoginView from './views/LoginView';
-import AboutView from './views/AboutView';
-import StoreManagement from './views/StoreManagement';
-import OrdersDashboard from './views/OrdersDashboard';
-import ProductInventory from './views/ProductInventory';
-import PlacedOrders from './views/PlacedOrders';
-import OrderDetails from './views/OrderDetails';
-import UsersManagement from './views/UsersManagement';
-import AnalyticsDashboard from './views/AnalyticsDashboard';
-import TasksManagement from './views/TasksManagement';
-import CheckoutView from './views/CheckoutView';
-import PaymentTracking from './views/PaymentTracking';
-import NotificationSettings from './views/NotificationSettings';
-import PattiView from './views/PattiView';
-import PattiBookView from './views/PattiBookView';
-import ArrivalEntry from './views/ArrivalEntry';
-import LedgerManagement from './views/LedgerManagement';
-import PendingLoadings from './views/PendingLoadings';
-import BrokerageView from './views/BrokerageView';
-import BagView from './views/BagView';
-import ProfileView from './views/ProfileView';
-import EmployeePortalView from './views/EmployeePortalView';
-import AcknowledgeReceiptView from './views/AcknowledgeReceiptView';
+import PageFallback from './components/PageFallback';
 import MainLayout from './layout/MainLayout';
+
+// High-performance Lazy Loaded Views
+const LoginView = lazy(() => import('./views/LoginView'));
+const AboutView = lazy(() => import('./views/AboutView'));
+const StoreManagement = lazy(() => import('./views/StoreManagement'));
+const OrdersDashboard = lazy(() => import('./views/OrdersDashboard'));
+const ProductInventory = lazy(() => import('./views/ProductInventory'));
+const PlacedOrders = lazy(() => import('./views/PlacedOrders'));
+const OrderDetails = lazy(() => import('./views/OrderDetails'));
+const UsersManagement = lazy(() => import('./views/UsersManagement'));
+const AnalyticsDashboard = lazy(() => import('./views/AnalyticsDashboard'));
+const TasksManagement = lazy(() => import('./views/TasksManagement'));
+const CheckoutView = lazy(() => import('./views/CheckoutView'));
+const PaymentTracking = lazy(() => import('./views/PaymentTracking'));
+const NotificationSettings = lazy(() => import('./views/NotificationSettings'));
+const PattiView = lazy(() => import('./views/PattiView'));
+const PattiBookView = lazy(() => import('./views/PattiBookView'));
+const ArrivalEntry = lazy(() => import('./views/ArrivalEntry'));
+const LedgerManagement = lazy(() => import('./views/LedgerManagement'));
+const PendingLoadings = lazy(() => import('./views/PendingLoadings'));
+const BrokerageView = lazy(() => import('./views/BrokerageView'));
+const BagView = lazy(() => import('./views/BagView'));
+const ProfileView = lazy(() => import('./views/ProfileView'));
+const EmployeePortalView = lazy(() => import('./views/EmployeePortalView'));
+const AcknowledgeReceiptView = lazy(() => import('./views/AcknowledgeReceiptView'));
 
 
 
@@ -113,8 +115,9 @@ export default function App() {
     <ErrorBoundary>
       <CartProvider>
         <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<AboutView />} />
+          <Suspense fallback={<PageFallback />}>
+            <Routes>
+              <Route path="/" element={<AboutView />} />
             <Route path="/about" element={<AboutView />} />
             <Route path="/intro" element={<AboutView />} />
             <Route path="/onboarding" element={<AboutView />} />
@@ -189,7 +192,8 @@ export default function App() {
             {/* Global Fallback */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
-        </BrowserRouter>
+        </Suspense>
+      </BrowserRouter>
       </CartProvider>
     </ErrorBoundary>
   );
