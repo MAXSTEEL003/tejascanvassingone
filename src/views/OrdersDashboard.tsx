@@ -1534,8 +1534,12 @@ export default function OrdersDashboard() {
     return { totalSelectedQty: qty, totalSelectedAmt: amt };
   }, [filteredOrders, selectedOrders]);
 
-  const handleGroupAndPlace = () => {
-    const selected = filteredOrders.filter(o => selectedOrders.includes(o.id));
+  const handleGroupAndPlace = async () => {
+    const selectedNormSet = new Set(selectedOrders.map(s => String(s).trim().toLowerCase().replace(/^#/, '')));
+    const selected = currentOrders.filter(o => {
+      const normId = String(o.id || '').trim().toLowerCase().replace(/^#/, '');
+      return selectedNormSet.has(normId);
+    });
     if (selected.length === 0) return;
     
     // Create the grouped order summary
@@ -1545,6 +1549,8 @@ export default function OrdersDashboard() {
       ? uniqueBuyers[0] 
       : `${uniqueBuyers[0]} & ${uniqueBuyers.length - 1} other${uniqueBuyers.length > 2 ? 's' : ''}`;
       
+    const totalSelectedAmt = selected.reduce((sum, o) => sum + (Number(o.qty || 0) * Number(o.rate || 0)), 0);
+    const totalSelectedQty = selected.reduce((sum, o) => sum + Number(o.qty || 0), 0);
     const avgRate = Number((totalSelectedAmt / (totalSelectedQty || 1)).toFixed(2));
     const firstProduct = selected[0]?.product || 'Premium Rice';
     const firstInitials = selected[0]?.initials || 'CB';
@@ -1599,55 +1605,17 @@ export default function OrdersDashboard() {
       dispatchedBuyers: buyerProfiles,
     };
 
-    // Initialize Auto Dispatch Simulation Overlay
+    // Show Auto Dispatch Modal Overlay
     setAutoDispatchStatus({
       isSending: true,
-      progress: 5,
+      progress: 15,
       logs: [],
-      currentAction: "Resolving stakeholder profiles..."
+      currentAction: "Approving order and preparing purchase documents..."
     });
 
-    const isSingleOrder = selected.length === 1;
-
-    // 1. DISPATCH WHATSAPP & SMS TO ALL BUYERS IMMEDIATELY (NO EMAIL SENT ON APPROVAL)
-    buyerProfiles.forEach(bp => {
-      const buyerOrders = selected.filter(s => (s.buyer || '').trim().toLowerCase() === bp.name.trim().toLowerCase());
-
-      const bpOrder = buyerOrders[0] || groupedOrder;
-      const bpBrand = (bpOrder.product || groupedOrder.product || 'keshar kali').replace(/\(\d+.*$/, '').trim();
-      const bpQtyNum = buyerOrders.reduce((sum, o) => sum + (Number(o.qty) || 0), 0) || Number(groupedOrder.qty) || 40;
-      const bpRateNum = bpOrder.rate || groupedOrder.rate || 10000;
-
-      const buyerWhatsappMsg = `Hello ${bp.name},\n\nOrder placed successfully.\n\nBrand: ${bpBrand}\nQuantity: ${bpQtyNum} QTL\nRate: ₹${bpRateNum}/QTL\n\nThank you,\nTejas Canvassing`;
-
-      dispatchOrderPlacedWhatsApp({
-        to: bp.phone,
-        buyerName: bp.name,
-        brand: bpBrand,
-        qty: bpQtyNum,
-        rate: bpRateNum,
-        orderId: groupedOrder.id,
-        poNumber: groupedOrder.id,
-        customMessage: buyerWhatsappMsg
-      }).then(res => {
-        console.log(`[Placed Order WhatsApp Result for ${bp.name}]:`, res);
-      }).catch(err => {
-        console.warn(`WhatsApp dispatch note for ${bp.name}:`, err?.message || err);
-      });
-
-      fetch('/api/dispatch-sms', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          to: bp.phone,
-          recipientName: bp.name,
-          message: `Tejas Canvassing: Order placed under ${isSingleOrder ? 'PO' : 'Batch PO'} ${groupedOrder.id} (${groupedOrder.qty} QTLS) arriving in 3-5 days.`
-        })
-      }).catch(err => console.warn(`SMS dispatch note for ${bp.name}:`, err?.message || err));
-    });
-
-    // 2. DISPATCH OFFICIAL PURCHASE ORDER EMAIL TO ASSIGNED SUPPLIER (ONLY EMAIL TO SUPPLIER, NO WHATSAPP)
+    // 1. DISPATCH OFFICIAL PURCHASE ORDER EMAIL TO ASSIGNED SUPPLIER
     if (supplierProfile.email) {
+      setAutoDispatchStatus(prev => prev ? ({ ...prev, progress: 35, currentAction: `E-mailing official Purchase Order to supplier ${assignedBatchSupplier}...` }) : null);
       const subOrders = selected.map((s: any) => ({
         id: s.id,
         buyer: s.buyer || 'Authorized Merchant',
@@ -1680,108 +1648,87 @@ export default function OrdersDashboard() {
           supplierName: assignedBatchSupplier,
           orderDetails: groupedOrder
         })
-      })
-      .then(res => res.json())
-      .then(data => console.log(`Approved Supplier PO Email Result for ${assignedBatchSupplier}:`, data))
-      .catch(err => console.warn(`Supplier PO email error for ${assignedBatchSupplier}:`, err?.message || err));
+      }).catch(err => console.warn(`Supplier PO email error for ${assignedBatchSupplier}:`, err?.message || err));
     }
 
-    // Step 1: Profile resolution update (300ms)
+    // 2. DISPATCH WHATSAPP ORDER CONFIRMATION TO BUYER(S) AUTOMATICALLY UPON APPROVING & PLACING ORDER
+    setAutoDispatchStatus(prev => prev ? ({ ...prev, progress: 60, currentAction: "Transmitting automatic WhatsApp order confirmation to buyer(s)..." }) : null);
+
+    const waPromises = buyerProfiles.map(async bp => {
+      const buyerOrders = selected.filter(s => (s.buyer || '').trim().toLowerCase() === bp.name.trim().toLowerCase());
+      const bpOrder = buyerOrders[0] || groupedOrder;
+      const bpBrand = (bpOrder.product || groupedOrder.product || 'keshar kali').replace(/\(\d+.*$/, '').trim();
+      const bpQtyNum = buyerOrders.reduce((sum, o) => sum + (Number(o.qty) || 0), 0) || Number(groupedOrder.qty) || 40;
+      const bpRateNum = bpOrder.rate || groupedOrder.rate || 10000;
+      const buyerWhatsappMsg = `Hello ${bp.name},\n\nOrder placed successfully.\n\nBrand: ${bpBrand}\nQuantity: ${bpQtyNum} QTL\nRate: ₹${bpRateNum}/QTL\n\nThank you,\nTejas Canvassing`;
+
+      try {
+        const waRes = await dispatchOrderPlacedWhatsApp({
+          to: bp.phone,
+          buyerName: bp.name,
+          brand: bpBrand,
+          qty: bpQtyNum,
+          rate: bpRateNum,
+          orderId: groupedOrder.id,
+          poNumber: groupedOrder.id,
+          customMessage: buyerWhatsappMsg
+        });
+        console.log(`[Approved Order WhatsApp Result for ${bp.name}]:`, waRes);
+        return { name: bp.name, ...waRes };
+      } catch (err: any) {
+        console.warn(`WhatsApp dispatch note for ${bp.name}:`, err?.message || err);
+        return { name: bp.name, success: false, error: err?.message };
+      }
+    });
+
+    await Promise.allSettled(waPromises);
+
+    setAutoDispatchStatus(prev => prev ? ({ ...prev, progress: 85, currentAction: "Saving placed order & updating records..." }) : null);
+
+    // 3. Save to Placed Orders in localStorage & Firestore
+    const existingPlaced = JSON.parse(localStorage.getItem('placed_orders') || '[]');
+    const newPlaced = [groupedOrder, ...existingPlaced];
+    localStorage.setItem('placed_orders', JSON.stringify(newPlaced));
+    localStorage.setItem('just_placed_order', 'true');
+    await setCollectionDoc('placed_orders', batchId, groupedOrder).catch(() => {});
+
+    // Generate Miller and Shop ledger entries
+    createLedgerEntriesForOrder(groupedOrder).catch(err => {
+      console.error("Failed to automatically generate commercial ledger entries:", err);
+    });
+
+    // Remove approved orders from procurement_requests
+    const remaining = currentOrders.filter(o => {
+      const normId = String(o.id || '').trim().toLowerCase().replace(/^#/, '');
+      return !selectedNormSet.has(normId);
+    });
+    setCurrentOrders(remaining);
+    
+    const savedProc = JSON.parse(localStorage.getItem('procurement_requests') || '[]');
+    const filteredProc = savedProc.filter((o: any) => {
+      const normId = String(o.id || '').trim().toLowerCase().replace(/^#/, '');
+      return !selectedNormSet.has(normId);
+    });
+    localStorage.setItem('procurement_requests', JSON.stringify(filteredProc));
+
+    // Delete approved requests from Firestore
+    try {
+      addDeletedProcurementIds(selectedOrders);
+      await Promise.allSettled(
+        selectedOrders.map(id => deleteCollectionDoc('procurement_requests', id))
+      );
+    } catch (err) {
+      console.error('Failed to delete approved requests from Firestore:', err);
+    }
+
+    setAutoDispatchStatus(prev => prev ? ({ ...prev, progress: 100, currentAction: "Order approved & placed successfully! WhatsApp confirmation delivered." }) : null);
+
+    // Brief pause to display success checkmark before navigating
     setTimeout(() => {
-      setAutoDispatchStatus(prev => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          progress: 25,
-          currentAction: "Compiling official purchase order documents..."
-        };
-      });
-    }, 300);
-
-    // Step 2: System allocation & Mill PO Email update (600ms)
-    setTimeout(() => {
-      setAutoDispatchStatus(prev => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          progress: 55,
-          currentAction: "Transmitting official Purchase Order to supplier via Gmail SMTP..."
-        };
-      });
-    }, 600);
-
-    // Step 3: Buyer WhatsApp notifications (900ms)
-    setTimeout(() => {
-      setAutoDispatchStatus(prev => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          progress: 80,
-          currentAction: "Dispatching order confirmations to buyers via WhatsApp CRM gateway..."
-        };
-      });
-    }, 900);
-
-    // Step 4: Notifications completed (1200ms)
-    setTimeout(() => {
-      setAutoDispatchStatus(prev => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          progress: 100,
-          currentAction: "Purchase Order emailed to supplier; buyer confirmations sent!"
-        };
-      });
-    }, 1200);
-
-    // Step 5: Save database state & Redirect (1500ms)
-    setTimeout(() => {
-      // Save to Placed Orders
-      const existingPlaced = JSON.parse(localStorage.getItem('placed_orders') || '[]');
-      const newPlaced = [groupedOrder, ...existingPlaced];
-      localStorage.setItem('placed_orders', JSON.stringify(newPlaced));
-      localStorage.setItem('just_placed_order', 'true');
-      setCollectionDoc('placed_orders', batchId, groupedOrder);
-
-      // Automatically generate Miller and Shop ledger entries for this purchase order
-      createLedgerEntriesForOrder(groupedOrder).catch(err => {
-        console.error("Failed to automatically generate commercial ledger entries:", err);
-      });
-
-      // Remove from active orders by normalized ID
-      const selectedNormSet = new Set(selectedOrders.map(s => String(s).trim().toLowerCase().replace(/^#/, '')));
-      
-      const remaining = currentOrders.filter(o => {
-        const normId = String(o.id || '').trim().toLowerCase().replace(/^#/, '');
-        return !selectedNormSet.has(normId);
-      });
-      setCurrentOrders(remaining);
-      
-      const savedProc = JSON.parse(localStorage.getItem('procurement_requests') || '[]');
-      const filteredProc = savedProc.filter((o: any) => {
-        const normId = String(o.id || '').trim().toLowerCase().replace(/^#/, '');
-        return !selectedNormSet.has(normId);
-      });
-      localStorage.setItem('procurement_requests', JSON.stringify(filteredProc));
-
-      // Delete approved requests from Firestore procurement_requests so they do not linger
-      const deleteGrouped = async () => {
-        try {
-          addDeletedProcurementIds(selectedOrders);
-
-          await Promise.allSettled(
-            selectedOrders.map(id => deleteCollectionDoc('procurement_requests', id))
-          );
-        } catch (err) {
-          console.error('Failed to delete approved requests from Firestore:', err);
-        }
-      };
-      deleteGrouped();
-
       setSelectedOrders([]);
       setAutoDispatchStatus(null);
       navigate('/placed-orders');
-    }, 1500);
+    }, 600);
   };
 
   const handleCreateOrder = () => {
@@ -1854,21 +1801,6 @@ export default function OrdersDashboard() {
 
     setCollectionDoc('procurement_requests', maId, orderToAdd).catch(err => {
       console.warn('Firestore sync notice for manual order (saved locally):', err?.message || err);
-    });
-
-    // Auto-dispatch Meta WhatsApp order placement confirmation to buyer
-    dispatchOrderPlacedWhatsApp({
-      to: cleanBuyerPhone,
-      buyerName: newOrder.buyer.trim(),
-      brand: newOrder.product.trim(),
-      qty: String(newOrder.qty),
-      rate: String(newOrder.rate),
-      orderId: maId,
-      poNumber: maId
-    }).then(waRes => {
-      console.log(`[Manual Order WhatsApp Notification Result for ${newOrder.buyer}]:`, waRes);
-    }).catch(err => {
-      console.warn(`[Manual Order WhatsApp Error for ${newOrder.buyer}]:`, err);
     });
 
     window.dispatchEvent(new Event('storage'));

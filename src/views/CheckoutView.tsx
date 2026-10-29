@@ -425,26 +425,8 @@ export default function CheckoutView() {
         setEmailStatus('sent');
       });
 
-      // Auto-dispatch Meta WhatsApp order placement confirmation to customer
-      dispatchOrderPlacedWhatsApp({
-        to: finalCustomerWaPhone,
-        buyerName: newOrder.buyer,
-        brand: brandVal,
-        qty: orderQty,
-        rate: orderRate,
-        orderId: newOrder.id,
-        poNumber: newOrder.id,
-        customMessage: customerWaMsg
-      }).then((waRes) => {
-        if (waRes.success) {
-          setWaDispatchResult({ status: 'sent', message: `Delivered to ${finalCustomerWaPhone}`, phone: finalCustomerWaPhone });
-        } else {
-          setWaDispatchResult({ status: 'simulated', message: 'Delivered via WhatsApp Gateway', phone: finalCustomerWaPhone });
-        }
-      }).catch((err) => {
-        console.warn('Checkout WhatsApp auto-dispatch notice:', err);
-        setWaDispatchResult({ status: 'simulated', message: 'Ready via Direct WhatsApp link', phone: finalCustomerWaPhone });
-      });
+      // Note: Automatic WhatsApp confirmation is dispatched strictly when the admin approves and places the order from Orders Dashboard
+      setWaDispatchResult({ status: 'idle', message: 'Will be sent upon admin order approval & placement', phone: finalCustomerWaPhone });
     }, 1200);
   };
 
