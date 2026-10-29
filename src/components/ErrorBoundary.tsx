@@ -38,7 +38,8 @@ export class ErrorBoundary extends Component<Props, State> {
       // Keep essential login info and core business data, reset only temporary rendering caches
       const preserveKeys = [
         'userRole', 'userName', 'userEmail', 'theme', 'tejas_auth_token_v1', 'tejas_auth_user_v1',
-        'stakeholders_v2', 'placed_orders', 'product_inventory', 'registered_suppliers', 'pattis_v2'
+        'stakeholders_v2', 'placed_orders', 'product_inventory', 'registered_suppliers', 'pattis_v2',
+        'deleted_placed_order_ids', 'deleted_procurement_ids', 'cleared_placed_orders'
       ];
       const preserved: Record<string, string> = {};
       preserveKeys.forEach(k => {

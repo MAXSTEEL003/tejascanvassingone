@@ -317,6 +317,15 @@ function getLocalBackup(collectionName: string): any[] | null {
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed) && parsed.length > 0) {
+          if (collectionName === 'placed_orders') {
+            const isWiped = localStorage.getItem('cleared_placed_orders') === 'true' || localStorage.getItem('placed_orders_cleared_all') === 'true';
+            if (isWiped && parsed.length === 0) return [];
+            const delRaw = localStorage.getItem('deleted_placed_order_ids');
+            if (delRaw) {
+              const delSet = new Set(JSON.parse(delRaw).map((id: string) => String(id).trim().toLowerCase().replace(/^#/, '')));
+              return parsed.filter((item: any) => item && item.id && !delSet.has(String(item.id).trim().toLowerCase().replace(/^#/, '')));
+            }
+          }
           return parsed;
         }
         if (collectionName === 'stakeholders' && parsed && typeof parsed === 'object') {
@@ -363,7 +372,37 @@ async function fetchAndSyncFreshCollection(collectionName: string): Promise<any[
         }
       });
 
-      const items = Array.from(itemsMap.values());
+      let items = Array.from(itemsMap.values());
+      if (typeof window !== 'undefined') {
+        if (collectionName === 'placed_orders') {
+          const isWiped = localStorage.getItem('cleared_placed_orders') === 'true' || localStorage.getItem('placed_orders_cleared_all') === 'true';
+          const rawPlaced = localStorage.getItem('placed_orders');
+          if (isWiped && (!rawPlaced || rawPlaced === '[]')) {
+            items = [];
+          } else {
+            const delRaw = localStorage.getItem('deleted_placed_order_ids');
+            if (delRaw) {
+              try {
+                const delSet = new Set(JSON.parse(delRaw).map((id: string) => String(id).trim().toLowerCase().replace(/^#/, '')));
+                items = items.filter((item: any) => item && item.id && !delSet.has(String(item.id).trim().toLowerCase().replace(/^#/, '')));
+              } catch {}
+            }
+          }
+        } else if (collectionName === 'procurement_requests') {
+          const delProcRaw = localStorage.getItem('deleted_procurement_ids');
+          const delPlacedRaw = localStorage.getItem('deleted_placed_order_ids');
+          const delSet = new Set<string>();
+          if (delProcRaw) {
+            try { JSON.parse(delProcRaw).forEach((id: string) => delSet.add(String(id).trim().toLowerCase().replace(/^#/, ''))); } catch {}
+          }
+          if (delPlacedRaw) {
+            try { JSON.parse(delPlacedRaw).forEach((id: string) => delSet.add(String(id).trim().toLowerCase().replace(/^#/, ''))); } catch {}
+          }
+          if (delSet.size > 0) {
+            items = items.filter((item: any) => item && item.id && !delSet.has(String(item.id).trim().toLowerCase().replace(/^#/, '')));
+          }
+        }
+      }
       collectionCache.set(collectionName, { data: items, timestamp: Date.now() });
 
       // Save to localStorage for instant cold start on next refresh/launch

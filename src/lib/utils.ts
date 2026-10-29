@@ -201,4 +201,75 @@ export function getRegisteredBuyerNames(): string[] {
   return Array.from(new Set(buyers.map(b => String(b.name || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
 }
 
+// Persistently deleted procurement requests
+export function getDeletedProcurementIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem('deleted_procurement_ids');
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    if (Array.isArray(arr)) {
+      return new Set(arr.map((id: string) => String(id).trim().toLowerCase().replace(/^#/, '')));
+    }
+  } catch (e) {}
+  return new Set();
+}
+
+export function addDeletedProcurementIds(ids: string[]): void {
+  try {
+    const current = getDeletedProcurementIds();
+    ids.forEach(id => {
+      const norm = String(id).trim().toLowerCase().replace(/^#/, '');
+      if (norm) current.add(norm);
+    });
+    localStorage.setItem('deleted_procurement_ids', JSON.stringify(Array.from(current)));
+  } catch (e) {}
+}
+
+export function removeDeletedProcurementId(id: string): void {
+  try {
+    const current = getDeletedProcurementIds();
+    const norm = String(id).trim().toLowerCase().replace(/^#/, '');
+    if (current.has(norm)) {
+      current.delete(norm);
+      localStorage.setItem('deleted_procurement_ids', JSON.stringify(Array.from(current)));
+    }
+  } catch (e) {}
+}
+
+// Persistently deleted placed orders
+export function getDeletedPlacedOrderIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem('deleted_placed_order_ids');
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    if (Array.isArray(arr)) {
+      return new Set(arr.map((id: string) => String(id).trim().toLowerCase().replace(/^#/, '')));
+    }
+  } catch (e) {}
+  return new Set();
+}
+
+export function addDeletedPlacedOrderIds(ids: string[]): void {
+  try {
+    const current = getDeletedPlacedOrderIds();
+    ids.forEach(id => {
+      const norm = String(id).trim().toLowerCase().replace(/^#/, '');
+      if (norm) current.add(norm);
+    });
+    localStorage.setItem('deleted_placed_order_ids', JSON.stringify(Array.from(current)));
+  } catch (e) {}
+}
+
+export function removeDeletedPlacedOrderId(id: string): void {
+  try {
+    const current = getDeletedPlacedOrderIds();
+    const norm = String(id).trim().toLowerCase().replace(/^#/, '');
+    if (current.has(norm)) {
+      current.delete(norm);
+      localStorage.setItem('deleted_placed_order_ids', JSON.stringify(Array.from(current)));
+    }
+  } catch (e) {}
+}
+
+
 

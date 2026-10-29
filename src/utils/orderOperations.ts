@@ -7,7 +7,7 @@
  */
 
 import { getCollectionDocs } from '../lib/firebase';
-import { sanitizeSupplierName } from '../lib/utils';
+import { sanitizeSupplierName, getDeletedPlacedOrderIds, getDeletedProcurementIds } from '../lib/utils';
 
 export interface OperationalPO {
   id: string;                // Unique row key
@@ -276,15 +276,26 @@ export async function fetchOperationalOrders(forceFresh = false): Promise<Operat
     } catch {}
 
     // Deduplicate placed orders by normalized ID
+    const deletedPlaced = getDeletedPlacedOrderIds();
+    const deletedProc = getDeletedProcurementIds();
+    const isDeletedPo = (id: string) => {
+      const norm = normalizePo(id);
+      return deletedPlaced.has(norm) || deletedProc.has(norm);
+    };
+
+    const isWiped = localStorage.getItem('cleared_placed_orders') === 'true' || localStorage.getItem('placed_orders_cleared_all') === 'true';
+
     const placedOrderMap = new Map<string, any>();
-    [...cloudPlaced, ...localPlaced].forEach(ord => {
-      if (!ord || !ord.id) return;
-      if (ord.status === 'Rejected') return;
-      const key = normalizePo(ord.purchaseOrderNo || ord.id);
-      if (key && !placedOrderMap.has(key)) {
-        placedOrderMap.set(key, ord);
-      }
-    });
+    if (!isWiped || localPlaced.length > 0) {
+      [...cloudPlaced, ...localPlaced].forEach(ord => {
+        if (!ord || !ord.id) return;
+        if (ord.status === 'Rejected') return;
+        const key = normalizePo(ord.purchaseOrderNo || ord.id);
+        if (key && !isDeletedPo(key) && !placedOrderMap.has(key)) {
+          placedOrderMap.set(key, ord);
+        }
+      });
+    }
 
     let localArrivals: any[] = [];
     try {

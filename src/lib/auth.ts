@@ -214,6 +214,7 @@ export async function performSecureLogout(): Promise<void> {
       'pending_loadings',
       'deleted_product_inventory_ids',
       'deleted_procurement_ids',
+      'deleted_placed_order_ids',
       'deleted_ledger_ids',
       'deleted_stakeholder_ids',
       'pending_loadings_cleared_all',

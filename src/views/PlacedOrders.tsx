@@ -43,7 +43,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { cn, formatINR, getRegisteredSuppliers, sanitizeSupplierName } from '../lib/utils';
+import { cn, formatINR, getRegisteredSuppliers, sanitizeSupplierName, getDeletedPlacedOrderIds, addDeletedPlacedOrderIds, removeDeletedPlacedOrderId, getDeletedProcurementIds, addDeletedProcurementIds } from '../lib/utils';
 import { getCollectionDocs, setCollectionDoc, deleteCollectionDoc, markLedgerEntriesAsArrived, autoCreateArrivalEntryForIncomingLog, updateLedgersForLifting, db } from '../lib/firebase';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { verifyActionWithServer } from '../lib/auth';
@@ -978,6 +978,16 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
       return false;
     };
 
+        const deletedPlacedSet = getDeletedPlacedOrderIds();
+    const deletedProcSet = getDeletedProcurementIds();
+    const isDeleted = (id: any) => {
+      if (!id) return false;
+      const norm = String(id).trim().toLowerCase().replace(/^#/, '');
+      return deletedPlacedSet.has(norm) || deletedProcSet.has(norm);
+    };
+
+    const isCleared = (localStorage.getItem('cleared_placed_orders') === 'true' || localStorage.getItem('placed_orders_cleared_all') === 'true');
+
     const isApprovedStatus = (s: any) => {
       const norm = String(s || '').trim().toLowerCase();
       return (
@@ -995,12 +1005,25 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
     };
 
     const filterIgnored = (list: any[]) => (list || []).filter(
-      (o: any) => o && o.id !== 'ORD-TC-1024' && !String(o.id).startsWith('#ORD-99') && !String(o.id).startsWith('TC-0000') && o.status !== 'Pending Approval' && o.status !== 'Draft Order' && o.status !== 'Rejected'
+      (o: any) => o && 
+        o.id !== 'ORD-TC-1024' && 
+        !String(o.id).startsWith('#ORD-99') && 
+        !String(o.id).startsWith('TC-0000') && 
+        !isDeleted(o.id) &&
+        o.status !== 'Pending Approval' && 
+        o.status !== 'Draft Order' && 
+        o.status !== 'Rejected'
     );
 
-    const validPlaced = filterIgnored(placedList);
-    const validProc = (procList || []).filter(
-      (o: any) => o && o.id !== 'ORD-TC-1024' && !String(o.id).startsWith('#ORD-99') && !String(o.id).startsWith('TC-0000') && o.status !== 'Draft Order' && o.status !== 'Rejected'
+    const validPlaced = filterIgnored(placedList).filter((o: any) => !isDeleted(o?.id));
+    const validProc = (isCleared && validPlaced.length === 0) ? [] : (procList || []).filter(
+      (o: any) => o && 
+        o.id !== 'ORD-TC-1024' && 
+        !String(o.id).startsWith('#ORD-99') && 
+        !String(o.id).startsWith('TC-0000') && 
+        !isDeleted(o.id) &&
+        o.status !== 'Draft Order' && 
+        o.status !== 'Rejected'
     );
 
     // Map batch live tracking statuses by sub-order ID
@@ -1069,7 +1092,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
         // DO NOT show the admin batch PO to the merchant!
         // Instead, extract any sub-orders belonging to this merchant
         placed.originalOrders.forEach((sub: any) => {
-          if (!sub || !sub.id) return;
+          if (!sub || !sub.id || isDeleted(sub.id)) return;
           const subKey = String(sub.id).trim().toLowerCase().replace(/^#/, '');
           if (addedKeys.has(subKey)) return;
 
@@ -1129,11 +1152,21 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
     return sortNewestFirst(mapped);
   };
 
-  const buildAdminOrders = (
+    const buildAdminOrders = (
     placedList: any[], 
     procList: any[], 
     arrivalList: any[]
   ) => {
+    const deletedPlacedSet = getDeletedPlacedOrderIds();
+    const deletedProcSet = getDeletedProcurementIds();
+    const isDeleted = (id: any) => {
+      if (!id) return false;
+      const norm = String(id).trim().toLowerCase().replace(/^#/, '');
+      return deletedPlacedSet.has(norm) || deletedProcSet.has(norm);
+    };
+
+    const isCleared = (localStorage.getItem('cleared_placed_orders') === 'true' || localStorage.getItem('placed_orders_cleared_all') === 'true');
+
     const isApprovedStatus = (s: any) => {
       const norm = String(s || '').trim().toLowerCase();
       return (
@@ -1151,27 +1184,39 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
     };
 
     const filterIgnored = (list: any[]) => (list || []).filter(
-      (o: any) => o && 
-        o.id !== 'ORD-TC-1024' && 
-        !String(o.id).startsWith('#ORD-99') && 
-        !String(o.id).startsWith('TC-0000') && 
-        o.status !== 'Pending Approval' && 
-        o.status !== 'Draft Order' && 
-        o.status !== 'Rejected'
+      (o: any) => {
+        if (!o || !o.id) return false;
+        if (o.id === 'ORD-TC-1024' || String(o.id).startsWith('#ORD-99') || String(o.id).startsWith('TC-0000')) return false;
+        if (isDeleted(o.id)) return false;
+        if (o.status === 'Pending Approval' || o.status === 'Draft Order' || o.status === 'Rejected') return false;
+        return true;
+      }
     );
 
-    const validPlaced = filterIgnored(placedList);
+    const validPlaced = filterIgnored(placedList).map((item: any) => {
+      if (item && Array.isArray(item.originalOrders)) {
+        const filteredSubs = item.originalOrders.filter((sub: any) => sub && sub.id && !isDeleted(sub.id));
+        return { ...item, originalOrders: filteredSubs };
+      }
+      return item;
+    }).filter((item: any) => {
+      if (item && Array.isArray(item.originalOrders) && item.originalOrders.length === 0 && (String(item.id).startsWith('TC-') || item.isGroupedBatch)) {
+        return false;
+      }
+      return true;
+    });
 
-    // Include approved procurement requests so they immediately appear in Placed Orders across devices
-    const approvedProc = (procList || []).filter(
-      (o: any) => o && 
-        o.id !== 'ORD-TC-1024' && 
-        !String(o.id).startsWith('#ORD-99') && 
-        !String(o.id).startsWith('TC-0000') && 
-        isApprovedStatus(o.status) &&
-        o.status !== 'Pending Approval' &&
-        o.status !== 'Draft Order' &&
-        o.status !== 'Rejected'
+    // Include approved procurement requests so they immediately appear in Placed Orders across devices,
+    // UNLESS the admin explicitly cleared whole placed orders and no placed orders exist!
+    const approvedProc = (isCleared && validPlaced.length === 0) ? [] : (procList || []).filter(
+      (o: any) => {
+        if (!o || !o.id) return false;
+        if (o.id === 'ORD-TC-1024' || String(o.id).startsWith('#ORD-99') || String(o.id).startsWith('TC-0000')) return false;
+        if (isDeleted(o.id)) return false;
+        if (!isApprovedStatus(o.status)) return false;
+        if (o.status === 'Pending Approval' || o.status === 'Draft Order' || o.status === 'Rejected') return false;
+        return true;
+      }
     );
 
     let combined = [...validPlaced, ...approvedProc];
@@ -1180,6 +1225,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
     combined.forEach(item => {
       if (!item || !item.id) return;
       const normKey = String(item.id).trim().toLowerCase().replace(/^#/, '');
+      if (isDeleted(normKey)) return;
       if (!uniqueMap.has(normKey)) {
         uniqueMap.set(normKey, item);
       }
@@ -1202,6 +1248,109 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
     return sortNewestFirst(mappedUnique);
   };
 
+  // Permanently delete a single placed order (both batch and constituent sub-orders)
+  const handleDeleteSinglePlacedOrder = async (order: any, e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (!order || !order.id) return;
+
+    const displayId = String(order.id).trim().replace(/^#/, '');
+    const isConfirmed = window.confirm(
+      `Are you sure you want to permanently delete Placed Order #${displayId}?\n\nThis will remove it from Placed Orders and delete all associated records.`
+    );
+    if (!isConfirmed) return;
+
+    setIsLoading(true);
+    try {
+      // 1. Gather all associated IDs (the main order ID and any sub-order IDs)
+      const idsToDelete: string[] = [order.id, displayId, `#${displayId}`];
+      if (Array.isArray(order.originalOrders)) {
+        order.originalOrders.forEach((sub: any) => {
+          if (sub?.id) {
+            const subRaw = String(sub.id).trim();
+            const subNorm = subRaw.replace(/^#/, '');
+            idsToDelete.push(subRaw, subNorm, `#${subNorm}`);
+          }
+        });
+      }
+
+      const uniqueIdsToDelete = Array.from(new Set(idsToDelete.filter(Boolean)));
+
+      // 2. Mark permanently in deleted sets
+      addDeletedPlacedOrderIds(uniqueIdsToDelete);
+      addDeletedProcurementIds(uniqueIdsToDelete);
+
+      // 3. Delete from Firestore in placed_orders AND procurement_requests
+      const deletePromises: Promise<any>[] = [];
+      uniqueIdsToDelete.forEach(id => {
+        deletePromises.push(deleteCollectionDoc('placed_orders', id).catch(() => {}));
+        deletePromises.push(deleteCollectionDoc('procurement_requests', id).catch(() => {}));
+      });
+      await Promise.allSettled(deletePromises);
+
+      // 4. Purge from localStorage placed_orders
+      try {
+        const rawPlaced = localStorage.getItem('placed_orders');
+        if (rawPlaced) {
+          const parsed = JSON.parse(rawPlaced);
+          if (Array.isArray(parsed)) {
+            const normDelSet = new Set(uniqueIdsToDelete.map(id => String(id).trim().toLowerCase().replace(/^#/, '')));
+            const filtered = parsed.filter((item: any) => {
+              if (!item || !item.id) return false;
+              const itemNorm = String(item.id).trim().toLowerCase().replace(/^#/, '');
+              if (normDelSet.has(itemNorm)) return false;
+              if (Array.isArray(item.originalOrders)) {
+                item.originalOrders = item.originalOrders.filter((sub: any) => {
+                  const subNorm = String(sub?.id || '').trim().toLowerCase().replace(/^#/, '');
+                  return !normDelSet.has(subNorm);
+                });
+                if (item.originalOrders.length === 0 && (String(item.id).startsWith('TC-') || item.isGroupedBatch)) {
+                  return false;
+                }
+              }
+              return true;
+            });
+            localStorage.setItem('placed_orders', JSON.stringify(filtered));
+          }
+        }
+      } catch (e) {}
+
+      // 5. Purge from localStorage procurement_requests
+      try {
+        const rawProc = localStorage.getItem('procurement_requests');
+        if (rawProc) {
+          const parsed = JSON.parse(rawProc);
+          if (Array.isArray(parsed)) {
+            const normDelSet = new Set(uniqueIdsToDelete.map(id => String(id).trim().toLowerCase().replace(/^#/, '')));
+            const filtered = parsed.filter((item: any) => {
+              const itemNorm = String(item?.id || '').trim().toLowerCase().replace(/^#/, '');
+              return !normDelSet.has(itemNorm);
+            });
+            localStorage.setItem('procurement_requests', JSON.stringify(filtered));
+          }
+        }
+      } catch (e) {}
+
+      // 6. Update local state immediately
+      const normDelSet = new Set(uniqueIdsToDelete.map(id => String(id).trim().toLowerCase().replace(/^#/, '')));
+      setCurrentPlacedOrders(prev => prev.filter(o => {
+        const oNorm = String(o?.id || '').trim().toLowerCase().replace(/^#/, '');
+        return !normDelSet.has(oNorm);
+      }));
+
+      setToastMessage(`Placed order #${displayId} permanently deleted.`);
+      setTimeout(() => setToastMessage(null), 4000);
+    } catch (err) {
+      console.error(`Failed to delete placed order #${displayId}:`, err);
+      setToastMessage(`Error deleting order #${displayId}. Please try again.`);
+      setTimeout(() => setToastMessage(null), 4000);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleDeleteWholePlacedOrders = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsDeletingAll(true);
@@ -1215,25 +1364,95 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
     }
 
     try {
-      // 1. Delete all documents in placed_orders collection in Firestore
-      const cloudDocs = await getCollectionDocs('placed_orders').catch(() => []);
-      if (cloudDocs && cloudDocs.length > 0) {
-        await Promise.all(
-          cloudDocs.map(doc => deleteCollectionDoc('placed_orders', doc.id).catch(() => {}))
-        );
-      }
+      // 1. Gather all order IDs and sub-order IDs currently present in state
+      const allIdsToDelete: string[] = [];
+      currentPlacedOrders.forEach(o => {
+        if (o?.id) allIdsToDelete.push(String(o.id).trim());
+        if (Array.isArray(o?.originalOrders)) {
+          o.originalOrders.forEach((sub: any) => {
+            if (sub?.id) allIdsToDelete.push(String(sub.id).trim());
+          });
+        }
+      });
 
-      // 2. Clear local storage records
+      // 2. Fetch all cloud placed orders and cloud procurement requests
+      const [cloudPlaced, cloudProcurements] = await Promise.all([
+        getCollectionDocs('placed_orders').catch(() => []),
+        getCollectionDocs('procurement_requests').catch(() => [])
+      ]);
+
+      (cloudPlaced || []).forEach((doc: any) => {
+        if (doc?.id) allIdsToDelete.push(String(doc.id).trim());
+        if (Array.isArray(doc?.originalOrders)) {
+          doc.originalOrders.forEach((sub: any) => {
+            if (sub?.id) allIdsToDelete.push(String(sub.id).trim());
+          });
+        }
+      });
+
+      const isApprovedStatus = (s: any) => {
+        const norm = String(s || '').trim().toLowerCase();
+        return (
+          norm === 'approved' ||
+          norm === 'accepted' ||
+          norm === 'awaiting settlement' ||
+          norm === 'confirmed' ||
+          norm === 'in transit' ||
+          norm === 'dispatched' ||
+          norm === 'arrived' ||
+          norm === 'unloaded' ||
+          norm === 'delivered' ||
+          norm === 'completed'
+        );
+      };
+
+      // Also gather approved procurement requests from Firestore
+      (cloudProcurements || []).forEach((p: any) => {
+        if (p && isApprovedStatus(p.status) && p.id) {
+          allIdsToDelete.push(String(p.id).trim());
+        }
+      });
+
+      const uniqueIdsToDelete = Array.from(new Set(allIdsToDelete.filter(Boolean)));
+
+      // 3. Persistently mark all IDs in deleted sets
+      addDeletedPlacedOrderIds(uniqueIdsToDelete);
+      addDeletedProcurementIds(uniqueIdsToDelete);
+
+      // 4. Delete all documents in placed_orders and matching procurement_requests in Firestore
+      const deletePromises: Promise<any>[] = [];
+      (cloudPlaced || []).forEach((doc: any) => {
+        if (doc?.id) deletePromises.push(deleteCollectionDoc('placed_orders', doc.id).catch(() => {}));
+      });
+      uniqueIdsToDelete.forEach(id => {
+        deletePromises.push(deleteCollectionDoc('placed_orders', id).catch(() => {}));
+        deletePromises.push(deleteCollectionDoc('procurement_requests', id).catch(() => {}));
+      });
+      await Promise.allSettled(deletePromises);
+
+      // 5. Clear local storage records
       localStorage.removeItem('placed_orders');
       localStorage.setItem('placed_orders', '[]');
       localStorage.setItem('placed_orders_cleared_all', 'true');
       localStorage.setItem('cleared_placed_orders', 'true');
+      localStorage.removeItem('just_placed_order');
+
+      // Purge approved procurements from local procurement_requests
+      try {
+        const savedProc = JSON.parse(localStorage.getItem('procurement_requests') || '[]');
+        const normDelSet = new Set(uniqueIdsToDelete.map(id => String(id).trim().toLowerCase().replace(/^#/, '')));
+        const remainingProc = savedProc.filter((p: any) => {
+          const normId = String(p?.id || '').trim().toLowerCase().replace(/^#/, '');
+          return !normDelSet.has(normId) && !isApprovedStatus(p?.status);
+        });
+        localStorage.setItem('procurement_requests', JSON.stringify(remainingProc));
+      } catch (e) {}
 
       // Also mark pending loadings cleared flag so pending loadings reflects the wipe
       localStorage.setItem('pending_loadings_cleared_all', 'true');
       localStorage.setItem('cleared_pending_loadings', 'true');
 
-      // 3. Clear local state
+      // 6. Clear local state
       setCurrentPlacedOrders([]);
       setIsDeleteAllModalOpen(false);
       setDeletePassword('');
@@ -1254,15 +1473,18 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
       const merchantEmail = (localStorage.getItem('userEmail') || '').trim().toLowerCase();
       const merchantUserId = (localStorage.getItem('userId') || '').trim().toLowerCase();
 
+      const isCleared = localStorage.getItem('cleared_placed_orders') === 'true' || localStorage.getItem('placed_orders_cleared_all') === 'true';
+
       const savedPlaced = JSON.parse(localStorage.getItem('placed_orders') || '[]');
+      const effectiveSavedPlaced = (isCleared && savedPlaced.length === 0) ? [] : savedPlaced;
 
       // 1. Read local storage first for INSTANT local rendering (0ms delay)
       const savedProcurements = JSON.parse(localStorage.getItem('procurement_requests') || '[]');
       const localArrivals = JSON.parse(localStorage.getItem('arrival_entry_data_v4') || '[]');
 
       const localOrders = isMerchant
-        ? buildMerchantOrders(savedPlaced, savedProcurements, localArrivals, merchantName, merchantEmail, merchantUserId)
-        : buildAdminOrders(savedPlaced, savedProcurements, localArrivals);
+        ? buildMerchantOrders(effectiveSavedPlaced, savedProcurements, localArrivals, merchantName, merchantEmail, merchantUserId)
+        : buildAdminOrders(effectiveSavedPlaced, savedProcurements, localArrivals);
 
       if (localOrders.length > 0) {
         setCurrentPlacedOrders(localOrders);
@@ -1272,11 +1494,27 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
       }
 
       // 2. Fetch Firestore documents in PARALLEL
-      const [cloudPlaced, cloudProcurements, cloudArrivals] = await Promise.all([
+      const [cloudPlacedRaw, cloudProcurementsRaw, cloudArrivals] = await Promise.all([
         getCollectionDocs('placed_orders').catch(() => []),
         getCollectionDocs('procurement_requests').catch(() => []),
         getCollectionDocs('arrival_entries').catch(() => [])
       ]);
+
+      const deletedPlacedSet = getDeletedPlacedOrderIds();
+      const deletedProcSet = getDeletedProcurementIds();
+      const isDeleted = (id: any) => {
+        if (!id) return false;
+        const norm = String(id).trim().toLowerCase().replace(/^#/, '');
+        return deletedPlacedSet.has(norm) || deletedProcSet.has(norm);
+      };
+
+      const cloudPlaced = (isCleared && savedPlaced.length === 0)
+        ? []
+        : (cloudPlacedRaw || []).filter((o: any) => o && o.id && !isDeleted(o.id));
+
+      const cloudProcurements = (isCleared && savedPlaced.length === 0)
+        ? []
+        : (cloudProcurementsRaw || []).filter((o: any) => o && o.id && !isDeleted(o.id));
 
       let finalArrivals = [...localArrivals];
       if (cloudArrivals && cloudArrivals.length > 0) {
@@ -1303,7 +1541,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
         finalArrivals = grid.filter(g => g && Object.keys(g).length > 0);
       }
 
-      const mergedPlaced = [...cloudPlaced, ...savedPlaced];
+      const mergedPlaced = [...cloudPlaced, ...effectiveSavedPlaced];
       const mergedProc = [...cloudProcurements, ...savedProcurements];
 
       const cloudOrders = isMerchant
@@ -2703,6 +2941,19 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                           <Truck className="w-3.5 h-3.5" />
                           {order.liftingRecords && order.liftingRecords.length > 0 ? `Lifting To (${order.liftingRecords.length})` : "Lifting To"}
                         </button>
+
+                        {/* Delete single placed order button (Admin only) */}
+                        {!isMerchant && (
+                          <button 
+                            type="button"
+                            onClick={(e) => handleDeleteSinglePlacedOrder(order, e)}
+                            className="btn-tactile flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 hover:bg-red-600 text-red-600 dark:text-red-400 hover:text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition-all border border-red-500/20 shadow-sm cursor-pointer"
+                            title={`Permanently delete placed order #${String(order.id).replace(/^#/, '')}`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            Delete
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>

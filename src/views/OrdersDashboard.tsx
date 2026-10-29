@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { ShoppingCart, TrendingUp, Activity, ChevronRight, MoreVertical, Package, Truck, AlertCircle, Search, Filter, CheckCircle2, ChevronDown, ChevronUp, Plus, PlusCircle, X, Lock, CreditCard, RefreshCw, Trash2, Loader2, Clock, History, Eye, ArrowUpRight, Archive, Copy, MessageSquare, User, Inbox, Check, Edit3 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { AreaChart, Area, XAxis, ResponsiveContainer, Tooltip, CartesianGrid } from 'recharts';
-import { cn, formatINR, getRegisteredSuppliers, getPrimaryRegisteredSupplier, sanitizeSupplierName } from '../lib/utils';
+import { cn, formatINR, getRegisteredSuppliers, getPrimaryRegisteredSupplier, sanitizeSupplierName, removeDeletedPlacedOrderId } from '../lib/utils';
 import { useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { getCollectionDocs, syncCollection, setCollectionDoc, deleteCollectionDoc, createLedgerEntriesForOrder, db } from '../lib/firebase';
@@ -1187,6 +1187,9 @@ export default function OrdersDashboard() {
 
         // Also add to local placed_orders in localStorage
         try {
+          localStorage.removeItem('cleared_placed_orders');
+          localStorage.removeItem('placed_orders_cleared_all');
+          removeDeletedPlacedOrderId(id);
           const rawPlaced = localStorage.getItem('placed_orders');
           const currentPlaced = rawPlaced ? JSON.parse(rawPlaced) : [];
           const normKey = String(id).trim().toLowerCase().replace(/^#/, '');
@@ -1686,6 +1689,10 @@ export default function OrdersDashboard() {
     setAutoDispatchStatus(prev => prev ? ({ ...prev, progress: 85, currentAction: "Saving placed order & updating records..." }) : null);
 
     // 3. Save to Placed Orders in localStorage & Firestore
+    localStorage.removeItem('cleared_placed_orders');
+    localStorage.removeItem('placed_orders_cleared_all');
+    removeDeletedPlacedOrderId(batchId);
+    selectedOrders.forEach(id => removeDeletedPlacedOrderId(id));
     const existingPlaced = JSON.parse(localStorage.getItem('placed_orders') || '[]');
     const newPlaced = [groupedOrder, ...existingPlaced];
     localStorage.setItem('placed_orders', JSON.stringify(newPlaced));
