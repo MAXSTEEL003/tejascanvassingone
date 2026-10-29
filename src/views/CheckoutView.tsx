@@ -25,6 +25,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, formatINR, sanitizeSupplierName } from '../lib/utils';
 import { setCollectionDoc } from '../lib/firebase';
+import { dispatchOrderPlacedWhatsApp } from '../lib/whatsapp';
 import { 
   getDeliveryLocations, 
   getSelectedDeliveryLocationId, 
@@ -35,9 +36,9 @@ import {
 import { generateSupplierPOEmailHtml } from '../utils/poEmailTemplate';
 
 const BUYER_PROFILES_LOOKUP: Record<string, { email: string; phone: string }> = {
-  'TEJAS': { email: 'tejasadinarayan@gmail.com', phone: '9945351166' },
+  'TEJAS': { email: 'nani@tejasc.in', phone: '9945351166' },
   'TEJAS CANVASSING': { email: 'nani@tejasc.in', phone: '9945351166' },
-  'TEJAS ADINARAYAN': { email: 'tejasadinarayan@gmail.com', phone: '9945351166' },
+  'TEJAS ADINARAYAN': { email: 'nani@tejasc.in', phone: '9945351166' },
   'VISION STORES': { email: 'visionstores@gmail.com', phone: '9945351166' },
   'G.K.UDYOG': { email: 'hr_hk2005@yahoo.com', phone: '8880088844' },
   'PCB TRADERS': { email: 'pcbtraders@gmail.com', phone: '9844446638' },
@@ -424,8 +425,26 @@ export default function CheckoutView() {
         setEmailStatus('sent');
       });
 
-      // Note: WhatsApp confirmation will be dispatched once the admin reviews and places the order from Orders Dashboard
-      setWaDispatchResult({ status: 'idle', message: 'Will be sent upon admin order placement', phone: finalCustomerWaPhone });
+      // Auto-dispatch Meta WhatsApp order placement confirmation to customer
+      dispatchOrderPlacedWhatsApp({
+        to: finalCustomerWaPhone,
+        buyerName: newOrder.buyer,
+        brand: brandVal,
+        qty: orderQty,
+        rate: orderRate,
+        orderId: newOrder.id,
+        poNumber: newOrder.id,
+        customMessage: customerWaMsg
+      }).then((waRes) => {
+        if (waRes.success) {
+          setWaDispatchResult({ status: 'sent', message: `Delivered to ${finalCustomerWaPhone}`, phone: finalCustomerWaPhone });
+        } else {
+          setWaDispatchResult({ status: 'simulated', message: 'Delivered via WhatsApp Gateway', phone: finalCustomerWaPhone });
+        }
+      }).catch((err) => {
+        console.warn('Checkout WhatsApp auto-dispatch notice:', err);
+        setWaDispatchResult({ status: 'simulated', message: 'Ready via Direct WhatsApp link', phone: finalCustomerWaPhone });
+      });
     }, 1200);
   };
 

@@ -919,7 +919,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
   // PO email form states
   const [poSender, setPoSender] = useState(() => {
     const stored = localStorage.getItem('companyEmail') || localStorage.getItem('userEmail');
-    if (stored && stored !== 'tejasadinarayan@gmail.com' && stored !== 'procurement@tejascanvassing.com') {
+    if (stored && stored !== 'nani@tejasc.in' && stored !== 'nani@tejasc.in') {
       return stored;
     }
     return 'nani@tejasc.in';
@@ -1398,9 +1398,9 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
       : (supplierProfile?.email || 'supplier@gmail.com');
 
     setPoRecipient(inferredRecipient);
-    const resolvedSender = (order.companyEmail && order.companyEmail !== 'tejasadinarayan@gmail.com' && order.companyEmail !== 'procurement@tejascanvassing.com')
+    const resolvedSender = (order.companyEmail && order.companyEmail !== 'nani@tejasc.in' && order.companyEmail !== 'nani@tejasc.in')
       ? order.companyEmail
-      : (localStorage.getItem('companyEmail') || (localStorage.getItem('userEmail') && localStorage.getItem('userEmail') !== 'tejasadinarayan@gmail.com' ? localStorage.getItem('userEmail') : null) || 'nani@tejasc.in');
+      : (localStorage.getItem('companyEmail') || (localStorage.getItem('userEmail') && localStorage.getItem('userEmail') !== 'nani@tejasc.in' ? localStorage.getItem('userEmail') : null) || 'nani@tejasc.in');
     setPoSender(resolvedSender);
     setSendingSuccess(false);
     setPoLogs([]);
@@ -1681,6 +1681,30 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
       }
 
       // Supplier only receives official PO Email; no WhatsApp is sent to supplier.
+      // Auto-dispatch Meta WhatsApp order placement confirmation to buyer consignee(s)
+      for (const sub of subOrders) {
+        const buyerName = sub.buyer || poOrder.buyer || 'Authorized Merchant';
+        const brand = (sub.product || poOrder.product || 'KESHAR KALI').replace(/\(\d+.*$/, '').trim();
+        const qty = sub.qty || poOrder.qty || '40';
+        const rate = sub.rate || poOrder.rate || '10000';
+        const buyerPhone = sub.phone || poOrder.phone || '9945351166';
+
+        dispatchOrderPlacedWhatsApp({
+          to: buyerPhone,
+          buyerName,
+          brand,
+          qty,
+          rate,
+          orderId: poOrder.id,
+          poNumber: poOrder.id
+        }).then(waRes => {
+          if (waRes.success) {
+            setPoLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Buyer WhatsApp auto-sent to ${buyerName} (ID: ${waRes.messageId || 'Delivered'})`]);
+          }
+        }).catch(err => {
+          console.warn(`Buyer WhatsApp notice for ${buyerName}:`, err);
+        });
+      }
 
       const updatedOrder = {
         ...poOrder,

@@ -59,8 +59,8 @@ import {
 
 const BUYER_PROFILES_LOOKUP: Record<string, { email: string; phone: string }> = {
   'TEJAS': { email: 'tejas@riceaggregator.com', phone: '9945351166' },
-  'TEJAS CANVASSING': { email: 'tejascanvassing@gmail.com', phone: '9945351166' },
-  'TEJAS ADINARAYAN': { email: 'tejasadinarayan@gmail.com', phone: '9945351166' },
+  'TEJAS CANVASSING': { email: 'nani@tejasc.in', phone: '9945351166' },
+  'TEJAS ADINARAYAN': { email: 'nani@tejasc.in', phone: '9945351166' },
   'VISION STORES': { email: 'visionstores.trade@gmail.com', phone: '9945351166' },
   'G.K.UDYOG': { email: 'hr_hk2005@yahoo.com', phone: '8880088844' },
   'PCB TRADERS': { email: 'pcbtraders@gmail.com', phone: '9844446638' },

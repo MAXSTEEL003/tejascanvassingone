@@ -473,7 +473,7 @@ export default function StoreManagement() {
   // Extra buyer profile states
   const [phone, setPhone] = useState(() => localStorage.getItem('userPhone') || '');
   const [tempPhone, setTempPhone] = useState('');
-  const [email, setEmail] = useState(() => localStorage.getItem('companyEmail') || (localStorage.getItem('userEmail') && localStorage.getItem('userEmail') !== 'tejasadinarayan@gmail.com' ? localStorage.getItem('userEmail') : null) || 'nani@tejasc.in');
+  const [email, setEmail] = useState(() => localStorage.getItem('companyEmail') || (localStorage.getItem('userEmail') && localStorage.getItem('userEmail') !== 'nani@tejasc.in' ? localStorage.getItem('userEmail') : null) || 'nani@tejasc.in');
   const [tempEmail, setTempEmail] = useState('');
   
   const [gstin, setGstin] = useState(() => localStorage.getItem('userGstin') || '');

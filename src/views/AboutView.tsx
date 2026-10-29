@@ -671,7 +671,7 @@ export default function AboutView() {
                   {[
                     { icon: MapPin, text: "123, 4th Main Rd, APMC Yard, Yeshwanthpur, Bengaluru 560022" },
                     { icon: Phone, text: "+91 9916416995" },
-                    { icon: Mail, text: "tejascanvassing@gmail.com" },
+                    { icon: Mail, text: "nani@tejasc.in" },
                   ].map(({ icon: Icon, text }) => (
                     <motion.div key={text} className="flex items-start gap-3 text-xs text-white/90 p-3.5 rounded-xl bg-white/5 border border-white/10 backdrop-blur-md hover:bg-white/10 transition-all duration-300 cursor-default group"
                       whileHover={{ x: 3 }}>

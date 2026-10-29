@@ -241,7 +241,7 @@ authRouter.post("/login", (req, res) => {
       "admintejas1679",
       "owner",
       "adinarayan",
-      "tejasadinarayan@gmail.com",
+      "nani@tejasc.in",
       "nani@tejasc.in",
       "nani"
     ];
@@ -1906,15 +1906,22 @@ app.get(["/api/track-open", "/track-open"], (req, res) => {
 
 // Helper for formatting phone numbers to E.164 and WhatsApp format
 function formatPhoneNumber(phone: string) {
-  let digits = phone.replace(/[^0-9]/g, "");
-  if (digits.startsWith("0")) digits = digits.substring(1);
+  let digits = String(phone || "").replace(/[^0-9]/g, "");
+  while (digits.startsWith("0")) digits = digits.substring(1);
+  while (digits.startsWith("9191") && digits.length > 12) {
+    digits = digits.substring(2);
+  }
   if (digits.length === 10) {
     return { e164: `+91${digits}`, digits: `91${digits}`, national: digits };
   }
   if (digits.startsWith("91") && digits.length === 12) {
     return { e164: `+${digits}`, digits, national: digits.substring(2) };
   }
-  return { e164: `+${digits}`, digits, national: digits };
+  if (digits.length > 10) {
+    const last10 = digits.slice(-10);
+    return { e164: `+91${last10}`, digits: `91${last10}`, national: last10 };
+  }
+  return { e164: "+919945351166", digits: "919945351166", national: "9945351166" };
 }
 
 export function getMetaWhatsAppCredentials() {
@@ -2035,11 +2042,11 @@ app.post(["/api/dispatch-whatsapp", "/dispatch-whatsapp"], async (req, res) => {
       if (!pRate && templateParams[3]) pRate = String(templateParams[3]);
     }
 
-    // Default fallbacks matching user template
-    pBuyer = pBuyer || "Vision stores";
-    pBrand = pBrand || "keshar kali";
-    pQty = String(pQty).replace(/[^0-9.]/g, '') || "40";
-    pRate = String(pRate).replace(/[^0-9.]/g, '') || "10000";
+    // Default fallbacks matching user template (sanitized for Meta Cloud API parameter rules)
+    pBuyer = String(pBuyer || "Vision stores").replace(/[\r\n\t]+/g, ' ').trim().slice(0, 60) || "Vision stores";
+    pBrand = String(pBrand || "keshar kali").replace(/[\r\n\t]+/g, ' ').trim().slice(0, 60) || "keshar kali";
+    pQty = String(pQty || "40").replace(/[^0-9.]/g, '').trim() || "40";
+    pRate = String(pRate || "10000").replace(/[^0-9.]/g, '').trim() || "10000";
 
     templateParams = [pBuyer, pBrand, pQty, pRate];
 

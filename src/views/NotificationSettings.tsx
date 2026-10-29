@@ -129,7 +129,7 @@ export default function NotificationSettings() {
   const [isSendingNotif, setIsSendingNotif] = useState(false);
 
   // --- Dispatch Test Bench States ---
-  const [testSupplierEmail, setTestSupplierEmail] = useState('orders@tejascanvassing.com');
+  const [testSupplierEmail, setTestSupplierEmail] = useState('nani@tejasc.in');
   const [testPoNumber, setTestPoNumber] = useState('TC-9801');
   const [testPhone, setTestPhone] = useState(() => localStorage.getItem('testWhatsappPhone') || localStorage.getItem('userPhone') || '');
   const [testRecipientName, setTestRecipientName] = useState('Vision stores');

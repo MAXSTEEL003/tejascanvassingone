@@ -24,33 +24,41 @@ import { sanitizeSupplierName } from './utils';
 // Initialize Firebase App safely (singleton)
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
-// Initialize Firestore safely with fallback to getFirestore if already initialized
+// Initialize Firestore safely with singleton persistence across reloads/HMR
+const globalScope = typeof window !== 'undefined' ? (window as any) : (globalThis as any);
 let firestoreInstance: Firestore;
-try {
-  let localCacheSetting: any = undefined;
-  if (typeof window !== 'undefined') {
+
+if (globalScope.__tejas_firestore_instance__) {
+  firestoreInstance = globalScope.__tejas_firestore_instance__;
+} else {
+  try {
+    let localCacheSetting: any = undefined;
+    if (typeof window !== 'undefined') {
+      try {
+        localCacheSetting = persistentLocalCache({ tabManager: persistentMultipleTabManager() });
+      } catch (cacheErr) {
+        console.warn("Firestore persistent cache notice:", cacheErr);
+      }
+    }
+
+    firestoreInstance = initializeFirestore(app, {
+      ...(localCacheSetting ? { localCache: localCacheSetting } : {}),
+      experimentalAutoDetectLongPolling: true,
+    }, firebaseConfig.firestoreDatabaseId);
+  } catch (err: any) {
+    // If initializeFirestore() was already called with different options (e.g. HMR, multiple imports, or re-renders):
+    // Gracefully return the existing instance via getFirestore() as instructed by Firebase
+    console.info("Firestore already initialized, reusing existing instance:", err?.message || err);
     try {
-      localCacheSetting = persistentLocalCache({ tabManager: persistentMultipleTabManager() });
-    } catch (cacheErr) {
-      console.warn("Firestore persistent cache notice:", cacheErr);
+      firestoreInstance = firebaseConfig.firestoreDatabaseId 
+        ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
+        : getFirestore(app);
+    } catch (fallbackErr) {
+      firestoreInstance = getFirestore(app);
     }
   }
 
-  firestoreInstance = initializeFirestore(app, {
-    ...(localCacheSetting ? { localCache: localCacheSetting } : {}),
-    experimentalAutoDetectLongPolling: true,
-  }, firebaseConfig.firestoreDatabaseId);
-} catch (err: any) {
-  // If initializeFirestore() was already called with different options (e.g. HMR, multiple imports, or re-renders):
-  // Gracefully return the existing instance via getFirestore() as instructed by Firebase
-  console.info("Firestore already initialized, using existing instance:", err?.message || err);
-  try {
-    firestoreInstance = firebaseConfig.firestoreDatabaseId 
-      ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
-      : getFirestore(app);
-  } catch (fallbackErr) {
-    firestoreInstance = getFirestore(app);
-  }
+  globalScope.__tejas_firestore_instance__ = firestoreInstance;
 }
 
 export const db = firestoreInstance;
@@ -157,7 +165,7 @@ export function getCurrentCallerRole(): 'admin' | 'employee' | 'merchant' | null
     const user = auth.currentUser;
     if (user?.email) {
       const email = user.email.toLowerCase().trim();
-      if (email === 'tejasadinarayan@gmail.com' || email === 'tejascanvassing@gmail.com' || email === 'nani@tejasc.in') {
+      if (email === 'nani@tejasc.in' || email === 'tejasadinarayan@gmail.com' || email === 'tejascanvassing@gmail.com') {
         return 'admin';
       }
     }

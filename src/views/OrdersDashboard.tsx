@@ -9,6 +9,7 @@ import { getCollectionDocs, syncCollection, setCollectionDoc, deleteCollectionDo
 import { doc, deleteDoc, collection, getDocs, onSnapshot } from 'firebase/firestore';
 import SearchableSelect from '../components/SearchableSelect';
 import { generateSupplierPOEmailHtml } from '../utils/poEmailTemplate';
+import { dispatchOrderPlacedWhatsApp } from '../lib/whatsapp';
 import merchantsDirectory from '../data/merchants_directory.json';
 
 
@@ -37,9 +38,9 @@ const orders: any[] = [];
 const ARCHIVED_ACCEPTED_ORDERS: any[] = [];
 
 const BUYER_PROFILES_LOOKUP: Record<string, { email: string; phone: string }> = {
-  'TEJAS': { email: 'tejasadinarayan@gmail.com', phone: '9945351166' },
+  'TEJAS': { email: 'nani@tejasc.in', phone: '9945351166' },
   'TEJAS CANVASSING': { email: 'nani@tejasc.in', phone: '9945351166' },
-  'TEJAS ADINARAYAN': { email: 'tejasadinarayan@gmail.com', phone: '9945351166' },
+  'TEJAS ADINARAYAN': { email: 'nani@tejasc.in', phone: '9945351166' },
   'VISION STORES': { email: 'visionstores@gmail.com', phone: '9945351166' },
 };
 
@@ -1587,7 +1588,7 @@ export default function OrdersDashboard() {
       originalOrders: selected,
       purchaseOrderSent: true,
       purchaseOrderSentAt: new Date().toISOString(),
-      companyEmail: localStorage.getItem('companyEmail') || (localStorage.getItem('userEmail') && localStorage.getItem('userEmail') !== 'tejasadinarayan@gmail.com' ? localStorage.getItem('userEmail') : null) || 'nani@tejasc.in',
+      companyEmail: localStorage.getItem('companyEmail') || (localStorage.getItem('userEmail') && localStorage.getItem('userEmail') !== 'nani@tejasc.in' ? localStorage.getItem('userEmail') : null) || 'nani@tejasc.in',
       sellerEmail: supplierProfile.email,
       qty: totalSelectedQty,
       rate: avgRate,
@@ -1619,27 +1620,20 @@ export default function OrdersDashboard() {
 
       const buyerWhatsappMsg = `Hello ${bp.name},\n\nOrder placed successfully.\n\nBrand: ${bpBrand}\nQuantity: ${bpQtyNum} QTL\nRate: ₹${bpRateNum}/QTL\n\nThank you,\nTejas Canvassing`;
 
-      fetch('/api/dispatch-whatsapp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          to: bp.phone,
-          buyerName: bp.name,
-          brand: bpBrand,
-          qty: String(bpQtyNum),
-          rate: String(bpRateNum),
-          orderId: groupedOrder.id,
-          poNumber: groupedOrder.id,
-          message: buyerWhatsappMsg,
-          templateName: 'order_notify',
-          templateId: '1016669984165776',
-          templateParams: [bp.name, bpBrand, String(bpQtyNum), String(bpRateNum)],
-          languageCode: 'en'
-        })
-      })
-      .then(res => res.json())
-      .then(data => console.log(`[Placed Order WhatsApp Result for ${bp.name}]:`, data))
-      .catch(err => console.warn(`WhatsApp dispatch note for ${bp.name}:`, err?.message || err));
+      dispatchOrderPlacedWhatsApp({
+        to: bp.phone,
+        buyerName: bp.name,
+        brand: bpBrand,
+        qty: bpQtyNum,
+        rate: bpRateNum,
+        orderId: groupedOrder.id,
+        poNumber: groupedOrder.id,
+        customMessage: buyerWhatsappMsg
+      }).then(res => {
+        console.log(`[Placed Order WhatsApp Result for ${bp.name}]:`, res);
+      }).catch(err => {
+        console.warn(`WhatsApp dispatch note for ${bp.name}:`, err?.message || err);
+      });
 
       fetch('/api/dispatch-sms', {
         method: 'POST',
@@ -1860,6 +1854,21 @@ export default function OrdersDashboard() {
 
     setCollectionDoc('procurement_requests', maId, orderToAdd).catch(err => {
       console.warn('Firestore sync notice for manual order (saved locally):', err?.message || err);
+    });
+
+    // Auto-dispatch Meta WhatsApp order placement confirmation to buyer
+    dispatchOrderPlacedWhatsApp({
+      to: cleanBuyerPhone,
+      buyerName: newOrder.buyer.trim(),
+      brand: newOrder.product.trim(),
+      qty: String(newOrder.qty),
+      rate: String(newOrder.rate),
+      orderId: maId,
+      poNumber: maId
+    }).then(waRes => {
+      console.log(`[Manual Order WhatsApp Notification Result for ${newOrder.buyer}]:`, waRes);
+    }).catch(err => {
+      console.warn(`[Manual Order WhatsApp Error for ${newOrder.buyer}]:`, err);
     });
 
     window.dispatchEvent(new Event('storage'));

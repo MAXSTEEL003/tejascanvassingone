@@ -24,10 +24,10 @@ export function getAuthorizedAdminGoogleEmails(): string[] {
   } catch {}
 
   // Account 1: Owner's primary account
-  const ownerAccount = (envEmail1 || 'tejasadinarayan@gmail.com').toLowerCase().trim();
+  const ownerAccount = (envEmail1 || 'nani@tejasc.in').toLowerCase().trim();
 
   // Account 2: Trusted employee account
-  const trustedAccount = (storedTrusted || envEmail2 || 'tejascanvassing@gmail.com').toLowerCase().trim();
+  const trustedAccount = (storedTrusted || envEmail2 || 'nani@tejasc.in').toLowerCase().trim();
 
   // Account 3: Active company admin account
   const activeAdminAccount = 'nani@tejasc.in';
@@ -453,7 +453,7 @@ export async function loginWithServer(
     'admintejas1679',
     'owner',
     'adinarayan',
-    'tejasadinarayan@gmail.com',
+    'nani@tejasc.in',
     'nani@tejasc.in',
     'nani'
   ];
