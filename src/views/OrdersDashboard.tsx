@@ -584,7 +584,7 @@ export default function OrdersDashboard() {
 
         const cached = JSON.parse(localStorage.getItem('stakeholders_v2') || 'null');
         const regSuppliers = JSON.parse(localStorage.getItem('registered_suppliers') || '[]');
-        const cloudDocs = await getCollectionDocs('stakeholders').catch(() => []);
+        const cloudDocs = await getCollectionDocs('stakeholders', true).catch(() => []);
 
         const supMap = new Map<string, { id: string; name: string }>();
         const buyMap = new Map<string, { id: string; name: string }>();
@@ -677,6 +677,26 @@ export default function OrdersDashboard() {
       }
     }
     loadStakeholders();
+
+    let unsubStakeholders: (() => void) | null = null;
+    try {
+      unsubStakeholders = onSnapshot(collection(db, 'stakeholders'), () => {
+        loadStakeholders();
+      }, (err) => console.warn('Stakeholders snapshot notice in OrdersDashboard:', err?.message || err));
+    } catch (e) {}
+
+    const handleStakeholdersEvent = () => loadStakeholders();
+    window.addEventListener('stakeholders-updated', handleStakeholdersEvent);
+    window.addEventListener('collection-synced', (e: any) => {
+      if (e?.detail?.collectionName === 'stakeholders') {
+        loadStakeholders();
+      }
+    });
+
+    return () => {
+      if (unsubStakeholders) unsubStakeholders();
+      window.removeEventListener('stakeholders-updated', handleStakeholdersEvent);
+    };
   }, []);
 
   useEffect(() => {
@@ -852,6 +872,24 @@ export default function OrdersDashboard() {
   // Load from localStorage (strictly active procurement requests)
   const [currentOrders, setCurrentOrders] = useState(() => {
     const deletedSet = getDeletedProcurementIds();
+    const placedSet = new Set<string>();
+    try {
+      const rawPlaced = localStorage.getItem('placed_orders');
+      if (rawPlaced) {
+        const list = JSON.parse(rawPlaced);
+        if (Array.isArray(list)) {
+          list.forEach((p: any) => {
+            if (p?.id) placedSet.add(String(p.id).trim().toLowerCase().replace(/^#/, ''));
+            if (Array.isArray(p?.originalOrders)) {
+              p.originalOrders.forEach((sub: any) => {
+                if (sub?.id) placedSet.add(String(sub.id).trim().toLowerCase().replace(/^#/, ''));
+              });
+            }
+          });
+        }
+      }
+    } catch (e) {}
+
     let saved: any[] = [];
     try {
       const raw = localStorage.getItem('procurement_requests');
@@ -874,7 +912,8 @@ export default function OrdersDashboard() {
           String(o.id).startsWith('TC-0000')
         ) return false;
         const oNorm = String(o.id || '').trim().toLowerCase().replace(/^#/, '');
-        return !deletedSet.has(oNorm);
+        if (deletedSet.has(oNorm) || placedSet.has(oNorm)) return false;
+        return true;
       })
       .map(normalizeOrder);
   });
@@ -896,16 +935,91 @@ export default function OrdersDashboard() {
     { label: 'Pending Payments', value: `₹ ${formatINR(totalPendingPayments)}`, sub: 'Outstanding cycle value', icon: CreditCard, color: 'text-blue-500' },
   ];
 
-  // Sync with Firestore in Real-Time for Active Orders, seamlessly merging with local changes
+  // Helper to extract all constituent placed order IDs from placed_orders docs
+  const extractPlacedOrderIds = (placedList: any[]): Set<string> => {
+    const set = new Set<string>();
+    (placedList || []).forEach((p: any) => {
+      if (!p) return;
+      if (p.id) set.add(String(p.id).trim().toLowerCase().replace(/^#/, ''));
+      if (Array.isArray(p.originalOrders)) {
+        p.originalOrders.forEach((sub: any) => {
+          if (sub && sub.id) {
+            set.add(String(sub.id).trim().toLowerCase().replace(/^#/, ''));
+          }
+        });
+      }
+    });
+    return set;
+  };
+
+  // Sync with Firestore in Real-Time for Active Orders, seamlessly purging placed orders across all devices
   useEffect(() => {
     let isMounted = true;
-    let unsubscribe: (() => void) | null = null;
+    let unsubProc: (() => void) | null = null;
+    let unsubPlaced: (() => void) | null = null;
+
+    let latestPlacedIds = new Set<string>();
+
+    // Initial check of local placed orders
+    try {
+      const rawPlaced = localStorage.getItem('placed_orders');
+      if (rawPlaced) {
+        latestPlacedIds = extractPlacedOrderIds(JSON.parse(rawPlaced));
+      }
+    } catch (e) {}
+
+    const purgePlacedOrdersFromLocal = (placedIds: Set<string>) => {
+      if (placedIds.size === 0) return;
+      latestPlacedIds = placedIds;
+      if (!isMounted) return;
+
+      // Filter state
+      setCurrentOrders(prev => prev.filter(o => {
+        const norm = String(o?.id || '').trim().toLowerCase().replace(/^#/, '');
+        return !placedIds.has(norm);
+      }));
+
+      // Filter localStorage procurement_requests
+      try {
+        const raw = localStorage.getItem('procurement_requests');
+        if (raw) {
+          const list = JSON.parse(raw);
+          if (Array.isArray(list)) {
+            const purged = list.filter((o: any) => {
+              const norm = String(o?.id || '').trim().toLowerCase().replace(/^#/, '');
+              return !placedIds.has(norm);
+            });
+            localStorage.setItem('procurement_requests', JSON.stringify(purged));
+          }
+        }
+      } catch (e) {}
+    };
 
     try {
-      unsubscribe = onSnapshot(collection(db, 'procurement_requests'), (snapshot) => {
+      // 1. Real-time listener for placed_orders collection across all devices
+      unsubPlaced = onSnapshot(collection(db, 'placed_orders'), (placedSnap) => {
+        if (!isMounted) return;
+        const cloudPlaced: any[] = [];
+        placedSnap.forEach(d => cloudPlaced.push({ id: d.id, ...d.data() }));
+
+        let localPlaced: any[] = [];
+        try {
+          localPlaced = JSON.parse(localStorage.getItem('placed_orders') || '[]');
+        } catch (e) {}
+
+        const allPlaced = [...cloudPlaced, ...localPlaced];
+        const allPlacedIds = extractPlacedOrderIds(allPlaced);
+        purgePlacedOrdersFromLocal(allPlacedIds);
+      }, (err) => {
+        console.warn('Placed orders snapshot notice in OrdersDashboard:', err?.message || err);
+      });
+
+      // 2. Real-time listener for procurement_requests collection across all devices
+      unsubProc = onSnapshot(collection(db, 'procurement_requests'), (snapshot) => {
         if (!isMounted) return;
         const deletedSet = getDeletedProcurementIds();
         const cloudOrdersMap = new Map<string, any>();
+
         snapshot.forEach((doc) => {
           const data = doc.data();
           if (
@@ -919,7 +1033,7 @@ export default function OrdersDashboard() {
           ) {
             const rawObj = normalizeOrder({ id: doc.id, ...data });
             const normKey = String(rawObj.id || doc.id).trim().toLowerCase().replace(/^#/, '');
-            if (!deletedSet.has(normKey) && !cloudOrdersMap.has(normKey)) {
+            if (!deletedSet.has(normKey) && !latestPlacedIds.has(normKey) && !cloudOrdersMap.has(normKey)) {
               cloudOrdersMap.set(normKey, rawObj);
             }
           }
@@ -940,11 +1054,11 @@ export default function OrdersDashboard() {
         // Add cloud orders
         cloudOrdersMap.forEach((ord, key) => mergedMap.set(key, ord));
 
-        // Add local orders that are not in cloud yet
+        // Add local orders ONLY if they are not placed and not deleted and were created locally as draft
         localSaved.forEach((raw: any) => {
           if (!raw || !raw.id) return;
           const normKey = String(raw.id).trim().toLowerCase().replace(/^#/, '');
-          if (deletedSet.has(normKey)) return;
+          if (deletedSet.has(normKey) || latestPlacedIds.has(normKey)) return;
           if (
             raw.status === 'Rejected' || 
             raw.status === 'Completed' || 
@@ -953,32 +1067,26 @@ export default function OrdersDashboard() {
           ) return;
           if (String(raw.id).startsWith('#ORD-99') || String(raw.id).startsWith('TC-0000')) return;
 
-          if (!mergedMap.has(normKey)) {
+          // Only keep local orders if they are unsynced offline drafts, do not resurrect orders deleted/placed from other devices
+          if (!mergedMap.has(normKey) && raw.isManual && raw._isLocalDraft) {
             mergedMap.set(normKey, normalizeOrder(raw));
           }
         });
 
         const mergedList = Array.from(mergedMap.values());
-        if (mergedList.length > 0 || localStorage.getItem('cleared_procurement_requests') === 'true') {
-          setCurrentOrders(mergedList);
-          if (mergedList.length > 0) {
-            localStorage.setItem('procurement_requests', JSON.stringify(mergedList));
-          }
-        }
+        setCurrentOrders(mergedList);
+        localStorage.setItem('procurement_requests', JSON.stringify(mergedList));
       }, (err) => {
-        console.warn('Real-time subscription notice in OrdersDashboard:', err?.message || err);
+        console.warn('Procurement requests snapshot notice in OrdersDashboard:', err?.message || err);
       });
-
-      if (!isMounted && unsubscribe) {
-        unsubscribe();
-      }
     } catch (err) {
       console.warn('Real-time subscription setup notice:', err);
     }
     
     return () => {
       isMounted = false;
-      if (unsubscribe) unsubscribe();
+      if (unsubProc) unsubProc();
+      if (unsubPlaced) unsubPlaced();
     };
   }, []);
 
@@ -1620,10 +1728,14 @@ export default function OrdersDashboard() {
     // Clear selection immediately
     setSelectedOrders([]);
 
-    // 2. Persist to Firestore placed_orders & clean procurement_requests in background
+    // 2. Persist to Firestore placed_orders & mark as approved and clean procurement_requests across all devices
+    addDeletedProcurementIds(selectedOrders);
     setCollectionDoc('placed_orders', batchId, groupedOrder).catch(() => {});
     Promise.allSettled([
-      ...selectedOrders.map(id => deleteCollectionDoc('procurement_requests', id)),
+      ...selectedOrders.map(async id => {
+        await setCollectionDoc('procurement_requests', id, { status: 'Approved', placedAt: new Date().toISOString() }).catch(() => {});
+        await deleteCollectionDoc('procurement_requests', id).catch(() => {});
+      }),
       ...selectedOrders.map(id => deleteCollectionDoc('placed_orders', id))
     ]).catch(() => {});
 

@@ -409,6 +409,42 @@ async function fetchAndSyncFreshCollection(collectionName: string): Promise<any[
       if (typeof window !== 'undefined') {
         try {
           localStorage.setItem(`firestore_cache_${collectionName}`, JSON.stringify(items));
+
+          // When stakeholders are fetched from Firestore, seamlessly merge into stakeholders_v2 so all devices stay in sync
+          if (collectionName === 'stakeholders' && items.length > 0) {
+            try {
+              const rawV2 = localStorage.getItem('stakeholders_v2');
+              const v2 = rawV2 ? JSON.parse(rawV2) : { buyers: [], suppliers: [], employees: [] };
+              const buyers = Array.isArray(v2.buyers) ? [...v2.buyers] : [];
+              const suppliers = Array.isArray(v2.suppliers) ? [...v2.suppliers] : [];
+              const employees = Array.isArray(v2.employees) ? [...v2.employees] : [];
+
+              items.forEach((item: any) => {
+                if (!item || !item.name) return;
+                const type = String(item.type || item.category || '').toLowerCase();
+                const idUpper = String(item.id || '').toUpperCase();
+                if (type === 'suppliers' || idUpper.startsWith('SUP')) {
+                  const idx = suppliers.findIndex((s: any) => (item.id && s.id === item.id) || (s.name && s.name.trim().toLowerCase() === item.name.trim().toLowerCase()));
+                  if (idx !== -1) suppliers[idx] = { ...suppliers[idx], ...item };
+                  else suppliers.push(item);
+                } else if (type === 'employees' || idUpper.startsWith('EMP')) {
+                  const idx = employees.findIndex((e: any) => (item.id && e.id === item.id) || (item.username && e.username && e.username.trim().toLowerCase() === item.username.trim().toLowerCase()));
+                  if (idx !== -1) employees[idx] = { ...employees[idx], ...item };
+                  else employees.push(item);
+                } else {
+                  // Buyer
+                  const idx = buyers.findIndex((b: any) => (item.id && b.id === item.id) || (b.name && b.name.trim().toLowerCase() === item.name.trim().toLowerCase()));
+                  if (idx !== -1) buyers[idx] = { ...buyers[idx], ...item };
+                  else buyers.push(item);
+                }
+              });
+
+              localStorage.setItem('stakeholders_v2', JSON.stringify({ buyers, suppliers, employees }));
+              window.dispatchEvent(new CustomEvent('stakeholders-updated', { detail: { category: 'all', count: items.length } }));
+            } catch (mergeErr) {
+              console.warn("Error auto-merging cloud stakeholders into local storage:", mergeErr);
+            }
+          }
         } catch (e) {}
 
         // Global event dispatch so views can update reactively without freezing

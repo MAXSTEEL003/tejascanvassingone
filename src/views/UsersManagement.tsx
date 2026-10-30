@@ -32,7 +32,8 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import React, { useState, useEffect } from 'react';
 import { cn, formatINR } from '../lib/utils';
-import { getCollectionDocs, syncCollection, auth, setCollectionDoc, deleteCollectionDoc } from '../lib/firebase';
+import { getCollectionDocs, syncCollection, auth, setCollectionDoc, deleteCollectionDoc, db } from '../lib/firebase';
+import { collection, onSnapshot } from 'firebase/firestore';
 import { manageEmployeeServer } from '../lib/auth';
 import ExcelMerchantImportModal from '../components/ExcelMerchantImportModal';
 import merchantsDirectory from '../data/merchants_directory.json';
@@ -288,9 +289,9 @@ export default function UsersManagement() {
         } catch {}
       }
 
-      const cloudStakeholders = await getCollectionDocs('stakeholders').catch(() => []);
-      const cloudSuppliers = await getCollectionDocs('suppliers').catch(() => []);
-      const cloudBuyerRequests = await getCollectionDocs('buyer_registration_requests').catch(() => []);
+      const cloudStakeholders = await getCollectionDocs('stakeholders', true).catch(() => []);
+      const cloudSuppliers = await getCollectionDocs('suppliers', true).catch(() => []);
+      const cloudBuyerRequests = await getCollectionDocs('buyer_registration_requests', true).catch(() => []);
 
       // Proactively scrub any buyer in Firestore that accidentally stored the admin password
       cloudStakeholders.forEach((cs: any) => {
@@ -687,6 +688,39 @@ export default function UsersManagement() {
 
     syncRegisteredCloudStakeholders();
     loadPipelineInfo();
+
+    let unsubStakeholders: (() => void) | null = null;
+    try {
+      unsubStakeholders = onSnapshot(collection(db, 'stakeholders'), () => {
+        syncRegisteredCloudStakeholders();
+      }, (err) => console.warn('Real-time stakeholders listener notice:', err?.message || err));
+    } catch (e) {
+      console.warn("Failed to attach stakeholders snapshot in UsersManagement:", e);
+    }
+
+    const handleExternalUpdate = () => {
+      try {
+        const raw = localStorage.getItem('stakeholders_v2');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === 'object') {
+            setStakeholders(parsed);
+          }
+        }
+      } catch (e) {}
+    };
+
+    window.addEventListener('stakeholders-updated', handleExternalUpdate);
+    window.addEventListener('collection-synced', (e: any) => {
+      if (e?.detail?.collectionName === 'stakeholders') {
+        syncRegisteredCloudStakeholders();
+      }
+    });
+
+    return () => {
+      if (unsubStakeholders) unsubStakeholders();
+      window.removeEventListener('stakeholders-updated', handleExternalUpdate);
+    };
   }, []);
 
   const handleCreateStakeholder = (e: React.FormEvent) => {

@@ -176,6 +176,27 @@ export function getRegisteredBuyers(): Array<{
       });
     }
 
+    // Incorporate cached Firestore cloud stakeholders so newly added buyers from other devices appear immediately
+    const cacheRaw = localStorage.getItem('firestore_cache_stakeholders');
+    if (cacheRaw) {
+      try {
+        const cacheItems = JSON.parse(cacheRaw);
+        if (Array.isArray(cacheItems)) {
+          cacheItems.forEach((b: any) => {
+            if (!b || !b.name) return;
+            const normId = String(b.id || '').trim().toLowerCase().replace(/^#/, '');
+            if (deletedSet.has(normId)) return;
+            const isBuyer = b.type === 'buyers' || String(b.id || '').toUpperCase().startsWith('BUY');
+            if (isBuyer) {
+              const k = b.name.trim().toUpperCase();
+              const existing = buyerMap.get(k);
+              buyerMap.set(k, { ...existing, ...b });
+            }
+          });
+        }
+      } catch (e) {}
+    }
+
     const raw = localStorage.getItem('stakeholders_v2');
     if (raw) {
       const parsed = JSON.parse(raw);
