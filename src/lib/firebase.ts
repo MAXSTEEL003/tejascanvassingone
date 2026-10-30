@@ -740,6 +740,7 @@ export async function createLedgerEntriesForOrder(groupedOrder: any): Promise<vo
         const qty = sub.qty || 10;
         const rate = sub.rate || 4200;
         const amount = qty * rate;
+        const subBrand = sub.brand || sub.product || sub.variety || groupedOrder.brand || groupedOrder.product || "Standard Rice";
 
         // 1. Buyer/Shop entry
         const buyerEntry = {
@@ -748,6 +749,8 @@ export async function createLedgerEntriesForOrder(groupedOrder: any): Promise<vo
           date,
           partyName: sub.buyer || groupedOrder.buyer || "Standard Buyer",
           partyType: 'Buyer',
+          brand: subBrand,
+          product: subBrand,
           qty,
           amount,
           status: 'Placed'
@@ -758,8 +761,10 @@ export async function createLedgerEntriesForOrder(groupedOrder: any): Promise<vo
           id: `LEDG-S-${Math.floor(100000 + Math.random() * 900000)}`,
           purchaseOrderNo: poNo,
           date,
-          partyName: sub.supplier || "Amritsar Grain Export Ltd.",
+          partyName: sub.supplier || groupedOrder.supplier || "Amritsar Grain Export Ltd.",
           partyType: 'Supplier',
+          brand: subBrand,
+          product: subBrand,
           qty,
           amount,
           status: 'Placed'
@@ -768,8 +773,9 @@ export async function createLedgerEntriesForOrder(groupedOrder: any): Promise<vo
       });
     } else {
       // Fallback if there are no sub-orders
-      const totalQty = parseFloat(groupedOrder.items?.match(/\d+(\.\d+)?/)?.[0] || groupedOrder.totalQty || "10");
-      const totalAmount = parseFloat(groupedOrder.total?.replace(/[^0-9]/g, '') || "42000");
+      const totalQty = parseFloat(groupedOrder.items?.match(/\d+(\.\d+)?/)?.[0] || groupedOrder.totalQty || groupedOrder.qty || "10");
+      const totalAmount = parseFloat(groupedOrder.total?.replace(/[^0-9]/g, '') || String(totalQty * (groupedOrder.rate || 4200)));
+      const brand = groupedOrder.brand || groupedOrder.product || "Standard Rice";
 
       const buyerEntry = {
         id: `LEDG-B-${Math.floor(100000 + Math.random() * 900000)}`,
@@ -777,6 +783,8 @@ export async function createLedgerEntriesForOrder(groupedOrder: any): Promise<vo
         date,
         partyName: groupedOrder.buyer || "Standard Buyer",
         partyType: 'Buyer',
+        brand,
+        product: brand,
         qty: totalQty,
         amount: totalAmount,
         status: 'Placed'
@@ -786,8 +794,10 @@ export async function createLedgerEntriesForOrder(groupedOrder: any): Promise<vo
         id: `LEDG-S-${Math.floor(100000 + Math.random() * 900000)}`,
         purchaseOrderNo: poNo,
         date,
-        partyName: "Amritsar Grain Export Ltd.",
+        partyName: groupedOrder.supplier || "Amritsar Grain Export Ltd.",
         partyType: 'Supplier',
+        brand,
+        product: brand,
         qty: totalQty,
         amount: totalAmount,
         status: 'Placed'

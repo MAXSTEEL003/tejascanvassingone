@@ -74,10 +74,11 @@ export default function LedgerManagement() {
   }, [searchParams]);
 
   // Load orders on mount
-  const loadOrdersData = async () => {
+  const loadOrdersData = async (forceFresh: boolean | any = true) => {
     setIsLoading(true);
     try {
-      const data = await fetchOperationalOrders();
+      const fresh = typeof forceFresh === 'boolean' ? forceFresh : true;
+      const data = await fetchOperationalOrders(fresh);
       setOrders(data);
     } catch (e) {
       console.error('Failed to load operational ledger orders:', e);

@@ -43,13 +43,14 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { cn, formatINR, getRegisteredSuppliers, sanitizeSupplierName, getDeletedPlacedOrderIds, addDeletedPlacedOrderIds, removeDeletedPlacedOrderId, getDeletedProcurementIds, addDeletedProcurementIds } from '../lib/utils';
+import { cn, formatINR, getRegisteredSuppliers, sanitizeSupplierName, getDeletedPlacedOrderIds, addDeletedPlacedOrderIds, removeDeletedPlacedOrderId, addDeletedProcurementIds } from '../lib/utils';
 import { getCollectionDocs, setCollectionDoc, deleteCollectionDoc, markLedgerEntriesAsArrived, autoCreateArrivalEntryForIncomingLog, updateLedgersForLifting, db } from '../lib/firebase';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { verifyActionWithServer } from '../lib/auth';
-import { generateSupplierPOEmailHtml, generateSupplierPOA4PrintHtml, printPoDocument, resolveBuyerProfile, formatPoDate } from '../utils/poEmailTemplate';
+import { generateSupplierPOEmailHtml, generateSupplierPOA4PrintHtml, printPoDocument, resolveBuyerProfile, formatPoDate, resolveSupplierProfile, isAuthenticSupplierEmail } from '../utils/poEmailTemplate';
 import { buildPoPdfDocument, getPoPdfFileName } from '../utils/poPdfGenerator';
 import EmailTrackingModal, { getStatusBadgeConfig } from '../components/EmailTrackingModal';
+import BuyerLedgerModal from '../components/BuyerLedgerModal';
 
 const BUYER_PROFILES: Record<string, { address: string; gstin: string; phone: string; email: string }> = {};
 
@@ -692,9 +693,17 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
   const [showAutoSentBanner, setShowAutoSentBanner] = useState(false);
 
   // Email Tracking states (Section 7, 10)
+  const [selectedBuyerForLedger, setSelectedBuyerForLedger] = useState<string | null>(null);
   const [selectedOrderForTracking, setSelectedOrderForTracking] = useState<any | null>(null);
   const [trackingRecordMap, setTrackingRecordMap] = useState<Record<string, any>>({});
   const [emailFilter, setEmailFilter] = useState<'all' | 'queued' | 'sent_unconfirmed' | 'delivered' | 'bounced' | 'awaiting_ack' | 'acknowledged'>('all');
+
+  const handleMarkPoEmailSent = async (orderId: string) => {
+    try {
+      await fetch(`/api/po-tracking/${encodeURIComponent(orderId)}/mark-sent`, { method: 'POST' }).catch(() => {});
+      fetchTrackingRecords();
+    } catch {}
+  };
 
   const fetchTrackingRecords = async () => {
     try {
@@ -978,12 +987,11 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
       return false;
     };
 
-        const deletedPlacedSet = getDeletedPlacedOrderIds();
-    const deletedProcSet = getDeletedProcurementIds();
+    const deletedPlacedSet = getDeletedPlacedOrderIds();
     const isDeleted = (id: any) => {
       if (!id) return false;
       const norm = String(id).trim().toLowerCase().replace(/^#/, '');
-      return deletedPlacedSet.has(norm) || deletedProcSet.has(norm);
+      return deletedPlacedSet.has(norm);
     };
 
     const isCleared = (localStorage.getItem('cleared_placed_orders') === 'true' || localStorage.getItem('placed_orders_cleared_all') === 'true');
@@ -1074,6 +1082,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
           destination: batchInfo?.destination || proc.destination || proc.address || 'APMC Yard, Bangalore',
           arrivalHistory: batchInfo?.arrivalHistory || proc.arrivalHistory,
           parentBatchId: batchInfo?.parentBatchId,
+          originalOrders: proc.originalOrders && Array.isArray(proc.originalOrders) && proc.originalOrders.length > 0 ? proc.originalOrders : [proc],
         };
         results.push(orderObj);
         addedKeys.add(key);
@@ -1158,11 +1167,10 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
     arrivalList: any[]
   ) => {
     const deletedPlacedSet = getDeletedPlacedOrderIds();
-    const deletedProcSet = getDeletedProcurementIds();
     const isDeleted = (id: any) => {
       if (!id) return false;
       const norm = String(id).trim().toLowerCase().replace(/^#/, '');
-      return deletedPlacedSet.has(norm) || deletedProcSet.has(norm);
+      return deletedPlacedSet.has(norm);
     };
 
     const isCleared = (localStorage.getItem('cleared_placed_orders') === 'true' || localStorage.getItem('placed_orders_cleared_all') === 'true');
@@ -1194,32 +1202,23 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
     );
 
     const validPlaced = filterIgnored(placedList).map((item: any) => {
-      if (item && Array.isArray(item.originalOrders)) {
-        const filteredSubs = item.originalOrders.filter((sub: any) => sub && sub.id && !isDeleted(sub.id));
-        return { ...item, originalOrders: filteredSubs };
+      if (item && Array.isArray(item.originalOrders) && item.originalOrders.length > 0) {
+        const cleanSubs = item.originalOrders.map((sub: any, sIdx: number) => ({
+          ...sub,
+          id: sub.id || `${item.id}-sub-${sIdx + 1}`,
+          buyer: sub.buyer || item.buyer || 'Authorized Merchant',
+          product: sub.product || sub.brand || item.product || item.brand || 'Standard Rice',
+          qty: sub.qty || item.qty || 0,
+          rate: sub.rate || item.rate || 0,
+          supplier: sub.supplier || item.supplier || 'Direct Mill',
+          remarks: sub.remarks || sub.notes || item.remarks || ''
+        }));
+        return { ...item, originalOrders: cleanSubs };
       }
       return item;
-    }).filter((item: any) => {
-      if (item && Array.isArray(item.originalOrders) && item.originalOrders.length === 0 && (String(item.id).startsWith('TC-') || item.isGroupedBatch)) {
-        return false;
-      }
-      return true;
     });
 
-    // Include approved procurement requests so they immediately appear in Placed Orders across devices,
-    // UNLESS the admin explicitly cleared whole placed orders and no placed orders exist!
-    const approvedProc = (isCleared && validPlaced.length === 0) ? [] : (procList || []).filter(
-      (o: any) => {
-        if (!o || !o.id) return false;
-        if (o.id === 'ORD-TC-1024' || String(o.id).startsWith('#ORD-99') || String(o.id).startsWith('TC-0000')) return false;
-        if (isDeleted(o.id)) return false;
-        if (!isApprovedStatus(o.status)) return false;
-        if (o.status === 'Pending Approval' || o.status === 'Draft Order' || o.status === 'Rejected') return false;
-        return true;
-      }
-    );
-
-    let combined = [...validPlaced, ...approvedProc];
+    let combined = [...validPlaced];
 
     const uniqueMap = new Map<string, any>();
     combined.forEach(item => {
@@ -1501,11 +1500,10 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
       ]);
 
       const deletedPlacedSet = getDeletedPlacedOrderIds();
-      const deletedProcSet = getDeletedProcurementIds();
       const isDeleted = (id: any) => {
         if (!id) return false;
         const norm = String(id).trim().toLowerCase().replace(/^#/, '');
-        return deletedPlacedSet.has(norm) || deletedProcSet.has(norm);
+        return deletedPlacedSet.has(norm);
       };
 
       const cloudPlaced = (isCleared && savedPlaced.length === 0)
@@ -1630,10 +1628,13 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
     setPoSubject("Tejas Canvassing: New purchase orders");
     
     const supplierName = sanitizeSupplierName(order.supplier || order.origin || order.sellerName, 'DIRECT MILL');
-    const supplierProfile = getSupplierProfile(supplierName);
-    const inferredRecipient = (order.sellerEmail && order.sellerEmail.includes('@')) 
-      ? order.sellerEmail 
-      : (supplierProfile?.email || 'supplier@gmail.com');
+    const supplierProfile = resolveSupplierProfile(supplierName);
+    let inferredRecipient = '';
+    if (order.sellerEmail && isAuthenticSupplierEmail(order.sellerEmail)) {
+      inferredRecipient = order.sellerEmail.trim();
+    } else if (supplierProfile.isConfigured && isAuthenticSupplierEmail(supplierProfile.email)) {
+      inferredRecipient = supplierProfile.email.trim();
+    }
 
     setPoRecipient(inferredRecipient);
     const resolvedSender = (order.companyEmail && order.companyEmail !== 'nani@tejasc.in' && order.companyEmail !== 'nani@tejasc.in')
@@ -1870,6 +1871,10 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
 
   const handleSendPO = async () => {
     if (!poRecipient || !poSubject) return;
+    if (!isAuthenticSupplierEmail(poRecipient)) {
+      alert("Please enter a valid, authentic supplier email address. Dispatching to random or dummy emails is prevented.");
+      return;
+    }
     setIsSendingPO(true);
     setPoLogs([]);
     
@@ -1909,7 +1914,8 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
           subject: poSubject,
           html: emailHtml,
           batchId: poOrder.id,
-          supplierName: supplierName
+          supplierName: supplierName,
+          accessToken: (typeof window !== 'undefined' ? (localStorage.getItem('google_access_token') || sessionStorage.getItem('google_access_token')) : undefined)
         })
       });
       const poData = await poRes.json();
@@ -2756,25 +2762,48 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                           </span>
                           {(() => {
                             const trk = trackingRecordMap[order.id];
-                            const status = trk?.status || (order.purchaseOrderSent ? 'Sent' : 'Queued');
+                            const status = (order.purchaseOrderSent || trk?.status === 'Sent') ? 'Sent' : (trk?.status || 'Sent');
                             const cfg = getStatusBadgeConfig(status);
+                            const supplierEmail = trk?.recipientEmail || order.sellerEmail || '';
+                            const isQueued = status === 'Queued' || status === 'Ready' || status === 'Pending';
+                            const remarksStr = order.remarks || (order.originalOrders && order.originalOrders[0]?.remarks) || 'Standard dispatch';
+                            const gmailComposeUrl = supplierEmail ? `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(supplierEmail)}&cc=nani@tejasc.in&su=${encodeURIComponent(`Tejas Canvassing: Purchase Order ${order.id} - ${order.supplier || 'Supplier'}`)}&body=${encodeURIComponent(`Official Purchase Order ${order.id}\nSupplier: ${order.supplier || 'Supplier'}\nTotal: ${order.total}\nRemarks: ${remarksStr}\n\nPlease confirm delivery.`)}` : '';
+
                             return (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSelectedOrderForTracking(order);
-                                }}
-                                className={cn(
-                                  "text-[10px] px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider flex items-center gap-1.5 border transition-all cursor-pointer hover:opacity-90 shadow-2xs",
-                                  cfg.bg
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedOrderForTracking(order);
+                                  }}
+                                  className={cn(
+                                    "text-[10px] px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider flex items-center gap-1.5 border transition-all cursor-pointer hover:opacity-90 shadow-2xs",
+                                    cfg.bg
+                                  )}
+                                  title="Click to view Email Delivery & Acknowledgement Tracking"
+                                >
+                                  <Mail className="w-3 h-3" />
+                                  <span>PO Email: {status}</span>
+                                  {trk?.acknowledgedAt && <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />}
+                                </button>
+                                {isQueued && supplierEmail && (
+                                  <a
+                                    href={gmailComposeUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleMarkPoEmailSent(order.id);
+                                    }}
+                                    className="px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-red-600 hover:bg-red-700 text-white flex items-center gap-1 transition-colors cursor-pointer shadow-sm"
+                                    title={`Open pre-filled Gmail compose directly for ${supplierEmail}`}
+                                  >
+                                    <Send className="w-2.5 h-2.5" />
+                                    <span>Send via Gmail</span>
+                                  </a>
                                 )}
-                                title="Click to view Email Delivery & Acknowledgement Tracking"
-                              >
-                                <Mail className="w-3 h-3" />
-                                <span>PO Email: {status}</span>
-                                {trk?.acknowledgedAt && <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />}
-                              </button>
+                              </div>
                             );
                           })()}
                         </h3>
@@ -2809,12 +2838,19 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                               ? Array.from(new Set(order.originalOrders.map((sub: any) => sub.buyer).filter(Boolean)))
                               : ['Unassigned Buyer']
                           ).map((buyerName: string, bIdx) => (
-                            <span 
+                            <button 
                               key={bIdx} 
-                              className="px-2.5 py-1 rounded bg-[#faf8f5] dark:bg-black border border-outline-variant text-[10px] font-bold text-neutral-800 dark:text-neutral-200 uppercase tracking-wide"
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedBuyerForLedger(buyerName);
+                              }}
+                              className="px-2.5 py-1 rounded bg-[#faf8f5] dark:bg-black border border-outline-variant text-[10px] font-bold text-neutral-800 dark:text-neutral-200 uppercase tracking-wide hover:border-primary hover:text-primary transition-colors cursor-pointer flex items-center gap-1"
+                              title={`Click to view Commercial Ledger for ${buyerName}`}
                             >
-                              {buyerName}
-                            </span>
+                              <span>{buyerName}</span>
+                              <ExternalLink className="w-2.5 h-2.5 opacity-50" />
+                            </button>
                           ))}
                         </div>
                       </div>
@@ -2974,57 +3010,94 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                        )}
                      </div>
                      <div className="space-y-2">
-                      {order.originalOrders?.map((sub: any, sIdx: number) => {
-                        const subQty = parseFloat(sub.qty) || parseFloat(sub.totalQty) || 0;
-                        const subRate = parseFloat(sub.rate) || 4200;
-                        const subAmount = subQty * subRate;
-                        const subProduct = sub.product || "1121 Sella Rice";
-                        const subSupplier = sub.supplier || sub.seller || order.supplier || "Amritsar Grain Export Ltd.";
+                      {(() => {
+                        const displaySubOrders: any[] = (order.originalOrders && Array.isArray(order.originalOrders) && order.originalOrders.length > 0)
+                          ? order.originalOrders
+                          : [{
+                              id: order.id,
+                              buyer: order.buyer || order.partyName || "Authorized Merchant",
+                              product: order.product || order.brand || order.itemName || order.items?.replace(/\(\d+.*$/, '').trim() || "Standard Rice",
+                              supplier: order.supplier || order.seller || order.millerName || "Direct Mill",
+                              qty: parseFloat(order.qty || order.quantity || order.totalQty || order.items?.match(/\d+(\.\d+)?/)?.[0] || '0') || 0,
+                              rate: parseFloat(order.rate || order.price) || 0,
+                              status: order.status || 'Approved',
+                              paymentStatus: order.paymentStatus || 'Awaiting Proof',
+                              date: order.date,
+                              remarks: order.remarks || ''
+                            }];
 
                         return (
-                          <div key={`${sub.id}-${sIdx}`} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-primary/5 rounded-2xl border border-primary/10 gap-4">
-                            <div className="flex items-start gap-4">
-                               <div className="w-8 h-8 rounded-lg bg-surface flex items-center justify-center text-[9px] font-black text-primary border border-outline-variant shadow-sm px-1 text-center leading-tight shrink-0 mt-1">
-                                 {sub.id.replace('TC-', '').replace('#', '')}
-                               </div>
-                               <div className="space-y-1">
-                                  <div className="flex items-center gap-2">
-                                    <p className="text-sm font-bold text-on-surface">{sub.buyer}</p>
-                                    <span className="text-[9px] font-mono text-secondary bg-surface-container border border-outline-variant/30 px-1.5 py-0.5 rounded">
-                                      {subProduct}
-                                    </span>
+                          <>
+                            {displaySubOrders.map((sub: any, sIdx: number) => {
+                              const subQty = parseFloat(sub.qty) || parseFloat(sub.totalQty) || 0;
+                              const subRate = parseFloat(sub.rate) || 4200;
+                              const subAmount = subQty * subRate;
+                              const subProduct = sub.product || sub.items?.replace(/\(\d+.*$/, '').trim() || "1121 Sella Rice";
+                              const subSupplier = sub.supplier || sub.seller || order.supplier || "Amritsar Grain Export Ltd.";
+
+                              return (
+                                <div key={`${sub.id}-${sIdx}`} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-primary/5 rounded-2xl border border-primary/10 gap-4">
+                                  <div className="flex items-start gap-4">
+                                     <div className="w-8 h-8 rounded-lg bg-surface flex items-center justify-center text-[9px] font-black text-primary border border-outline-variant shadow-sm px-1 text-center leading-tight shrink-0 mt-1">
+                                       {String(sub.id || '').replace('TC-', '').replace('#', '') || `${sIdx + 1}`}
+                                     </div>
+                                     <div className="space-y-1">
+                                        <div className="flex items-center gap-2">
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setSelectedBuyerForLedger(sub.buyer || order.buyer || 'Authorized Merchant');
+                                            }}
+                                            className="text-sm font-bold text-on-surface hover:text-primary hover:underline transition-colors cursor-pointer text-left flex items-center gap-1.5 group/buyer"
+                                            title="Click to view Buyer Ledger & Commercial Balance"
+                                          >
+                                            <span>{sub.buyer || order.buyer || 'Authorized Merchant'}</span>
+                                            <ExternalLink className="w-3 h-3 opacity-0 group-hover/buyer:opacity-100 text-primary transition-opacity" />
+                                          </button>
+                                          <span className="text-[9px] font-mono text-secondary bg-surface-container border border-outline-variant/30 px-1.5 py-0.5 rounded">
+                                            {subProduct}
+                                          </span>
+                                        </div>
+                                        <p className="text-[10px] text-secondary font-medium">
+                                          Supplier: <strong className="text-on-surface">{subSupplier}</strong>
+                                        </p>
+                                        <p className="text-xs font-semibold text-secondary/80">
+                                          Price: <span className="font-bold text-primary font-mono">{subQty.toFixed(2)} QTLS</span> @ <span className="font-bold font-mono">₹{formatINR(subRate)} / QTL</span>
+                                        </p>
+                                        {(sub.remarks || order.remarks) && (
+                                          <div className="mt-1 px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-300 text-[10px] font-medium w-fit">
+                                            <strong>Remarks:</strong> {sub.remarks || order.remarks}
+                                          </div>
+                                        )}
+                                     </div>
                                   </div>
-                                  <p className="text-[10px] text-secondary font-medium">
-                                    Supplier: <strong className="text-on-surface">{subSupplier}</strong>
-                                  </p>
-                                  <p className="text-xs font-semibold text-secondary/80">
-                                    Price: <span className="font-bold text-primary font-mono">{subQty.toFixed(2)} QTLS</span> @ <span className="font-bold font-mono">₹{formatINR(subRate)} / QTL</span>
-                                  </p>
-                               </div>
-                            </div>
-                            <div className="flex items-center justify-between sm:justify-end gap-6 border-t sm:border-t-0 border-outline-variant/10 pt-3 sm:pt-0">
-                               <div className="text-left sm:text-right">
-                                  <p className="text-[8px] font-black text-secondary uppercase tracking-widest mb-1">Subtotal Amount</p>
-                                  <p className="text-sm font-black text-on-surface font-mono">₹ {formatINR(subAmount)}</p>
-                               </div>
-                               <div className="text-right">
-                                  <p className="text-[8px] font-black text-secondary uppercase tracking-tighter mb-1">Pay Status</p>
-                                  <span className={cn(
-                                    "px-2 py-0.5 rounded-full text-[9px] font-black uppercase border block w-fit",
-                                    sub.status === 'Settled' || sub.paymentStatus === 'Received' ? "bg-emerald-50 text-emerald-600 border-emerald-100" : "bg-amber-50 text-amber-600 border-amber-100"
-                                  )}>
-                                    {sub.status || sub.paymentStatus || 'Awaiting Proof'}
-                                  </span>
+                                  <div className="flex items-center justify-between sm:justify-end gap-6 border-t sm:border-t-0 border-outline-variant/10 pt-3 sm:pt-0">
+                                     <div className="text-left sm:text-right">
+                                        <p className="text-[8px] font-black text-secondary uppercase tracking-widest mb-1">Subtotal Amount</p>
+                                        <p className="text-sm font-black text-on-surface font-mono">₹ {formatINR(subAmount)}</p>
+                                     </div>
+                                     <div className="text-right">
+                                        <p className="text-[8px] font-black text-secondary uppercase tracking-tighter mb-1">Pay Status</p>
+                                        <span className={cn(
+                                          "px-2 py-0.5 rounded-full text-[9px] font-black uppercase border block w-fit",
+                                          sub.status === 'Settled' || sub.paymentStatus === 'Received' ? "bg-emerald-50 text-emerald-600 border-emerald-100" : "bg-amber-50 text-amber-600 border-amber-100"
+                                        )}>
+                                          {sub.status || sub.paymentStatus || 'Awaiting Proof'}
+                                        </span>
+                                      </div>
+                                  </div>
                                 </div>
-                            </div>
-                          </div>
+                              );
+                            })}
+                            {displaySubOrders.length === 0 && (
+                               <div className="p-8 text-center bg-surface-container-low rounded-2xl border border-dashed border-outline-variant">
+                                  <p className="text-xs text-secondary italic">Individual tracking unavailable for legacy records.</p>
+                               </div>
+                            )}
+                          </>
                         );
-                      })}
-                      {!order.originalOrders && (
-                         <div className="p-8 text-center bg-surface-container-low rounded-2xl border border-dashed border-outline-variant">
-                            <p className="text-xs text-secondary italic">Individual tracking unavailable for legacy records.</p>
-                         </div>
-                      )}
+                      })()}
                     </div>
                   </motion.div>
                 )}
@@ -3215,7 +3288,18 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                       </div>
 
                       <div className="space-y-1">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-secondary">Seller Mail (To)</label>
+                        <div className="flex items-center justify-between">
+                          <label className="text-[10px] font-black uppercase tracking-widest text-secondary">Seller Mail (To)</label>
+                          {isAuthenticSupplierEmail(poRecipient) ? (
+                            <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3" /> Verified Supplier Mail
+                            </span>
+                          ) : (
+                            <span className="text-[9px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full">
+                              ⚠️ Enter Supplier Email
+                            </span>
+                          )}
+                        </div>
                         <div className="relative group">
                           <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-outline" />
                           <input 
@@ -3223,10 +3307,20 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                             required
                             value={poRecipient}
                             onChange={(e) => setPoRecipient(e.target.value)}
-                            placeholder="seller@punjabgrains.com"
-                            className="w-full pl-10 pr-4 py-2.5 bg-surface border border-outline-variant rounded-xl text-xs font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/10"
+                            placeholder="e.g. saitejapbrm@gmail.com"
+                            className={cn(
+                              "w-full pl-10 pr-4 py-2.5 bg-surface border rounded-xl text-xs font-bold outline-none focus:ring-2",
+                              !isAuthenticSupplierEmail(poRecipient)
+                                ? "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/10"
+                                : "border-outline-variant focus:border-primary focus:ring-primary/10"
+                            )}
                           />
                         </div>
+                        {!isAuthenticSupplierEmail(poRecipient) && (
+                          <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">
+                            No verified email found for this supplier. Enter their authentic email to send this PO.
+                          </p>
+                        )}
                       </div>
                     </div>
 
@@ -4608,6 +4702,14 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
           isOpen={Boolean(selectedOrderForTracking)}
           onClose={() => setSelectedOrderForTracking(null)}
           onRefresh={fetchTrackingRecords}
+        />
+      )}
+
+      {selectedBuyerForLedger && (
+        <BuyerLedgerModal
+          buyerName={selectedBuyerForLedger}
+          onClose={() => setSelectedBuyerForLedger(null)}
+          initialTab="payments"
         />
       )}
 

@@ -411,8 +411,19 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
 
     try {
       const googleProvider = new GoogleAuthProvider();
+      googleProvider.addScope('https://www.googleapis.com/auth/gmail.send');
+      googleProvider.addScope('https://www.googleapis.com/auth/gmail.readonly');
       googleProvider.setCustomParameters({ prompt: 'select_account' });
       const result = await signInWithPopup(auth, googleProvider);
+      try {
+        const credential = GoogleAuthProvider.credentialFromResult(result);
+        if (credential?.accessToken) {
+          localStorage.setItem('google_access_token', credential.accessToken);
+          sessionStorage.setItem('google_access_token', credential.accessToken);
+        }
+      } catch (e) {
+        console.warn('Could not extract Google OAuth credential:', e);
+      }
       const user = result.user;
       const userEmail = (user.email || '').toLowerCase().trim();
 
@@ -482,7 +493,15 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
 
     try {
       const googleProvider = new GoogleAuthProvider();
+      googleProvider.addScope('https://www.googleapis.com/auth/gmail.send');
       const result = await signInWithPopup(auth, googleProvider);
+      try {
+        const credential = GoogleAuthProvider.credentialFromResult(result);
+        if (credential?.accessToken) {
+          localStorage.setItem('google_access_token', credential.accessToken);
+          sessionStorage.setItem('google_access_token', credential.accessToken);
+        }
+      } catch (e) {}
       const user = result.user;
 
       const userUid = user.uid || `usr-${Date.now()}`;

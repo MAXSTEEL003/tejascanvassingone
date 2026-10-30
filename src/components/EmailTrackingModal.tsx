@@ -187,6 +187,12 @@ export default function EmailTrackingModal({
   const badgeConfig = getStatusBadgeConfig(currentStatus);
   const StatusIcon = badgeConfig.icon;
 
+  const recipientEmail = record?.recipientEmail || order?.sellerEmail || '';
+  const remarksStr = order?.remarks || (order?.originalOrders && order?.originalOrders[0]?.remarks) || 'Standard dispatch';
+  const gmailComposeUrl = recipientEmail 
+    ? `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(recipientEmail)}&cc=nani@tejasc.in&su=${encodeURIComponent(`Tejas Canvassing: Purchase Order ${orderId} - ${record?.supplierName || order?.supplier || 'Supplier'}`)}&body=${encodeURIComponent(`Official Purchase Order ${orderId}\nSupplier: ${record?.supplierName || order?.supplier || 'Supplier'}\nTotal: ${order?.total || ''}\nRemarks: ${remarksStr}\n\nPlease confirm delivery.`)}` 
+    : '';
+
   const handleCopyAckLink = () => {
     if (!record?.acknowledgementUrl) return;
     navigator.clipboard.writeText(record.acknowledgementUrl);
@@ -438,6 +444,26 @@ export default function EmailTrackingModal({
               <RefreshCw className={cn("w-3.5 h-3.5", checkingBounces && "animate-spin")} />
               <span>{checkingBounces ? "Checking Mailbox..." : "Check for Bounces"}</span>
             </button>
+
+            {recipientEmail && (
+              <a
+                href={gmailComposeUrl}
+                target="_blank"
+                rel="noreferrer"
+                onClick={async () => {
+                  if (orderId) {
+                    await fetch(`/api/po-tracking/${encodeURIComponent(orderId)}/mark-sent`, { method: 'POST' }).catch(() => {});
+                    fetchRecord();
+                    if (onRefresh) onRefresh();
+                  }
+                }}
+                className="px-3.5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold text-xs transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm"
+                title={`Send PO email to ${recipientEmail} via Gmail Web`}
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>Open & Send via Gmail</span>
+              </a>
+            )}
 
             {currentStatus === 'Bounced/Failed' && (
               <button

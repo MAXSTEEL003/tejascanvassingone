@@ -70,10 +70,11 @@ export default function PendingLoadings() {
   const [isPdfModalOpen, setIsPdfModalOpen] = useState<boolean>(false);
 
   // Load orders from canonical operational order service
-  const loadOrdersData = async () => {
+  const loadOrdersData = async (forceFresh: boolean | any = true) => {
     setIsLoading(true);
     try {
-      const allOrders = await fetchOperationalOrders();
+      const fresh = typeof forceFresh === 'boolean' ? forceFresh : true;
+      const allOrders = await fetchOperationalOrders(fresh);
       // Keep only POs where arrival has NOT been recorded, partial arrival, or pending load exists
       const pendingOnly = allOrders.filter(po => (po.poQtl > po.arrivalQtl) || po.status === 'Pending Loading' || po.status === 'Partial Arrival' || po.arrivalQtl === 0);
       setOrders(pendingOnly);

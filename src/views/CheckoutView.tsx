@@ -33,7 +33,7 @@ import {
   DeliveryLocation,
   addDeliveryLocation
 } from '../utils/deliveryLocations';
-import { generateSupplierPOEmailHtml } from '../utils/poEmailTemplate';
+import { generateSupplierPOEmailHtml, resolveSupplierProfile, isAuthenticSupplierEmail } from '../utils/poEmailTemplate';
 
 const BUYER_PROFILES_LOOKUP: Record<string, { email: string; phone: string }> = {
   'TEJAS': { email: 'nani@tejasc.in', phone: '9945351166' },
@@ -56,12 +56,6 @@ const BUYER_PROFILES_LOOKUP: Record<string, { email: string; phone: string }> = 
   'VALLEY MILLS CO': { email: 'valley.mills@gmail.com', phone: '8095112233' },
 };
 
-const SUPPLIER_PROFILES_LOOKUP: Record<string, { email: string; phone: string }> = {
-  'SAI TEJA PARBOILED RICE MILLS (P) LTD': { email: 'saitejaparboiled@gmail.com', phone: '9848123456' },
-  'RIDDHE SIDDHE RICE INDUSTRIES PVT LTD': { email: 'sales@riddhesiddhe.in', phone: '7001234567' },
-  'NIDHI AGROS': { email: 'nidhiagros.trade@yahoo.com', phone: '9885123459' },
-  'VAISHNAVI FOOD PRODUCTS PVT LTD': { email: 'vaishnavifoods.sales@gmail.com', phone: '9985901234' },
-};
 
 const resolveBuyerProfile = (buyerName: string) => {
   const norm = (buyerName || '').trim().toUpperCase()
@@ -118,42 +112,6 @@ const resolveBuyerProfile = (buyerName: string) => {
   };
 };
 
-const resolveSupplierProfile = (supplierName: string) => {
-  const norm = (supplierName || '').trim().toUpperCase()
-    .replace(/\s*\(LLC\)/gi, '')
-    .replace(/\.$/, '');
-
-  try {
-    const saved = localStorage.getItem('stakeholders_v2');
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      const suppliers = parsed.suppliers || [];
-      const matched = suppliers.find((s: any) => {
-        const sNorm = (s.name || '').trim().toUpperCase()
-          .replace(/\s*\(LLC\)/gi, '')
-          .replace(/\.$/, '');
-        return sNorm === norm || sNorm.includes(norm) || norm.includes(sNorm);
-      });
-      if (matched) {
-        return {
-          email: matched.email || `${norm.toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`,
-          phone: matched.phone || '9440188941'
-        };
-      }
-    }
-  } catch (e) {
-    console.warn("Error resolving dynamic supplier profile from localStorage:", e);
-  }
-
-  if (SUPPLIER_PROFILES_LOOKUP[norm]) return SUPPLIER_PROFILES_LOOKUP[norm];
-  for (const k of Object.keys(SUPPLIER_PROFILES_LOOKUP)) {
-    if (norm.includes(k) || k.includes(norm)) return SUPPLIER_PROFILES_LOOKUP[k];
-  }
-  return {
-    email: `${norm.toLowerCase().replace(/[^a-z0-9]/g, '') || 'supplier'}@gmail.com`,
-    phone: '9440188941'
-  };
-};
 
 export default function CheckoutView() {
   const { items, total, clearCart } = useCart();

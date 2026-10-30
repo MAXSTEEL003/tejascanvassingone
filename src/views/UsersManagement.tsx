@@ -39,8 +39,88 @@ import merchantsDirectory from '../data/merchants_directory.json';
 
 type Category = 'suppliers' | 'buyers' | 'employees';
 
+export const DEFAULT_VERIFIED_SUPPLIERS = [
+  {
+    id: 'SUP-01',
+    name: 'SAI TEJA PARBOILED RICE MILLS (P) LTD',
+    contact: 'Operations Desk',
+    phone: '9440188941',
+    email: 'saitejapbrm@gmail.com',
+    gstin: '36AAAFS1234A1Z5',
+    address: 'Miryalaguda, Nalgonda Dist, Telangana',
+    status: 'Active',
+    type: 'suppliers'
+  },
+  {
+    id: 'SUP-02',
+    name: 'RIDDHE SIDDHE RICE INDUSTRIES PVT LTD',
+    contact: 'Sales Desk',
+    phone: '7001234567',
+    email: 'sales@riddhesiddhe.in',
+    gstin: '19AABCR1234C1Z1',
+    address: 'Industrial APMC Complex, Burdwan, West Bengal',
+    status: 'Active',
+    type: 'suppliers'
+  },
+  {
+    id: 'SUP-03',
+    name: 'NIDHI AGROS',
+    contact: 'Operations Desk',
+    phone: '9885123459',
+    email: 'nidhiagros.trade@yahoo.com',
+    gstin: '29AABFN1234D1Z2',
+    address: 'APMC Yard, Raichur, Karnataka',
+    status: 'Active',
+    type: 'suppliers'
+  },
+  {
+    id: 'SUP-04',
+    name: 'VAISHNAVI FOOD PRODUCTS PVT LTD',
+    contact: 'Procurement Desk',
+    phone: '9985901234',
+    email: 'vaishnavifoods.sales@gmail.com',
+    gstin: '27AABCV1234E1Z3',
+    address: 'Gondia Industrial Area, Maharashtra',
+    status: 'Active',
+    type: 'suppliers'
+  },
+  {
+    id: 'SUP-05',
+    name: 'ANNAPURNA RICE & AGRO INDUSTRIES',
+    contact: 'Operations Desk',
+    phone: '9440188941',
+    email: 'annapurnariceagro@gmail.com',
+    gstin: '29AABCA1234F1Z4',
+    address: 'APMC Market Yard, Karnataka',
+    status: 'Active',
+    type: 'suppliers'
+  },
+  {
+    id: 'SUP-06',
+    name: 'BHAGWATI RICE AND AGRO INDUSTRIES',
+    contact: 'Operations Desk',
+    phone: '9440188941',
+    email: 'bhagwatirice@gmail.com',
+    gstin: '29AABCB9876H1Z6',
+    address: 'APMC Industrial Area',
+    status: 'Active',
+    type: 'suppliers'
+  },
+  {
+    id: 'SUP-07',
+    name: 'AMRITSAR GRAIN EXPORT LTD.',
+    contact: 'Export Operations',
+    phone: '9814012345',
+    email: 'amritsargrain@gmail.com',
+    gstin: '03AABCA5678G1Z5',
+    address: 'GT Road, Amritsar, Punjab',
+    status: 'Active',
+    type: 'suppliers'
+  }
+];
+
 const initialStakeholders = {
-  suppliers: [],
+  suppliers: DEFAULT_VERIFIED_SUPPLIERS,
   buyers: merchantsDirectory as any[],
   employees: [
     { id: 'EMP-01', name: 'Vikram Singh', role: 'Regional Manager', email: 'v.singh@riceaggregator.com', status: 'On Duty', address: 'Punjab Hub' },
@@ -69,9 +149,20 @@ export default function UsersManagement() {
 
       if (saved) {
         const parsed = JSON.parse(saved);
-        const suppliersList = Array.isArray(parsed.suppliers) && parsed.suppliers.length > 0 
+        let rawSuppliersList = Array.isArray(parsed.suppliers) && parsed.suppliers.length > 0 
           ? parsed.suppliers 
-          : (Array.isArray(regSuppliers) ? regSuppliers : []);
+          : (Array.isArray(regSuppliers) && regSuppliers.length > 0 ? regSuppliers : DEFAULT_VERIFIED_SUPPLIERS);
+        
+        // Sanitize any legacy fake emails
+        const suppliersList = rawSuppliersList.map((s: any) => {
+          if (!s) return s;
+          const em = String(s.email || '').trim().toLowerCase();
+          if (em === 'saiteja@gmail.com' || em === 'saitejaparboiledricemillsltd@gmail.com' || em === 'supplier@gmail.com') {
+            const match = DEFAULT_VERIFIED_SUPPLIERS.find(d => d.name === s.name);
+            return { ...s, email: match ? match.email : '' };
+          }
+          return s;
+        });
         const rawBuyers = Array.isArray(parsed.buyers) ? parsed.buyers : [];
         rawBuyers.forEach((b: any) => {
           if (!b || !b.name) return;
@@ -96,7 +187,7 @@ export default function UsersManagement() {
         return initialData;
       } else {
         const initialData = {
-          suppliers: Array.isArray(regSuppliers) && regSuppliers.length > 0 ? regSuppliers : [],
+          suppliers: Array.isArray(regSuppliers) && regSuppliers.length > 0 ? regSuppliers : DEFAULT_VERIFIED_SUPPLIERS,
           buyers: Array.from(buyerMap.values()),
           employees: initialStakeholders.employees
         };

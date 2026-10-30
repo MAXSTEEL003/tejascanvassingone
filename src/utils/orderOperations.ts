@@ -343,7 +343,7 @@ export async function fetchOperationalOrders(forceFresh = false): Promise<Operat
     } catch {}
     const historicalLedgers = [...cloudLedgers, ...localLedgers];
 
-    const ledgerPoMap = new Map<string, { buyer?: string; supplier?: string; date?: any; qty?: number; rate?: number; amount?: number }>();
+    const ledgerPoMap = new Map<string, { buyer?: string; supplier?: string; date?: any; qty?: number; rate?: number; amount?: number; brand?: string; product?: string }>();
     historicalLedgers.forEach(l => {
       if (!l || !l.purchaseOrderNo) return;
       const poKey = normalizePo(l.purchaseOrderNo);
@@ -362,6 +362,27 @@ export async function fetchOperationalOrders(forceFresh = false): Promise<Operat
       if (!rec.qty && l.qty) rec.qty = Number(l.qty) || 0;
       if (!rec.rate && l.rate) rec.rate = Number(l.rate) || 0;
       if (!rec.amount && l.amount) rec.amount = Number(l.amount) || 0;
+      if (!rec.brand && (l.brand || l.product || l.variety || l.itemName)) {
+        rec.brand = l.brand || l.product || l.variety || l.itemName;
+      }
+    });
+
+    // Track sub-order keys that belong to grouped batches so they are not treated as independent orders
+    const groupedSubOrderIds = new Set<string>();
+    Array.from(placedOrderMap.values()).forEach(ord => {
+      if (ord.originalOrders && Array.isArray(ord.originalOrders) && ord.originalOrders.length > 0) {
+        ord.originalOrders.forEach((sub: any) => {
+          if (sub?.id) groupedSubOrderIds.add(normalizePo(sub.id));
+          if (sub?.purchaseOrderNo) groupedSubOrderIds.add(normalizePo(sub.purchaseOrderNo));
+        });
+      }
+    });
+
+    // Remove any standalone orders from placedOrderMap that are already inside a grouped order
+    groupedSubOrderIds.forEach(subKey => {
+      if (placedOrderMap.has(subKey)) {
+        placedOrderMap.delete(subKey);
+      }
     });
 
     const results: OperationalPO[] = [];
@@ -375,18 +396,45 @@ export async function fetchOperationalOrders(forceFresh = false): Promise<Operat
 
       // Handle multi-suborder batch contracts
       if (ord.originalOrders && Array.isArray(ord.originalOrders) && ord.originalOrders.length > 0) {
+        // Mark parent PO and ID as processed
+        processedPoKeys.add(normParentPo);
+        if (ord.id) processedPoKeys.add(normalizePo(ord.id));
+        if (ord.purchaseOrderNo) processedPoKeys.add(normalizePo(ord.purchaseOrderNo));
+
         ord.originalOrders.forEach((sub: any, sIdx: number) => {
           const subId = sub.id ? String(sub.id).trim().toUpperCase() : `${normParentPo}-${sIdx + 1}`;
-          const poNumber = sub.purchaseOrderNo || sub.id || parentPo;
-          const rowKey = `${normParentPo}_${normalizePo(subId)}`;
+          const normSubId = normalizePo(subId);
+          const normSubPo = normalizePo(sub.purchaseOrderNo);
 
-          if (processedPoKeys.has(rowKey)) return;
+          // Use parent PO number for single-suborder batches, or parentPo if sub has no independent PO
+          const poNumber = (ord.originalOrders.length === 1 || !sub.purchaseOrderNo) 
+            ? parentPo 
+            : (sub.purchaseOrderNo || parentPo);
+
+          const rowKey = `${normParentPo}_${normSubId}`;
+
+          if (processedPoKeys.has(rowKey) || (normSubId && processedPoKeys.has(normSubId) && ord.originalOrders.length > 1)) return;
           processedPoKeys.add(rowKey);
+          if (normSubId) processedPoKeys.add(normSubId);
+          if (normSubPo) processedPoKeys.add(normSubPo);
+          if (poNumber) processedPoKeys.add(normalizePo(poNumber));
 
           const dateMeta = parseOperationalDate(sub.date || ord.date || ord.createdAt);
           const buyer = String(sub.buyer || sub.partyName || ord.buyer || 'General Merchant').trim();
           const supplier = sanitizeSupplierName(sub.supplier || sub.seller || ord.supplier || ord.seller, 'DIRECT MILL');
-          const brand = String(sub.brand || sub.product || ord.brand || ord.product || '1121 Sella Rice').trim();
+          
+          // Accurately resolve brand without falling back to hardcoded 1121 Sella Rice
+          const brand = String(
+            sub.brand ||
+            sub.product ||
+            sub.variety ||
+            sub.itemName ||
+            (ord.brand && !ord.brand.startsWith('TC Grouped') ? ord.brand : '') ||
+            (ord.product && !ord.product.startsWith('TC Grouped') ? ord.product : '') ||
+            (ord.items && !ord.items.startsWith('TC Grouped') ? ord.items.replace(/\(\d+.*$/, '').trim() : '') ||
+            'Standard Rice'
+          ).trim();
+
           const poQtl = Number(sub.qty || sub.totalQty) || 0;
           if (poQtl <= 0) return;
 
@@ -396,7 +444,7 @@ export async function fetchOperationalOrders(forceFresh = false): Promise<Operat
           }
 
           // Link Arrival Entry
-          const arrData = arrivedMap.get(normalizePo(subId)) || arrivedMap.get(normParentPo) || { totalQty: 0, billNos: new Set(), rows: [] };
+          const arrData = arrivedMap.get(normSubId) || arrivedMap.get(normParentPo) || { totalQty: 0, billNos: new Set(), rows: [] };
           const arrivalQtl = arrData.totalQty;
           const difference = arrivalQtl - poQtl;
 
@@ -433,11 +481,21 @@ export async function fetchOperationalOrders(forceFresh = false): Promise<Operat
         // Single PO Order
         if (processedPoKeys.has(normParentPo)) return;
         processedPoKeys.add(normParentPo);
+        if (ord.id) processedPoKeys.add(normalizePo(ord.id));
+        if (ord.purchaseOrderNo) processedPoKeys.add(normalizePo(ord.purchaseOrderNo));
 
         const dateMeta = parseOperationalDate(ord.date || ord.createdAt);
         const buyer = String(ord.buyer || ord.partyName || 'General Merchant').trim();
         const supplier = sanitizeSupplierName(ord.supplier || ord.seller, 'DIRECT MILL');
-        const brand = String(ord.brand || ord.product || ord.items?.replace(/\(\d+.*$/, '').trim() || '1121 Sella Rice').trim();
+        
+        const brand = String(
+          ord.brand ||
+          ord.product ||
+          ord.variety ||
+          ord.itemName ||
+          (ord.items && !ord.items.startsWith('TC Grouped') ? ord.items.replace(/\(\d+.*$/, '').trim() : '') ||
+          'Standard Rice'
+        ).trim();
 
         let poQtl = Number(ord.qty || ord.totalQty) || 0;
         if (poQtl <= 0 && ord.items) {
@@ -491,6 +549,7 @@ export async function fetchOperationalOrders(forceFresh = false): Promise<Operat
     // B. Historical Ledger Reconciliation (if PO not present in placed_orders)
     ledgerPoMap.forEach((rec, poKey) => {
       if (processedPoKeys.has(poKey)) return;
+      if (groupedSubOrderIds.has(poKey)) return;
       processedPoKeys.add(poKey);
 
       const dateMeta = parseOperationalDate(rec.date);
@@ -508,7 +567,7 @@ export async function fetchOperationalOrders(forceFresh = false): Promise<Operat
       const arrData = arrivedMap.get(poKey) || { totalQty: 0, billNos: new Set(), rows: [] };
       const arrivalQtl = arrData.totalQty;
       const difference = arrivalQtl - poQtl;
-      const brand = arrData.rows[0]?.brand || '1121 Sella Rice';
+      const brand = String(arrData.rows[0]?.brand || rec.brand || rec.product || 'Standard Rice').trim();
 
       let status: 'Arrived' | 'Pending Loading' | 'Partial Arrival' = 'Pending Loading';
       if (arrivalQtl >= poQtl && poQtl > 0) {
@@ -538,13 +597,36 @@ export async function fetchOperationalOrders(forceFresh = false): Promise<Operat
       });
     });
 
+    // Robust deduplication pass: Guarantee an order is never shown twice with different brands
+    const dedupedResults: OperationalPO[] = [];
+    const seenOrderKeys = new Set<string>();
+
+    for (const po of results) {
+      const normPo = normalizePo(po.poNumber);
+      const normSubId = po.subOrderId ? normalizePo(po.subOrderId) : '';
+      const normBuyer = normalizeParty(po.buyer);
+
+      // Composite deduplication keys
+      const poBuyerKey = `${normPo}__${normBuyer}`;
+      const subBuyerKey = normSubId ? `${normSubId}__${normBuyer}` : '';
+
+      if (seenOrderKeys.has(poBuyerKey) || (subBuyerKey && seenOrderKeys.has(subBuyerKey))) {
+        // Skip duplicate row for the same order and buyer
+        continue;
+      }
+
+      seenOrderKeys.add(poBuyerKey);
+      if (subBuyerKey) seenOrderKeys.add(subBuyerKey);
+      dedupedResults.push(po);
+    }
+
     // If completely empty in storage, fallback to seed records
-    if (results.length === 0) {
+    if (dedupedResults.length === 0) {
       return [...SEED_OPERATIONAL_POS];
     }
 
     // Sort chronologically by dateTimestamp (newest date first)
-    const sorted = results.sort((a, b) => b.dateTimestamp - a.dateTimestamp);
+    const sorted = dedupedResults.sort((a, b) => b.dateTimestamp - a.dateTimestamp);
     operationalOrdersMemCache = { data: sorted, timestamp: Date.now() };
     if (typeof window !== 'undefined') {
       try {

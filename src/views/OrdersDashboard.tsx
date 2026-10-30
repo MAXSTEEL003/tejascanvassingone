@@ -8,8 +8,9 @@ import { useCart } from '../context/CartContext';
 import { getCollectionDocs, syncCollection, setCollectionDoc, deleteCollectionDoc, createLedgerEntriesForOrder, db } from '../lib/firebase';
 import { doc, deleteDoc, collection, getDocs, onSnapshot } from 'firebase/firestore';
 import SearchableSelect from '../components/SearchableSelect';
-import { generateSupplierPOEmailHtml } from '../utils/poEmailTemplate';
+import { generateSupplierPOEmailHtml, resolveSupplierProfile, isAuthenticSupplierEmail } from '../utils/poEmailTemplate';
 import { dispatchOrderPlacedWhatsApp } from '../lib/whatsapp';
+import { invalidateOperationalOrdersCache } from '../utils/orderOperations';
 import merchantsDirectory from '../data/merchants_directory.json';
 
 
@@ -44,7 +45,6 @@ const BUYER_PROFILES_LOOKUP: Record<string, { email: string; phone: string }> = 
   'VISION STORES': { email: 'visionstores@gmail.com', phone: '9945351166' },
 };
 
-const SUPPLIER_PROFILES_LOOKUP: Record<string, { email: string; phone: string }> = {};
 
 const resolveBuyerProfile = (buyerName: string) => {
   const norm = (buyerName || '').trim().toUpperCase()
@@ -179,6 +179,7 @@ export const normalizeOrder = (raw: any): any => {
   if (!date) date = 'Today';
 
   const rawStatus = String(raw.status || '').trim();
+  const isApproved = rawStatus.toLowerCase() === 'approved' || rawStatus.toLowerCase() === 'accepted' || rawStatus.toLowerCase() === 'awaiting grouping';
   const status = isPendingApproval(rawStatus) ? 'Pending Approval' : (rawStatus || 'Pending Approval');
   let rawSupplier = raw.supplier || raw.millerName || raw.assignedSupplier || '';
   const supplier = sanitizeSupplierName(rawSupplier, 'Pending');
@@ -196,12 +197,15 @@ export const normalizeOrder = (raw: any): any => {
     }
   }
 
+  const brand = String(raw.brand || product).trim();
+
   return {
     ...raw,
     id: raw.id,
     orderType,
     buyer,
     product,
+    brand,
     qty,
     rate,
     urgency,
@@ -209,6 +213,7 @@ export const normalizeOrder = (raw: any): any => {
     initials,
     date,
     status,
+    isArchived: isApproved ? false : !!raw.isArchived,
     supplier,
     loadingDays: raw.loadingDays !== undefined ? raw.loadingDays : 3,
     unloadingPoint: raw.unloadingPoint || 'shop',
@@ -216,42 +221,6 @@ export const normalizeOrder = (raw: any): any => {
   };
 };
 
-const resolveSupplierProfile = (supplierName: string) => {
-  const norm = (supplierName || '').trim().toUpperCase()
-    .replace(/\s*\(LLC\)/gi, '')
-    .replace(/\.$/, '');
-
-  try {
-    const saved = localStorage.getItem('stakeholders_v2');
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      const suppliers = parsed.suppliers || [];
-      const matched = suppliers.find((s: any) => {
-        const sNorm = (s.name || '').trim().toUpperCase()
-          .replace(/\s*\(LLC\)/gi, '')
-          .replace(/\.$/, '');
-        return sNorm === norm || sNorm.includes(norm) || norm.includes(sNorm);
-      });
-      if (matched) {
-        return {
-          email: matched.email || (matched.name ? `${matched.name.toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com` : 'supplier@gmail.com'),
-          phone: matched.phone || '9440188941'
-        };
-      }
-    }
-  } catch (e) {
-    console.warn("Error resolving dynamic supplier profile from localStorage:", e);
-  }
-
-  if (SUPPLIER_PROFILES_LOOKUP[norm]) return SUPPLIER_PROFILES_LOOKUP[norm];
-  for (const k of Object.keys(SUPPLIER_PROFILES_LOOKUP)) {
-    if (norm.includes(k) || k.includes(norm)) return SUPPLIER_PROFILES_LOOKUP[k];
-  }
-  return {
-    email: `${norm.toLowerCase().replace(/[^a-z0-9]/g, '') || 'supplier'}@gmail.com`,
-    phone: '9440188941'
-  };
-};
 
 export default function OrdersDashboard() {
   const navigate = useNavigate();
@@ -624,7 +593,7 @@ export default function OrdersDashboard() {
         if (cached) {
           (cached.suppliers || []).forEach((s: any) => {
             if (s && s.name && !deletedSet.has(String(s.id || '').toLowerCase())) {
-              supMap.set(s.name.trim().toUpperCase(), { id: s.id || `SUP-${Date.now()}`, name: s.name.trim() });
+              supMap.set(s.name.trim().toUpperCase(), { ...s, id: s.id || `SUP-${Date.now()}`, name: s.name.trim(), email: s.email || '', phone: s.phone || '', gstin: s.gstin || '', address: s.address || '' });
             }
           });
           (cached.buyers || []).forEach((b: any) => {
@@ -637,7 +606,7 @@ export default function OrdersDashboard() {
         if (Array.isArray(regSuppliers)) {
           regSuppliers.forEach((s: any) => {
             if (s && s.name && !deletedSet.has(String(s.id || '').toLowerCase())) {
-              supMap.set(s.name.trim().toUpperCase(), { id: s.id || `SUP-${Date.now()}`, name: s.name.trim() });
+              supMap.set(s.name.trim().toUpperCase(), { ...s, id: s.id || `SUP-${Date.now()}`, name: s.name.trim(), email: s.email || '', phone: s.phone || '', gstin: s.gstin || '', address: s.address || '' });
             }
           });
         }
@@ -674,7 +643,7 @@ export default function OrdersDashboard() {
               const nextStakeholders = {
                 ...currentStakeholders,
                 buyers: merchantsDirectory,
-                suppliers: currentStakeholders.suppliers || Array.from(supMap.values()),
+                suppliers: (currentStakeholders.suppliers && currentStakeholders.suppliers.length > 0) ? currentStakeholders.suppliers : Array.from(supMap.values()),
                 employees: currentStakeholders.employees || []
               };
               localStorage.setItem('stakeholders_v2', JSON.stringify(nextStakeholders));
@@ -897,12 +866,10 @@ export default function OrdersDashboard() {
       .filter((o: any) => {
         if (!o || !o.id) return false;
         if (
-          o.status === 'Approved' || 
-          o.status === 'Accepted' || 
           o.status === 'Rejected' || 
           o.status === 'Completed' || 
           o.status === 'Archived' || 
-          o.isArchived || 
+          (o.isArchived && o.status !== 'Approved' && o.status !== 'Accepted' && o.status !== 'Awaiting Grouping') || 
           String(o.id).startsWith('#ORD-99') || 
           String(o.id).startsWith('TC-0000')
         ) return false;
@@ -943,12 +910,10 @@ export default function OrdersDashboard() {
           const data = doc.data();
           if (
             data && 
-            data.status !== 'Approved' &&
-            data.status !== 'Accepted' &&
             data.status !== 'Rejected' && 
             data.status !== 'Completed' && 
             data.status !== 'Archived' && 
-            !data.isArchived && 
+            (!data.isArchived || data.status === 'Approved' || data.status === 'Accepted' || data.status === 'Awaiting Grouping') && 
             !String(doc.id).startsWith('#ORD-99') && 
             !String(doc.id).startsWith('TC-0000')
           ) {
@@ -981,12 +946,10 @@ export default function OrdersDashboard() {
           const normKey = String(raw.id).trim().toLowerCase().replace(/^#/, '');
           if (deletedSet.has(normKey)) return;
           if (
-            raw.status === 'Approved' ||
-            raw.status === 'Accepted' ||
             raw.status === 'Rejected' || 
             raw.status === 'Completed' || 
             raw.status === 'Archived' || 
-            raw.isArchived
+            (raw.isArchived && raw.status !== 'Approved' && raw.status !== 'Accepted' && raw.status !== 'Awaiting Grouping')
           ) return;
           if (String(raw.id).startsWith('#ORD-99') || String(raw.id).startsWith('TC-0000')) return;
 
@@ -1037,12 +1000,10 @@ export default function OrdersDashboard() {
         prev.forEach(o => {
           if (!o || !o.id) return;
           if (
-            o.status === 'Approved' ||
-            o.status === 'Accepted' ||
             o.status === 'Rejected' || 
             o.status === 'Completed' || 
             o.status === 'Archived' || 
-            o.isArchived
+            (o.isArchived && o.status !== 'Approved' && o.status !== 'Accepted' && o.status !== 'Awaiting Grouping')
           ) return;
           const normKey = String(o.id).trim().toLowerCase().replace(/^#/, '');
           if (!deletedSet.has(normKey)) mergedMap.set(normKey, o);
@@ -1053,12 +1014,10 @@ export default function OrdersDashboard() {
           const normKey = String(raw.id).trim().toLowerCase().replace(/^#/, '');
           if (deletedSet.has(normKey)) return;
           if (
-            raw.status === 'Approved' ||
-            raw.status === 'Accepted' ||
             raw.status === 'Rejected' || 
             raw.status === 'Completed' || 
             raw.status === 'Archived' || 
-            raw.isArchived
+            (raw.isArchived && raw.status !== 'Approved' && raw.status !== 'Accepted' && raw.status !== 'Awaiting Grouping')
           ) return;
           if (String(raw.id).startsWith('#ORD-99') || String(raw.id).startsWith('TC-0000')) return;
 
@@ -1138,64 +1097,66 @@ export default function OrdersDashboard() {
   const handleAction = async (id: string, action: 'accept' | 'reject') => {
     setActionLoadingId(id);
     try {
-      const nextStatus = action === 'accept' ? 'Approved' : 'Rejected';
       const orderToUpdate = currentOrders.find(o => o.id === id);
       const nowIso = new Date().toISOString();
-      const updatedOrder = orderToUpdate 
-        ? { 
-            ...orderToUpdate, 
-            status: nextStatus, 
-            isArchived: true, 
-            approvedAt: action === 'accept' ? nowIso : undefined, 
-            rejectedAt: action === 'reject' ? nowIso : undefined 
+
+      if (action === 'accept') {
+        const nextStatus = 'Approved';
+        const updatedOrder = orderToUpdate 
+          ? { 
+              ...orderToUpdate, 
+              status: nextStatus, 
+              isArchived: false, 
+              approvedAt: nowIso 
+            }
+          : null;
+
+        // 1. Keep order in active currentOrders with status 'Approved'
+        // so it remains visible in the dashboard table for selection and batch grouping
+        const nextOrders = currentOrders.map(o => {
+          if (o.id === id) {
+            return normalizeOrder({ ...o, status: nextStatus, isArchived: false, approvedAt: nowIso });
           }
-        : null;
+          return o;
+        });
+        setCurrentOrders(nextOrders);
+        localStorage.setItem('procurement_requests', JSON.stringify(nextOrders));
 
-      // 1. Immediately remove from active currentOrders (Active Procurement Requests)
-      const nextOrders = currentOrders.filter(o => o.id !== id);
-      setCurrentOrders(nextOrders);
-      localStorage.setItem('procurement_requests', JSON.stringify(nextOrders));
+        // 2. Persist update to Firestore procurement_requests
+        if (updatedOrder) {
+          await setCollectionDoc('procurement_requests', id, updatedOrder);
+        }
 
-      // 2. Add to local archivedOrders list immediately so it is available in Archived Orders
-      if (updatedOrder) {
-        const normKey = String(updatedOrder.id).trim().toLowerCase().replace(/^#/, '');
-        setArchivedOrders(prev => [
-          normalizeOrder(updatedOrder),
-          ...prev.filter(o => String(o.id).trim().toLowerCase().replace(/^#/, '') !== normKey)
-        ]);
-      }
+        // NOTE: Order is NOT removed and NOT saved to placed_orders yet.
+        // It stays in the dashboard table with "Approved" status so the user
+        // can select it via checkbox, group it with other orders for the same supplier,
+        // and click "Group & Place Orders".
+      } else {
+        // REJECT ACTION:
+        const nextStatus = 'Rejected';
+        const updatedOrder = orderToUpdate 
+          ? { 
+              ...orderToUpdate, 
+              status: nextStatus, 
+              isArchived: true, 
+              rejectedAt: nowIso 
+            }
+          : null;
 
-      // 3. Persist update to Firestore procurement_requests
-      if (updatedOrder) {
-        await setCollectionDoc('procurement_requests', id, updatedOrder);
-      }
+        // 1. Remove from active currentOrders
+        const nextOrders = currentOrders.filter(o => o.id !== id);
+        setCurrentOrders(nextOrders);
+        localStorage.setItem('procurement_requests', JSON.stringify(nextOrders));
 
-      // 4. If accepted/approved, ALSO save into placed_orders so Placed Orders views show it immediately across all devices
-      if (action === 'accept' && updatedOrder) {
-        const placedDoc = {
-          ...updatedOrder,
-          status: 'Approved',
-          progress: 35,
-          placedAt: nowIso,
-          date: updatedOrder.date || (() => {
-            const d = new Date();
-            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-            return `${d.getDate()}-${monthNames[d.getMonth()]}-${d.getFullYear()}`;
-          })()
-        };
-        await setCollectionDoc('placed_orders', id, placedDoc);
-
-        // Also add to local placed_orders in localStorage
-        try {
-          localStorage.removeItem('cleared_placed_orders');
-          localStorage.removeItem('placed_orders_cleared_all');
-          removeDeletedPlacedOrderId(id);
-          const rawPlaced = localStorage.getItem('placed_orders');
-          const currentPlaced = rawPlaced ? JSON.parse(rawPlaced) : [];
-          const normKey = String(id).trim().toLowerCase().replace(/^#/, '');
-          const filteredPlaced = currentPlaced.filter((p: any) => String(p.id).trim().toLowerCase().replace(/^#/, '') !== normKey);
-          localStorage.setItem('placed_orders', JSON.stringify([placedDoc, ...filteredPlaced]));
-        } catch {}
+        // 2. Add to local archivedOrders list
+        if (updatedOrder) {
+          const normKey = String(updatedOrder.id).trim().toLowerCase().replace(/^#/, '');
+          setArchivedOrders(prev => [
+            normalizeOrder(updatedOrder),
+            ...prev.filter(o => String(o.id).trim().toLowerCase().replace(/^#/, '') !== normKey)
+          ]);
+          await setCollectionDoc('procurement_requests', id, updatedOrder);
+        }
       }
     } catch (err) {
       console.error('Failed to update action in database:', err);
@@ -1509,14 +1470,15 @@ export default function OrdersDashboard() {
     if (selectedOrders.length > 0) {
       setSelectedOrders([]);
     } else {
-      if (filteredOrders.length > 0) {
-        const firstSupplier = sanitizeSupplierName(filteredOrders[0].supplier, 'DIRECT MILL');
-        const matchingIds = filteredOrders.filter(o => sanitizeSupplierName(o.supplier, 'DIRECT MILL') === firstSupplier).map(o => o.id);
+      const approvableOrders = filteredOrders.filter(o => o.status === 'Approved' || o.status === 'Accepted' || o.status === 'Awaiting Grouping');
+      if (approvableOrders.length > 0) {
+        const firstSupplier = sanitizeSupplierName(approvableOrders[0].supplier, 'DIRECT MILL');
+        const matchingIds = approvableOrders.filter(o => sanitizeSupplierName(o.supplier, 'DIRECT MILL') === firstSupplier).map(o => o.id);
         setSelectedOrders(matchingIds);
         
-        const nonMatchingCount = filteredOrders.length - matchingIds.length;
+        const nonMatchingCount = approvableOrders.length - matchingIds.length;
         if (nonMatchingCount > 0) {
-          setSelectionWarning(`Auto-selected all ${matchingIds.length} orders for supplier "${firstSupplier}". Disabled ${nonMatchingCount} other entities to enforce same-supplier grouping.`);
+          setSelectionWarning(`Auto-selected all ${matchingIds.length} approved orders for supplier "${firstSupplier}". Disabled ${nonMatchingCount} other entities to enforce same-supplier grouping.`);
         }
       }
     }
@@ -1555,10 +1517,16 @@ export default function OrdersDashboard() {
     const totalSelectedAmt = selected.reduce((sum, o) => sum + (Number(o.qty || 0) * Number(o.rate || 0)), 0);
     const totalSelectedQty = selected.reduce((sum, o) => sum + Number(o.qty || 0), 0);
     const avgRate = Number((totalSelectedAmt / (totalSelectedQty || 1)).toFixed(2));
-    const firstProduct = selected[0]?.product || 'Premium Rice';
+    const firstProduct = selected[0]?.product || selected[0]?.brand || 'Premium Rice';
     const firstInitials = selected[0]?.initials || 'CB';
     const firstColor = selected[0]?.color || 'zinc';
     const firstUrgency = selected[0]?.urgency || 'Standard';
+
+    const enrichedSelected = selected.map((s: any) => ({
+      ...s,
+      product: s.product || s.brand || firstProduct,
+      brand: s.brand || s.product || firstProduct
+    }));
 
     const buyerProfiles = uniqueBuyers.map(b => {
       const prof = resolveBuyerProfile(b);
@@ -1572,6 +1540,11 @@ export default function OrdersDashboard() {
     });
 
     const supplierProfile = resolveSupplierProfile(assignedBatchSupplier);
+    const hasAuthenticSupplierEmail = Boolean(
+      supplierProfile.isConfigured && 
+      supplierProfile.email && 
+      isAuthenticSupplierEmail(supplierProfile.email)
+    );
 
     const groupedOrder = {
       id: batchId,
@@ -1594,117 +1567,43 @@ export default function OrdersDashboard() {
       destination: 'Multiple Destinations',
       buyer: buyerName,
       supplier: assignedBatchSupplier,
-      originalOrders: selected,
-      purchaseOrderSent: true,
-      purchaseOrderSentAt: new Date().toISOString(),
+      originalOrders: enrichedSelected,
+      purchaseOrderSent: hasAuthenticSupplierEmail,
+      purchaseOrderSentAt: hasAuthenticSupplierEmail ? new Date().toISOString() : undefined,
       companyEmail: localStorage.getItem('companyEmail') || (localStorage.getItem('userEmail') && localStorage.getItem('userEmail') !== 'nani@tejasc.in' ? localStorage.getItem('userEmail') : null) || 'nani@tejasc.in',
-      sellerEmail: supplierProfile.email,
+      sellerEmail: hasAuthenticSupplierEmail ? supplierProfile.email : '',
       qty: totalSelectedQty,
       rate: avgRate,
       product: firstProduct,
+      brand: firstProduct,
       initials: firstInitials,
       urgency: firstUrgency,
       color: firstColor,
       dispatchedBuyers: buyerProfiles,
     };
 
-    // Show Auto Dispatch Modal Overlay
-    setAutoDispatchStatus({
-      isSending: true,
-      progress: 15,
-      logs: [],
-      currentAction: "Approving order and preparing purchase documents..."
-    });
-
-    // 1. DISPATCH OFFICIAL PURCHASE ORDER EMAIL TO ASSIGNED SUPPLIER
-    if (supplierProfile.email) {
-      setAutoDispatchStatus(prev => prev ? ({ ...prev, progress: 35, currentAction: `E-mailing official Purchase Order to supplier ${assignedBatchSupplier}...` }) : null);
-      const subOrders = selected.map((s: any) => ({
-        id: s.id,
-        buyer: s.buyer || 'Authorized Merchant',
-        product: (s.product || groupedOrder.product || 'Premium Rice').replace(/\(\d+.*$/, '').trim(),
-        qty: Number(s.qty) || 0,
-        rate: Number(s.rate) || avgRate,
-        date: s.date || groupedOrder.date,
-        loadingDays: s.loadingDays !== undefined ? s.loadingDays : 3,
-        unloadingPoint: s.unloadingPoint || 'shop',
-        remarks: s.remarks || ''
-      }));
-
-      const emailHtml = generateSupplierPOEmailHtml(assignedBatchSupplier, groupedOrder, subOrders);
-      const poSubject = `Tejas Canvassing: Purchase Order ${groupedOrder.id} - ${assignedBatchSupplier}`;
-
-      fetch('/api/dispatch-po', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          to: supplierProfile.email,
-          from: localStorage.getItem('companyEmail') || 'nani@tejasc.in',
-          cc: localStorage.getItem('companyEmail') || 'nani@tejasc.in',
-          subject: poSubject,
-          html: emailHtml,
-          htmlContent: emailHtml,
-          textContent: `Tejas Canvassing: Official Purchase Order ${groupedOrder.id}\n\nDear ${assignedBatchSupplier},\n\nOrder for ${groupedOrder.qty} QTLS has been confirmed. Please find purchase order details enclosed.`,
-          batchId: groupedOrder.id,
-          poNumber: groupedOrder.id,
-          orderId: groupedOrder.id,
-          supplierName: assignedBatchSupplier,
-          orderDetails: groupedOrder
-        })
-      }).catch(err => console.warn(`Supplier PO email error for ${assignedBatchSupplier}:`, err?.message || err));
-    }
-
-    // 2. DISPATCH WHATSAPP ORDER CONFIRMATION TO BUYER(S) AUTOMATICALLY UPON APPROVING & PLACING ORDER
-    setAutoDispatchStatus(prev => prev ? ({ ...prev, progress: 60, currentAction: "Transmitting automatic WhatsApp order confirmation to buyer(s)..." }) : null);
-
-    const waPromises = buyerProfiles.map(async bp => {
-      const buyerOrders = selected.filter(s => (s.buyer || '').trim().toLowerCase() === bp.name.trim().toLowerCase());
-      const bpOrder = buyerOrders[0] || groupedOrder;
-      const bpBrand = (bpOrder.product || groupedOrder.product || 'keshar kali').replace(/\(\d+.*$/, '').trim();
-      const bpQtyNum = buyerOrders.reduce((sum, o) => sum + (Number(o.qty) || 0), 0) || Number(groupedOrder.qty) || 40;
-      const bpRateNum = bpOrder.rate || groupedOrder.rate || 10000;
-      const buyerWhatsappMsg = `Hello ${bp.name},\n\nOrder placed successfully.\n\nBrand: ${bpBrand}\nQuantity: ${bpQtyNum} QTL\nRate: ₹${bpRateNum}/QTL\n\nThank you,\nTejas Canvassing`;
-
-      try {
-        const waRes = await dispatchOrderPlacedWhatsApp({
-          to: bp.phone,
-          buyerName: bp.name,
-          brand: bpBrand,
-          qty: bpQtyNum,
-          rate: bpRateNum,
-          orderId: groupedOrder.id,
-          poNumber: groupedOrder.id,
-          customMessage: buyerWhatsappMsg
-        });
-        console.log(`[Approved Order WhatsApp Result for ${bp.name}]:`, waRes);
-        return { name: bp.name, ...waRes };
-      } catch (err: any) {
-        console.warn(`WhatsApp dispatch note for ${bp.name}:`, err?.message || err);
-        return { name: bp.name, success: false, error: err?.message };
-      }
-    });
-
-    await Promise.allSettled(waPromises);
-
-    setAutoDispatchStatus(prev => prev ? ({ ...prev, progress: 85, currentAction: "Saving placed order & updating records..." }) : null);
-
-    // 3. Save to Placed Orders in localStorage & Firestore
+    // 1. INSTANT LOCAL & CLOUD STORAGE UPDATE (Save placed order immediately!)
     localStorage.removeItem('cleared_placed_orders');
     localStorage.removeItem('placed_orders_cleared_all');
+    localStorage.removeItem('cached_operational_orders');
+    invalidateOperationalOrdersCache();
     removeDeletedPlacedOrderId(batchId);
-    selectedOrders.forEach(id => removeDeletedPlacedOrderId(id));
-    const existingPlaced = JSON.parse(localStorage.getItem('placed_orders') || '[]');
-    const newPlaced = [groupedOrder, ...existingPlaced];
-    localStorage.setItem('placed_orders', JSON.stringify(newPlaced));
-    localStorage.setItem('just_placed_order', 'true');
-    await setCollectionDoc('placed_orders', batchId, groupedOrder).catch(() => {});
-
-    // Generate Miller and Shop ledger entries
-    createLedgerEntriesForOrder(groupedOrder).catch(err => {
-      console.error("Failed to automatically generate commercial ledger entries:", err);
+    selectedOrders.forEach(id => {
+      removeDeletedPlacedOrderId(id);
+      removeDeletedProcurementId(id);
     });
 
-    // Remove approved orders from procurement_requests
+    const existingPlaced = JSON.parse(localStorage.getItem('placed_orders') || '[]');
+    // Clean up any premature individual entries for these selected orders
+    const filteredExisting = existingPlaced.filter((p: any) => {
+      const pNorm = String(p.id || '').trim().toLowerCase().replace(/^#/, '');
+      return !selectedNormSet.has(pNorm);
+    });
+    const newPlaced = [groupedOrder, ...filteredExisting];
+    localStorage.setItem('placed_orders', JSON.stringify(newPlaced));
+    localStorage.setItem('just_placed_order', 'true');
+
+    // Remove approved orders from procurement_requests in local state & localStorage
     const remaining = currentOrders.filter(o => {
       const normId = String(o.id || '').trim().toLowerCase().replace(/^#/, '');
       return !selectedNormSet.has(normId);
@@ -1718,24 +1617,93 @@ export default function OrdersDashboard() {
     });
     localStorage.setItem('procurement_requests', JSON.stringify(filteredProc));
 
-    // Delete approved requests from Firestore
-    try {
-      addDeletedProcurementIds(selectedOrders);
-      await Promise.allSettled(
-        selectedOrders.map(id => deleteCollectionDoc('procurement_requests', id))
-      );
-    } catch (err) {
-      console.error('Failed to delete approved requests from Firestore:', err);
+    // Clear selection immediately
+    setSelectedOrders([]);
+
+    // 2. Persist to Firestore placed_orders & clean procurement_requests in background
+    setCollectionDoc('placed_orders', batchId, groupedOrder).catch(() => {});
+    Promise.allSettled([
+      ...selectedOrders.map(id => deleteCollectionDoc('procurement_requests', id)),
+      ...selectedOrders.map(id => deleteCollectionDoc('placed_orders', id))
+    ]).catch(() => {});
+
+    // 3. Generate commercial ledger entries in background
+    createLedgerEntriesForOrder(groupedOrder).catch(err => {
+      console.error("Failed to automatically generate commercial ledger entries:", err);
+    });
+
+    // 4. DISPATCH SUPPLIER PO EMAIL & BUYER WHATSAPP ALERTS IN BACKGROUND
+    if (hasAuthenticSupplierEmail && supplierProfile.email) {
+      const subOrders = selected.map((s: any) => ({
+        id: s.id,
+        buyer: s.buyer || 'Authorized Merchant',
+        product: (s.product || groupedOrder.product || 'Premium Rice').replace(/\(\d+.*$/, '').trim(),
+        qty: Number(s.qty) || 0,
+        rate: Number(s.rate) || avgRate,
+        date: s.date || groupedOrder.date,
+        loadingDays: s.loadingDays !== undefined ? s.loadingDays : 3,
+        unloadingPoint: s.unloadingPoint || 'shop',
+        remarks: (s.remarks || s.notes || (groupedOrder as any).remarks || '').trim()
+      }));
+
+      const emailHtml = generateSupplierPOEmailHtml(assignedBatchSupplier, groupedOrder, subOrders);
+      const poSubject = `Tejas Canvassing: Purchase Order ${groupedOrder.id} - ${assignedBatchSupplier}`;
+
+      const subOrdersSummaryText = subOrders.map((so: any, idx: number) => 
+        `${idx + 1}. Buyer: ${so.buyer}\n   Brand/Product: ${so.product}\n   Quantity: ${so.qty} QTLS @ ₹${so.rate}/QTL\n   Loading Days: ${so.loadingDays} | Unloading Point: ${so.unloadingPoint}\n   Remarks: ${so.remarks || 'None'}`
+      ).join('\n\n');
+
+      const poPlainText = `Official Purchase Order: ${groupedOrder.id}\nSupplier: ${assignedBatchSupplier}\nTotal Quantity: ${groupedOrder.qty} QTLS\nTotal Value: ${groupedOrder.total}\n\nSub-Order Particulars:\n${subOrdersSummaryText}\n\n--\nTejas Canvassing Grain Brokerage`;
+
+      fetch('/api/dispatch-po', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: supplierProfile.email,
+          from: localStorage.getItem('companyEmail') || 'nani@tejasc.in',
+          cc: localStorage.getItem('companyEmail') || 'nani@tejasc.in',
+          subject: poSubject,
+          html: emailHtml,
+          htmlContent: emailHtml,
+          textContent: poPlainText,
+          batchId: groupedOrder.id,
+          poNumber: groupedOrder.id,
+          orderId: groupedOrder.id,
+          supplierName: assignedBatchSupplier,
+          orderDetails: groupedOrder,
+          accessToken: (typeof window !== 'undefined' ? (localStorage.getItem('google_access_token') || sessionStorage.getItem('google_access_token')) : undefined)
+        })
+      }).catch(err => console.warn(`Supplier PO email error for ${assignedBatchSupplier}:`, err?.message || err));
+    } else {
+      console.warn(`[PO Dispatch Skipped] Supplier "${assignedBatchSupplier}" has no verified email address configured. PO email dispatch prevented to avoid sending to random email addresses.`);
     }
 
-    setAutoDispatchStatus(prev => prev ? ({ ...prev, progress: 100, currentAction: "Order approved & placed successfully! WhatsApp confirmation delivered." }) : null);
+    buyerProfiles.forEach(async bp => {
+      const buyerOrders = selected.filter(s => (s.buyer || '').trim().toLowerCase() === bp.name.trim().toLowerCase());
+      const bpOrder = buyerOrders[0] || groupedOrder;
+      const bpBrand = (bpOrder.product || groupedOrder.product || 'keshar kali').replace(/\(\d+.*$/, '').trim();
+      const bpQtyNum = buyerOrders.reduce((sum, o) => sum + (Number(o.qty) || 0), 0) || Number(groupedOrder.qty) || 40;
+      const bpRateNum = bpOrder.rate || groupedOrder.rate || 10000;
+      const buyerWhatsappMsg = `Hello ${bp.name},\n\nOrder placed successfully.\n\nBrand: ${bpBrand}\nQuantity: ${bpQtyNum} QTL\nRate: ₹${bpRateNum}/QTL\n\nThank you,\nTejas Canvassing`;
 
-    // Brief pause to display success checkmark before navigating
-    setTimeout(() => {
-      setSelectedOrders([]);
-      setAutoDispatchStatus(null);
-      navigate('/placed-orders');
-    }, 600);
+      try {
+        await dispatchOrderPlacedWhatsApp({
+          to: bp.phone,
+          buyerName: bp.name,
+          brand: bpBrand,
+          qty: bpQtyNum,
+          rate: bpRateNum,
+          orderId: groupedOrder.id,
+          poNumber: groupedOrder.id,
+          customMessage: buyerWhatsappMsg
+        });
+      } catch (err: any) {
+        console.warn(`WhatsApp dispatch note for ${bp.name}:`, err?.message || err);
+      }
+    });
+
+    // 5. Directly navigate to Placed Orders without overlay
+    navigate('/placed-orders');
   };
 
   const handleCreateOrder = () => {

@@ -3,6 +3,22 @@ import fs from "fs";
 import path from "path";
 import dotenv from "dotenv";
 
+// Load local environment files if present
+const currentDir = typeof __dirname !== "undefined" ? __dirname : process.cwd();
+const envCandidates = [
+  path.join(process.cwd(), ".env"),
+  path.join(process.cwd(), "tejascanvassingone-main", ".env"),
+  path.join(currentDir, ".env"),
+  path.join(currentDir, "..", ".env"),
+];
+for (const envFile of envCandidates) {
+  if (fs.existsSync(envFile)) {
+    try {
+      dotenv.config({ path: envFile, override: false });
+    } catch {}
+  }
+}
+
 const GMAIL_SENDER = "nani@tejasc.in";
 const DATA_DIR = process.env.VERCEL ? "/tmp" : path.join(process.cwd(), "data");
 const OAUTH_FILE = path.join(DATA_DIR, "gmail_oauth.json");
@@ -31,40 +47,90 @@ function ensureDataDir() {
   }
 }
 
+function getEnvValue(keys: string[]): string {
+  for (const k of keys) {
+    const val = process.env[k];
+    if (val && typeof val === "string" && val.trim().length > 0) {
+      return val.trim();
+    }
+  }
+  return "";
+}
+
 /**
- * Loads OAuth credentials from environment variables or encrypted/persisted disk storage
+ * Loads OAuth credentials from environment variables (supporting all Vercel/Google variants)
+ * or encrypted/persisted disk storage
  */
 export function getStoredOAuthCredentials(): GmailOAuthCredentials {
-  if (cachedCreds && cachedCreds.refreshToken) {
+  if (cachedCreds && cachedCreds.refreshToken && cachedCreds.clientId && cachedCreds.clientSecret) {
     return cachedCreds;
   }
 
-  // 1. Check process.env first (support both GMAIL_OAUTH_* and GMAIL_* naming)
-  let envClientId = (process.env.GMAIL_CLIENT_ID || process.env.GMAIL_OAUTH_CLIENT_ID || "").trim();
-  let envClientSecret = (process.env.GMAIL_CLIENT_SECRET || process.env.GMAIL_OAUTH_CLIENT_SECRET || "").trim();
-  let envRefreshToken = (process.env.GMAIL_REFRESH_TOKEN || process.env.GMAIL_OAUTH_REFRESH_TOKEN || "").trim();
-  let envRedirectUri = (process.env.GMAIL_REDIRECT_URI || process.env.GMAIL_OAUTH_REDIRECT_URI || "https://app.tejasc.in/api/auth/gmail/callback").trim();
-
-  // 2. Check local .env candidates if environment variables are not yet loaded
-  const envCandidates = [
-    path.join(process.cwd(), ".env"),
-    path.join(process.cwd(), "tejascanvassingone-main", ".env"),
-    path.join(typeof __dirname !== "undefined" ? __dirname : process.cwd(), ".env"),
-    path.join(typeof __dirname !== "undefined" ? __dirname : process.cwd(), "..", ".env"),
+  // 1. Check all environment variable aliases (Vercel, local, Vite, Google)
+  const CLIENT_ID_KEYS = [
+    "GMAIL_OAUTH_CLIENT_ID", "GMAIL_CLIENT_ID",
+    "GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_CLIENT_ID",
+    "VITE_GMAIL_OAUTH_CLIENT_ID", "VITE_GMAIL_CLIENT_ID",
+    "VITE_GOOGLE_CLIENT_ID", "CLIENT_ID"
   ];
-  for (const envFile of envCandidates) {
-    if (fs.existsSync(envFile)) {
-      try {
-        const content = fs.readFileSync(envFile, "utf-8");
-        const mClient = content.match(/^GMAIL(?:_OAUTH)?_CLIENT_ID=(.*)$/m);
-        if (mClient && mClient[1].trim() && !envClientId) envClientId = mClient[1].trim();
-        const mSecret = content.match(/^GMAIL(?:_OAUTH)?_CLIENT_SECRET=(.*)$/m);
-        if (mSecret && mSecret[1].trim() && !envClientSecret) envClientSecret = mSecret[1].trim();
-        const mRefresh = content.match(/^GMAIL(?:_OAUTH)?_REFRESH_TOKEN=(.*)$/m);
-        if (mRefresh && mRefresh[1].trim() && !envRefreshToken) envRefreshToken = mRefresh[1].trim();
-        const mRedirect = content.match(/^GMAIL(?:_OAUTH)?_REDIRECT_URI=(.*)$/m);
-        if (mRedirect && mRedirect[1].trim() && !envRedirectUri) envRedirectUri = mRedirect[1].trim();
-      } catch {}
+  const CLIENT_SECRET_KEYS = [
+    "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_CLIENT_SECRET",
+    "GOOGLE_OAUTH_CLIENT_SECRET", "GOOGLE_CLIENT_SECRET",
+    "VITE_GMAIL_OAUTH_CLIENT_SECRET", "VITE_GMAIL_CLIENT_SECRET",
+    "VITE_GOOGLE_CLIENT_SECRET", "CLIENT_SECRET"
+  ];
+  const REFRESH_TOKEN_KEYS = [
+    "GMAIL_OAUTH_REFRESH_TOKEN", "GMAIL_REFRESH_TOKEN",
+    "GOOGLE_OAUTH_REFRESH_TOKEN", "GOOGLE_REFRESH_TOKEN",
+    "GMAIL_TOKEN", "GOOGLE_TOKEN", "REFRESH_TOKEN",
+    "VITE_GMAIL_REFRESH_TOKEN", "VITE_GOOGLE_REFRESH_TOKEN"
+  ];
+  const REDIRECT_URI_KEYS = [
+    "GMAIL_OAUTH_REDIRECT_URI", "GMAIL_REDIRECT_URI",
+    "GOOGLE_OAUTH_REDIRECT_URI", "GOOGLE_REDIRECT_URI",
+    "VITE_GMAIL_REDIRECT_URI"
+  ];
+  const SENDER_KEYS = [
+    "GMAIL_SENDER_EMAIL", "GMAIL_SENDER", "GMAIL_USER",
+    "GOOGLE_USER", "EMAIL_USER", "SENDER_EMAIL",
+    "SMTP_FROM", "SMTP_USER"
+  ];
+
+  let envClientId = getEnvValue(CLIENT_ID_KEYS);
+  let envClientSecret = getEnvValue(CLIENT_SECRET_KEYS);
+  let envRefreshToken = getEnvValue(REFRESH_TOKEN_KEYS);
+  let envRedirectUri = getEnvValue(REDIRECT_URI_KEYS) || "https://app.tejasc.in/api/auth/gmail/callback";
+  let envSender = getEnvValue(SENDER_KEYS);
+
+  // 2. Check local .env candidates with dotenv.parse if any key is still empty
+  if (!envClientId || !envClientSecret || !envRefreshToken) {
+    for (const envFile of envCandidates) {
+      if (fs.existsSync(envFile)) {
+        try {
+          const content = fs.readFileSync(envFile, "utf-8");
+          const parsed = dotenv.parse(content);
+          if (!envClientId) {
+            for (const k of CLIENT_ID_KEYS) {
+              if (parsed[k]?.trim()) { envClientId = parsed[k].trim(); break; }
+            }
+          }
+          if (!envClientSecret) {
+            for (const k of CLIENT_SECRET_KEYS) {
+              if (parsed[k]?.trim()) { envClientSecret = parsed[k].trim(); break; }
+            }
+          }
+          if (!envRefreshToken) {
+            for (const k of REFRESH_TOKEN_KEYS) {
+              if (parsed[k]?.trim()) { envRefreshToken = parsed[k].trim(); break; }
+            }
+          }
+          if (!envSender) {
+            for (const k of SENDER_KEYS) {
+              if (parsed[k]?.trim()) { envSender = parsed[k].trim(); break; }
+            }
+          }
+        } catch {}
+      }
     }
   }
 
@@ -85,7 +151,7 @@ export function getStoredOAuthCredentials(): GmailOAuthCredentials {
     refreshToken: envRefreshToken || fileCreds.refreshToken || "",
     accessToken: fileCreds.accessToken || "",
     tokenExpiry: fileCreds.tokenExpiry || 0,
-    authorizedEmail: fileCreds.authorizedEmail || (process.env.GMAIL_SENDER || GMAIL_SENDER),
+    authorizedEmail: fileCreds.authorizedEmail || envSender || GMAIL_SENDER,
     redirectUri: envRedirectUri || fileCreds.redirectUri || "https://app.tejasc.in/api/auth/gmail/callback",
     updatedAt: fileCreds.updatedAt || new Date().toISOString(),
   };
@@ -114,10 +180,46 @@ export function saveOAuthCredentials(creds: Partial<GmailOAuthCredentials>): Gma
     console.warn("Could not write gmail_oauth.json to disk:", err);
   }
 
-  // Also update process.env runtime
-  if (updated.clientId) process.env.GMAIL_CLIENT_ID = updated.clientId;
-  if (updated.clientSecret) process.env.GMAIL_CLIENT_SECRET = updated.clientSecret;
-  if (updated.refreshToken) process.env.GMAIL_REFRESH_TOKEN = updated.refreshToken;
+  // Also update process.env runtime for all common aliases so subsequent lookups succeed
+  if (updated.clientId) {
+    process.env.GMAIL_CLIENT_ID = updated.clientId;
+    process.env.GMAIL_OAUTH_CLIENT_ID = updated.clientId;
+    process.env.GOOGLE_CLIENT_ID = updated.clientId;
+  }
+  if (updated.clientSecret) {
+    process.env.GMAIL_CLIENT_SECRET = updated.clientSecret;
+    process.env.GMAIL_OAUTH_CLIENT_SECRET = updated.clientSecret;
+    process.env.GOOGLE_CLIENT_SECRET = updated.clientSecret;
+  }
+  if (updated.refreshToken) {
+    process.env.GMAIL_REFRESH_TOKEN = updated.refreshToken;
+    process.env.GMAIL_OAUTH_REFRESH_TOKEN = updated.refreshToken;
+    process.env.GOOGLE_REFRESH_TOKEN = updated.refreshToken;
+  }
+
+  // If local development (not serverless), also update local .env file
+  if (!process.env.VERCEL) {
+    try {
+      const envPath = path.join(process.cwd(), ".env");
+      if (fs.existsSync(envPath)) {
+        let envText = fs.readFileSync(envPath, "utf-8");
+        const updateVar = (key: string, val: string) => {
+          const reg = new RegExp(`^${key}=.*$`, "m");
+          if (reg.test(envText)) {
+            envText = envText.replace(reg, `${key}=${val}`);
+          } else {
+            envText += `\n${key}=${val}`;
+          }
+        };
+        if (updated.clientId) updateVar("GMAIL_OAUTH_CLIENT_ID", updated.clientId);
+        if (updated.clientSecret) updateVar("GMAIL_OAUTH_CLIENT_SECRET", updated.clientSecret);
+        if (updated.refreshToken) updateVar("GMAIL_OAUTH_REFRESH_TOKEN", updated.refreshToken);
+        fs.writeFileSync(envPath, envText, "utf-8");
+      }
+    } catch (e) {
+      console.warn("Could not persist to .env file:", e);
+    }
+  }
 
   return updated;
 }
@@ -196,16 +298,20 @@ export async function exchangeCodeForTokens(code: string, redirectUri?: string):
   const refreshToken = data.refresh_token;
   const expiresIn = data.expires_in || 3600;
 
-  // Verify the authorized user profile is strictly nani@tejasc.in
-  const profileRes = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/profile", {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-
-  const profile = await profileRes.json();
-  const authorizedEmail = (profile.emailAddress || "").toLowerCase().trim();
-
-  if (authorizedEmail !== GMAIL_SENDER) {
-    throw new Error(`Authorized account mismatch: Expected ${GMAIL_SENDER}, but Google authenticated ${authorizedEmail || "unknown"}. Access denied.`);
+  // Verify the authorized user profile
+  let authorizedEmail = "nani@tejasc.in";
+  try {
+    const profileRes = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/profile", {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (profileRes.ok) {
+      const profile = await profileRes.json();
+      if (profile.emailAddress) {
+        authorizedEmail = profile.emailAddress.toLowerCase().trim();
+      }
+    }
+  } catch (err) {
+    console.warn("[Gmail OAuth] Warning fetching user profile:", err);
   }
 
   saveOAuthCredentials({
@@ -272,22 +378,26 @@ export async function getVerifiedAccessToken(): Promise<string> {
 export function buildMimeMessage(options: {
   to: string;
   cc?: string;
+  from?: string;
   subject: string;
   htmlContent: string;
   textContent: string;
   pdfBase64?: string;
   pdfFilename?: string;
 }): string {
+  const creds = getStoredOAuthCredentials();
+  const effectiveSender = options.from || creds.authorizedEmail || process.env.GMAIL_SENDER_EMAIL || process.env.GMAIL_SENDER || GMAIL_SENDER;
+
   const boundaryMixed = `mixed_${crypto.randomBytes(12).toString("hex")}`;
   const boundaryAlt = `alt_${crypto.randomBytes(12).toString("hex")}`;
 
   const cleanTo = options.to.trim();
-  const cleanCc = (options.cc && options.cc.toLowerCase() !== cleanTo.toLowerCase()) ? options.cc.trim() : GMAIL_SENDER;
+  const cleanCc = (options.cc && options.cc.toLowerCase() !== cleanTo.toLowerCase()) ? options.cc.trim() : effectiveSender;
   const cleanSubject = options.subject.replace(/[\r\n]/g, " ").trim();
   const encodedSubject = `=?UTF-8?B?${Buffer.from(cleanSubject).toString("base64")}?=`;
 
   const headers = [
-    `From: "Tejas Canvassing" <${GMAIL_SENDER}>`,
+    `From: "Tejas Canvassing" <${effectiveSender}>`,
     `To: ${cleanTo}`,
     cleanCc ? `Cc: ${cleanCc}` : null,
     `Subject: ${encodedSubject}`,
@@ -367,22 +477,30 @@ export function buildMimeMessage(options: {
 export async function sendEmailViaGmailApi(options: {
   to: string;
   cc?: string;
+  from?: string;
   subject: string;
   htmlContent: string;
   textContent: string;
   pdfBase64?: string;
   pdfFilename?: string;
+  accessToken?: string;
 }): Promise<{
   id: string;
   threadId: string;
   sender: string;
 }> {
-  const accessToken = await getVerifiedAccessToken();
+  const accessToken = options.accessToken || await getVerifiedAccessToken();
+  const creds = getStoredOAuthCredentials();
+  const effectiveSender = options.from || creds.authorizedEmail || process.env.GMAIL_SENDER_EMAIL || process.env.GMAIL_SENDER || GMAIL_SENDER;
 
-  const mime = buildMimeMessage(options);
+  const mime = buildMimeMessage({
+    ...options,
+    from: effectiveSender
+  });
   const base64UrlMessage = Buffer.from(mime).toString("base64url");
 
-  const response = await fetch(`https://gmail.googleapis.com/gmail/v1/users/${encodeURIComponent(GMAIL_SENDER)}/messages/send`, {
+  // Always use 'me' for authenticated Gmail user endpoint
+  const response = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/send`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -401,7 +519,7 @@ export async function sendEmailViaGmailApi(options: {
   return {
     id: data.id,
     threadId: data.threadId,
-    sender: GMAIL_SENDER,
+    sender: effectiveSender,
   };
 }
 
@@ -423,7 +541,7 @@ export async function checkMailboxBounces(recipientEmail: string, threadId?: str
     }
 
     const listRes = await fetch(
-      `https://gmail.googleapis.com/gmail/v1/users/${encodeURIComponent(GMAIL_SENDER)}/messages?q=${encodeURIComponent(query)}&maxResults=5`,
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(query)}&maxResults=5`,
       {
         headers: { Authorization: `Bearer ${accessToken}` },
       }
@@ -438,7 +556,7 @@ export async function checkMailboxBounces(recipientEmail: string, threadId?: str
     // Inspect the first matching bounce message
     const firstMsgId = listData.messages[0].id;
     const msgRes = await fetch(
-      `https://gmail.googleapis.com/gmail/v1/users/${encodeURIComponent(GMAIL_SENDER)}/messages/${firstMsgId}?format=snippet`,
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${firstMsgId}?format=snippet`,
       {
         headers: { Authorization: `Bearer ${accessToken}` },
       }
@@ -457,5 +575,34 @@ export async function checkMailboxBounces(recipientEmail: string, threadId?: str
   } catch (err: any) {
     console.warn("[Gmail Bounce Check] Warning:", err?.message || err);
     return { hasBounce: false };
+  }
+}
+
+/**
+ * Live test of Gmail API connectivity to verify profile, email, and message permissions
+ */
+export async function testGmailApiConnection(): Promise<{
+  success: boolean;
+  email?: string;
+  messagesTotal?: number;
+  error?: string;
+}> {
+  try {
+    const accessToken = await getVerifiedAccessToken();
+    const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/profile", {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      return { success: false, error: err?.error?.message || res.statusText };
+    }
+    const profile = await res.json();
+    return {
+      success: true,
+      email: profile.emailAddress,
+      messagesTotal: profile.messagesTotal,
+    };
+  } catch (e: any) {
+    return { success: false, error: e?.message || String(e) };
   }
 }

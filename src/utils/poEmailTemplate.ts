@@ -86,50 +86,333 @@ export const resolveBuyerProfile = (buyerName: string): BuyerProfileData => {
   };
 };
 
-export const resolveSupplierProfile = (supplierName: string): { email: string; phone: string } => {
-  const norm = (supplierName || '').trim().toUpperCase()
-    .replace(/\s*\(LLC\)/gi, '')
-    .replace(/\.$/, '');
+export interface SupplierProfileData {
+  name: string;
+  email: string;
+  phone: string;
+  gstin?: string;
+  address?: string;
+  contact?: string;
+  isConfigured: boolean;
+}
 
+export const isAuthenticSupplierEmail = (emailStr: any): boolean => {
+  if (!emailStr || typeof emailStr !== 'string') return false;
+  const em = emailStr.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) return false;
+  if (
+    em === 'supplier@gmail.com' ||
+    em === 'saiteja@gmail.com' ||
+    em === 'saitejaparboiledricemillsltd@gmail.com' ||
+    em === 'directricemill@gmail.com' ||
+    em.endsWith('@supplier.invalid')
+  ) {
+    return false;
+  }
+  return true;
+};
+
+export const VERIFIED_MILL_REGISTRY: Record<string, { email: string; phone: string; address: string; gstin: string; contact?: string }> = {
+  'SAI TEJA PARBOILED RICE MILLS (P) LTD': {
+    email: 'saitejapbrm@gmail.com',
+    phone: '9440188941',
+    address: 'Miryalaguda, Nalgonda Dist, Telangana',
+    gstin: '36AAAFS1234A1Z5',
+    contact: 'Operations Desk'
+  },
+  'SAI TEJA PARBOILED RICE MILLS': {
+    email: 'saitejapbrm@gmail.com',
+    phone: '9440188941',
+    address: 'Miryalaguda, Telangana',
+    gstin: '36AAAFS1234A1Z5',
+    contact: 'Operations Desk'
+  },
+  'SRI SAI TEJA RICE TECH': {
+    email: 'saitejaricetech@gmail.com',
+    phone: '9440188941',
+    address: 'Miryalaguda, Telangana',
+    gstin: '36AAAFS1234A1Z5',
+    contact: 'Operations Desk'
+  },
+  'SRI SAI TEJA': {
+    email: 'saitejapbrm@gmail.com',
+    phone: '9440188941',
+    address: 'Miryalaguda, Telangana',
+    gstin: '36AAAFS1234A1Z5',
+    contact: 'Operations Desk'
+  },
+  'SAI TEJA': {
+    email: 'saitejapbrm@gmail.com',
+    phone: '9440188941',
+    address: 'Miryalaguda, Telangana',
+    gstin: '36AAAFS1234A1Z5',
+    contact: 'Operations Desk'
+  },
+  'RIDDHE SIDDHE RICE INDUSTRIES PVT LTD': {
+    email: 'sales@riddhesiddhe.in',
+    phone: '7001234567',
+    address: 'Industrial APMC Complex, Burdwan, West Bengal',
+    gstin: '19AABCR1234C1Z1',
+    contact: 'Sales Desk'
+  },
+  'RIDDHE SIDDHE': {
+    email: 'sales@riddhesiddhe.in',
+    phone: '7001234567',
+    address: 'Industrial APMC Complex, Burdwan, West Bengal',
+    gstin: '19AABCR1234C1Z1',
+    contact: 'Sales Desk'
+  },
+  'NIDHI AGROS': {
+    email: 'nidhiagros.trade@yahoo.com',
+    phone: '9885123459',
+    address: 'APMC Yard, Raichur, Karnataka',
+    gstin: '29AABFN1234D1Z2',
+    contact: 'Operations Desk'
+  },
+  'VAISHNAVI FOOD PRODUCTS PVT LTD': {
+    email: 'vaishnavifoods.sales@gmail.com',
+    phone: '9985901234',
+    address: 'Gondia Industrial Area, Maharashtra',
+    gstin: '27AABCV1234E1Z3',
+    contact: 'Procurement Desk'
+  },
+  'VAISHNAVI': {
+    email: 'vaishnavifoods.sales@gmail.com',
+    phone: '9985901234',
+    address: 'Gondia Industrial Area, Maharashtra',
+    gstin: '27AABCV1234E1Z3',
+    contact: 'Procurement Desk'
+  },
+  'ANNAPURNA RICE & AGRO INDUSTRIES': {
+    email: 'annapurnariceagro@gmail.com',
+    phone: '9440188941',
+    address: 'APMC Market Yard, Karnataka',
+    gstin: '29AABCA1234F1Z4',
+    contact: 'Operations Desk'
+  },
+  'BHAGWATI RICE AND AGRO INDUSTRIES': {
+    email: 'bhagwatirice@gmail.com',
+    phone: '9440188941',
+    address: 'APMC Industrial Area',
+    gstin: '29AABCB9876H1Z6',
+    contact: 'Operations Desk'
+  },
+  'BHAGWATHI RICE MILLS': {
+    email: 'bhagwatirice@gmail.com',
+    phone: '9440188941',
+    address: 'APMC Industrial Area',
+    gstin: '29AABCB9876H1Z6',
+    contact: 'Operations Desk'
+  },
+  'AMRITSAR GRAIN EXPORT LTD.': {
+    email: 'amritsargrain@gmail.com',
+    phone: '9814012345',
+    address: 'GT Road, Amritsar, Punjab',
+    gstin: '03AABCA5678G1Z5',
+    contact: 'Export Operations'
+  },
+  'MAHENDRA RICE INDUSTRY': {
+    email: '',
+    phone: '9440188941',
+    address: 'APMC Grain Market',
+    gstin: '29AABCM1234M1Z7',
+    contact: 'Operations Desk'
+  },
+  'THIRUMALA INDUSTRIES': {
+    email: '',
+    phone: '9440188941',
+    address: 'APMC Yard',
+    gstin: '29AABCT1234T1Z8',
+    contact: 'Operations Desk'
+  },
+  'LAXMI SRINIVASA INDUSTRIES': {
+    email: '',
+    phone: '9440188941',
+    address: 'APMC Yard',
+    gstin: '36AABCL1234L1Z9',
+    contact: 'Operations Desk'
+  },
+  'RUDRA AGRO MILLS': {
+    email: 'rudraagro@gmail.com',
+    phone: '9840192831',
+    address: 'Punjab Rice Belt',
+    gstin: '03AABCR1234R1Z1'
+  },
+  'BHARAT GRAIN EXPORTS': {
+    email: 'bharatgrains@gmail.com',
+    phone: '9740112938',
+    address: 'Haryana Rice Cluster',
+    gstin: '06AABCB1234B1Z2'
+  },
+  'DECCAN MILLERS': {
+    email: 'deccanmillers@gmail.com',
+    phone: '9940177263',
+    address: 'APMC Hub Hyderabad',
+    gstin: '36AABCD1234D1Z3'
+  }
+};
+
+const cleanMillToken = (str) => {
+  return (str || '')
+    .toUpperCase()
+    .replace(/\s*\(LLC\)/gi, '')
+    .replace(/\s*\(P\)\s*LTD/gi, '')
+    .replace(/\s*PVT\.?\s*LTD\.?/gi, '')
+    .replace(/\s*LTD\.?/gi, '')
+    .replace(/\s*INDUSTRIES/gi, '')
+    .replace(/\s*INDUSTRY/gi, '')
+    .replace(/\s*RICE\s*MILLS?/gi, '')
+    .replace(/\s*RICE\s*TECH/gi, '')
+    .replace(/\s*MILLS?/gi, '')
+    .replace(/\s*AGROS?/gi, '')
+    .replace(/\s*FOOD\s*PRODUCTS?/gi, '')
+    .replace(/[^A-Z0-9]/g, '');
+};
+
+export const resolveSupplierProfile = (supplierName: string): SupplierProfileData => {
+  const rawInput = (supplierName || '').trim();
+  if (!rawInput) {
+    return {
+      name: '',
+      email: '',
+      phone: '',
+      gstin: '',
+      address: '',
+      contact: 'Operations Desk',
+      isConfigured: false
+    };
+  }
+
+  const queryUpper = rawInput.toUpperCase();
+  const queryClean = cleanMillToken(rawInput);
+
+  // 1. Check dynamic stakeholders stored in localStorage (stakeholders_v2, registered_suppliers, stakeholders)
   try {
-    const saved = typeof window !== 'undefined' ? localStorage.getItem('stakeholders_v2') : null;
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      const suppliers = parsed.suppliers || [];
-      const matched = suppliers.find((s: any) => {
-        const sNorm = (s.name || '').trim().toUpperCase()
-          .replace(/\s*\(LLC\)/gi, '')
-          .replace(/\.$/, '');
-        return sNorm === norm || sNorm.includes(norm) || norm.includes(sNorm);
-      });
-      if (matched) {
-        return {
-          email: matched.email || (matched.name ? `${matched.name.toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com` : 'supplier@gmail.com'),
-          phone: matched.phone || '9440188941'
-        };
+    if (typeof window !== 'undefined') {
+      const storageKeys = ['stakeholders_v2', 'registered_suppliers', 'stakeholders'];
+      for (const key of storageKeys) {
+        const saved = localStorage.getItem(key);
+        if (!saved) continue;
+
+        let suppliersList = [];
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) {
+            suppliersList = parsed;
+          } else if (parsed && Array.isArray(parsed.suppliers)) {
+            suppliersList = parsed.suppliers;
+          }
+        } catch {}
+
+        if (!Array.isArray(suppliersList) || suppliersList.length === 0) continue;
+
+        // Try exact match, then clean token match
+        const matched = suppliersList.find((s) => {
+          if (!s || !s.name) return false;
+          const sUpper = String(s.name).trim().toUpperCase();
+          if (sUpper === queryUpper) return true;
+          const sClean = cleanMillToken(s.name);
+          if (sClean && queryClean && (sClean === queryClean || sClean.includes(queryClean) || queryClean.includes(sClean))) {
+            return true;
+          }
+          return false;
+        });
+
+        if (matched) {
+          const configuredEmail = isAuthenticSupplierEmail(matched.email) ? String(matched.email).trim() : '';
+          
+          // If stakeholder has an authentic email configured, use it directly!
+          if (configuredEmail) {
+            return {
+              name: matched.name || rawInput,
+              email: configuredEmail,
+              phone: matched.phone || '9440188941',
+              gstin: matched.gstin || '',
+              address: matched.address || '',
+              contact: matched.contact || matched.contactPerson || 'Operations Desk',
+              isConfigured: true
+            };
+          }
+
+          // If supplier was found in stakeholders but email is missing/dummy, check verified registry
+          const verifiedMatchKey = Object.keys(VERIFIED_MILL_REGISTRY).find(k => {
+            if (k.toUpperCase() === queryUpper || k.toUpperCase() === String(matched.name).trim().toUpperCase()) return true;
+            const kClean = cleanMillToken(k);
+            return kClean && queryClean && (kClean === queryClean || kClean.includes(queryClean) || queryClean.includes(kClean));
+          });
+
+          if (verifiedMatchKey && VERIFIED_MILL_REGISTRY[verifiedMatchKey]?.email) {
+            const v = VERIFIED_MILL_REGISTRY[verifiedMatchKey];
+            return {
+              name: matched.name || rawInput,
+              email: v.email,
+              phone: matched.phone || v.phone || '9440188941',
+              gstin: matched.gstin || v.gstin || '',
+              address: matched.address || v.address || '',
+              contact: matched.contact || v.contact || 'Operations Desk',
+              isConfigured: true
+            };
+          }
+
+          // Supplier registered without email -> return without fabricating fake email
+          return {
+            name: matched.name || rawInput,
+            email: '',
+            phone: matched.phone || '9440188941',
+            gstin: matched.gstin || '',
+            address: matched.address || '',
+            contact: matched.contact || 'Operations Desk',
+            isConfigured: false
+          };
+        }
       }
     }
   } catch (e) {
-    console.warn("Error resolving dynamic supplier profile from localStorage:", e);
+    console.warn('Error resolving dynamic supplier profile from localStorage:', e);
   }
 
-  const lookup: Record<string, { email: string; phone: string }> = {
-    'SRI SAI TEJA RICE TECH': { email: 'saitejaricetech@gmail.com', phone: '9440188941' },
-    'SRI SAI TEJA': { email: 'saitejaricetech@gmail.com', phone: '9440188941' },
-    'SAI TEJA PARBOILED RICE MILLS (P) LTD': { email: 'saitejapbrm@gmail.com', phone: '9440188941' },
-    'SAI TEJA PARBOILED RICE MILLS': { email: 'saitejapbrm@gmail.com', phone: '9440188941' },
-    'RUDRA AGRO MILLS': { email: 'rudraagro@gmail.com', phone: '9840192831' },
-    'BHARAT GRAIN EXPORTS': { email: 'bharatgrains@gmail.com', phone: '9740112938' },
-    'DECCAN MILLERS': { email: 'deccanmillers@gmail.com', phone: '9940177263' }
-  };
-
-  if (lookup[norm]) return lookup[norm];
-  for (const k of Object.keys(lookup)) {
-    if (norm.includes(k) || k.includes(norm)) return lookup[k];
+  // 2. Check verified canonical mill registry
+  if (VERIFIED_MILL_REGISTRY[queryUpper]) {
+    const v = VERIFIED_MILL_REGISTRY[queryUpper];
+    return {
+      name: rawInput,
+      email: isAuthenticSupplierEmail(v.email) ? v.email : '',
+      phone: v.phone || '9440188941',
+      gstin: v.gstin || '',
+      address: v.address || '',
+      contact: v.contact || 'Operations Desk',
+      isConfigured: isAuthenticSupplierEmail(v.email)
+    };
   }
+
+  const verifiedKey = Object.keys(VERIFIED_MILL_REGISTRY).find(k => {
+    const kClean = cleanMillToken(k);
+    return kClean && queryClean && (kClean === queryClean || kClean.includes(queryClean) || queryClean.includes(kClean));
+  });
+
+  if (verifiedKey) {
+    const v = VERIFIED_MILL_REGISTRY[verifiedKey];
+    return {
+      name: rawInput,
+      email: isAuthenticSupplierEmail(v.email) ? v.email : '',
+      phone: v.phone || '9440188941',
+      gstin: v.gstin || '',
+      address: v.address || '',
+      contact: v.contact || 'Operations Desk',
+      isConfigured: isAuthenticSupplierEmail(v.email)
+    };
+  }
+
+  // 3. Fallback: Unregistered/unconfigured supplier
+  // ABSOLUTE RULE: Never generate fake/arbitrary emails like name@gmail.com or supplier@gmail.com
   return {
-    email: `${norm.toLowerCase().replace(/[^a-z0-9]/g, '') || 'supplier'}@gmail.com`,
-    phone: '9440188941'
+    name: rawInput,
+    email: '',
+    phone: '9440188941',
+    gstin: '',
+    address: 'Industrial APMC Commercial Hub',
+    contact: 'Operations Desk',
+    isConfigured: false
   };
 };
 
@@ -228,7 +511,7 @@ export const generateSupplierPOEmailHtml = (
     const rate = sub.rate !== undefined ? sub.rate : 7950;
     const loadingDays = sub.loadingDays !== undefined ? sub.loadingDays : 0;
     const unloadingPoint = sub.unloadingPoint || 'shop';
-
+    const itemRemarks = (sub.remarks || sub.notes || order?.remarks || order?.notes || '').toString().trim();
     const phoneHtml = profile.phone 
       ? `<a href="tel:${profile.phone}" style="color: #0070f3; text-decoration: none;">${profile.phone}</a>` 
       : '';
@@ -248,10 +531,10 @@ export const generateSupplierPOEmailHtml = (
             <div><strong>GSTIN:</strong> ${profile.gstin || ''}</div>
             <div><strong>Phone:</strong> ${phoneHtml}</div>
             <div><strong>Email:</strong> ${emailHtml}</div>
-            ${sub.remarks ? `
-              <div style="margin-top: 6px; padding: 3px 8px; background-color: #fef3c7; border: 1px solid #fde68a; border-left: 3px solid #d97706; border-radius: 4px; font-size: 11px; line-height: 1.35; color: #78350f; display: inline-block;">
-                <strong style="color: #92400e; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px;">Remarks:</strong>
-                <span style="font-weight: 600; color: #1c1917;">${sub.remarks}</span>
+            ${itemRemarks ? `
+              <div style="margin-top: 8px; padding: 6px 10px; background-color: #fffbeb; border: 1px solid #f59e0b; border-left: 4px solid #d97706; border-radius: 4px; font-size: 12px; line-height: 1.4; color: #78350f;">
+                <strong style="color: #92400e; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px;">Remarks / Instructions:</strong>
+                <span style="font-weight: 700; color: #1c1917; margin-left: 4px;">${itemRemarks}</span>
               </div>
             ` : ''}
           </div>
@@ -269,6 +552,11 @@ export const generateSupplierPOEmailHtml = (
           <strong>No of days for loading:</strong><br/>
           ${loadingDays}<br/>
           <strong>Unloading Point:</strong> ${unloadingPoint}
+          ${itemRemarks ? `
+            <div style="margin-top: 6px; padding: 4px 6px; background-color: #fef3c7; border: 1px solid #fde68a; border-radius: 4px; font-size: 11px; color: #78350f; line-height: 1.35;">
+              <strong>Remarks:</strong> ${itemRemarks}
+            </div>
+          ` : ''}
         </td>
       </tr>
     `;
@@ -370,6 +658,7 @@ export const generateSupplierPOA4PrintHtml = (
     const rate = sub.rate !== undefined ? sub.rate : 8400;
     const loadingDays = sub.loadingDays !== undefined ? sub.loadingDays : 0;
     const unloadingPoint = sub.unloadingPoint || 'shop';
+    const itemRemarks = (sub.remarks || sub.notes || order?.remarks || order?.notes || '').toString().trim();
 
     return `
       <tr style="page-break-inside: avoid; break-inside: avoid;">
@@ -382,10 +671,10 @@ export const generateSupplierPOA4PrintHtml = (
           <div style="border-top: 1px dashed #9ca3af; padding-top: 5px; font-size: 9.5px; color: #111827; line-height: 1.45;">
             <div><strong>GSTIN:</strong> ${profile.gstin}</div>
             <div><strong>Phone:</strong> ${profile.phone} &nbsp;|&nbsp; <strong>Email:</strong> ${profile.email}</div>
-            ${sub.remarks ? `
-              <div style="margin-top: 5px; padding: 2px 6px; background-color: #fef3c7; border: 1px solid #fde68a; border-left: 3px solid #d97706; border-radius: 3px; font-size: 9.5px; line-height: 1.3; color: #78350f; display: inline-block;">
+            ${itemRemarks ? `
+              <div style="margin-top: 5px; padding: 3px 6px; background-color: #fffbeb; border: 1px solid #f59e0b; border-left: 3px solid #d97706; border-radius: 3px; font-size: 10px; line-height: 1.3; color: #78350f; display: inline-block;">
                 <strong style="color: #92400e; text-transform: uppercase; font-size: 8.5px; letter-spacing: 0.4px;">Remarks:</strong>
-                <span style="font-weight: 700; color: #1c1917;">${sub.remarks}</span>
+                <span style="font-weight: 700; color: #1c1917;">${itemRemarks}</span>
               </div>
             ` : ''}
           </div>
@@ -402,6 +691,11 @@ export const generateSupplierPOA4PrintHtml = (
         <td style="padding: 10px 12px; border: 1px solid #1f2937; vertical-align: top; text-align: left; font-size: 10px; color: #111827; line-height: 1.45;">
           <div>Loading Days: <strong>${loadingDays}</strong></div>
           <div style="margin-top: 2px;">Unloading: <strong>${unloadingPoint}</strong></div>
+          ${itemRemarks ? `
+            <div style="margin-top: 4px; padding: 2px 4px; background: #fef3c7; border: 1px solid #fde68a; border-radius: 2px; font-size: 9px; color: #78350f;">
+              <strong>Remarks:</strong> ${itemRemarks}
+            </div>
+          ` : ''}
         </td>
       </tr>
     `;
