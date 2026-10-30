@@ -54,8 +54,18 @@ if (globalScope.__tejas_firestore_instance__) {
         ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
         : getFirestore(app);
     } catch (fallbackErr) {
-      firestoreInstance = getFirestore(app);
+      try {
+        firestoreInstance = getFirestore(app);
+      } catch (finalErr) {
+        console.error("Firestore emergency instance error:", finalErr);
+      }
     }
+  }
+
+  if (!firestoreInstance) {
+    try {
+      firestoreInstance = getFirestore(app);
+    } catch (e) {}
   }
 
   globalScope.__tejas_firestore_instance__ = firestoreInstance;
