@@ -89,6 +89,19 @@ export default function PendingLoadings() {
     loadOrdersData();
   }, []);
 
+  // Reactively reload when orders are placed or deleted from Placed Orders
+  useEffect(() => {
+    const handleUpdate = () => {
+      loadOrdersData(true);
+    };
+    window.addEventListener('operational-orders-updated', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+    return () => {
+      window.removeEventListener('operational-orders-updated', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+    };
+  }, []);
+
   // Unique lists for Dropdown Filters
   const uniqueBuyers = useMemo(() => {
     const set = new Set<string>();

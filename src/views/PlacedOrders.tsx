@@ -51,6 +51,7 @@ import { generateSupplierPOEmailHtml, generateSupplierPOA4PrintHtml, printPoDocu
 import { buildPoPdfDocument, getPoPdfFileName } from '../utils/poPdfGenerator';
 import EmailTrackingModal, { getStatusBadgeConfig } from '../components/EmailTrackingModal';
 import BuyerLedgerModal from '../components/BuyerLedgerModal';
+import { purgeOperationalAndLedgerRecords, purgeAllOperationalAndLedgerRecords } from '../utils/orderOperations';
 
 const BUYER_PROFILES: Record<string, { address: string; gstin: string; phone: string; email: string }> = {};
 
@@ -1289,6 +1290,9 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
       });
       await Promise.allSettled(deletePromises);
 
+      // Purge corresponding details in Pending Loadings and Ledger across Firestore & LocalStorage
+      await purgeOperationalAndLedgerRecords(uniqueIdsToDelete);
+
       // 4. Purge from localStorage placed_orders
       try {
         const rawPlaced = localStorage.getItem('placed_orders');
@@ -1428,6 +1432,9 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
         deletePromises.push(deleteCollectionDoc('procurement_requests', id).catch(() => {}));
       });
       await Promise.allSettled(deletePromises);
+
+      // Purge all corresponding details in Pending Loadings and Ledger
+      await purgeAllOperationalAndLedgerRecords();
 
       // 5. Clear local storage records
       localStorage.removeItem('placed_orders');

@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
-import { cn, formatINR } from '../lib/utils';
+import { cn, formatINR, getDeletedPlacedOrderIds, getDeletedProcurementIds } from '../lib/utils';
 import { getCollectionDocs } from '../lib/firebase';
 import { resolveBuyerProfile } from '../utils/poEmailTemplate';
 
@@ -91,11 +91,18 @@ export default function BuyerLedgerModal({
         const localPlaced = JSON.parse(localStorage.getItem('placed_orders') || '[]');
         const cloudPlaced = await getCollectionDocs('placed_orders').catch(() => []);
 
+        const delPlaced = getDeletedPlacedOrderIds();
+        const delProc = getDeletedProcurementIds();
+        const isDeleted = (id: any) => {
+          const norm = String(id || '').trim().toLowerCase().replace(/^#/, '');
+          return delPlaced.has(norm) || delProc.has(norm);
+        };
+
         const combinedPlaced = [...localPlaced, ...cloudPlaced];
-        uniquePlaced = Array.from(new Map(combinedPlaced.filter(p => p && p.id).map(item => [item.id, item])).values());
+        uniquePlaced = Array.from(new Map(combinedPlaced.filter(p => p && p.id && !isDeleted(p.id) && !isDeleted(p.purchaseOrderNo)).map(item => [item.id, item])).values());
 
         const combinedOrders = [...localRequests, ...cloudRequests, ...localPlaced, ...cloudPlaced];
-        const uniqueOrders = Array.from(new Map(combinedOrders.filter(o => o && o.id).map(item => [item.id, item])).values());
+        const uniqueOrders = Array.from(new Map(combinedOrders.filter(o => o && o.id && !isDeleted(o.id) && !isDeleted(o.purchaseOrderNo)).map(item => [item.id, item])).values());
 
         merchantOrders = uniqueOrders.filter(o => {
           if (!o) return false;

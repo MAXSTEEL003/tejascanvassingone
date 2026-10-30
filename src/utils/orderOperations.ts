@@ -6,7 +6,7 @@
  * Provides unified, single-row-per-PO representation for Ledger and Pending Loadings.
  */
 
-import { getCollectionDocs } from '../lib/firebase';
+import { getCollectionDocs, deleteCollectionDoc } from '../lib/firebase';
 import { sanitizeSupplierName, getDeletedPlacedOrderIds, getDeletedProcurementIds } from '../lib/utils';
 
 export interface OperationalPO {
@@ -254,6 +254,124 @@ export function invalidateOperationalOrdersCache() {
 }
 
 /**
+ * Permanently purges ledger entries and operational order records
+ * associated with deleted placed orders across Cloud Firestore and LocalStorage.
+ */
+export async function purgeOperationalAndLedgerRecords(orderIds: string[]): Promise<void> {
+  if (!orderIds || orderIds.length === 0) return;
+
+  const normalizeKey = (k: any) => String(k || '').trim().toLowerCase().replace(/^#/, '');
+  const delSet = new Set(orderIds.map(normalizeKey).filter(Boolean));
+
+  // 1. Purge from localStorage 'ledgers'
+  try {
+    const rawLedgers = localStorage.getItem('ledgers');
+    if (rawLedgers) {
+      const ledgers = JSON.parse(rawLedgers);
+      if (Array.isArray(ledgers)) {
+        const remaining = ledgers.filter((l: any) => {
+          if (!l) return false;
+          const poNorm = normalizeKey(l.purchaseOrderNo);
+          const idNorm = normalizeKey(l.id);
+          const ordIdNorm = normalizeKey(l.orderId);
+          return !delSet.has(poNorm) && !delSet.has(idNorm) && !delSet.has(ordIdNorm);
+        });
+        localStorage.setItem('ledgers', JSON.stringify(remaining));
+      }
+    }
+  } catch (e) {
+    console.warn('Error purging local ledgers:', e);
+  }
+
+  // 2. Purge from Firestore 'ledgers' collection
+  try {
+    const cloudLedgers = await getCollectionDocs('ledgers').catch(() => []);
+    if (Array.isArray(cloudLedgers) && cloudLedgers.length > 0) {
+      const deletePromises: Promise<any>[] = [];
+      cloudLedgers.forEach((l: any) => {
+        if (!l || !l.id) return;
+        const poNorm = normalizeKey(l.purchaseOrderNo);
+        const idNorm = normalizeKey(l.id);
+        const ordIdNorm = normalizeKey(l.orderId);
+        if (delSet.has(poNorm) || delSet.has(idNorm) || delSet.has(ordIdNorm)) {
+          deletePromises.push(deleteCollectionDoc('ledgers', l.id).catch(() => {}));
+        }
+      });
+      if (deletePromises.length > 0) {
+        await Promise.allSettled(deletePromises);
+      }
+    }
+  } catch (e) {
+    console.warn('Error purging cloud ledgers:', e);
+  }
+
+  // 3. Purge from localStorage 'cached_operational_orders' (Pending Loadings & Ledger cache)
+  try {
+    const cached = localStorage.getItem('cached_operational_orders');
+    if (cached) {
+      const all: any[] = JSON.parse(cached);
+      if (Array.isArray(all)) {
+        const remaining = all.filter((po: any) => {
+          if (!po) return false;
+          const poNorm = normalizeKey(po.poNumber);
+          const idNorm = normalizeKey(po.id);
+          const subNorm = normalizeKey(po.subOrderId);
+          const rawIdNorm = normalizeKey(po.rawOrder?.id);
+          return !delSet.has(poNorm) && !delSet.has(idNorm) && !delSet.has(subNorm) && !delSet.has(rawIdNorm);
+        });
+        localStorage.setItem('cached_operational_orders', JSON.stringify(remaining));
+      }
+    }
+  } catch (e) {
+    console.warn('Error purging cached operational orders:', e);
+  }
+
+  // 4. Invalidate in-memory operational cache
+  invalidateOperationalOrdersCache();
+
+  // 5. Dispatch reactive window events so open views update immediately
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('operational-orders-updated', { detail: { deletedIds: orderIds } }));
+    window.dispatchEvent(new CustomEvent('ledgers-updated', { detail: { deletedIds: orderIds } }));
+  }
+}
+
+/**
+ * Permanently purges all ledger entries and operational order records across Cloud Firestore and LocalStorage.
+ */
+export async function purgeAllOperationalAndLedgerRecords(): Promise<void> {
+  // 1. Clear local ledgers & operational cache
+  try {
+    localStorage.removeItem('ledgers');
+    localStorage.setItem('ledgers', '[]');
+    localStorage.removeItem('cached_operational_orders');
+  } catch (e) {}
+
+  // 2. Invalidate in-memory operational cache
+  invalidateOperationalOrdersCache();
+
+  // 3. Delete all documents from Firestore 'ledgers'
+  try {
+    const cloudLedgers = await getCollectionDocs('ledgers').catch(() => []);
+    if (Array.isArray(cloudLedgers) && cloudLedgers.length > 0) {
+      const deletePromises = cloudLedgers.map((l: any) => {
+        if (l?.id) return deleteCollectionDoc('ledgers', l.id).catch(() => {});
+        return Promise.resolve();
+      });
+      await Promise.allSettled(deletePromises);
+    }
+  } catch (e) {
+    console.warn('Error purging all cloud ledgers:', e);
+  }
+
+  // 4. Dispatch reactive window events
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('operational-orders-updated', { detail: { clearedAll: true } }));
+    window.dispatchEvent(new CustomEvent('ledgers-updated', { detail: { clearedAll: true } }));
+  }
+}
+
+/**
  * Loads all Purchase Orders, reconciles with recorded Arrival Entries,
  * and produces clean single-row-per-PO records.
  */
@@ -347,7 +465,7 @@ export async function fetchOperationalOrders(forceFresh = false): Promise<Operat
     historicalLedgers.forEach(l => {
       if (!l || !l.purchaseOrderNo) return;
       const poKey = normalizePo(l.purchaseOrderNo);
-      if (!poKey) return;
+      if (!poKey || isDeletedPo(poKey) || isDeletedPo(l.id) || (l.orderId && isDeletedPo(l.orderId))) return;
 
       if (!ledgerPoMap.has(poKey)) {
         ledgerPoMap.set(poKey, {});
@@ -548,6 +666,7 @@ export async function fetchOperationalOrders(forceFresh = false): Promise<Operat
 
     // B. Historical Ledger Reconciliation (if PO not present in placed_orders)
     ledgerPoMap.forEach((rec, poKey) => {
+      if (isDeletedPo(poKey)) return;
       if (processedPoKeys.has(poKey)) return;
       if (groupedSubOrderIds.has(poKey)) return;
       processedPoKeys.add(poKey);
@@ -620,13 +739,22 @@ export async function fetchOperationalOrders(forceFresh = false): Promise<Operat
       dedupedResults.push(po);
     }
 
-    // If completely empty in storage, fallback to seed records
-    if (dedupedResults.length === 0) {
-      return [...SEED_OPERATIONAL_POS];
+    // Filter out any deleted PO before caching and returning
+    const activeResults = dedupedResults.filter(po => {
+      const normPo = normalizePo(po.poNumber);
+      const normId = normalizePo(po.id);
+      const normSub = po.subOrderId ? normalizePo(po.subOrderId) : '';
+      const normRaw = po.rawOrder?.id ? normalizePo(po.rawOrder.id) : '';
+      return !isDeletedPo(normPo) && !isDeletedPo(normId) && (!normSub || !isDeletedPo(normSub)) && (!normRaw || !isDeletedPo(normRaw));
+    });
+
+    // If completely empty in storage, fallback to seed records only if not explicitly wiped
+    if (activeResults.length === 0) {
+      return isWiped ? [] : [...SEED_OPERATIONAL_POS];
     }
 
     // Sort chronologically by dateTimestamp (newest date first)
-    const sorted = dedupedResults.sort((a, b) => b.dateTimestamp - a.dateTimestamp);
+    const sorted = activeResults.sort((a, b) => b.dateTimestamp - a.dateTimestamp);
     operationalOrdersMemCache = { data: sorted, timestamp: Date.now() };
     if (typeof window !== 'undefined') {
       try {
