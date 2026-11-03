@@ -332,6 +332,22 @@ export default function ArrivalEntry() {
 
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState<string>('');
+  const [formulaBarText, setFormulaBarText] = useState<string>('');
+  const isFormulaFocused = useRef(false);
+
+  // Excel Copy-Paste & Drag-to-Fill State
+  const [copiedRange, setCopiedRange] = useState<{ startR: number; startC: number; endR: number; endC: number } | null>(null);
+  const [dragFillState, setDragFillState] = useState<{
+    isDragging: boolean;
+    startR: number;
+    endR: number;
+    startC: number;
+    endC: number;
+    targetR: number;
+  } | null>(null);
+  const dragFillStateRef = useRef<typeof dragFillState>(null);
+  dragFillStateRef.current = dragFillState;
+  const [excelToast, setExcelToast] = useState<string | null>(null);
 
   // Undo / Redo history stacks
   const [history, setHistory] = useState<any[][]>([]);
@@ -456,8 +472,20 @@ export default function ArrivalEntry() {
   const [poFilterQuery, setPoFilterQuery] = useState('');
 
   // Stakeholders metadata
-  const [dynamicSuppliers, setDynamicSuppliers] = useState<string[]>(SUPPLIERS);
-  const [dynamicBuyers, setDynamicBuyers] = useState<string[]>(BUYERS);
+  const [dynamicSuppliers, setDynamicSuppliers] = useState<string[]>(() => {
+    try {
+      const reg = getRegisteredSuppliers();
+      if (reg && reg.length > 0) return reg.map(s => s.name);
+    } catch {}
+    return [];
+  });
+  const [dynamicBuyers, setDynamicBuyers] = useState<string[]>(() => {
+    try {
+      const regBuyers = getRegisteredBuyerNames();
+      if (regBuyers && regBuyers.length > 0) return regBuyers;
+    } catch {}
+    return [];
+  });
   const [dynamicBrands, setDynamicBrands] = useState<string[]>(() => {
     try {
       const raw = localStorage.getItem('product_inventory');
@@ -769,6 +797,82 @@ export default function ArrivalEntry() {
     });
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [sheets, data, registeredBuyerRoads]);
+
+  // Dynamic Option Lists for Dropdowns across all columns
+  const allAvailableSuppliers = useMemo(() => {
+    const set = new Set<string>();
+    dynamicSuppliers.forEach(s => { if (s && String(s).trim()) set.add(String(s).trim()); });
+    try {
+      getRegisteredSuppliers().forEach(s => { if (s?.name && String(s.name).trim()) set.add(String(s.name).trim()); });
+    } catch {}
+    sheets.forEach(sh => {
+      (sh.data || []).forEach(r => {
+        if (r?.millerName && String(r.millerName).trim()) set.add(String(r.millerName).trim());
+      });
+    });
+    data.forEach(r => {
+      if (r?.millerName && String(r.millerName).trim()) set.add(String(r.millerName).trim());
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [dynamicSuppliers, sheets, data]);
+
+  const allAvailableBuyers = useMemo(() => {
+    const set = new Set<string>();
+    dynamicBuyers.forEach(b => { if (b && String(b).trim()) set.add(String(b).trim()); });
+    try {
+      getRegisteredBuyerNames().forEach(b => { if (b && String(b).trim()) set.add(String(b).trim()); });
+    } catch {}
+    sheets.forEach(sh => {
+      (sh.data || []).forEach(r => {
+        if (r?.partyName && String(r.partyName).trim()) set.add(String(r.partyName).trim());
+      });
+    });
+    data.forEach(r => {
+      if (r?.partyName && String(r.partyName).trim()) set.add(String(r.partyName).trim());
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [dynamicBuyers, sheets, data]);
+
+  const allAvailableBrands = useMemo(() => {
+    const set = new Set<string>();
+    dynamicBrands.forEach(b => { if (b && String(b).trim()) set.add(String(b).trim()); });
+    sheets.forEach(sh => {
+      (sh.data || []).forEach(r => {
+        if (r?.brand && String(r.brand).trim()) set.add(String(r.brand).trim());
+      });
+    });
+    data.forEach(r => {
+      if (r?.brand && String(r.brand).trim()) set.add(String(r.brand).trim());
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [dynamicBrands, sheets, data]);
+
+  const allAvailablePOs = useMemo(() => {
+    const set = new Set<string>();
+    placedOrders.forEach(o => {
+      const po = o.orderId || o.id || o.poNumber;
+      if (po && String(po).trim()) set.add(String(po).trim());
+    });
+    sheets.forEach(sh => {
+      (sh.data || []).forEach(r => {
+        if (r?.purchaseOrderNo && String(r.purchaseOrderNo).trim()) set.add(String(r.purchaseOrderNo).trim());
+      });
+    });
+    data.forEach(r => {
+      if (r?.purchaseOrderNo && String(r.purchaseOrderNo).trim()) set.add(String(r.purchaseOrderNo).trim());
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [placedOrders, sheets, data]);
+
+  const getColumnDropdownOptions = useCallback((colId: string) => {
+    if (colId === 'millerName') return allAvailableSuppliers;
+    if (colId === 'partyName') return allAvailableBuyers;
+    if (colId === 'brand') return allAvailableBrands;
+    if (colId === 'noOfDayRec') return ['Not Cleared', 'Cleared'];
+    if (colId === 'purchaseOrderNo') return allAvailablePOs;
+    const col = visibleColumns.find(c => c.id === colId);
+    return col?.options || [];
+  }, [allAvailableSuppliers, allAvailableBuyers, allAvailableBrands, allAvailablePOs, visibleColumns]);
 
   // When filtering by a road in the current sheet, find how many matching entries exist in other sheets
   const otherSheetsWithQuickRoad = useMemo(() => {
@@ -1088,9 +1192,14 @@ export default function ArrivalEntry() {
     setTimeout(() => {
       if (inputRef.current) {
         inputRef.current.focus();
-        if (inputRef.current.select) inputRef.current.select();
+        if (typeof inputRef.current.select === 'function') {
+          inputRef.current.select();
+        }
+        if (typeof inputRef.current.showPicker === 'function') {
+          try { inputRef.current.showPicker(); } catch {}
+        }
       }
-    }, 10);
+    }, 20);
   }, [visibleColumns, filteredData]);
 
   const stopEditing = useCallback((save: boolean = true) => {
@@ -1120,56 +1229,298 @@ export default function ArrivalEntry() {
         const val = row && col ? row[col.id] : '';
         cells.push(val !== undefined && val !== null ? String(val) : '');
       }
-      rowsText.push(cells.join('\t'));
+      rowsText.push(cells.join('	'));
     }
 
     const tsv = rowsText.join('\n');
-    navigator.clipboard.writeText(tsv).catch(() => {});
+    const cellCount = (endR - startR + 1) * (endC - startC + 1);
+    setCopiedRange({ startR, startC, endR, endC });
+    setExcelToast(cellCount === 1 ? 'Copied 1 cell (Ctrl+V to paste)' : `Copied ${cellCount} cells (Ctrl+V to paste)`);
+    setTimeout(() => setExcelToast(null), 3000);
+
+    navigator.clipboard?.writeText(tsv).catch((err) => {
+      console.warn('Clipboard writeText failed:', err);
+    });
   }, [activeCell, selectionRange, filteredData, visibleColumns]);
 
-  const handlePasteSelection = useCallback(async () => {
-    if (!activeCell) return;
-    try {
-      const text = await navigator.clipboard.readText();
-      if (!text) return;
+  const applyPasteText = useCallback((text: string) => {
+    if (!activeCell || !text) return;
 
-      saveToHistory();
-      const lines = text.split(/\r?\n/).filter(line => line.length > 0);
-      const startR = activeCell.r;
-      const startC = activeCell.c;
+    let lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+    if (lines.length > 1 && lines[lines.length - 1] === '') {
+      lines.pop();
+    }
+    if (lines.length === 0) return;
+
+    saveToHistory();
+
+    const startR = activeCell.r;
+    const startC = activeCell.c;
+    const isSingleValue = lines.length === 1 && !lines[0].includes('\t');
+
+    // Case 1: Pasting 1 single value into a multi-cell selection range
+    if (isSingleValue && selectionRange && (selectionRange.startR !== selectionRange.endR || selectionRange.startC !== selectionRange.endC)) {
+      const val = lines[0].trim();
+      const minR = Math.min(selectionRange.startR, selectionRange.endR);
+      const maxR = Math.max(selectionRange.startR, selectionRange.endR);
+      const minC = Math.min(selectionRange.startC, selectionRange.endC);
+      const maxC = Math.max(selectionRange.startC, selectionRange.endC);
 
       const nextData = [...data];
-      // Expand data if paste exceeds current rows
-      while (nextData.length < startR + lines.length) {
-        nextData.push({
-          id: `row-paste-${Date.now()}-${nextData.length}`,
-          date: getDefaultDateForSheet(currentSheet.name)
-        });
-      }
-
-      lines.forEach((line, rOffset) => {
-        const targetR = startR + rOffset;
-        const cellVals = line.split('\t');
-        let rowObj = { ...nextData[targetR] };
-
-        cellVals.forEach((cellVal, cOffset) => {
-          const targetC = startC + cOffset;
-          const col = visibleColumns[targetC];
+      let cellCount = 0;
+      for (let r = minR; r <= maxR; r++) {
+        if (!nextData[r]) continue;
+        let rowObj = { ...nextData[r] };
+        for (let c = minC; c <= maxC; c++) {
+          const col = visibleColumns[c];
           if (col && col.id !== 'noOfDays') {
-            rowObj[col.id] = cellVal.trim();
+            rowObj[col.id] = val;
+            cellCount++;
           }
-        });
-
+        }
         rowObj = recalculateRowBusinessLogic(rowObj);
-        nextData[targetR] = rowObj;
+        nextData[r] = rowObj;
         if (rowObj.id) dirtyRowIds.current.add(rowObj.id);
+      }
+      setData(nextData);
+      setCopiedRange(null);
+      setExcelToast(`Pasted "${val}" across ${cellCount} cells`);
+      setTimeout(() => setExcelToast(null), 3000);
+      return;
+    }
+
+    // Case 2: Multi-cell / table paste
+    const nextData = [...data];
+    while (nextData.length < startR + lines.length) {
+      nextData.push({
+        id: `row-paste-${Date.now()}-${nextData.length}`,
+        date: getDefaultDateForSheet(currentSheet.name)
+      });
+    }
+
+    let pastedRows = 0;
+    let maxCols = 0;
+
+    lines.forEach((line, rOffset) => {
+      const targetR = startR + rOffset;
+      const cellVals = line.split('\t');
+      maxCols = Math.max(maxCols, cellVals.length);
+      let rowObj = { ...nextData[targetR] };
+
+      cellVals.forEach((cellVal, cOffset) => {
+        const targetC = startC + cOffset;
+        const col = visibleColumns[targetC];
+        if (col && col.id !== 'noOfDays') {
+          rowObj[col.id] = cellVal.trim();
+        }
       });
 
-      setData(nextData);
+      rowObj = recalculateRowBusinessLogic(rowObj);
+      nextData[targetR] = rowObj;
+      if (rowObj.id) dirtyRowIds.current.add(rowObj.id);
+      pastedRows++;
+    });
+
+    setData(nextData);
+    setCopiedRange(null);
+    setSelectionRange({
+      startR,
+      startC,
+      endR: startR + lines.length - 1,
+      endC: Math.min(visibleColumns.length - 1, startC + maxCols - 1)
+    });
+
+    setExcelToast(`Pasted ${pastedRows} row(s) × ${maxCols} col(s)`);
+    setTimeout(() => setExcelToast(null), 3000);
+  }, [activeCell, selectionRange, data, visibleColumns, currentSheet.name, saveToHistory, setData]);
+
+  const handlePasteSelection = useCallback(async () => {
+    try {
+      const text = await navigator.clipboard?.readText();
+      if (text) {
+        applyPasteText(text);
+      }
     } catch (err) {
-      console.warn('Paste failed or permission denied:', err);
+      console.warn('Clipboard readText failed or permission prompt needed:', err);
     }
-  }, [activeCell, data, visibleColumns, currentSheet.name, saveToHistory, setData]);
+  }, [applyPasteText]);
+
+  // Execute Autofill Downwards
+  const executeAutofillDown = useCallback((srcStartR: number, srcEndR: number, srcStartC: number, srcEndC: number, destEndR: number) => {
+    saveToHistory();
+    const nextData = [...data];
+    const srcSpan = srcEndR - srcStartR + 1;
+
+    // While destEndR exceeds current data length, expand rows!
+    while (nextData.length <= destEndR) {
+      nextData.push({
+        id: `row-autofill-${Date.now()}-${nextData.length}`,
+        date: getDefaultDateForSheet(currentSheet.name)
+      });
+    }
+
+    let modifiedCount = 0;
+    for (let targetR = srcEndR + 1; targetR <= destEndR; targetR++) {
+      let rowObj = { ...nextData[targetR] };
+      const offset = (targetR - srcEndR - 1) % srcSpan;
+      const srcR = srcStartR + offset;
+
+      for (let c = srcStartC; c <= srcEndC; c++) {
+        const col = visibleColumns[c];
+        if (!col || col.id === 'noOfDays') continue;
+
+        const sourceVal = nextData[srcR]?.[col.id];
+        if (sourceVal === undefined || sourceVal === null) continue;
+
+        if (isFormula(sourceVal)) {
+          rowObj[col.id] = shiftFormula(sourceVal, targetR - srcR, 0);
+        } else {
+          rowObj[col.id] = sourceVal;
+        }
+      }
+
+      rowObj = recalculateRowBusinessLogic(rowObj);
+      nextData[targetR] = rowObj;
+      if (rowObj.id) dirtyRowIds.current.add(rowObj.id);
+      modifiedCount++;
+    }
+
+    setData(nextData);
+    setSelectionRange({
+      startR: srcStartR,
+      startC: srcStartC,
+      endR: destEndR,
+      endC: srcEndC
+    });
+    setActiveCell({ r: destEndR, c: srcEndC });
+
+    setExcelToast(`✓ Drag-filled ${modifiedCount} row(s) down`);
+    setTimeout(() => setExcelToast(null), 3000);
+  }, [data, visibleColumns, currentSheet.name, saveToHistory, setData]);
+
+  // Execute Autofill Upwards
+  const executeAutofillUp = useCallback((srcStartR: number, srcEndR: number, srcStartC: number, srcEndC: number, destTopR: number) => {
+    saveToHistory();
+    const nextData = [...data];
+    const srcSpan = srcEndR - srcStartR + 1;
+
+    let modifiedCount = 0;
+    for (let targetR = srcStartR - 1; targetR >= destTopR; targetR--) {
+      let rowObj = { ...nextData[targetR] };
+      const offset = (srcStartR - 1 - targetR) % srcSpan;
+      const srcR = srcEndR - offset;
+
+      for (let c = srcStartC; c <= srcEndC; c++) {
+        const col = visibleColumns[c];
+        if (!col || col.id === 'noOfDays') continue;
+
+        const sourceVal = nextData[srcR]?.[col.id];
+        if (sourceVal === undefined || sourceVal === null) continue;
+
+        if (isFormula(sourceVal)) {
+          rowObj[col.id] = shiftFormula(sourceVal, targetR - srcR, 0);
+        } else {
+          rowObj[col.id] = sourceVal;
+        }
+      }
+
+      rowObj = recalculateRowBusinessLogic(rowObj);
+      nextData[targetR] = rowObj;
+      if (rowObj.id) dirtyRowIds.current.add(rowObj.id);
+      modifiedCount++;
+    }
+
+    setData(nextData);
+    setSelectionRange({
+      startR: destTopR,
+      startC: srcStartC,
+      endR: srcEndR,
+      endC: srcEndC
+    });
+    setActiveCell({ r: destTopR, c: srcStartC });
+
+    setExcelToast(`✓ Drag-filled ${modifiedCount} row(s) up`);
+    setTimeout(() => setExcelToast(null), 3000);
+  }, [data, visibleColumns, saveToHistory, setData]);
+
+  // Mouse drag handler on cell fill handle
+  const handleFillHandleMouseDown = useCallback((e: React.MouseEvent, r: number, c: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const minR = selectionRange ? Math.min(selectionRange.startR, selectionRange.endR) : r;
+    const maxR = selectionRange ? Math.max(selectionRange.startR, selectionRange.endR) : r;
+    const minC = selectionRange ? Math.min(selectionRange.startC, selectionRange.endC) : c;
+    const maxC = selectionRange ? Math.max(selectionRange.startC, selectionRange.endC) : c;
+
+    setDragFillState({
+      isDragging: true,
+      startR: minR,
+      endR: maxR,
+      startC: minC,
+      endC: maxC,
+      targetR: maxR
+    });
+
+    const handleWindowMouseMove = (moveEv: MouseEvent) => {
+      const container = gridContainerRef.current;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      const relativeY = moveEv.clientY - rect.top + container.scrollTop - 44; // 44px sticky table header
+      const targetRowIdx = Math.max(0, Math.floor(relativeY / ROW_HEIGHT));
+
+      setDragFillState(prev => {
+        if (!prev) return null;
+        if (prev.targetR === targetRowIdx) return prev;
+        return { ...prev, targetR: targetRowIdx };
+      });
+    };
+
+    const handleWindowMouseUp = () => {
+      window.removeEventListener('mousemove', handleWindowMouseMove);
+      window.removeEventListener('mouseup', handleWindowMouseUp);
+
+      const state = dragFillStateRef.current;
+      if (!state) return;
+
+      const { startR, endR, startC, endC, targetR } = state;
+      setDragFillState(null);
+
+      if (targetR > endR) {
+        executeAutofillDown(startR, endR, startC, endC, targetR);
+      } else if (targetR < startR) {
+        executeAutofillUp(startR, endR, startC, endC, targetR);
+      }
+    };
+
+    window.addEventListener('mousemove', handleWindowMouseMove);
+    window.addEventListener('mouseup', handleWindowMouseUp);
+  }, [selectionRange, executeAutofillDown, executeAutofillUp]);
+
+  // Double click on fill handle to auto-fill to bottom
+  const handleFillHandleDoubleClick = useCallback((e: React.MouseEvent, r: number, c: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const minR = selectionRange ? Math.min(selectionRange.startR, selectionRange.endR) : r;
+    const maxR = selectionRange ? Math.max(selectionRange.startR, selectionRange.endR) : r;
+    const minC = selectionRange ? Math.min(selectionRange.startC, selectionRange.endC) : c;
+    const maxC = selectionRange ? Math.max(selectionRange.startC, selectionRange.endC) : c;
+
+    let targetBottomR = -1;
+    for (let i = data.length - 1; i >= 0; i--) {
+      if (isMeaningfulRow(data[i])) {
+        targetBottomR = i;
+        break;
+      }
+    }
+    if (targetBottomR <= maxR) {
+      targetBottomR = Math.min(data.length - 1, maxR + 10);
+    }
+    if (targetBottomR > maxR) {
+      executeAutofillDown(minR, maxR, minC, maxC, targetBottomR);
+    }
+  }, [selectionRange, data, executeAutofillDown]);
 
   // Fill Down (Ctrl+D) / Fill Right (Ctrl+R)
   const handleFillDown = useCallback(() => {
@@ -1180,28 +1531,8 @@ export default function ArrivalEntry() {
     const maxC = Math.max(selectionRange.startC, selectionRange.endC);
     if (minR === maxR) return;
 
-    saveToHistory();
-    const nextData = [...data];
-
-    for (let c = minC; c <= maxC; c++) {
-      const col = visibleColumns[c];
-      if (!col || col.id === 'noOfDays') continue;
-      const sourceVal = nextData[minR]?.[col.id];
-
-      for (let r = minR + 1; r <= maxR; r++) {
-        let targetRow = { ...nextData[r] };
-        if (isFormula(sourceVal)) {
-          targetRow[col.id] = shiftFormula(sourceVal, r - minR, 0);
-        } else {
-          targetRow[col.id] = sourceVal;
-        }
-        targetRow = recalculateRowBusinessLogic(targetRow);
-        nextData[r] = targetRow;
-        if (targetRow.id) dirtyRowIds.current.add(targetRow.id);
-      }
-    }
-    setData(nextData);
-  }, [selectionRange, data, visibleColumns, saveToHistory, setData]);
+    executeAutofillDown(minR, minR, minC, maxC, maxR);
+  }, [selectionRange, executeAutofillDown]);
 
   // Auto-scroll grid horizontally and vertically to keep activeCell comfortably in view
   const ensureActiveCellVisible = useCallback((r: number, c: number) => {
@@ -1340,6 +1671,10 @@ export default function ArrivalEntry() {
 
       case 'ArrowDown':
         e.preventDefault();
+        if (e.altKey && visibleColumns[c] && (visibleColumns[c].type === 'select' || visibleColumns[c].type === 'po-select')) {
+          startEditing(r, c);
+          break;
+        }
         if (r < filteredData.length - 1) {
           const nextR = r + 1;
           setActiveCell({ r: nextR, c });
@@ -1504,6 +1839,15 @@ export default function ArrivalEntry() {
         startEditing(r, c);
         break;
 
+      case ' ': {
+        const col = visibleColumns[c];
+        if (col && (col.type === 'select' || col.type === 'po-select')) {
+          e.preventDefault();
+          startEditing(r, c);
+        }
+        break;
+      }
+
       case 'Delete':
       case 'Backspace': {
         e.preventDefault();
@@ -1551,6 +1895,74 @@ export default function ArrivalEntry() {
         break;
     }
   };
+
+  // Global Keyboard shortcuts & Clipboard listeners for Excel operations
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement;
+      const isInput = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT');
+
+      // If actively typing inside a cell edit input or formula bar, allow native input copy/paste
+      if (isInput && isEditing) return;
+
+      // If user is focused on a search bar or modal input outside the spreadsheet grid, do nothing
+      if (isInput && !gridContainerRef.current?.contains(activeEl)) return;
+
+      if (!activeCell) return;
+
+      if (e.ctrlKey || e.metaKey) {
+        const k = e.key.toLowerCase();
+        if (k === 'c') {
+          e.preventDefault();
+          handleCopySelection();
+          return;
+        }
+        if (k === 'v') {
+          e.preventDefault();
+          handlePasteSelection();
+          return;
+        }
+        if (k === 'd') {
+          e.preventDefault();
+          handleFillDown();
+          return;
+        }
+        if (k === 'z') {
+          e.preventDefault();
+          if (e.shiftKey) handleRedo();
+          else handleUndo();
+          return;
+        }
+        if (k === 'y') {
+          e.preventDefault();
+          handleRedo();
+          return;
+        }
+      }
+    };
+
+    const handleGlobalPaste = (e: ClipboardEvent) => {
+      const activeEl = document.activeElement;
+      const isInput = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT');
+      if (isInput && isEditing) return;
+      if (isInput && !gridContainerRef.current?.contains(activeEl)) return;
+
+      if (!activeCell) return;
+
+      const text = e.clipboardData?.getData('text/plain');
+      if (text) {
+        e.preventDefault();
+        applyPasteText(text);
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    window.addEventListener('paste', handleGlobalPaste);
+    return () => {
+      window.removeEventListener('keydown', handleGlobalKeyDown);
+      window.removeEventListener('paste', handleGlobalPaste);
+    };
+  }, [activeCell, isEditing, handleCopySelection, handlePasteSelection, applyPasteText, handleFillDown, handleUndo, handleRedo]);
 
   const handleDeleteSingleRow = useCallback((filteredRowIdx: number) => {
     saveToHistory();
@@ -2351,6 +2763,24 @@ export default function ArrivalEntry() {
     return filteredData[activeCell.r][colId] ?? '';
   }, [activeCell, filteredData, visibleColumns]);
 
+  // Keep Formula Bar text in sync with active cell when not actively typing in formula bar
+  useEffect(() => {
+    if (!isFormulaFocused.current && !isEditing) {
+      if (activeCell && filteredData[activeCell.r] && visibleColumns[activeCell.c]) {
+        const raw = filteredData[activeCell.r][visibleColumns[activeCell.c].id];
+        setFormulaBarText(raw !== undefined && raw !== null ? String(raw) : '');
+      } else {
+        setFormulaBarText('');
+      }
+    }
+  }, [activeCell, filteredData, visibleColumns, isEditing]);
+
+  useEffect(() => {
+    if (isEditing) {
+      setFormulaBarText(editValue);
+    }
+  }, [isEditing, editValue]);
+
   return (
     <div className="w-full flex-1 flex flex-col h-full max-h-full min-h-0 bg-surface-container-lowest overflow-hidden select-none relative">
       
@@ -2631,24 +3061,64 @@ export default function ArrivalEntry() {
         <div className="text-secondary/50 font-mono text-xs font-bold select-none">
           fx
         </div>
-        <div className="flex-1 h-8 bg-surface rounded-xl flex items-center px-3 border border-outline-variant shadow-inner overflow-hidden">
-          {isEditing ? (
-            <input
-              ref={formulaInputRef}
-              className="w-full bg-transparent outline-none text-xs font-mono font-bold text-primary"
-              value={editValue}
-              onChange={(e) => setEditValue(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') stopEditing(true);
-                if (e.key === 'Escape') stopEditing(false);
-              }}
-            />
-          ) : (
-            <span className="text-xs font-mono text-secondary truncate">
-              {String(activeCellRawValue || '(Empty Cell)')}
-            </span>
-          )}
+        <div 
+          className="flex-1 h-8 bg-surface rounded-xl flex items-center px-3 border border-outline-variant shadow-inner overflow-hidden select-text cursor-text focus-within:ring-2 focus-within:ring-primary focus-within:border-primary"
+          onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <input
+            ref={formulaInputRef}
+            disabled={!activeCell}
+            placeholder={activeCell ? "Enter value or formula starting with = (e.g. =J2*K2)" : "Select a cell to view or enter formula"}
+            className="w-full bg-transparent outline-none text-xs font-mono font-bold text-on-surface disabled:opacity-40 disabled:cursor-not-allowed select-text cursor-text"
+            value={formulaBarText}
+            onFocus={() => {
+              isFormulaFocused.current = true;
+              if (isEditing) {
+                stopEditing(true);
+              }
+            }}
+            onChange={(e) => {
+              setFormulaBarText(e.target.value);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                if (activeCell && visibleColumns[activeCell.c]) {
+                  const targetRow = filteredData[activeCell.r];
+                  if (targetRow) {
+                    handleUpdateCell(targetRow.id || activeCell.r, visibleColumns[activeCell.c].id, formulaBarText);
+                  }
+                  if (activeCell.r < filteredData.length - 1) {
+                    const nextR = activeCell.r + 1;
+                    setActiveCell({ r: nextR, c: activeCell.c });
+                    setSelectionRange({ startR: nextR, startC: activeCell.c, endR: nextR, endC: activeCell.c });
+                  }
+                }
+                gridContainerRef.current?.focus({ preventScroll: true });
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                setFormulaBarText(activeCellRawValue !== undefined && activeCellRawValue !== null ? String(activeCellRawValue) : '');
+                gridContainerRef.current?.focus({ preventScroll: true });
+              }
+            }}
+            onBlur={() => {
+              isFormulaFocused.current = false;
+              if (activeCell && visibleColumns[activeCell.c]) {
+                const targetRow = filteredData[activeCell.r];
+                if (targetRow) {
+                  handleUpdateCell(targetRow.id || activeCell.r, visibleColumns[activeCell.c].id, formulaBarText);
+                }
+              }
+            }}
+          />
         </div>
+        {excelToast && (
+          <div className="px-2.5 py-1 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 rounded-lg text-xs font-bold animate-pulse flex items-center gap-1.5 shrink-0">
+            <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
+            <span>{excelToast}</span>
+          </div>
+        )}
         {Object.keys(columnFilters).length > 0 && (
           <button
             onClick={() => setColumnFilters({})}
@@ -2845,8 +3315,20 @@ export default function ArrivalEntry() {
                     cIdx >= Math.min(selectionRange.startC, selectionRange.endC) &&
                     cIdx <= Math.max(selectionRange.startC, selectionRange.endC);
 
+                  const selMaxR = selectionRange ? Math.max(selectionRange.startR, selectionRange.endR) : (activeCell ? activeCell.r : -1);
+                  const selMaxC = selectionRange ? Math.max(selectionRange.startC, selectionRange.endC) : (activeCell ? activeCell.c : -1);
+                  const isBottomRightOfSelection = !isEditing && selMaxR === rIdx && selMaxC === cIdx;
+
+                  const isCellInCopiedRange = copiedRange &&
+                    rIdx >= copiedRange.startR && rIdx <= copiedRange.endR &&
+                    cIdx >= copiedRange.startC && cIdx <= copiedRange.endC;
+
+                  const isCellInDragFill = dragFillState?.isDragging &&
+                    rIdx > dragFillState.endR && rIdx <= dragFillState.targetR &&
+                    cIdx >= dragFillState.startC && cIdx <= dragFillState.endC;
+
                   const rawVal = row ? row[col.id] : '';
-                  let displayVal = rawVal;
+                  let displayVal = (isActive && isFormulaFocused.current) ? formulaBarText : rawVal;
 
                   // Formula Evaluation
                   if (isFormula(rawVal)) {
@@ -2906,35 +3388,94 @@ export default function ArrivalEntry() {
                       key={col.id}
                       style={{ width: `${col.width}px` }}
                       onClick={() => {
+                        if (isEditing && isActive) return;
+                        const isDropdown = col.type === 'select' || col.type === 'po-select';
+                        if (isActive && isDropdown && !isEditing) {
+                          startEditing(rIdx, cIdx);
+                          return;
+                        }
                         setActiveCell({ r: rIdx, c: cIdx });
                         setSelectionRange({ startR: rIdx, startC: cIdx, endR: rIdx, endC: cIdx });
+                        gridContainerRef.current?.focus({ preventScroll: true });
                       }}
                       onDoubleClick={() => startEditing(rIdx, cIdx)}
+                      onMouseEnter={() => {
+                        if (dragFillState?.isDragging) {
+                          setDragFillState(prev => prev ? { ...prev, targetR: rIdx } : null);
+                        }
+                      }}
                       className={cn(
-                        "h-full border-r border-outline-variant/20 px-2 flex items-center text-xs truncate relative cursor-cell",
+                        "h-full border-r border-outline-variant/20 px-2 flex items-center text-xs truncate relative cursor-cell select-none transition-colors",
                         isActive && "ring-2 ring-primary ring-inset z-10 bg-primary/[0.04]",
                         isCellInSelection && !isActive && "bg-primary/[0.08]",
+                        isCellInCopiedRange && "ring-2 ring-emerald-500 ring-dashed z-20 bg-emerald-500/[0.06] animate-pulse",
+                        isCellInDragFill && "bg-primary/[0.12] ring-2 ring-primary ring-dashed z-20",
                         (col.id === 'noOfDays' || col.id === 'noOfDayRec') ? "justify-center" : (col.type === 'number' || col.type === 'calc' ? "justify-end text-right font-mono" : "justify-start text-on-surface")
                       )}
                     >
                       {isActive && isEditing ? (
-                        <div className="absolute inset-0 z-20 bg-surface">
-                          {col.type === 'select' ? (
+                        <div 
+                          className="absolute inset-0 z-30 bg-surface flex items-center shadow-lg"
+                          onClick={(e) => e.stopPropagation()}
+                          onMouseDown={(e) => e.stopPropagation()}
+                        >
+                          {col.type === 'select' || col.type === 'po-select' ? (
                             <select
                               ref={inputRef}
                               value={editValue}
                               onChange={(e) => {
-                                setEditValue(e.target.value);
-                                handleUpdateCell(row.id || rIdx, col.id, e.target.value);
+                                const newVal = e.target.value;
+                                if (newVal === '__CUSTOM__') {
+                                  const custom = window.prompt(`Enter new ${col.label}:`);
+                                  if (custom && custom.trim()) {
+                                    const clean = custom.trim();
+                                    setEditValue(clean);
+                                    handleUpdateCell(row.id || rIdx, col.id, clean);
+                                    if (col.id === 'millerName') setDynamicSuppliers(prev => Array.from(new Set([...prev, clean])).sort());
+                                    if (col.id === 'partyName') setDynamicBuyers(prev => Array.from(new Set([...prev, clean])).sort());
+                                    if (col.id === 'brand') setDynamicBrands(prev => Array.from(new Set([...prev, clean])).sort());
+                                  }
+                                  setIsEditing(false);
+                                  gridContainerRef.current?.focus({ preventScroll: true });
+                                  return;
+                                }
+                                setEditValue(newVal);
+                                handleUpdateCell(row.id || rIdx, col.id, newVal);
                                 setIsEditing(false);
+                                gridContainerRef.current?.focus({ preventScroll: true });
                               }}
-                              onBlur={() => stopEditing(true)}
-                              className="w-full h-full bg-transparent px-2 text-xs font-bold outline-none text-primary"
+                              onBlur={(e) => {
+                                if (e.relatedTarget === formulaInputRef.current) return;
+                                stopEditing(true);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Escape') {
+                                  e.stopPropagation();
+                                  stopEditing(false);
+                                  gridContainerRef.current?.focus({ preventScroll: true });
+                                } else if (e.key === 'Enter' || e.key === 'Tab') {
+                                  e.stopPropagation();
+                                  stopEditing(true);
+                                  gridContainerRef.current?.focus({ preventScroll: true });
+                                }
+                              }}
+                              className="w-full h-full bg-surface text-on-surface px-2 text-xs font-bold outline-none ring-2 ring-primary border border-primary/50 rounded cursor-pointer"
                             >
-                              <option value="">-- Select --</option>
-                              {(col.id === 'partyName' ? (dynamicBuyers.length > 0 ? dynamicBuyers : (col.options || [])) : col.id === 'millerName' ? (dynamicSuppliers.length > 0 ? dynamicSuppliers : (col.options || [])) : col.id === 'brand' ? (dynamicBrands.length > 0 ? dynamicBrands : (col.options || [])) : (col.options || [])).map(opt => (
-                                <option key={opt} value={opt}>{opt}</option>
-                              ))}
+                              <option value="">-- Select {col.label} --</option>
+                              {(() => {
+                                const baseOpts = getColumnDropdownOptions(col.id);
+                                const fullOpts = (editValue && !baseOpts.includes(editValue))
+                                  ? [editValue, ...baseOpts]
+                                  : baseOpts;
+                                return fullOpts.map(opt => (
+                                  <option key={opt} value={opt} className="bg-surface text-on-surface py-1">
+                                    {opt}
+                                  </option>
+                                ));
+                              })()}
+                              <option value="__CUSTOM__" className="text-primary font-bold">
+                                + Type Custom {col.label}...
+                              </option>
                             </select>
                           ) : (
                             <input
@@ -2942,8 +3483,22 @@ export default function ArrivalEntry() {
                               value={editValue}
                               list={col.id === 'area' || col.id === 'place' ? 'arrival-roads-autocomplete' : undefined}
                               onChange={(e) => setEditValue(e.target.value)}
-                              onBlur={() => stopEditing(true)}
-                              className="w-full h-full bg-transparent px-2 text-xs font-mono font-bold text-primary outline-none"
+                              onBlur={(e) => {
+                                if (e.relatedTarget === formulaInputRef.current) return;
+                                stopEditing(true);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.stopPropagation();
+                                  stopEditing(true);
+                                  gridContainerRef.current?.focus({ preventScroll: true });
+                                } else if (e.key === 'Escape') {
+                                  e.stopPropagation();
+                                  stopEditing(false);
+                                  gridContainerRef.current?.focus({ preventScroll: true });
+                                }
+                              }}
+                              className="w-full h-full bg-surface px-2 text-xs font-mono font-bold text-primary outline-none ring-2 ring-primary rounded border border-primary/50"
                             />
                           )}
                         </div>
@@ -2958,37 +3513,52 @@ export default function ArrivalEntry() {
                           </span>
                         )
                       ) : col.id === 'noOfDayRec' ? (
-                        (() => {
-                          const statusStr = String(row?.noOfDayRec || displayVal || '').trim();
-                          const isCleared = /^(cleared|clear|paid)$/i.test(statusStr);
-                          if (isCleared) {
-                            return (
-                              <span className="bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300/50 dark:border-emerald-800/50 font-bold px-2 py-0.5 rounded text-[11px] leading-tight select-none">
-                                Cleared
-                              </span>
-                            );
-                          }
+                        <div className="w-full h-full flex items-center justify-between gap-1 overflow-hidden">
+                          <div className="truncate flex-1 flex justify-center">
+                            {(() => {
+                              const statusStr = String(row?.noOfDayRec || displayVal || '').trim();
+                              const isCleared = /^(cleared|clear|paid)$/i.test(statusStr);
+                              if (isCleared) {
+                                return (
+                                  <span className="bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300/50 dark:border-emerald-800/50 font-bold px-2 py-0.5 rounded text-[11px] leading-tight select-none">
+                                    Cleared
+                                  </span>
+                                );
+                              }
 
-                          const hasMeaningful = isMeaningfulRow(row);
-                          const hasDate = !!(row && row.date && isValidDate(row.date));
-                          if (!hasMeaningful && !hasDate) {
-                            return null;
-                          }
+                              const hasMeaningful = isMeaningfulRow(row);
+                              const hasDate = !!(row && row.date && isValidDate(row.date));
+                              if (!hasMeaningful && !hasDate) {
+                                return null;
+                              }
 
-                          const daysNum = getDaysPendingNum(row);
-                          let statusBadgeClass = "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300/50 dark:border-emerald-800/50 font-bold px-2 py-0.5 rounded text-[11px] leading-tight select-none";
-                          if (daysNum >= 15 && daysNum <= 28) {
-                            statusBadgeClass = "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300/50 dark:border-amber-800/50 font-bold px-2 py-0.5 rounded text-[11px] leading-tight select-none";
-                          } else if (daysNum >= 29) {
-                            statusBadgeClass = "bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300/50 dark:border-rose-800/50 font-bold px-2 py-0.5 rounded text-[11px] leading-tight select-none";
-                          }
+                              const daysNum = getDaysPendingNum(row);
+                              let statusBadgeClass = "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300/50 dark:border-emerald-800/50 font-bold px-2 py-0.5 rounded text-[11px] leading-tight select-none";
+                              if (daysNum >= 15 && daysNum <= 28) {
+                                statusBadgeClass = "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300/50 dark:border-amber-800/50 font-bold px-2 py-0.5 rounded text-[11px] leading-tight select-none";
+                              } else if (daysNum >= 29) {
+                                statusBadgeClass = "bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300/50 dark:border-rose-800/50 font-bold px-2 py-0.5 rounded text-[11px] leading-tight select-none";
+                              }
 
-                          return (
-                            <span className={statusBadgeClass} title={`Arrival: ${row?.date || 'N/A'} - ${daysNum} days elapsed till today`}>
-                              {daysNum} {daysNum === 1 ? 'Day' : 'Days'} Pending
-                            </span>
-                          );
-                        })()
+                              return (
+                                <span className={statusBadgeClass} title={`Arrival: ${row?.date || 'N/A'} - ${daysNum} days elapsed till today`}>
+                                  {daysNum} {daysNum === 1 ? 'Day' : 'Days'} Pending
+                                </span>
+                              );
+                            })()}
+                          </div>
+                          <button
+                            type="button"
+                            title="Change Payment Status"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              startEditing(rIdx, cIdx);
+                            }}
+                            className="p-1 rounded hover:bg-primary/10 text-secondary/60 hover:text-primary shrink-0 transition-colors cursor-pointer"
+                          >
+                            <ChevronDown className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       ) : col.id === 'billNo' ? (
                         <div className="flex items-center justify-between w-full h-full gap-1 overflow-hidden group/bill">
                           <span className="truncate font-mono font-bold">
@@ -3016,17 +3586,40 @@ export default function ArrivalEntry() {
                           </button>
                         </div>
                       ) : (
-                        <span className="truncate">
-                          {String(displayVal ?? '')}
-                        </span>
+                        <div className="w-full h-full flex items-center justify-between gap-1 overflow-hidden">
+                          <span className="truncate">
+                            {String(displayVal ?? '')}
+                          </span>
+                          {(col.type === 'select' || col.type === 'po-select') && (
+                            <button
+                              type="button"
+                              title={`Select ${col.label}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                startEditing(rIdx, cIdx);
+                              }}
+                              className="p-1 rounded hover:bg-primary/10 text-secondary/60 hover:text-primary shrink-0 transition-colors cursor-pointer"
+                            >
+                              <ChevronDown className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       )}
 
                       {/* Excel Small Corner Drag-Handle for Bottom-Right of selection */}
-                      {isActive && !isEditing && (
+                      {isBottomRightOfSelection && (
                         <div 
-                          className="absolute bottom-0 right-0 w-2 h-2 bg-primary cursor-crosshair z-20"
-                          title="Drag to fill down/right"
+                          onMouseDown={(e) => handleFillHandleMouseDown(e, selMaxR, selMaxC)}
+                          onDoubleClick={(e) => handleFillHandleDoubleClick(e, selMaxR, selMaxC)}
+                          className="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-primary border-2 border-white dark:border-neutral-900 shadow-md cursor-crosshair z-30 hover:scale-125 transition-transform select-none"
+                          title="Drag down to fill cells, or double-click to auto-fill column"
                         />
+                      )}
+                      {dragFillState?.isDragging && dragFillState.targetR > dragFillState.endR && rIdx === dragFillState.targetR && cIdx === dragFillState.endC && (
+                        <div className="absolute top-full right-0 mt-1.5 z-40 bg-neutral-900/95 text-white text-[10px] font-mono font-bold px-2 py-0.5 rounded shadow-xl whitespace-nowrap pointer-events-none flex items-center gap-1 border border-neutral-700">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                          Fill down +{dragFillState.targetR - dragFillState.endR} rows
+                        </div>
                       )}
                     </div>
                   );
@@ -4188,6 +4781,21 @@ export default function ArrivalEntry() {
               </div>
             </motion.div>
           </div>
+        )}
+      </AnimatePresence>
+
+      {/* Excel floating action toast */}
+      <AnimatePresence>
+        {excelToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 12, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 12, scale: 0.95 }}
+            className="fixed bottom-6 right-6 z-50 px-4 py-2.5 bg-neutral-900/95 dark:bg-neutral-100 text-white dark:text-neutral-900 font-bold text-xs rounded-2xl shadow-2xl border border-neutral-700/60 dark:border-neutral-300 flex items-center gap-2.5 pointer-events-none"
+          >
+            <Sparkles className="w-4 h-4 text-emerald-400 dark:text-emerald-600" />
+            <span>{excelToast}</span>
+          </motion.div>
         )}
       </AnimatePresence>
 

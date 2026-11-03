@@ -809,8 +809,8 @@ export default function OrdersDashboard() {
     });
 
     matchingProducts.forEach(p => {
-      const brandName = (p.name || p.brand || '').trim();
-      if (brandName) brandSet.add(brandName);
+      if (p.name && String(p.name).trim()) brandSet.add(String(p.name).trim());
+      if (p.brand && String(p.brand).trim()) brandSet.add(String(p.brand).trim());
     });
 
     return Array.from(brandSet).sort();
@@ -3071,20 +3071,30 @@ export default function OrdersDashboard() {
                       placeholder="Select Buyer or enter merchant name..."
                       allowCustom={true}
                     />
-                  </div>
+                  
 
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-center">
-                      <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500 ml-1">Buyer WhatsApp Phone</label>
-                      <span className="text-[9px] font-medium text-emerald-600 dark:text-emerald-400">Meta Order Notification</span>
-                    </div>
-                    <input
-                      type="tel"
-                      value={newOrder.phone}
-                      onChange={(e) => setNewOrder({...newOrder, phone: e.target.value})}
-                      placeholder="10-digit mobile (e.g. 9945351166)"
-                      className="w-full px-4 py-3 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-950 text-sm font-mono text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/20"
-                    />
+                    {/* Small WhatsApp Phone Preview after selecting buyer */}
+                    {newOrder.buyer && (
+                      <div className="flex items-center justify-between px-3 py-1.5 bg-emerald-500/[0.06] dark:bg-emerald-500/[0.04] border border-emerald-500/20 rounded-xl text-xs">
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                          <span className="text-[10px] font-black uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+                            WhatsApp:
+                          </span>
+                          <input
+                            type="tel"
+                            value={newOrder.phone}
+                            onChange={(e) => setNewOrder({ ...newOrder, phone: e.target.value })}
+                            placeholder="10-digit mobile"
+                            className="bg-transparent font-mono font-bold text-emerald-700 dark:text-emerald-400 text-xs outline-none border-b border-dashed border-emerald-400/40 hover:border-emerald-500 focus:border-emerald-600 w-28 py-0 px-0.5"
+                            title="Click to edit WhatsApp phone"
+                          />
+                        </div>
+                        <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                          Meta Order Notification
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="space-y-2">
@@ -3127,7 +3137,7 @@ export default function OrdersDashboard() {
                     </div>
                     <SearchableSelect
                       options={
-                        newOrder.supplier && availableBrands.length > 0
+                        newOrder.supplier
                           ? availableBrands
                           : Array.from(new Set(inventoryProducts.map(p => (p.name || p.brand)?.trim()).filter(Boolean))).sort()
                       }
@@ -3142,12 +3152,16 @@ export default function OrdersDashboard() {
                         }
                         setNewOrder(prev => ({ ...prev, product: val }));
                       }}
-                      placeholder={newOrder.supplier ? `Select Brand for ${newOrder.supplier}...` : "Select or type rice variety..."}
+                      placeholder={newOrder.supplier ? (availableBrands.length > 0 ? `Select Brand for ${newOrder.supplier}...` : `Type custom brand for ${newOrder.supplier}...`) : "Select or type rice variety..."}
                       allowCustom={true}
                     />
                     {newOrder.supplier && (
                       <p className="text-[9px] font-medium text-neutral-500 ml-1">
-                        Showing brands for <strong className="text-neutral-700 dark:text-neutral-300">{newOrder.supplier}</strong> (or type custom variety)
+                        {availableBrands.length > 0 ? (
+                          <>Showing brands exclusively for <strong className="text-neutral-700 dark:text-neutral-300">{newOrder.supplier}</strong></>
+                        ) : (
+                          <>No inventory brands registered under <strong className="text-neutral-700 dark:text-neutral-300">{newOrder.supplier}</strong> (type custom brand above)</>
+                        )}
                       </p>
                     )}
                   </div>
@@ -3175,21 +3189,7 @@ export default function OrdersDashboard() {
                     </div>
                   </div>
 
-                  {/* Dynamic Real-time Calculation Panel */}
-                  <div className="bg-neutral-50 dark:bg-neutral-950 border border-neutral-200/60 dark:border-neutral-800 p-4 rounded-2xl space-y-2.5">
-                    <div className="flex justify-between items-center text-[10px] font-bold text-neutral-500 uppercase tracking-widest">
-                      <span>Real-time Invoice Estimate</span>
-                      <span className="text-[9px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/15">Live</span>
-                    </div>
-                    <div className="flex justify-between items-baseline">
-                      <span className="text-xs text-neutral-400">
-                        {newOrder.qty ? `${newOrder.qty} QTLS` : "0 QTLS"} × {newOrder.rate ? `₹${newOrder.rate}` : "₹0"}
-                      </span>
-                      <span className="text-xl font-black text-neutral-950 dark:text-white font-mono">
-                        ₹ {formatINR((parseFloat(newOrder.qty) || 0) * (parseFloat(newOrder.rate) || 0))}
-                      </span>
-                    </div>
-                  </div>
+
                 </div>
 
                 {/* Section 03: PO Logistics Details (No of days for loading & Unloading Point) */}
