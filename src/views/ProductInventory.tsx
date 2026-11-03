@@ -28,7 +28,13 @@ import {
   ShoppingBag,
   ArrowUpRight,
   Share2,
-  Eye
+  Eye,
+  Camera,
+  Layers,
+  Warehouse,
+  Store,
+  Save,
+  Tag
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, formatINR } from '../lib/utils';
@@ -43,10 +49,14 @@ const DEFAULT_SUPPLIERS: string[] = [];
 // No hardcoded or mock products are used.
 const initialProducts: any[] = [];
 
-const PRESET_GRAIN_IMAGES = [
+export const PRESET_GRAIN_IMAGES = [
   { label: 'Premium Sona Masoori Bag', url: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCOz5qOiTIVul9CR5oE14q5nszk1V5hX6LO1BlqBfqDPEX3K5oVnvONQXpQ47jbYfTH820mSETx41SM4t9HZJXQv_OjP5OeYgO-gUsr3WEKAx6HOrXgdMJ1ccjCOxrN6450eET-pDA0jXCMRum_L_20H0l9RkB8ViMzoa9O1xnt9qTcnAu0k5yAmZ-qiIAaztD1UJa0TiUVOrAb7w9N_qGxQILHklk-XFKkXHP8JBU3cNeRi84OX492lyKUdsJf12KwAL_hq6JvuOZj' },
   { label: 'Jasmine Rice Bag', url: 'https://lh3.googleusercontent.com/aida-public/AB6AXuB-zw5USNmhSWJ7W6KYNTxtxlvbucTGBqM91aYmN9ZxAlgvZIBCtLu_HO1Y6j9huJHOUICTW230tfwmeYNZI89Quj-o1n6dnY7tVzThXMjnw50G_5ZUVyBb9v-fkOlF3OOsh5q8N6x1ZNmKG64sKYprqc-gQ5WdOd8ZKy7r_r44wx2qzB0srt6O205GYTyY5is626j2iSoylgKkn9ktJSrD1UhQuuITJU9Ka26Vej9j0oHRlpcaqL73YbujaFhOQ7Ly71Qt9ofGdr' },
-  { label: 'Basmati Rice Bag', url: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBm-XMaGdzxCjePQf6HZQOYwr69Zxd_uImfU8ASz83aco_TNkafvvB-t0733UI0fDTWC3wi9pQSVnG9w3qwPRkWNJtZFfCchbPI9xjyqSb9veIK4ypfBYDZwvKvlc9BKauhSKHl5r33cNwMa_vB5-KtU-2NWfwjBT2BBro7NA2hMwxtu9OaCg4Od4Gp0_NkBdnV_kOLR5mkQnZZdf9IJ8vI_GZT2CJ0DED3KfwlWc2HJooTd6KuSiu0vEWJXK80aG9OVARp4OxxFi52' }
+  { label: 'Basmati Rice Bag', url: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBm-XMaGdzxCjePQf6HZQOYwr69Zxd_uImfU8ASz83aco_TNkafvvB-t0733UI0fDTWC3wi9pQSVnG9w3qwPRkWNJtZFfCchbPI9xjyqSb9veIK4ypfBYDZwvKvlc9BKauhSKHl5r33cNwMa_vB5-KtU-2NWfwjBT2BBro7NA2hMwxtu9OaCg4Od4Gp0_NkBdnV_kOLR5mkQnZZdf9IJ8vI_GZT2CJ0DED3KfwlWc2HJooTd6KuSiu0vEWJXK80aG9OVARp4OxxFi52' },
+  { label: 'Royal Heritage Gold Bag', url: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?auto=format&fit=crop&w=600&q=80' },
+  { label: 'Classic BOPP 26KG Bag', url: 'https://images.unsplash.com/photo-1536304993881-ff6e9eefa2a6?auto=format&fit=crop&w=600&q=80' },
+  { label: 'Silky Sortex Parboiled Bag', url: 'https://images.unsplash.com/photo-1626082927389-6cd097cdc6ec?auto=format&fit=crop&w=600&q=80' },
+  { label: 'South Indian Ponni Bag', url: 'https://images.unsplash.com/photo-1574323347407-f5e1ad6d020b?auto=format&fit=crop&w=600&q=80' }
 ];
 
 export default function ProductInventory() {
@@ -188,6 +198,139 @@ export default function ProductInventory() {
       console.error('Failed to publish merchant store settings:', err);
     } finally {
       setIsPublishing(false);
+    }
+  };
+
+  // ==========================================
+  // MERCHANT STORE MERCHANDISING TERMINAL STATE
+  // ==========================================
+  const [selectedMerchantProdId, setSelectedMerchantProdId] = useState<string>('');
+  const [merchantProdForm, setMerchantProdForm] = useState({
+    price: '',
+    category: 'Sona Masoori',
+    image: PRESET_GRAIN_IMAGES[0]?.url || '',
+    status: 'Active',
+    promoBadge: '',
+    isBestSeller: false
+  });
+  const [merchantSaveSuccess, setMerchantSaveSuccess] = useState<string | null>(null);
+  const [isSavingMerchantProd, setIsSavingMerchantProd] = useState<boolean>(false);
+
+  // Synchronize form when selected product changes or products catalog reloads
+  useEffect(() => {
+    if (!products || products.length === 0) return;
+    const currentId = selectedMerchantProdId || products[0]?.id;
+    if (!selectedMerchantProdId && currentId) {
+      setSelectedMerchantProdId(currentId);
+    }
+    const found = products.find(p => p && p.id === currentId);
+    if (found) {
+      setMerchantProdForm({
+        price: found.price !== undefined && found.price !== null && found.price !== 0 ? String(found.price) : (found.price === 0 ? '' : String(found.price || '')),
+        category: found.category || found.brand || 'Sona Masoori',
+        image: found.image || PRESET_GRAIN_IMAGES[0]?.url || '',
+        status: found.status || 'Active',
+        promoBadge: found.promoBadge || '',
+        isBestSeller: !!found.isBestSeller
+      });
+    }
+  }, [selectedMerchantProdId, products]);
+
+  const handleSelectMerchantProduct = (productId: string) => {
+    setSelectedMerchantProdId(productId);
+    const found = products.find(p => p && p.id === productId);
+    if (found) {
+      setMerchantProdForm({
+        price: found.price !== undefined && found.price !== null && found.price !== 0 ? String(found.price) : (found.price === 0 ? '' : String(found.price || '')),
+        category: found.category || found.brand || 'Sona Masoori',
+        image: found.image || PRESET_GRAIN_IMAGES[0]?.url || '',
+        status: found.status || 'Active',
+        promoBadge: found.promoBadge || '',
+        isBestSeller: !!found.isBestSeller
+      });
+    }
+  };
+
+  const handleMerchantImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const compressed = await compressImageFile(file);
+      if (compressed) {
+        setMerchantProdForm(prev => ({ ...prev, image: compressed }));
+      }
+    }
+  };
+
+  const handleMerchantDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files?.[0];
+    if (file && file.type.startsWith('image/')) {
+      const compressed = await compressImageFile(file);
+      if (compressed) {
+        setMerchantProdForm(prev => ({ ...prev, image: compressed }));
+      }
+    }
+  };
+
+  const handleSaveMerchantProductDetails = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!selectedMerchantProdId) return;
+
+    const target = products.find(p => p && p.id === selectedMerchantProdId);
+    if (!target) return;
+
+    setIsSavingMerchantProd(true);
+    setMerchantSaveSuccess(null);
+
+    const parsedPrice = parseFloat(merchantProdForm.price) || 0;
+    const updatedProd = {
+      ...target,
+      price: parsedPrice,
+      category: merchantProdForm.category || target.brand || 'Sona Masoori',
+      image: merchantProdForm.image || PRESET_GRAIN_IMAGES[0]?.url || '',
+      status: merchantProdForm.status || 'Active',
+      promoBadge: merchantProdForm.promoBadge || '',
+      isBestSeller: !!merchantProdForm.isBestSeller
+    };
+
+    const updated = products.map(p => p && p.id === updatedProd.id ? updatedProd : p);
+    setProducts(updated);
+    localStorage.setItem('product_inventory', JSON.stringify(updated));
+
+    window.dispatchEvent(new Event('storage'));
+    window.dispatchEvent(new CustomEvent('inventory-updated', { detail: { updatedProd } }));
+
+    try {
+      await setCollectionDoc('product_inventory', updatedProd.id, updatedProd);
+      setMerchantSaveSuccess(`"${updatedProd.name}" store details saved & applied live to Merchant Store!`);
+      setTimeout(() => setMerchantSaveSuccess(null), 4000);
+    } catch (err) {
+      console.error("Failed to sync merchant product details:", err);
+      setMerchantSaveSuccess(`Saved locally (Cloud sync note: ${err})`);
+      setTimeout(() => setMerchantSaveSuccess(null), 4000);
+    } finally {
+      setIsSavingMerchantProd(false);
+    }
+  };
+
+  const handleSetCurrentAsHeroProduct = async () => {
+    if (!selectedMerchantProdId) return;
+    setAdminHeroProductId(selectedMerchantProdId);
+    localStorage.setItem('tejas_hero_product_id', selectedMerchantProdId);
+    try {
+      const storeConfigData = {
+        id: 'main_config',
+        heroProductId: selectedMerchantProdId,
+        storeCategories: adminStoreCategories,
+        updatedAt: new Date().toISOString()
+      };
+      await syncCollection('store_config', [storeConfigData]).catch(e => console.warn("Cloud store_config sync note:", e));
+      window.dispatchEvent(new Event('storage'));
+      window.dispatchEvent(new CustomEvent('store-config-updated'));
+      setMerchantSaveSuccess(`Product spotlighted as Store Hero Product of the Day!`);
+      setTimeout(() => setMerchantSaveSuccess(null), 4000);
+    } catch (err) {
+      console.error("Failed to set hero product:", err);
     }
   };
 
@@ -571,9 +714,9 @@ export default function ProductInventory() {
       name: newProduct.name,
       brand: newProduct.brand || 'Premium Sella',
       category: newProduct.category || newProduct.brand || 'Sona Masoori',
-      price: parseFloat(newProduct.price) || 4100.00,
-      status: newProduct.status,
-      image: newProduct.image,
+      price: parseFloat(newProduct.price) || 0,
+      status: newProduct.status || 'Active',
+      image: newProduct.image || PRESET_GRAIN_IMAGES[0].url,
       supplier: newProduct.supplier || (suppliersList[0] || ''),
       isBestSeller: !!newProduct.isBestSeller,
       promoBadge: newProduct.promoBadge || ''
@@ -1530,6 +1673,483 @@ export default function ProductInventory() {
             </div>
           </div>
 
+          {/* ============================================================== */}
+          {/* MERCHANT STORE MERCHANDISING & PRODUCT VISUAL CUSTOMIZER       */}
+          {/* ============================================================== */}
+          <div className="bg-white dark:bg-[#0c1813] border border-slate-200/90 dark:border-neutral-800 rounded-3xl p-6 md:p-8 shadow-sm space-y-6">
+            
+            {/* Header */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 dark:border-neutral-800/80 pb-5">
+              <div className="space-y-1">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-400 text-[10px] font-black uppercase tracking-wider border border-amber-500/20">
+                  <Store className="w-3.5 h-3.5" />
+                  Merchant Store Catalog Customizer
+                </div>
+                <h3 className="text-xl md:text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  Configure Product for Merchant Storefront
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 max-w-2xl leading-relaxed">
+                  Select any variety added in Product Inventory to set its store price per quintal, grain bag visual, category, status, and promotional badges.
+                </p>
+              </div>
+
+              {selectedMerchantProdId && (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSetCurrentAsHeroProduct}
+                    className="px-4 py-2.5 rounded-xl border border-amber-500/30 hover:bg-amber-50 dark:hover:bg-amber-950/30 text-amber-700 dark:text-amber-400 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+                    title="Spotlight this product as today's Store Hero Product"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Set as Hero Product</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveMerchantProductDetails}
+                    disabled={isSavingMerchantProd}
+                    className="px-5 py-2.5 bg-[#143e2e] hover:bg-[#1a4f3b] text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-md transition-all cursor-pointer flex items-center gap-2 disabled:opacity-50"
+                  >
+                    {isSavingMerchantProd ? (
+                      <div className="w-3.5 h-3.5 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                    ) : (
+                      <>
+                        <Save className="w-3.5 h-3.5" />
+                        <span>Save to Store</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Notification alert banner */}
+            {merchantSaveSuccess && (
+              <motion.div
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="p-3.5 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center justify-between text-xs font-bold text-emerald-700 dark:text-emerald-300"
+              >
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                  <span>{merchantSaveSuccess}</span>
+                </div>
+                <span className="text-[10px] text-emerald-600/70 uppercase tracking-wider">Sync Active</span>
+              </motion.div>
+            )}
+
+            {products.length === 0 ? (
+              <div className="p-8 rounded-2xl bg-slate-50 dark:bg-[#07130e] border border-slate-200/80 dark:border-neutral-800 text-center space-y-3">
+                <Package className="w-10 h-10 text-slate-400 mx-auto opacity-70" />
+                <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">No Products in Inventory</h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+                  Add your base grain commodities in the Product Inventory tab first, then select them here to configure their merchant store prices, packaging visuals, and promotional badges.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveInventoryTab('inventory');
+                    setIsAddModalOpen(true);
+                  }}
+                  className="px-4 py-2 bg-primary text-on-primary rounded-xl text-xs font-bold cursor-pointer"
+                >
+                  + Add First Product in Inventory
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {/* Product Selector Dropdown Bar */}
+                <div className="p-4 md:p-5 rounded-2xl bg-slate-50 dark:bg-[#07130e] border border-slate-200/80 dark:border-neutral-800 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <label className="text-[11px] font-black uppercase tracking-wider text-emerald-800 dark:text-emerald-400 flex items-center gap-2">
+                      <Package className="w-4 h-4 text-emerald-600" />
+                      Select Product from Product Inventory:
+                    </label>
+                    <span className="text-[10px] font-extrabold text-slate-500 bg-white dark:bg-neutral-800 px-2.5 py-1 rounded-full border border-slate-200 dark:border-neutral-700">
+                      {products.length} Products Available
+                    </span>
+                  </div>
+
+                  <select
+                    value={selectedMerchantProdId}
+                    onChange={(e) => handleSelectMerchantProduct(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl bg-white dark:bg-neutral-900 border border-slate-300 dark:border-neutral-700 text-xs md:text-sm font-bold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/30 cursor-pointer shadow-xs"
+                  >
+                    {products.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} — {p.brand} (SKU: {p.id} | Store Rate: ₹{formatINR(p.price || 0)}/Qtl | Cat: {p.category || 'Standard'} | {p.status || 'Active'})
+                      </option>
+                    ))}
+                  </select>
+
+                  {/* Selected Product Quick Info */}
+                  {(() => {
+                    const currentSelected = products.find(p => p && p.id === selectedMerchantProdId);
+                    if (!currentSelected) return null;
+                    return (
+                      <div className="flex flex-wrap items-center gap-2.5 pt-1 text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                        <span className="px-2 py-0.5 rounded-md bg-white dark:bg-neutral-800 border border-slate-200 dark:border-neutral-700 text-slate-700 dark:text-slate-300 font-bold">
+                          SKU #{currentSelected.id}
+                        </span>
+                        <span>Variety: <strong className="text-slate-800 dark:text-slate-200">{currentSelected.brand || currentSelected.name}</strong></span>
+                        <span>•</span>
+                        <span>Mill / Supplier: <strong className="text-slate-800 dark:text-slate-200">{currentSelected.supplier || 'Direct Mill'}</strong></span>
+                        <span>•</span>
+                        <span>Current Store Price: <strong className="text-emerald-600 dark:text-emerald-400">₹{formatINR(currentSelected.price || 0)} / Qtl</strong></span>
+                        {currentSelected.isBestSeller && (
+                          <span className="px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 border border-rose-500/20 text-[10px] font-black">
+                            ⭐ Best Seller
+                          </span>
+                        )}
+                        {currentSelected.promoBadge && (
+                          <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-700 border border-amber-500/20 text-[10px] font-bold">
+                            {currentSelected.promoBadge}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* Split Grid: Form Controls (Left) vs Live Store Preview (Right) */}
+                <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+                  
+                  {/* Left Controls (7 cols on xl) */}
+                  <div className="xl:col-span-7 space-y-5">
+                    
+                    {/* Row 1: Price and Category */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      
+                      {/* 1. Store Price per QTLS */}
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-300 block text-left">
+                          Store Price per QTLS (₹) <span className="text-rose-500">*</span>
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">₹</span>
+                          <input 
+                            type="number" 
+                            step="0.01"
+                            placeholder="e.g. 4100.00" 
+                            value={merchantProdForm.price}
+                            onChange={(e) => setMerchantProdForm(prev => ({ ...prev, price: e.target.value }))}
+                            className="w-full pl-8 pr-4 py-2.5 rounded-xl bg-slate-50 dark:bg-[#07130e] border border-slate-200 dark:border-neutral-800 text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/30"
+                          />
+                        </div>
+                        <p className="text-[10px] text-slate-400">Official rate displayed to merchants on the store.</p>
+                      </div>
+
+                      {/* 2. Store Category */}
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-300 block text-left">
+                          Store Category
+                        </label>
+                        <select 
+                          value={merchantProdForm.category}
+                          onChange={(e) => setMerchantProdForm(prev => ({ ...prev, category: e.target.value }))}
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-[#07130e] border border-slate-200 dark:border-neutral-800 text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/30 cursor-pointer"
+                        >
+                          {Array.from(new Set(['Sona Masoori', 'Basmati', 'IR64', 'Ponni', 'Parboiled', 'Broken', 'Organic', 'Commercial', ...(adminStoreCategories || []).map((c: any) => c.name || c.id)])).map((catName) => (
+                            <option key={catName} value={catName}>{catName}</option>
+                          ))}
+                        </select>
+                        <p className="text-[10px] text-slate-400">Used for merchant store filtering and category tabs.</p>
+                      </div>
+
+                    </div>
+
+                    {/* Row 2: Publish Status and Promotional Badge */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      
+                      {/* 3. Publish Status */}
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-300 block text-left">
+                          Store Publish Status
+                        </label>
+                        <select 
+                          value={merchantProdForm.status}
+                          onChange={(e) => setMerchantProdForm(prev => ({ ...prev, status: e.target.value }))}
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-[#07130e] border border-slate-200 dark:border-neutral-800 text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/30 cursor-pointer"
+                        >
+                          <option value="Active">🟢 Active (Visible & Orderable)</option>
+                          <option value="Restocking">🟡 Restocking (Out of Stock Notice)</option>
+                          <option value="Discontinued">🔴 Discontinued (Hidden from Store)</option>
+                        </select>
+                        <p className="text-[10px] text-slate-400">Controls visibility and purchase state in the store.</p>
+                      </div>
+
+                      {/* 4. Store Promotional Badge */}
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-300 block text-left">
+                          Store Promotional Badge
+                        </label>
+                        <select 
+                          value={merchantProdForm.promoBadge || ''}
+                          onChange={(e) => setMerchantProdForm(prev => ({ ...prev, promoBadge: e.target.value }))}
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-[#07130e] border border-slate-200 dark:border-neutral-800 text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/30 cursor-pointer"
+                        >
+                          <option value="">None (Standard Listing)</option>
+                          <option value="🌾 Fresh 2026 Batch">🌾 Fresh 2026 Batch</option>
+                          <option value="⚡ Special Ex-Mill Rate">⚡ Special Ex-Mill Rate</option>
+                          <option value="⭐ Best Seller">⭐ Best Seller</option>
+                          <option value="🔥 Hot Stock">🔥 Hot Stock</option>
+                          <option value="🚚 Fast Dispatch">🚚 Fast Dispatch</option>
+                          <option value="💎 Premium Aged">💎 Premium Aged</option>
+                        </select>
+                        <p className="text-[10px] text-slate-400">Eye-catching ribbon tag shown on the card.</p>
+                      </div>
+
+                    </div>
+
+                    {/* 5. Feature as Best Seller (Toggle) */}
+                    <div className="p-4 bg-slate-50 dark:bg-[#07130e] rounded-2xl border border-slate-200/80 dark:border-neutral-800 flex items-center justify-between gap-4">
+                      <div>
+                        <span className="text-xs font-bold text-slate-900 dark:text-white block text-left">
+                          Feature as Best Seller
+                        </span>
+                        <span className="text-[11px] text-slate-500 block text-left">
+                          Highlights this product with the prominent best-seller badge and priority ranking on the storefront.
+                        </span>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                        <input 
+                          type="checkbox"
+                          checked={!!merchantProdForm.isBestSeller}
+                          onChange={(e) => setMerchantProdForm(prev => ({ ...prev, isBestSeller: e.target.checked }))}
+                          className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-slate-200 dark:bg-neutral-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                      </label>
+                    </div>
+
+                    {/* 6. Standard Bag Visual & Custom Image */}
+                    <div className="space-y-3 p-4 bg-slate-50 dark:bg-[#07130e] rounded-2xl border border-slate-200/80 dark:border-neutral-800">
+                      <div>
+                        <label className="text-[10px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-300 block text-left">
+                          Standard Bag Visual & Custom Image
+                        </label>
+                        <p className="text-[11px] text-slate-500">
+                          Click any verified grain bag preset below, drag-and-drop a photo, or enter an image URL.
+                        </p>
+                      </div>
+
+                      {/* 1-Click Preset Grid */}
+                      <div className="space-y-1.5">
+                        <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 block text-left">
+                          1-Click Standard Grain Bag Presets:
+                        </span>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2">
+                          {PRESET_GRAIN_IMAGES.map((preset, idx) => {
+                            const isSelected = merchantProdForm.image === preset.url;
+                            return (
+                              <button
+                                key={idx}
+                                type="button"
+                                onClick={() => setMerchantProdForm(prev => ({ ...prev, image: preset.url }))}
+                                className={cn(
+                                  "p-1.5 rounded-xl border text-left transition-all cursor-pointer relative group flex flex-col items-center gap-1.5",
+                                  isSelected 
+                                    ? "border-emerald-500 bg-emerald-500/10 ring-2 ring-emerald-500/40" 
+                                    : "border-slate-200 dark:border-neutral-800 hover:border-slate-300 dark:hover:border-neutral-700 bg-white dark:bg-neutral-900"
+                                )}
+                                title={preset.label}
+                              >
+                                <img 
+                                  src={preset.url} 
+                                  alt={preset.label} 
+                                  className="w-full h-14 object-cover rounded-lg"
+                                />
+                                <span className="text-[8px] font-bold text-slate-600 dark:text-slate-400 text-center line-clamp-1 w-full">
+                                  {preset.label.replace(' Bag', '')}
+                                </span>
+                                {isSelected && (
+                                  <span className="absolute top-1 right-1 w-3.5 h-3.5 bg-emerald-500 text-white rounded-full flex items-center justify-center text-[8px]">
+                                    ✓
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Drag & Drop Upload Zone */}
+                      <div 
+                        onDragOver={handleDragOver}
+                        onDrop={handleMerchantDrop}
+                        className="border-2 border-dashed border-slate-300 dark:border-neutral-700 hover:border-emerald-500/60 transition-colors rounded-xl p-3 text-center bg-white dark:bg-neutral-900 relative group cursor-pointer"
+                      >
+                        <input 
+                          type="file" 
+                          id="merchant-image-upload" 
+                          accept="image/*" 
+                          onChange={handleMerchantImageFileChange} 
+                          className="hidden" 
+                        />
+                        <label 
+                          htmlFor="merchant-image-upload"
+                          className="cursor-pointer flex flex-col items-center justify-center space-y-1"
+                        >
+                          <Upload className="w-5 h-5 text-slate-400 group-hover:text-emerald-600 transition-colors" />
+                          <span className="text-[10px] font-extrabold text-slate-700 dark:text-slate-300 group-hover:text-emerald-600 transition-colors uppercase tracking-wider">
+                            Drag image here or click to browse
+                          </span>
+                          <span className="text-[8px] text-slate-400 font-bold">Auto-compressed for fast storefront loading (PNG, JPG, WEBP)</span>
+                        </label>
+                      </div>
+
+                      {/* Custom URL Paste Option */}
+                      <div className="space-y-1 pt-1">
+                        <span className="text-[8px] text-slate-400 font-extrabold uppercase tracking-widest block text-left">
+                          — OR PASTE CUSTOM IMAGE URL —
+                        </span>
+                        <input 
+                          type="url" 
+                          placeholder="e.g. https://example.com/bag_photo.jpg"
+                          value={merchantProdForm.image.startsWith('data:') ? '' : merchantProdForm.image}
+                          onChange={(e) => setMerchantProdForm(prev => ({ ...prev, image: e.target.value }))}
+                          className="w-full px-3.5 py-2 rounded-xl bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/30 text-left"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Submit Bar */}
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+                      <div className="text-[11px] text-slate-400">
+                        Changes will be saved to Firestore and reflected on <strong className="text-slate-700 dark:text-slate-300">/store</strong>.
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleSaveMerchantProductDetails}
+                        disabled={isSavingMerchantProd}
+                        className="w-full sm:w-auto px-6 py-3 bg-[#143e2e] hover:bg-[#1a4f3b] text-white rounded-2xl text-xs font-black uppercase tracking-wider shadow-lg transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50"
+                      >
+                        {isSavingMerchantProd ? (
+                          <div className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                        ) : (
+                          <>
+                            <Check className="w-4 h-4 text-emerald-300" />
+                            <span>Save & Apply to Merchant Store</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                  </div>
+
+                  {/* Right Column: Live Storefront Card Preview (5 cols on xl) */}
+                  <div className="xl:col-span-5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-black uppercase tracking-wider text-emerald-800 dark:text-emerald-400 flex items-center gap-1.5">
+                        <Eye className="w-3.5 h-3.5" />
+                        Live Merchant Storefront Preview
+                      </label>
+                      <span className="text-[9px] font-bold text-slate-400 bg-slate-100 dark:bg-neutral-800 px-2 py-0.5 rounded-full">
+                        Interactive Mockup
+                      </span>
+                    </div>
+
+                    {/* Preview Card Mockup */}
+                    {(() => {
+                      const currentSelected = products.find(p => p && p.id === selectedMerchantProdId);
+                      const displayPrice = parseFloat(merchantProdForm.price) || 0;
+                      const hasBadge = merchantProdForm.promoBadge || merchantProdForm.isBestSeller;
+                      
+                      return (
+                        <div className="bg-[#FAF9F5] dark:bg-[#07130e] border border-amber-900/10 dark:border-neutral-800 rounded-3xl p-5 shadow-sm space-y-4 relative overflow-hidden">
+                          {/* Image Box */}
+                          <div className="relative aspect-[4/3] rounded-2xl overflow-hidden bg-white dark:bg-neutral-900 border border-slate-200/60 dark:border-neutral-800">
+                            <img 
+                              src={merchantProdForm.image || PRESET_GRAIN_IMAGES[0].url} 
+                              alt="Store Bag Visual"
+                              className="w-full h-full object-cover transition-transform duration-500 hover:scale-105"
+                            />
+
+                            {/* Floating Promotional Badge */}
+                            {hasBadge && (
+                              <div className="absolute top-3 left-3 z-10">
+                                <span className={cn(
+                                  "px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider shadow-md backdrop-blur-md flex items-center gap-1",
+                                  merchantProdForm.promoBadge 
+                                    ? "bg-amber-600 text-white" 
+                                    : "bg-[#C22424] text-white"
+                                )}>
+                                  {merchantProdForm.promoBadge || 'Best Seller'}
+                                </span>
+                              </div>
+                            )}
+
+                            {/* Status Tag */}
+                            <div className="absolute top-3 right-3 z-10">
+                              <span className={cn(
+                                "px-2.5 py-1 rounded-full text-[9px] font-extrabold shadow-sm backdrop-blur-md",
+                                merchantProdForm.status === 'Active' ? "bg-emerald-500/90 text-white" :
+                                merchantProdForm.status === 'Restocking' ? "bg-amber-500/90 text-white" :
+                                "bg-rose-500/90 text-white"
+                              )}>
+                                {merchantProdForm.status}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Info Section */}
+                          <div className="space-y-2 text-left">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-black uppercase tracking-widest text-[#8C7A6B]">
+                                {merchantProdForm.category || 'Commodity'}
+                              </span>
+                              <span className="text-[10px] font-bold text-slate-400">
+                                {currentSelected?.supplier ? `🏭 ${currentSelected.supplier}` : 'Direct Mill Procurement'}
+                              </span>
+                            </div>
+
+                            <div>
+                              <h4 className="font-serif text-lg font-bold text-slate-900 dark:text-white leading-snug">
+                                {currentSelected?.name || 'Selected Grain Commodity'}
+                              </h4>
+                              <p className="text-xs text-slate-500 dark:text-slate-400">
+                                Variety: {currentSelected?.brand || 'Standard Variety'}
+                              </p>
+                            </div>
+
+                            <div className="pt-2 border-t border-slate-200/60 dark:border-neutral-800 flex items-baseline justify-between">
+                              <div>
+                                <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-bold">Wholesale Rate</span>
+                                <span className="text-xl font-black text-slate-900 dark:text-white">
+                                  ₹{formatINR(displayPrice)}
+                                  <span className="text-xs font-normal text-slate-500 ml-1">/ Qtl</span>
+                                </span>
+                              </div>
+                              <span className="px-3 py-1.5 rounded-xl bg-[#143e2e] text-white text-[10px] font-black uppercase tracking-wider opacity-90">
+                                Storefront Active
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Quick Link to open store */}
+                    <div className="text-center pt-1">
+                      <a 
+                        href="/store" 
+                        target="_blank" 
+                        rel="noreferrer"
+                        className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 hover:underline inline-flex items-center gap-1 cursor-pointer"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>Open Live Merchant Store in New Tab ↗</span>
+                      </a>
+                    </div>
+
+                  </div>
+
+                </div>
+              </div>
+            )}
+
+          </div>
+
           {/* Grid Layout: 2 Columns */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
@@ -1764,19 +2384,6 @@ export default function ProductInventory() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-[9px] font-black uppercase tracking-widest text-secondary block text-left">Store Category</label>
-                  <select 
-                    value={newProduct.category || 'Sona Masoori'}
-                    onChange={(e) => setNewProduct({...newProduct, category: e.target.value})}
-                    className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl px-4 py-3 text-xs font-bold outline-none cursor-pointer text-on-surface"
-                  >
-                    {Array.from(new Set(['Sona Masoori', 'Basmati', 'IR64', 'Ponni', 'Parboiled', 'Broken', 'Organic', 'Commercial', ...(adminStoreCategories || []).map((c: any) => c.name || c.id)])).map((catName) => (
-                      <option key={catName} value={catName}>{catName}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1.5">
                   <label className="text-[9px] font-black uppercase tracking-widest text-secondary block text-left">Select Supplier</label>
                   <select 
                     value={newProduct.supplier || suppliersList[0] || ''}
@@ -1787,128 +2394,6 @@ export default function ProductInventory() {
                       <option key={i} value={s}>{s}</option>
                     ))}
                   </select>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[9px] font-black uppercase tracking-widest text-secondary block">Price per QTLS (INR)</label>
-                  <input 
-                    required
-                    type="number" 
-                    placeholder="e.g. 4200" 
-                    value={newProduct.price}
-                    onChange={(e) => setNewProduct({...newProduct, price: e.target.value})}
-                    className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl px-4 py-3 text-xs font-bold outline-none font-mono text-on-surface text-left"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[9px] font-black uppercase tracking-widest text-secondary block text-left">Standard Bag Visual</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {PRESET_GRAIN_IMAGES.map((img, i) => (
-                      <button
-                        key={i}
-                        type="button"
-                        onClick={() => setNewProduct({...newProduct, image: img.url})}
-                        className={cn(
-                          "p-2 rounded-xl border relative overflow-hidden transition-all text-left",
-                          newProduct.image === img.url 
-                            ? "border-primary bg-primary/[0.05]" 
-                            : "border-outline-variant bg-surface"
-                        )}
-                      >
-                        <div className="w-full h-12 rounded bg-surface-container overflow-hidden mb-1">
-                          <img src={img.url} alt={img.label} className="w-full h-full object-cover" />
-                        </div>
-                        <p className="text-[9px] font-bold text-secondary leading-none truncate">{img.label}</p>
-                        {newProduct.image === img.url && (
-                          <div className="absolute right-1 top-1 bg-primary text-white p-0.5 rounded-full">
-                            <Check className="w-2.5 h-2.5" />
-                          </div>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Drag & Drop Upload Container */}
-                  <div 
-                    onDragOver={handleDragOver}
-                    onDrop={(e) => handleDrop(e, false)}
-                    className="mt-3 border-2 border-dashed border-outline-variant/60 rounded-2xl p-4 text-center hover:border-primary/50 transition-colors bg-surface-container-low/40 relative group"
-                  >
-                    <input 
-                      type="file" 
-                      id="add-image-upload" 
-                      accept="image/*" 
-                      onChange={(e) => handleImageFileChange(e, false)} 
-                      className="hidden" 
-                    />
-                    <label 
-                      htmlFor="add-image-upload"
-                      className="cursor-pointer flex flex-col items-center justify-center space-y-1"
-                    >
-                      <Upload className="w-5 h-5 text-secondary/60 group-hover:text-primary transition-colors" />
-                      <span className="text-[10px] font-extrabold text-secondary hover:text-primary transition-colors block uppercase tracking-wider">
-                        Drag image here or click to browse
-                      </span>
-                      <span className="text-[8px] text-secondary/50 font-bold block">Supports PNG, JPG, WEBP, or SVG</span>
-                    </label>
-                  </div>
-
-                  {/* Custom URL Paste Option */}
-                  <div className="space-y-1 pt-1.5">
-                    <span className="text-[8px] text-secondary/50 font-extrabold uppercase tracking-widest block text-left">- OR PASTE CUSTOM IMAGE URL -</span>
-                    <input 
-                      type="url" 
-                      placeholder="e.g. https://example.com/rice_image.jpg"
-                      value={newProduct.image.startsWith('data:') ? '' : newProduct.image}
-                      onChange={(e) => setNewProduct({...newProduct, image: e.target.value})}
-                      className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl px-4 py-2.5 text-xs font-bold outline-none text-on-surface text-left"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[9px] font-black uppercase tracking-widest text-secondary block">Publish Status</label>
-                  <select 
-                    value={newProduct.status}
-                    onChange={(e) => setNewProduct({...newProduct, status: e.target.value})}
-                    className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-3 px-3 text-xs font-bold outline-none cursor-pointer text-on-surface"
-                  >
-                    <option value="Active">Active</option>
-                    <option value="Restocking">Restocking</option>
-                    <option value="Discontinued">Discontinued</option>
-                  </select>
-                </div>
-
-                {/* Store Promotional Controls */}
-                <div className="space-y-1.5">
-                  <label className="text-[9px] font-black uppercase tracking-widest text-secondary block text-left">Store Promotional Badge</label>
-                  <select 
-                    value={newProduct.promoBadge || ''}
-                    onChange={(e) => setNewProduct({...newProduct, promoBadge: e.target.value})}
-                    className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-3 px-3 text-xs font-bold outline-none cursor-pointer text-on-surface"
-                  >
-                    <option value="">None (Standard Listing)</option>
-                    <option value="🌾 Fresh 2026 Batch">🌾 Fresh 2026 Batch</option>
-                    <option value="⚡ Special Ex-Mill Rate">⚡ Special Ex-Mill Rate</option>
-                    <option value="⭐ Best Seller">⭐ Best Seller</option>
-                    <option value="🔥 Hot Stock">🔥 Hot Stock</option>
-                    <option value="🚚 Fast Dispatch">🚚 Fast Dispatch</option>
-                    <option value="💎 Premium Aged">💎 Premium Aged</option>
-                  </select>
-                </div>
-
-                <div className="p-3 bg-surface-container-low rounded-xl border border-outline-variant/30 flex items-center justify-between">
-                  <div>
-                    <span className="text-xs font-black text-on-surface block text-left">Feature as Best Seller</span>
-                    <span className="text-[10px] text-secondary block text-left">Highlights product with best-seller badge on store front</span>
-                  </div>
-                  <input 
-                    type="checkbox"
-                    checked={!!newProduct.isBestSeller}
-                    onChange={(e) => setNewProduct({...newProduct, isBestSeller: e.target.checked})}
-                    className="w-4 h-4 rounded text-primary focus:ring-primary cursor-pointer accent-primary"
-                  />
                 </div>
 
                 <div className="pt-4">
