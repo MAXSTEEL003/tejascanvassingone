@@ -567,44 +567,42 @@ function MerchantOrdersView({
                 key={order.id}
                 whileHover={{ y: -1 }}
                 className={cn(
-                  "bg-white dark:bg-[#141414] border rounded-2xl p-4 shadow-xs transition-all text-left space-y-3",
+                  "bg-white dark:bg-[#141414] border rounded-xl p-3 shadow-2xs transition-all text-left space-y-2.5",
                   isExpanded 
-                    ? "border-[#C22424]/60 ring-1 ring-[#C22424]/20 shadow-sm" 
+                    ? "border-[#C22424]/60 ring-1 ring-[#C22424]/20 shadow-xs" 
                     : "border-[#E5E7EB] dark:border-[#262626] hover:border-[#C22424]/40"
                 )}
               >
-                {/* Top Row: Order ID & Status Pill */}
+                {/* Compact Header: Order ID, Date, PO Tag & Status Pill */}
                 <div 
                   onClick={() => setExpandedOrderId(isExpanded ? null : order.id)}
-                  className="flex items-center justify-between cursor-pointer"
+                  className="flex items-center justify-between gap-2 cursor-pointer pb-2 border-b border-[#E5E7EB]/80 dark:border-neutral-800/80"
                 >
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-xs sm:text-sm font-mono text-[#111827] dark:text-white">
-                      Order #{order.billNo || order.id}
+                  <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                    <span className="font-bold text-xs font-mono text-[#111827] dark:text-white">
+                      #{order.billNo || order.id}
+                    </span>
+                    <span className="text-[11px] text-[#6B7280] dark:text-neutral-400">
+                      • {formatDateLong(order.date)}
                     </span>
                     {order.parentBatchId && (
-                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400">
-                        PO Allocated
+                      <span className="text-[9px] font-semibold px-1.5 py-0.2 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400">
+                        PO Linked
                       </span>
                     )}
                   </div>
-                  <span className={cn("px-2.5 py-0.5 rounded-full text-[10px] font-bold", pill.className)}>
+                  <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0", pill.className)}>
                     {pill.label}
                   </span>
                 </div>
 
-                {/* Date */}
-                <p className="text-[11px] text-[#6B7280] dark:text-slate-400 -mt-1">
-                  Placed on {formatDateLong(order.date)}
-                </p>
-
-                {/* Middle Item info with high-contrast breakdown */}
-                <div className="flex items-start justify-between gap-3 pt-2 border-t border-[#E5E7EB] dark:border-neutral-800">
+                {/* Compact Item & Pricing Row */}
+                <div className="flex items-center justify-between gap-2.5 pt-0.5">
                   <div 
                     onClick={() => setExpandedOrderId(isExpanded ? null : order.id)}
-                    className="flex items-start gap-3 min-w-0 flex-1 cursor-pointer"
+                    className="flex items-center gap-2.5 min-w-0 flex-1 cursor-pointer"
                   >
-                    <div className="w-12 h-12 rounded-xl bg-slate-50 dark:bg-neutral-800 border border-[#E5E7EB] dark:border-neutral-700 flex items-center justify-center shrink-0 p-1.5 overflow-hidden shadow-2xs">
+                    <div className="w-10 h-10 rounded-lg bg-slate-50 dark:bg-neutral-800 border border-[#E5E7EB] dark:border-neutral-700 flex items-center justify-center shrink-0 p-1 overflow-hidden shadow-2xs">
                       <img 
                         src={getOrderBagImage(order)} 
                         alt={order.items || order.product || 'Rice Bag'} 
@@ -616,63 +614,53 @@ function MerchantOrdersView({
                       />
                     </div>
 
-                    <div className="min-w-0 flex-1 space-y-1">
-                      <h4 className="font-extrabold text-sm text-[#111827] dark:text-white truncate tracking-tight">
+                    <div className="min-w-0 flex-1">
+                      <h4 className="font-bold text-xs sm:text-sm text-[#111827] dark:text-white truncate">
                         {order.items || order.product || 'Direct Mill Grain'}
                       </h4>
-
-                      {/* Quantities & Rate Pill Chips */}
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="inline-flex items-center gap-1 font-bold text-xs text-[#111827] dark:text-neutral-100 bg-neutral-100 dark:bg-neutral-800 px-2 py-0.5 rounded-md border border-neutral-200/70 dark:border-neutral-700/70">
-                          <span>{orderQty}</span>
-                          <span className="text-[10px] text-neutral-500 dark:text-neutral-400 font-semibold">QTL</span>
+                      <div className="flex items-center gap-1.5 text-[11px] text-neutral-600 dark:text-neutral-400 mt-0.5">
+                        <span className="font-bold text-neutral-900 dark:text-neutral-200">
+                          {orderQty} QTL
                         </span>
-
                         {formattedRate && (
-                          <span className="text-xs text-neutral-600 dark:text-neutral-400 font-medium">
-                            @ <span className="font-semibold text-neutral-900 dark:text-neutral-200">{formattedRate}</span>/QTL
-                          </span>
+                          <>
+                            <span className="text-neutral-400">•</span>
+                            <span className="text-neutral-600 dark:text-neutral-300">@{formattedRate}/Qtl</span>
+                          </>
                         )}
-                      </div>
-
-                      {/* Total Value */}
-                      <div className="flex items-baseline gap-1.5 pt-0.5">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
-                          Total:
-                        </span>
-                        <span className="font-mono font-extrabold text-sm text-[#C22424] dark:text-[#E05252]">
-                          {formattedTotal}
-                        </span>
                       </div>
                     </div>
                   </div>
 
-                  {/* Arrow Toggle Button */}
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setExpandedOrderId(isExpanded ? null : order.id);
-                    }}
-                    className={cn(
-                      "p-2 rounded-xl border transition-all cursor-pointer shrink-0 mt-0.5 flex items-center gap-1.5",
-                      isExpanded 
-                        ? "bg-[#C22424]/10 border-[#C22424]/30 text-[#C22424]" 
-                        : "bg-neutral-50 hover:bg-neutral-100 dark:bg-neutral-800/60 dark:hover:bg-neutral-700/60 border-neutral-200 dark:border-neutral-700/60 text-neutral-600 dark:text-neutral-300"
-                    )}
-                    title={isExpanded ? "Collapse Timeline" : "View Shipment Timeline"}
-                    aria-expanded={isExpanded}
-                  >
-                    <span className="text-[11px] font-bold hidden sm:inline">
-                      {isExpanded ? 'Hide' : 'Timeline'}
+                  {/* Right: Total Value & Timeline Toggle */}
+                  <div className="flex flex-col items-end shrink-0 gap-1">
+                    <span className="font-mono font-extrabold text-xs sm:text-sm text-[#C22424] dark:text-[#E05252]">
+                      {formattedTotal}
                     </span>
-                    <ChevronDown 
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setExpandedOrderId(isExpanded ? null : order.id);
+                      }}
                       className={cn(
-                        "w-4 h-4 transition-transform duration-200",
-                        isExpanded && "rotate-180 text-[#C22424]"
-                      )} 
-                    />
-                  </button>
+                        "px-2 py-0.5 rounded-md border text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1",
+                        isExpanded 
+                          ? "bg-[#C22424]/10 border-[#C22424]/30 text-[#C22424]" 
+                          : "bg-neutral-50 hover:bg-neutral-100 dark:bg-neutral-800/80 dark:hover:bg-neutral-700/80 border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300"
+                      )}
+                      title={isExpanded ? "Collapse Timeline" : "View Shipment Timeline"}
+                      aria-expanded={isExpanded}
+                    >
+                      <span>{isExpanded ? 'Hide' : 'Timeline'}</span>
+                      <ChevronDown 
+                        className={cn(
+                          "w-3 h-3 transition-transform duration-200",
+                          isExpanded && "rotate-180 text-[#C22424]"
+                        )} 
+                      />
+                    </button>
+                  </div>
                 </div>
 
                 {/* Inline Shipment Timeline Section (shows here only, instead of full screen animation) */}
@@ -685,65 +673,58 @@ function MerchantOrdersView({
                       transition={{ duration: 0.2 }}
                       className="overflow-hidden"
                     >
-                      <div className="pt-3 mt-3 border-t border-dashed border-[#E5E7EB] dark:border-neutral-800 space-y-3.5">
-                        {/* Logistics Summary Info */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs bg-[#FAFBFA] dark:bg-[#1C1C1C] p-2.5 rounded-xl border border-[#E5E7EB] dark:border-[#262626]">
-                          <div className="flex items-start gap-2">
-                            <Building className="w-3.5 h-3.5 text-[#C22424] shrink-0 mt-0.5" />
-                            <div className="min-w-0">
-                              <span className="text-[10px] uppercase font-bold text-[#6B7280] dark:text-neutral-400 block tracking-wider">
-                                Mill Partner
-                              </span>
-                              <span className="font-semibold text-[#111827] dark:text-white truncate block">
-                                {sanitizeSupplierName(order.supplier, 'Direct Mill Partner')}
-                              </span>
-                            </div>
+                      <div className="pt-2.5 mt-2 border-t border-dashed border-[#E5E7EB] dark:border-neutral-800 space-y-2.5">
+                        {/* Compact Logistics Strip */}
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] bg-neutral-50 dark:bg-neutral-900/60 p-2 rounded-lg border border-neutral-200/70 dark:border-neutral-800">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <Building className="w-3.5 h-3.5 text-[#C22424] shrink-0" />
+                            <span className="text-neutral-500 dark:text-neutral-400">Mill:</span>
+                            <span className="font-semibold text-neutral-900 dark:text-white truncate max-w-[120px] sm:max-w-[200px]">
+                              {sanitizeSupplierName(order.supplier, 'Direct Mill Partner')}
+                            </span>
                           </div>
 
-                          <div className="flex items-start gap-2">
-                            <MapPin className="w-3.5 h-3.5 text-[#C22424] shrink-0 mt-0.5" />
-                            <div className="min-w-0">
-                              <span className="text-[10px] uppercase font-bold text-[#6B7280] dark:text-neutral-400 block tracking-wider">
-                                Unloading Yard
-                              </span>
-                              <span className="font-semibold text-[#111827] dark:text-white line-clamp-1 block">
-                                {order.destination || order.address || 'APMC Yard, Yeshwanthpur, Bangalore'}
-                              </span>
-                            </div>
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <MapPin className="w-3.5 h-3.5 text-[#C22424] shrink-0" />
+                            <span className="text-neutral-500 dark:text-neutral-400">Dest:</span>
+                            <span className="font-semibold text-neutral-900 dark:text-white truncate max-w-[130px] sm:max-w-[200px]">
+                              {order.destination || order.address || 'APMC Yard, Bangalore'}
+                            </span>
                           </div>
 
                           {(order.truckNo || order.vehicleNo || order.lorryNo) && (
-                            <div className="sm:col-span-2 flex items-center gap-2 pt-1 border-t border-neutral-200/60 dark:border-neutral-800">
+                            <div className="w-full flex items-center gap-1.5 pt-1 border-t border-neutral-200/60 dark:border-neutral-800">
                               <Truck className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                              <span className="text-[11px] text-neutral-600 dark:text-neutral-300">
-                                Assigned Lorry: <span className="font-mono font-bold text-neutral-900 dark:text-white">{order.truckNo || order.vehicleNo || order.lorryNo}</span>
+                              <span className="text-neutral-500">Lorry:</span>
+                              <span className="font-mono font-bold text-neutral-900 dark:text-white">
+                                {order.truckNo || order.vehicleNo || order.lorryNo}
                               </span>
                             </div>
                           )}
                         </div>
 
                         {/* 5-Step Order Status Timeline */}
-                        <div className="space-y-2.5">
-                          <div className="flex items-center justify-between pb-1">
-                            <h5 className="text-[11px] font-bold uppercase tracking-wider text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
-                              <Clock className="w-3.5 h-3.5 text-[#C22424]" />
-                              Live Shipment Timeline
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between pb-0.5">
+                            <h5 className="text-[10px] font-bold uppercase tracking-wider text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
+                              <Clock className="w-3 h-3 text-[#C22424]" />
+                              Shipment Timeline
                             </h5>
-                            <span className="text-[10px] font-semibold text-neutral-500 dark:text-neutral-400">
-                              {order.loadingDays !== undefined ? `Est. loading: ${order.loadingDays} days` : 'Daily updates'}
+                            <span className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400">
+                              {order.loadingDays !== undefined ? `Est. ~${order.loadingDays}d` : 'Daily updates'}
                             </span>
                           </div>
 
-                          <div className="relative pl-5 space-y-3.5">
+                          <div className="relative pl-4 space-y-2.5">
                             {/* Vertical connector line */}
-                            <div className="absolute left-[9px] top-2 bottom-2 w-0.5 bg-[#E5E7EB] dark:bg-neutral-800" />
+                            <div className="absolute left-[7px] top-2 bottom-2 w-0.5 bg-[#E5E7EB] dark:bg-neutral-800" />
 
                             {steps.map((st) => (
-                              <div key={st.id} className="relative flex items-start gap-2.5">
+                              <div key={st.id} className="relative flex items-start gap-2">
                                 {/* Timeline Node */}
                                 <div 
                                   className={cn(
-                                    "absolute -left-5 w-5 h-5 rounded-full flex items-center justify-center text-white shrink-0 z-10 transition-all",
+                                    "absolute -left-4 w-4 h-4 rounded-full flex items-center justify-center text-white shrink-0 z-10 transition-all",
                                     st.completed 
                                       ? "bg-[#C22424] shadow-2xs" 
                                       : st.active
@@ -752,18 +733,18 @@ function MerchantOrdersView({
                                   )}
                                 >
                                   {st.completed ? (
-                                    <Check className="w-3 h-3 stroke-[3]" />
+                                    <Check className="w-2.5 h-2.5 stroke-[3]" />
                                   ) : st.active ? (
-                                    <span className="w-1.5 h-1.5 rounded-full bg-[#C22424] animate-ping" />
+                                    <span className="w-1 h-1 rounded-full bg-[#C22424] animate-ping" />
                                   ) : (
                                     <span className="w-1 h-1 rounded-full bg-neutral-300 dark:bg-neutral-600" />
                                   )}
                                 </div>
 
-                                <div className="min-w-0 flex-1 pl-1.5">
+                                <div className="min-w-0 flex-1 pl-1">
                                   <div className="flex items-center justify-between gap-2">
                                     <span className={cn(
-                                      "text-xs font-bold leading-tight",
+                                      "text-[11px] font-bold leading-tight",
                                       st.completed || st.active ? "text-[#111827] dark:text-white" : "text-[#6B7280] dark:text-neutral-500"
                                     )}>
                                       {st.title}
@@ -772,7 +753,7 @@ function MerchantOrdersView({
                                       {st.time}
                                     </span>
                                   </div>
-                                  <p className="text-[11px] text-[#6B7280] dark:text-neutral-400 leading-relaxed mt-0.5">
+                                  <p className="text-[10px] text-[#6B7280] dark:text-neutral-400 leading-snug mt-0.5">
                                     {st.desc}
                                   </p>
                                 </div>
@@ -782,14 +763,14 @@ function MerchantOrdersView({
                         </div>
 
                         {/* Broker Support Button */}
-                        <div className="pt-1">
+                        <div className="pt-0.5">
                           <a
                             href="tel:+919916416995"
                             onClick={(e) => e.stopPropagation()}
-                            className="w-full py-2 px-3 bg-neutral-50 hover:bg-neutral-100 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 border border-[#E5E7EB] dark:border-neutral-700 rounded-xl font-semibold text-[11px] flex items-center justify-center gap-2 transition-all no-underline"
+                            className="w-full py-1.5 px-2.5 bg-neutral-50 hover:bg-neutral-100 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 border border-[#E5E7EB] dark:border-neutral-700 rounded-lg font-semibold text-[10px] flex items-center justify-center gap-1.5 transition-all no-underline"
                           >
-                            <PhoneCall className="w-3.5 h-3.5 text-[#C22424]" />
-                            <span>Direct APMC Broker Desk: +91 99164 16995</span>
+                            <PhoneCall className="w-3 h-3 text-[#C22424]" />
+                            <span>Broker Desk: +91 99164 16995</span>
                           </a>
                         </div>
                       </div>
