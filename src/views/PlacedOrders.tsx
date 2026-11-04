@@ -44,7 +44,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { cn, formatINR, getRegisteredSuppliers, sanitizeSupplierName, getDeletedPlacedOrderIds, addDeletedPlacedOrderIds, removeDeletedPlacedOrderId, addDeletedProcurementIds } from '../lib/utils';
+import { cn, formatINR, getRegisteredSuppliers, sanitizeSupplierName, getDeletedPlacedOrderIds, addDeletedPlacedOrderIds, removeDeletedPlacedOrderId, addDeletedProcurementIds, resolveBuyerProfile } from '../lib/utils';
 import { getCollectionDocs, setCollectionDoc, deleteCollectionDoc, markLedgerEntriesAsArrived, autoCreateArrivalEntryForIncomingLog, updateLedgersForLifting, db } from '../lib/firebase';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { verifyActionWithServer } from '../lib/auth';
@@ -239,6 +239,67 @@ export const getOrderBagImage = (order: any): string => {
   return '/images/keshar_kali.png';
 };
 
+export const isOrderArrived = (order: any): boolean => {
+  if (!order) return false;
+  const statusStr = String(order.status || '').toLowerCase().trim();
+  const progress = Number(order.progress) || 0;
+  if (statusStr === 'arrived' || statusStr === 'delivered' || progress >= 100) {
+    return true;
+  }
+  if (order.arrivalHistory && Array.isArray(order.arrivalHistory) && order.arrivalHistory.length > 0) {
+    const totalArrived = order.arrivalHistory.reduce((sum: number, h: any) => sum + (Number(h.qty) || 0), 0);
+    const ordered = Number(order.totalQty || order.qty) || 0;
+    if (ordered > 0 && totalArrived >= ordered) return true;
+  }
+  return false;
+};
+
+export const isOrderDelivered = (order: any): boolean => {
+  if (!order) return false;
+  const s = String(order.status || '').toLowerCase().trim();
+  const p = Number(order.progress) || 0;
+  return isOrderArrived(order) || s === 'arrived' || s === 'delivered' || s === 'unloaded' || s === 'completed' || p >= 100;
+};
+
+export const isOrderDispatched = (order: any): boolean => {
+  if (!order) return false;
+  if (isOrderDelivered(order)) return true;
+  const s = String(order.status || '').toLowerCase().trim();
+  const p = Number(order.progress) || 0;
+  const hasTruck = Boolean(order.truckNo || order.vehicleNo || order.lorryNo);
+  return s === 'in transit' || s === 'dispatched' || s === 'loaded' || s === 'partial arrival' || (p >= 50 && p < 100) || hasTruck;
+};
+
+export const isOrderApproaching = (order: any): boolean => {
+  if (!order) return false;
+  const s = String(order.status || '').toLowerCase().trim();
+  const p = Number(order.progress) || 0;
+  return s === 'out for delivery' || s === 'approaching' || (s === 'in transit' && p >= 75);
+};
+
+export const isOrderConfirmed = (order: any): boolean => {
+  if (!order) return false;
+  if (isOrderDispatched(order)) return true;
+  const s = String(order.status || '').toLowerCase().trim();
+  const p = Number(order.progress) || 0;
+  return (
+    s === 'confirmed' ||
+    s === 'accepted' ||
+    s === 'approved' ||
+    s === 'awaiting grouping' ||
+    s === 'awaiting settlement' ||
+    s === 'pending loading' ||
+    s === 'po sent' ||
+    s === 'po generated' ||
+    s === 'po dispatched' ||
+    Boolean(order.parentBatchId) ||
+    Boolean(order.isGroupedBatch) ||
+    Boolean(order.poAcknowledged) ||
+    Boolean(order.acknowledgedAt) ||
+    p >= 25
+  );
+};
+
 function MerchantOrdersView({ 
   orders, 
   isLoading, 
@@ -253,13 +314,11 @@ function MerchantOrdersView({
   const [searchQuery, setSearchQuery] = useState('');
   const navigate = useNavigate();
 
-  // Filtered orders list
+  // Filtered orders list using comprehensive status checking
   const filteredOrders = orders.filter(order => {
-    const s = String(order.status || '').toLowerCase();
-    const p = order.progress || 0;
-    const isDelivered = s === 'arrived' || s === 'delivered' || p >= 100;
-    const isDispatched = s === 'in transit' || s === 'dispatched' || (p >= 50 && p < 100);
-    const isConfirmed = s === 'confirmed' || s === 'accepted';
+    const isDelivered = isOrderDelivered(order);
+    const isDispatched = isOrderDispatched(order);
+    const isConfirmed = isOrderConfirmed(order);
     const isPending = !isDelivered && !isDispatched && !isConfirmed;
 
     if (statusFilter === 'PENDING' && !isPending) return false;
@@ -277,21 +336,42 @@ function MerchantOrdersView({
     return true;
   });
 
-  const getOrderStatusPill = (statusStr: string, progress: number = 0) => {
+  const getOrderStatusPill = (statusStr: string, progress: number = 0, order?: any) => {
+    if (order) {
+      if (isOrderDelivered(order)) {
+        return {
+          label: 'Delivered',
+          className: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800'
+        };
+      }
+      if (isOrderDispatched(order)) {
+        return {
+          label: 'Dispatched',
+          className: 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400 border border-blue-200 dark:border-blue-800'
+        };
+      }
+      if (isOrderConfirmed(order)) {
+        return {
+          label: 'Confirmed',
+          className: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800'
+        };
+      }
+    }
+
     const s = String(statusStr || '').toLowerCase().trim();
-    if (s === 'arrived' || s === 'delivered' || progress >= 100) {
+    if (s === 'arrived' || s === 'delivered' || s === 'unloaded' || s === 'completed' || progress >= 100) {
       return {
         label: 'Delivered',
         className: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800'
       };
     }
-    if (s === 'in transit' || s === 'dispatched' || (progress >= 50 && progress < 100)) {
+    if (s === 'in transit' || s === 'dispatched' || s === 'loaded' || (progress >= 50 && progress < 100)) {
       return {
         label: 'Dispatched',
         className: 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400 border border-blue-200 dark:border-blue-800'
       };
     }
-    if (s === 'confirmed' || s === 'accepted') {
+    if (s === 'confirmed' || s === 'accepted' || s === 'approved' || s === 'awaiting grouping' || s === 'awaiting settlement' || s === 'pending loading' || progress >= 25) {
       return {
         label: 'Confirmed',
         className: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800'
@@ -303,16 +383,15 @@ function MerchantOrdersView({
     };
   };
 
-  // Screen 8: Order Tracking View
+  // Screen 8: Order Tracking View with Real-time Shipment Timeline
   if (trackingOrder) {
-    const s = String(trackingOrder.status || '').toLowerCase().trim();
-    const p = trackingOrder.progress || 0;
-    const isDelivered = s === 'arrived' || s === 'delivered' || p >= 100;
-    const isDispatched = isDelivered || s === 'in transit' || s === 'dispatched' || (p >= 50 && p < 100);
-    const isConfirmed = isDispatched || s === 'confirmed' || s === 'accepted';
+    const isDelivered = isOrderDelivered(trackingOrder);
+    const isDispatched = isOrderDispatched(trackingOrder);
+    const isApproaching = isOrderApproaching(trackingOrder);
+    const isConfirmed = isOrderConfirmed(trackingOrder);
     const isPlaced = true;
 
-    const pill = getOrderStatusPill(trackingOrder.status, trackingOrder.progress);
+    const pill = getOrderStatusPill(trackingOrder.status, trackingOrder.progress, trackingOrder);
     const orderQty = trackingOrder.originalOrders 
       ? trackingOrder.originalOrders.reduce((sum, sub) => sum + (parseFloat(sub.qty) || 0), 0)
       : (parseFloat(trackingOrder.qty) || 18);
@@ -329,32 +408,50 @@ function MerchantOrdersView({
       {
         id: 2,
         title: 'Order Confirmed',
-        time: isConfirmed ? formatDateLong(trackingOrder.date) : 'Pending Confirmation',
-        desc: 'Trade contract acknowledged by direct mill supplier partner.',
+        time: isConfirmed 
+          ? (trackingOrder.confirmedAt || trackingOrder.approvedAt || formatDateLong(trackingOrder.date)) 
+          : 'Pending Broker Desk Confirmation',
+        desc: isConfirmed
+          ? (trackingOrder.parentBatchId 
+              ? `Trade contract confirmed & purchase order allocated to mill (${sanitizeSupplierName(trackingOrder.supplier, 'Mill Partner')}).` 
+              : 'Trade contract accepted and verified by brokerage desk.')
+          : 'Pending trade contract review and mill allocation.',
         completed: isConfirmed,
         active: isConfirmed && !isDispatched
       },
       {
         id: 3,
         title: 'Dispatched from Mill',
-        time: isDispatched ? 'In Transit' : 'Scheduled',
-        desc: 'Ex-mill loading target confirmed. Logistics freight allocated.',
+        time: isDispatched ? (trackingOrder.dispatchDate || 'In Transit') : 'Scheduled',
+        desc: isDispatched 
+          ? (trackingOrder.truckNo 
+              ? `Ex-mill loading target completed on Lorry ${trackingOrder.truckNo}. En route to APMC Yard.` 
+              : 'Ex-mill loading target confirmed. Logistics freight allocated and in transit.')
+          : `Estimated loading within ${trackingOrder.loadingDays !== undefined ? trackingOrder.loadingDays : 5} days. Logistics freight being arranged.`,
         completed: isDispatched,
-        active: isDispatched && !isDelivered
+        active: isDispatched && !isDelivered && !isApproaching
       },
       {
         id: 4,
         title: 'Out for Delivery',
-        time: isDelivered ? 'Arrived' : isDispatched ? 'Approaching' : 'Pending Transit',
-        desc: 'Truck approaching destination APMC Yard unloading bay.',
+        time: isDelivered ? 'Arrived' : isApproaching ? 'Approaching APMC Yard' : isDispatched ? 'Pending Transit' : 'Pending Loading',
+        desc: isDelivered 
+          ? 'Truck reached destination APMC Yard unloading dock.'
+          : isApproaching
+          ? 'Truck approaching destination APMC Yard unloading bay.'
+          : isDispatched
+          ? 'Freight moving along national highway corridor towards Bangalore.'
+          : 'Awaiting mill dispatch before APMC Yard arrival.',
         completed: isDelivered,
-        active: false
+        active: isApproaching && !isDelivered
       },
       {
         id: 5,
         title: 'Delivered & Unloaded',
-        time: isDelivered ? 'Completed' : 'Pending Arrival',
-        desc: 'Shipment received, verified, and weighed at unloading yard.',
+        time: isDelivered ? (trackingOrder.arrivalDate || 'Completed') : 'Pending Arrival',
+        desc: isDelivered 
+          ? 'Shipment received, verified, and weighed at unloading yard.'
+          : 'Shipment will be inspected and weighed upon APMC Yard arrival.',
         completed: isDelivered,
         active: false
       }
@@ -652,21 +749,6 @@ function MerchantOrdersView({
     </div>
   );
 }
-
-export const isOrderArrived = (order: any): boolean => {
-  if (!order) return false;
-  const statusStr = String(order.status || '').toLowerCase().trim();
-  const progress = Number(order.progress) || 0;
-  if (statusStr === 'arrived' || statusStr === 'delivered' || progress >= 100) {
-    return true;
-  }
-  if (order.arrivalHistory && Array.isArray(order.arrivalHistory) && order.arrivalHistory.length > 0) {
-    const totalArrived = order.arrivalHistory.reduce((sum: number, h: any) => sum + (Number(h.qty) || 0), 0);
-    const ordered = Number(order.totalQty || order.qty) || 0;
-    if (ordered > 0 && totalArrived >= ordered) return true;
-  }
-  return false;
-};
 
 interface PlacedOrdersProps {
   forceMerchantView?: boolean;
@@ -973,18 +1055,30 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
     const normEmail = (merchantEmail || '').trim().toLowerCase();
     const normUid = (merchantUserId || '').trim().toLowerCase();
 
+    const activeBuyer = resolveBuyerProfile();
+    const activeBuyerName = (activeBuyer?.name || '').trim().toLowerCase();
+    const activeBuyerUser = (activeBuyer?.username || '').trim().toLowerCase();
+    const activeBuyerPhone = (activeBuyer?.phone || localStorage.getItem('userPhone') || '').replace(/\D/g, '');
+
     const isMerchantMatch = (item: any) => {
       if (!item) return false;
       const b = String(item.buyer || item.buyerName || '').trim().toLowerCase();
       const em = String(item.buyerEmail || item.email || item.companyEmail || '').trim().toLowerCase();
       const uid = String(item.userId || item.buyerId || '').trim().toLowerCase();
+      const ph = String(item.phone || item.customerPhone || item.recipientPhone || '').replace(/\D/g, '');
 
       if (normUid && uid && uid === normUid) return true;
+      if (activeBuyer?.id && uid && uid === String(activeBuyer.id).toLowerCase()) return true;
       if (normEmail && em && em === normEmail) return true;
-      if (normMerchant && b) {
-        if (b === normMerchant) return true;
-        if (normMerchant.length > 3 && b.includes(normMerchant)) return true;
-        if (b.length > 3 && normMerchant.includes(b)) return true;
+      if (activeBuyerPhone && ph && ph.length >= 7 && activeBuyerPhone.length >= 7) {
+        if (ph === activeBuyerPhone || ph.endsWith(activeBuyerPhone) || activeBuyerPhone.endsWith(ph)) return true;
+      }
+
+      const targetNames = [normMerchant, activeBuyerName, activeBuyerUser].filter(Boolean);
+      for (const tName of targetNames) {
+        if (b === tName) return true;
+        if (tName.length >= 3 && b.includes(tName)) return true;
+        if (b.length >= 3 && tName.includes(b)) return true;
       }
       return false;
     };
@@ -1020,7 +1114,6 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
         !String(o.id).startsWith('#ORD-99') && 
         !String(o.id).startsWith('TC-0000') && 
         !isDeleted(o.id) &&
-        o.status !== 'Pending Approval' && 
         o.status !== 'Draft Order' && 
         o.status !== 'Rejected'
     );
@@ -1063,21 +1156,20 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
     const results: any[] = [];
     const addedKeys = new Set<string>();
 
-    // 1. Direct procurement requests (placed from store/bag/cart) - ONLY show once approved!
+    // 1. Direct procurement requests (placed from store/bag/cart)
     validProc.forEach((proc: any) => {
       if (!proc || !proc.id) return;
       const key = String(proc.id).trim().toLowerCase().replace(/^#/, '');
       if (isMerchantMatch(proc)) {
         const batchInfo = batchStatusMap.get(key);
-        // Procurement indents appear in Placed Orders once approved or placed into a PO!
-        if (!batchInfo && !isApprovedStatus(proc.status)) {
-          return;
-        }
+        const isApproved = isApprovedStatus(proc.status) || Boolean(batchInfo);
+        const effectiveStatus = batchInfo?.status || (isApproved ? (proc.status || 'Approved') : 'Pending Approval');
+        const effectiveProgress = batchInfo?.progress || (isApproved ? 35 : 15);
 
         const orderObj = {
           ...proc,
-          status: batchInfo?.status || proc.status || 'Approved',
-          progress: batchInfo?.progress || (isApprovedStatus(proc.status) ? 35 : proc.progress) || 25,
+          status: effectiveStatus,
+          progress: effectiveProgress,
           supplier: batchInfo?.supplier || proc.supplier || 'Direct Mill',
           billNo: batchInfo?.billNo || proc.billNo || proc.id,
           origin: batchInfo?.origin || proc.origin || 'Mill Dispatch Hub',
