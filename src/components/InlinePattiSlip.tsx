@@ -13,6 +13,8 @@ import {
 import { cn, formatINR } from '../lib/utils';
 import { useNavigate } from 'react-router-dom';
 import html2canvas from 'html2canvas';
+import { motion, AnimatePresence } from 'motion/react';
+import { TC_COMPANY_LOGO_BASE64 } from '../utils/logoBase64';
 
 interface InlinePattiSlipProps {
   txn: any;
@@ -331,6 +333,7 @@ export default function InlinePattiSlip({ txn, onOpenFullPatti, onClose }: Inlin
   const [copied, setCopied] = useState(false);
   const [copiedImage, setCopiedImage] = useState(false);
   const [isCapturingImage, setIsCapturingImage] = useState(false);
+  const [copyNotification, setCopyNotification] = useState<{ type: 'success' | 'fallback' | 'error'; message: string } | null>(null);
 
   // Exact configuration matching PattiView
   const printConfig = {
@@ -536,8 +539,14 @@ Generated via TEJAS CANVASSING Terminal.`;
       const canvas = await html2canvas(element, {
         scale: scale, 
         useCORS: true,
+        allowTaint: false,
         logging: false,
         backgroundColor: '#ffffff',
+        windowWidth: 1200,
+        windowHeight: 1600,
+        scrollX: 0,
+        scrollY: 0,
+        imageTimeout: 15000,
         onclone: (clonedDoc) => {
           clonedDoc.documentElement.classList.remove('dark');
           clonedDoc.body.classList.remove('dark');
@@ -598,7 +607,26 @@ Generated via TEJAS CANVASSING Terminal.`;
               scrollContainer.style.overflow = 'visible';
               scrollContainer.style.padding = '0';
               scrollContainer.style.margin = '0';
+              scrollContainer.style.width = '100%';
+              scrollContainer.style.minWidth = '980px';
             }
+
+            // Ensure 10-column table never clips columns 7-10 on responsive views
+            const gridCols10 = clonedEl.querySelectorAll('.grid-cols-10');
+            gridCols10.forEach((el) => {
+              if (el instanceof HTMLElement) {
+                el.style.width = '100%';
+                el.style.minWidth = '980px';
+              }
+            });
+
+            // Ensure company logo uses offline base64 data URI to prevent CORS/taint failures
+            const imgs = clonedEl.querySelectorAll('img');
+            imgs.forEach((img) => {
+              if (img.src.includes('logo.png') || img.getAttribute('src') === '/logo.png') {
+                img.src = TC_COMPANY_LOGO_BASE64;
+              }
+            });
 
             const propsToConvert = [
               'color',
@@ -810,34 +838,83 @@ Generated via TEJAS CANVASSING Terminal.`;
   const copyPattiAsImage = async () => {
     if (isCapturingImage) return;
     setIsCapturingImage(true);
+
+    // Modern Delayed Clipboard Item strategy:
+    // Calling navigator.clipboard.write synchronously with a Promise<Blob> inside the click handler
+    // preserves the transient user gesture token across asynchronous html2canvas rendering!
+    let resolveBlob!: (blob: Blob) => void;
+    let rejectBlob!: (err: any) => void;
+    const blobPromise = new Promise<Blob>((resolve, reject) => {
+      resolveBlob = resolve;
+      rejectBlob = reject;
+    });
+
+    let writePromise: Promise<void> | null = null;
+    let promiseClipboardSupported = false;
+
+    if (typeof navigator !== 'undefined' && navigator.clipboard && typeof ClipboardItem !== 'undefined') {
+      try {
+        const item = new ClipboardItem({ 'image/png': blobPromise });
+        writePromise = navigator.clipboard.write([item]);
+        writePromise.catch(() => {});
+        promiseClipboardSupported = true;
+      } catch (e) {
+        promiseClipboardSupported = false;
+      }
+    }
+
     try {
       const canvas = await generatePattiCanvas(3);
       if (!canvas) {
-        alert('Could not render document canvas. Please try again.');
-        return;
+        const err = new Error('Could not render document canvas.');
+        if (promiseClipboardSupported) rejectBlob(err);
+        throw err;
       }
 
-      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png', 1.0));
       if (!blob) {
-        alert('Failed to encode PNG image.');
-        return;
+        const err = new Error('Failed to encode PNG image.');
+        if (promiseClipboardSupported) rejectBlob(err);
+        throw err;
       }
 
       let copiedToClipboard = false;
 
-      if (navigator.clipboard && typeof ClipboardItem !== 'undefined') {
+      if (promiseClipboardSupported && writePromise) {
         try {
-          const item = new ClipboardItem({ 'image/png': blob });
-          await navigator.clipboard.write([item]);
+          resolveBlob(blob);
+          await writePromise;
+          copiedToClipboard = true;
+        } catch (writeErr) {
+          console.warn('Promise-based clipboard write rejected, attempting direct blob fallback:', writeErr);
+          if (navigator.clipboard && typeof ClipboardItem !== 'undefined') {
+            try {
+              await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+              copiedToClipboard = true;
+            } catch (directErr) {
+              console.warn('Direct blob write also failed:', directErr);
+            }
+          }
+        }
+      } else if (navigator.clipboard && typeof ClipboardItem !== 'undefined') {
+        try {
+          await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
           copiedToClipboard = true;
         } catch (clipErr) {
-          console.warn('Direct clipboard write failed, using download fallback:', clipErr);
+          console.warn('Direct clipboard write failed:', clipErr);
         }
       }
 
       if (copiedToClipboard) {
         setCopiedImage(true);
-        setTimeout(() => setCopiedImage(false), 2500);
+        setCopyNotification({
+          type: 'success',
+          message: 'Copied 3× Ultra-HD image to clipboard! Ready to paste (Ctrl+V) into WhatsApp, Email, or Slack.'
+        });
+        setTimeout(() => {
+          setCopiedImage(false);
+          setCopyNotification(null);
+        }, 3500);
       } else {
         const filename = `Patti_Receipt_${(formData.partyName || 'Trade').replace(/[^a-zA-Z0-9_-]/g, '_')}_${printConfig.pattiNo}.png`;
         const url = URL.createObjectURL(blob);
@@ -848,8 +925,12 @@ Generated via TEJAS CANVASSING Terminal.`;
         link.click();
         document.body.removeChild(link);
         setTimeout(() => URL.revokeObjectURL(url), 1000);
-        setCopiedImage(true);
-        setTimeout(() => setCopiedImage(false), 2500);
+
+        setCopyNotification({
+          type: 'fallback',
+          message: 'Clipboard write restricted by browser permissions. High-resolution PNG saved to Downloads!'
+        });
+        setTimeout(() => setCopyNotification(null), 4000);
       }
     } catch (error) {
       console.error('Copy Image Error:', error);
@@ -859,7 +940,7 @@ Generated via TEJAS CANVASSING Terminal.`;
     }
   };
 
-    const handlePrint = () => {
+  const handlePrint = () => {
     const el = document.getElementById(formId);
     if (!el) return;
 
@@ -1011,7 +1092,7 @@ Generated via TEJAS CANVASSING Terminal.`;
         <div className="mb-6 pb-6 border-b border-dashed border-neutral-300 dark:border-neutral-800 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 text-left">
           <div className="flex items-center gap-3.5">
             <div className="w-12 h-12 rounded-2xl flex items-center justify-center p-1 shrink-0 shadow-sm bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700">
-              <img src="/logo.png" alt="TC" className="w-full h-full object-contain" />
+              <img src={TC_COMPANY_LOGO_BASE64} alt="TC" className="w-full h-full object-contain" />
             </div>
             <div>
               <h2 className={cn("text-xl font-bold tracking-tight uppercase leading-none pb-1", colors.primaryText)}>
@@ -1208,6 +1289,25 @@ Generated via TEJAS CANVASSING Terminal.`;
           </div>
         </div>
         </div>
+        {/* Floating Notification Toast */}
+        <AnimatePresence>
+          {copyNotification && (
+            <motion.div
+              initial={{ opacity: 0, y: 20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 15, scale: 0.95 }}
+              className={cn(
+                "fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 px-5 py-3 rounded-2xl shadow-2xl border text-xs sm:text-sm font-black backdrop-blur-xl select-none",
+                copyNotification.type === 'success' 
+                  ? "bg-neutral-900/95 dark:bg-neutral-100/95 text-white dark:text-neutral-900 border-emerald-500/50 shadow-emerald-500/20"
+                  : "bg-neutral-900/95 dark:bg-neutral-100/95 text-white dark:text-neutral-900 border-red-500/50 shadow-red-500/20"
+              )}
+            >
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>{copyNotification.message}</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );

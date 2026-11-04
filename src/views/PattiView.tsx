@@ -21,6 +21,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { cn, formatINR } from '../lib/utils';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
+import { TC_COMPANY_LOGO_BASE64 } from '../utils/logoBase64';
 
 interface PattiFormData {
   millerName: string;
@@ -554,8 +555,14 @@ Generated via TEJAS CANVASSING Terminal.`;
       const canvas = await html2canvas(element, {
         scale: scale, 
         useCORS: true,
+        allowTaint: false,
         logging: false,
         backgroundColor: '#ffffff',
+        windowWidth: 1200,
+        windowHeight: 1600,
+        scrollX: 0,
+        scrollY: 0,
+        imageTimeout: 15000,
         onclone: (clonedDoc) => {
           // Force light mode on cloned document for clean print/image output
           clonedDoc.documentElement.classList.remove('dark');
@@ -621,7 +628,26 @@ Generated via TEJAS CANVASSING Terminal.`;
               scrollContainer.style.overflow = 'visible';
               scrollContainer.style.padding = '0';
               scrollContainer.style.margin = '0';
+              scrollContainer.style.width = '100%';
+              scrollContainer.style.minWidth = '980px';
             }
+
+            // Ensure 10-column table never clips columns 7-10 on responsive views
+            const gridCols10 = clonedEl.querySelectorAll('.grid-cols-10');
+            gridCols10.forEach((el) => {
+              if (el instanceof HTMLElement) {
+                el.style.width = '100%';
+                el.style.minWidth = '980px';
+              }
+            });
+
+            // Ensure company logo uses offline base64 data URI to prevent CORS/taint failures
+            const imgs = clonedEl.querySelectorAll('img');
+            imgs.forEach((img) => {
+              if (img.src.includes('logo.png') || img.getAttribute('src') === '/logo.png') {
+                img.src = TC_COMPANY_LOGO_BASE64;
+              }
+            });
 
             const propsToConvert = [
               'color',
@@ -879,29 +905,74 @@ Generated via TEJAS CANVASSING Terminal.`;
   const copyPattiAsImage = async () => {
     if (isCapturingImage) return;
     setIsCapturingImage(true);
+
+    // Modern Delayed Clipboard Item strategy:
+    // Chromium and Safari require calling navigator.clipboard.write during user gesture.
+    // By passing a Promise<Blob> to ClipboardItem synchronously inside the click handler,
+    // the user activation token is preserved across html2canvas rendering!
+    let resolveBlob!: (blob: Blob) => void;
+    let rejectBlob!: (err: any) => void;
+    const blobPromise = new Promise<Blob>((resolve, reject) => {
+      resolveBlob = resolve;
+      rejectBlob = reject;
+    });
+
+    let writePromise: Promise<void> | null = null;
+    let promiseClipboardSupported = false;
+
+    if (typeof navigator !== 'undefined' && navigator.clipboard && typeof ClipboardItem !== 'undefined') {
+      try {
+        const item = new ClipboardItem({ 'image/png': blobPromise });
+        writePromise = navigator.clipboard.write([item]);
+        // Catch early rejections so it doesn't trigger unhandledrejection
+        writePromise.catch(() => {});
+        promiseClipboardSupported = true;
+      } catch (e) {
+        // Some older browsers/Firefox throw if ClipboardItem constructor receives a Promise
+        promiseClipboardSupported = false;
+      }
+    }
+
     try {
       const canvas = await generatePattiCanvas(imageScale);
       if (!canvas) {
-        alert('Could not render document canvas. Please try again.');
-        return;
+        const err = new Error('Could not render document canvas.');
+        if (promiseClipboardSupported) rejectBlob(err);
+        throw err;
       }
 
-      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png', 1.0));
       if (!blob) {
-        alert('Failed to encode PNG image.');
-        return;
+        const err = new Error('Failed to encode PNG image.');
+        if (promiseClipboardSupported) rejectBlob(err);
+        throw err;
       }
 
       let copiedToClipboard = false;
 
-      // Attempt high-fidelity Clipboard Item write
-      if (navigator.clipboard && typeof ClipboardItem !== 'undefined') {
+      if (promiseClipboardSupported && writePromise) {
         try {
-          const item = new ClipboardItem({ 'image/png': blob });
-          await navigator.clipboard.write([item]);
+          resolveBlob(blob);
+          await writePromise;
+          copiedToClipboard = true;
+        } catch (writeErr) {
+          console.warn('Promise-based clipboard write rejected, attempting direct blob fallback:', writeErr);
+          if (navigator.clipboard && typeof ClipboardItem !== 'undefined') {
+            try {
+              await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+              copiedToClipboard = true;
+            } catch (directErr) {
+              console.warn('Direct blob write also failed:', directErr);
+            }
+          }
+        }
+      } else if (navigator.clipboard && typeof ClipboardItem !== 'undefined') {
+        // Direct blob write (Firefox and browsers without delayed promise support)
+        try {
+          await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
           copiedToClipboard = true;
         } catch (clipErr) {
-          console.warn('Direct clipboard write failed, utilizing automatic download fallback:', clipErr);
+          console.warn('Direct clipboard write failed:', clipErr);
         }
       }
 
@@ -909,14 +980,14 @@ Generated via TEJAS CANVASSING Terminal.`;
         setCopiedImage(true);
         setCopyNotification({
           type: 'success',
-          message: `Copied ${imageScale}× Ultra-HD image to clipboard! Ready to paste into WhatsApp, Email, or Slack.`
+          message: `Copied ${imageScale}× Ultra-HD image to clipboard! Ready to paste (Ctrl+V) into WhatsApp, Email, or Slack.`
         });
         setTimeout(() => {
           setCopiedImage(false);
           setCopyNotification(null);
         }, 3500);
       } else {
-        // Fallback: download PNG directly
+        // Fallback: download PNG directly to device
         const filename = `Patti_Ledger_${(formData.partyName || 'Statement').replace(/[^a-zA-Z0-9_-]/g, '_')}_${printConfig.pattiNo}.png`;
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
@@ -929,7 +1000,7 @@ Generated via TEJAS CANVASSING Terminal.`;
 
         setCopyNotification({
           type: 'fallback',
-          message: 'Clipboard write restricted by browser. High-resolution PNG saved to Downloads!'
+          message: 'Clipboard restricted by browser permissions. High-resolution PNG saved to Downloads!'
         });
         setTimeout(() => setCopyNotification(null), 4000);
       }
@@ -1211,7 +1282,7 @@ Generated via TEJAS CANVASSING Terminal.`;
           <div className="mb-6 pb-6 border-b border-dashed border-neutral-300 dark:border-neutral-800 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 text-left">
             <div className="flex items-center gap-3.5">
               <div className="w-12 h-12 rounded-2xl flex items-center justify-center p-1 shrink-0 shadow-sm bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700">
-                <img src="/logo.png" alt="TC" className="w-full h-full object-contain" />
+                <img src={TC_COMPANY_LOGO_BASE64} alt="TC" className="w-full h-full object-contain" />
               </div>
               <div>
                 <h2 className={cn("text-xl font-bold tracking-tight uppercase leading-none pb-1", colors.primaryText)}>
