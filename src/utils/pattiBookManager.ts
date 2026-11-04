@@ -921,7 +921,7 @@ function drawSinglePattiCell(
   doc.rect(cX, curY, grossW, r5H, 'F');
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(29, 78, 216); // Blue-700
-  drawFittedText(doc, formatCurrencyForPdf(patti.grossAmount), cX + 2, curY + 5.2, grossW - 3, { maxFontSize: 7.2, minFontSize: 5.5 });
+  drawFittedText(doc, formatCurrencyForPdf(patti.grossAmount), cX + (grossW / 2), curY + 5.2, grossW - 2, { align: 'center', maxFontSize: 7.2, minFontSize: 5.5 });
   drawRowBorder(r5H);
   curY += r5H;
 
@@ -940,7 +940,7 @@ function drawSinglePattiCell(
   doc.rect(cX, curY, 22, r6H, 'F');
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(185, 28, 28);
-  drawFittedText(doc, formatCurrencyForPdf(patti.expensesSum), cX + 2, curY + 5.2, 20, { maxFontSize: 6.8, minFontSize: 5.2 });
+  drawFittedText(doc, formatCurrencyForPdf(patti.expensesSum), cX + 11, curY + 5.2, 20, { align: 'center', maxFontSize: 6.8, minFontSize: 5.2 });
   cX += 22;
   doc.line(cX, curY, cX, curY + r6H);
 
@@ -975,7 +975,7 @@ function drawSinglePattiCell(
   doc.rect(cX, curY, 22, r7H, 'F');
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(4, 120, 87); // Emerald-700
-  drawFittedText(doc, formatCurrencyForPdf(patti.netAmount), cX + 2, curY + 5.2, 20, { maxFontSize: 7.2, minFontSize: 5.5 });
+  drawFittedText(doc, formatCurrencyForPdf(patti.netAmount), cX + 11, curY + 5.2, 20, { align: 'center', maxFontSize: 7.2, minFontSize: 5.5 });
   cX += 22;
   doc.line(cX, curY, cX, curY + r7H);
 
@@ -1010,7 +1010,7 @@ function drawSinglePattiCell(
   doc.rect(cX, curY, 22, r8H, 'F');
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(29, 78, 216); // Blue-700
-  drawFittedText(doc, formatCurrencyForPdf(patti.chqAm), cX + 2, curY + 5.2, 20, { maxFontSize: 6.8, minFontSize: 5.2 });
+  drawFittedText(doc, formatCurrencyForPdf(patti.chqAm), cX + 11, curY + 5.2, 20, { align: 'center', maxFontSize: 6.8, minFontSize: 5.2 });
   cX += 22;
   doc.line(cX, curY, cX, curY + r8H);
 
@@ -1046,7 +1046,7 @@ function drawSinglePattiCell(
   doc.rect(cX, curY, 22, r9H, 'F');
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(deltaColor[0], deltaColor[1], deltaColor[2]);
-  drawFittedText(doc, formatNumberForPdf(patti.shortageDelta), cX + 2, curY + 5.2, 20, { maxFontSize: 6.8, minFontSize: 5.2 });
+  drawFittedText(doc, formatNumberForPdf(patti.shortageDelta), cX + 11, curY + 5.2, 20, { align: 'center', maxFontSize: 6.8, minFontSize: 5.2 });
   cX += 22;
   doc.line(cX, curY, cX, curY + r9H);
 
@@ -1212,8 +1212,8 @@ function drawSinglePattiRow1x4(
   const cX2 = cX1 + colW;
   const cX3 = cX2 + colW;
   const cX4 = cX3 + colW;
-  const cX7 = cX1 + (5 * colW); // Starts at col 8/9 boundary: 38.8 + 97 = 135.8
-  const cX8 = cX7 + colW;       // 135.8 + 19.4 = 155.2
+  const cX7 = cX1 + (6 * colW); // Starts at col 8/9 boundary: 38.8 + 116.4 = 155.2
+  const cX8 = cX7 + colW;       // 155.2 + 19.4 = 174.6 (start of col 10)
 
   let curY = y + ribbonH;
 

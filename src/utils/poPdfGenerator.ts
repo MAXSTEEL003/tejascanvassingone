@@ -83,6 +83,9 @@ export function buildPoPdfDocument(order: any, subOrders: any[] = []): jsPDF {
       `Loading: ${sub.loadingDays !== undefined ? sub.loadingDays : 0}d`,
       `Unload: ${sub.unloadingPoint || 'shop'}`
     ];
+    if (sub.remarks && String(sub.remarks).trim()) {
+      loadingLines.push(`Remarks: ${String(sub.remarks).trim()}`);
+    }
     const loading = loadingLines.join('\n');
 
     const buyerLines = [
@@ -92,9 +95,6 @@ export function buildPoPdfDocument(order: any, subOrders: any[] = []): jsPDF {
     ];
     if (profile.email) {
       buyerLines.push(`Email: ${profile.email}`);
-    }
-    if (sub.remarks && String(sub.remarks).trim()) {
-      buyerLines.push(`Remarks: ${String(sub.remarks).trim()}`);
     }
     const buyerDetails = buyerLines.join('\n');
 

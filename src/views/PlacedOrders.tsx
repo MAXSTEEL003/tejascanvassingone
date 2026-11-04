@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { 
   Package, 
@@ -2278,9 +2279,10 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
   };
 
   const renderDeleteAllModal = () => (
-    <AnimatePresence>
-      {isDeleteAllModalOpen && (
-        <div className="fixed inset-0 bg-neutral-950/75 backdrop-blur-md z-50 flex items-center justify-center p-4">
+    typeof document !== 'undefined' ? createPortal(
+      <AnimatePresence>
+        {isDeleteAllModalOpen && (
+          <div className="fixed inset-0 bg-neutral-950/75 backdrop-blur-md z-[100] flex items-center justify-center p-4">
           <motion.div 
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -2413,8 +2415,9 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
           </motion.div>
         </div>
       )}
-    </AnimatePresence>
-  );
+    </AnimatePresence>,
+    document.body
+  ) : null);
 
   const renderToast = () => (
     <AnimatePresence>
@@ -2423,7 +2426,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
           initial={{ opacity: 0, y: 50, scale: 0.95 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 20, scale: 0.95 }}
-          className="fixed bottom-8 right-8 z-50 bg-neutral-900 text-white border border-neutral-700 shadow-2xl px-5 py-3.5 rounded-2xl flex items-center gap-3 text-xs font-bold"
+          className="fixed bottom-8 right-8 z-[100] bg-neutral-900 text-white border border-neutral-700 shadow-2xl px-5 py-3.5 rounded-2xl flex items-center gap-3 text-xs font-bold"
         >
           <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
           <span>{toastMessage}</span>
@@ -3142,15 +3145,16 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
       </div>
 
       {/* MODAL 1: SHARE CUSTOMER SUMMARY & DEFAULT MESSAGING */}
-      <AnimatePresence>
-        {shareOrder && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
-            <motion.div 
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-surface border border-outline-variant w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl"
-            >
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {shareOrder && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[100] p-4">
+              <motion.div 
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                className="bg-surface border border-outline-variant w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl"
+              >
               <div className="p-6 border-b border-outline-variant flex items-center justify-between">
                 <div className="flex items-center gap-2 text-primary">
                   <MessageSquare className="w-5 h-5" />
@@ -3218,11 +3222,14 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
             </motion.div>
           </div>
         )}
-      </AnimatePresence>
+      </AnimatePresence>,
+      document.body
+    )}
 
       {/* MODAL 2: SEND PURCHASE ORDER TO SELLER FROM COMPANY MAIL */}
-      <AnimatePresence>
-        {poOrder && (() => {
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {poOrder && (() => {
           const rawSupplierName = poOrder.supplier || (poOrder.originalOrders && poOrder.originalOrders[0]?.supplier) || poOrder.origin;
           const supplierName = sanitizeSupplierName(rawSupplierName, 'DIRECT MILL');
 
@@ -3277,7 +3284,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
           };
 
           return (
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[100] p-4">
             <motion.div 
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
@@ -3509,22 +3516,6 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                                           <div><span className="font-bold">Phone:</span> <span>{profile.phone}</span></div>
                                           <div><span className="font-bold">Email:</span> {profile.email ? <a href={`mailto:${profile.email}`} className="text-[#0070f3] hover:underline">{profile.email}</a> : null}</div>
                                         </div>
-                                        <div className="pt-2">
-                                          <div className="p-2 rounded bg-amber-50/90 border border-amber-300 border-l-[3px] border-l-amber-600 shadow-2xs">
-                                            <div className="flex items-center justify-between text-[10px] font-bold text-amber-900 uppercase tracking-wider mb-1">
-                                              <span>Remarks:</span>
-                                              {sub.remarks ? <span className="text-[9px] font-medium text-amber-700 normal-case italic">included in PO</span> : null}
-                                            </div>
-                                            <input
-                                              type="text"
-                                              value={sub.remarks || ''}
-                                              onChange={(e) => handleUpdatePoDetail(sIdx, 'remarks', e.target.value)}
-                                              placeholder="e.g. 50kg bags, mill direct..."
-                                              className="w-full px-2 py-1 text-xs font-semibold bg-white border border-amber-300 rounded text-amber-950 placeholder:text-amber-800/40 outline-none focus:ring-1 focus:ring-amber-500 shadow-inner"
-                                              title="Click to edit remarks for this buyer"
-                                            />
-                                          </div>
-                                        </div>
                                       </td>
                                       <td className="p-3.5 border border-[#b0b0b0] text-left text-black uppercase font-normal leading-tight">
                                         {productWords.map((word: string, wIdx: number) => (
@@ -3597,6 +3588,20 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                                               </button>
                                             ))}
                                           </div>
+                                        </div>
+                                        <div className="pt-1.5 border-t border-dashed border-slate-300 space-y-1">
+                                          <div className="flex items-center justify-between text-[11px] font-bold text-black">
+                                            <span>Remarks:</span>
+                                            {sub.remarks ? <span className="text-[9px] font-medium text-amber-700 normal-case italic">included in PO</span> : null}
+                                          </div>
+                                          <input
+                                            type="text"
+                                            value={sub.remarks || ''}
+                                            onChange={(e) => handleUpdatePoDetail(sIdx, 'remarks', e.target.value)}
+                                            placeholder="e.g. 50kg bags, mill direct..."
+                                            className="w-full px-2 py-1 text-xs font-semibold bg-white border border-amber-400 rounded text-amber-950 placeholder:text-amber-800/40 outline-none focus:ring-1 focus:ring-amber-500 shadow-inner"
+                                            title="Click to edit remarks for this buyer"
+                                          />
                                         </div>
                                       </td>
                                     </tr>
@@ -3755,12 +3760,15 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
           </div>
           );
         })()}
-      </AnimatePresence>
+      </AnimatePresence>,
+      document.body
+    )}
 
       {/* MODAL 3: CONFIRM ARRIVED QUANTITY & RATE FOR EACH SUB-ORDER */}
-      <AnimatePresence>
-        {arrivalConfirmOrder && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {arrivalConfirmOrder && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[100] p-4">
             <motion.div 
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
@@ -4220,12 +4228,15 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
             </motion.div>
           </div>
         )}
-      </AnimatePresence>
+      </AnimatePresence>,
+      document.body
+    )}
 
       {/* MODAL 4: LIFTING TO (REDIRECT VEHICLE TO NEW SHOP) */}
-      <AnimatePresence>
-        {liftingOrder && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {liftingOrder && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[100] p-4">
             <motion.div 
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
@@ -4491,49 +4502,52 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
             </motion.div>
           </div>
         )}
-      </AnimatePresence>
+      </AnimatePresence>,
+      document.body
+    )}
 
       {/* MODAL 5: A4 PURCHASE ORDER PRINT & FILING STUDIO */}
-      <AnimatePresence>
-        {a4PreviewOrder && (
-          <div className="fixed inset-0 bg-black/75 backdrop-blur-md flex items-center justify-center z-50 p-2 sm:p-4 overflow-y-auto print:p-0 print:bg-white print:static">
-            <style>{`
-              @media print {
-                /* Hide everything across the main document */
-                body * {
-                  visibility: hidden !important;
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {a4PreviewOrder && (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] p-2 sm:p-4 overflow-y-auto print:p-0 print:bg-white print:static">
+              <style>{`
+                @media print {
+                  /* Hide everything across the main document */
+                  body * {
+                    visibility: hidden !important;
+                  }
+                  /* Expose ONLY the physical A4 document container and its elements */
+                  #a4-printable-po-document,
+                  #a4-printable-po-document * {
+                    visibility: visible !important;
+                  }
+                  #a4-printable-po-document {
+                    position: fixed !important;
+                    left: 0 !important;
+                    top: 0 !important;
+                    width: 100% !important;
+                    max-width: 100% !important;
+                    min-height: 100% !important;
+                    margin: 0 !important;
+                    padding: 10mm !important;
+                    border: none !important;
+                    box-shadow: none !important;
+                    background: #ffffff !important;
+                    z-index: 9999999 !important;
+                  }
+                  @page {
+                    size: A4 portrait;
+                    margin: 0;
+                  }
                 }
-                /* Expose ONLY the physical A4 document container and its elements */
-                #a4-printable-po-document,
-                #a4-printable-po-document * {
-                  visibility: visible !important;
-                }
-                #a4-printable-po-document {
-                  position: fixed !important;
-                  left: 0 !important;
-                  top: 0 !important;
-                  width: 100% !important;
-                  max-width: 100% !important;
-                  min-height: 100% !important;
-                  margin: 0 !important;
-                  padding: 10mm !important;
-                  border: none !important;
-                  box-shadow: none !important;
-                  background: #ffffff !important;
-                  z-index: 9999999 !important;
-                }
-                @page {
-                  size: A4 portrait;
-                  margin: 0;
-                }
-              }
-            `}</style>
-            <motion.div 
-              initial={{ scale: 0.96, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.96, opacity: 0 }}
-              className="bg-[#1e293b] border border-slate-700 w-full max-w-5xl rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[95vh] print:max-h-none print:border-none print:shadow-none print:w-full print:bg-white print:rounded-none"
-            >
+              `}</style>
+              <motion.div 
+                initial={{ scale: 0.96, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.96, opacity: 0 }}
+                className="bg-[#1e293b] border border-slate-700 w-full max-w-5xl rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[92vh] my-auto print:max-h-none print:border-none print:shadow-none print:w-full print:bg-white print:rounded-none"
+              >
               {/* Modal Top Control Bar (Hidden on Print) */}
               <div className="p-4 bg-slate-900 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 shrink-0 print:hidden text-white">
                 <div className="flex items-center gap-3">
@@ -4688,12 +4702,6 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                                   <div className="mt-1.5 pt-1 border-t border-dashed border-slate-300 text-[9.5px] text-slate-700 leading-tight">
                                     <div><strong>GSTIN:</strong> {profile.gstin}</div>
                                     <div className="mt-0.5"><strong>Phone:</strong> {profile.phone} &nbsp;|&nbsp; <strong>Email:</strong> {profile.email || 'N/A'}</div>
-                                    {sub.remarks && (
-                                      <div className="mt-1.5 px-2 py-0.5 rounded bg-amber-50 border border-amber-300 border-l-[3px] border-l-amber-600 text-amber-950 font-medium text-[9.5px] leading-tight">
-                                        <strong className="text-amber-900 uppercase text-[8.5px] tracking-wide">Remarks: </strong>
-                                        <span className="font-bold text-slate-950">{sub.remarks}</span>
-                                      </div>
-                                    )}
                                   </div>
                                 </td>
                                 <td className="p-2.5 border border-slate-800 font-black text-slate-950 uppercase align-top">
@@ -4708,6 +4716,12 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                                 <td className="p-2.5 border border-slate-800 text-left text-[10px] align-top">
                                   <div>Loading: <strong>{loadingDays}d</strong></div>
                                   <div className="text-[9.5px] text-slate-600 mt-0.5">Unload: <strong>{unloadingPoint}</strong></div>
+                                  {sub.remarks && (
+                                    <div className="mt-1.5 px-2 py-0.5 rounded bg-amber-50 border border-amber-300 border-l-[3px] border-l-amber-600 text-amber-950 font-medium text-[9px] leading-tight">
+                                      <strong className="text-amber-900 uppercase text-[8px] tracking-wide">Remarks: </strong>
+                                      <span className="font-bold text-slate-950">{sub.remarks}</span>
+                                    </div>
+                                  )}
                                 </td>
                               </tr>
                             );
@@ -4774,7 +4788,9 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
             </motion.div>
           </div>
         )}
-      </AnimatePresence>
+      </AnimatePresence>,
+      document.body
+    )}
 
       {selectedOrderForTracking && (
         <EmailTrackingModal

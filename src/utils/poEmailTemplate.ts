@@ -542,12 +542,6 @@ export const generateSupplierPOEmailHtml = (
             <div><strong>GSTIN:</strong> ${profile.gstin || ''}</div>
             <div><strong>Phone:</strong> ${phoneHtml}</div>
             <div><strong>Email:</strong> ${emailHtml}</div>
-            ${itemRemarks ? `
-              <div style="margin-top: 8px; padding: 6px 10px; background-color: #fffbeb; border: 1px solid #f59e0b; border-left: 4px solid #d97706; border-radius: 4px; font-size: 12px; line-height: 1.4; color: #78350f;">
-                <strong style="color: #92400e; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px;">Remarks / Instructions:</strong>
-                <span style="font-weight: 700; color: #1c1917; margin-left: 4px;">${itemRemarks}</span>
-              </div>
-            ` : ''}
           </div>
         </td>
         <td style="padding: 12px 14px; border: 1px solid #b0b0b0; vertical-align: top; text-align: left; font-size: 13px; line-height: 1.4; color: #000000; width: 14%;">
@@ -701,12 +695,6 @@ export const generateSupplierPOA4PrintHtml = (
           <div style="border-top: 1px dashed #9ca3af; padding-top: 5px; font-size: 9.5px; color: #111827; line-height: 1.45;">
             <div><strong>GSTIN:</strong> ${profile.gstin}</div>
             <div><strong>Phone:</strong> ${profile.phone} &nbsp;|&nbsp; <strong>Email:</strong> ${profile.email}</div>
-            ${itemRemarks ? `
-              <div style="margin-top: 5px; padding: 3px 6px; background-color: #fffbeb; border: 1px solid #f59e0b; border-left: 3px solid #d97706; border-radius: 3px; font-size: 10px; line-height: 1.3; color: #78350f; display: inline-block;">
-                <strong style="color: #92400e; text-transform: uppercase; font-size: 8.5px; letter-spacing: 0.4px;">Remarks:</strong>
-                <span style="font-weight: 700; color: #1c1917;">${itemRemarks}</span>
-              </div>
-            ` : ''}
           </div>
         </td>
         <td style="padding: 10px 12px; border: 1px solid #1f2937; vertical-align: top; font-weight: 800; color: #000000; text-transform: uppercase; font-size: 11.5px;">
