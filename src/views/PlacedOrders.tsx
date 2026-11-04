@@ -573,23 +573,18 @@ function MerchantOrdersView({
                     : "border-[#E5E7EB] dark:border-[#262626] hover:border-[#C22424]/40"
                 )}
               >
-                {/* Compact Header: Order ID, Date, PO Tag & Status Pill */}
+                {/* Compact Header: Order ID, Highlighted Date & Status Pill */}
                 <div 
                   onClick={() => setExpandedOrderId(isExpanded ? null : order.id)}
                   className="flex items-center justify-between gap-2 cursor-pointer pb-2 border-b border-[#E5E7EB]/80 dark:border-neutral-800/80"
                 >
-                  <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap min-w-0">
                     <span className="font-bold text-xs font-mono text-[#111827] dark:text-white">
                       #{order.billNo || order.id}
                     </span>
-                    <span className="text-[11px] text-[#6B7280] dark:text-neutral-400">
-                      • {formatDateLong(order.date)}
+                    <span className="text-[11px] font-bold text-amber-800 dark:text-amber-300 bg-amber-100/80 dark:bg-amber-950/50 px-2 py-0.5 rounded-md border border-amber-300/70 dark:border-amber-800/60 shadow-2xs">
+                      {formatDateLong(order.date)}
                     </span>
-                    {order.parentBatchId && (
-                      <span className="text-[9px] font-semibold px-1.5 py-0.2 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400">
-                        PO Linked
-                      </span>
-                    )}
                   </div>
                   <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0", pill.className)}>
                     {pill.label}
