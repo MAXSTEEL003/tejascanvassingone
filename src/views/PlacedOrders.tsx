@@ -8,6 +8,8 @@ import {
   MapPin, 
   Search, 
   ChevronRight, 
+  ChevronDown,
+  PhoneCall,
   Layers, 
   Share2, 
   Mail, 
@@ -300,6 +302,75 @@ export const isOrderConfirmed = (order: any): boolean => {
   );
 };
 
+export const buildOrderTimelineSteps = (order: any) => {
+  const isDelivered = isOrderDelivered(order);
+  const isDispatched = isOrderDispatched(order);
+  const isApproaching = isOrderApproaching(order);
+  const isConfirmed = isOrderConfirmed(order);
+  const isPlaced = true;
+
+  return [
+    {
+      id: 1,
+      title: 'Order Placed',
+      time: formatDateLong(order.date),
+      desc: 'Order received by Tejas Canvassing brokerage desk.',
+      completed: isPlaced,
+      active: !isConfirmed
+    },
+    {
+      id: 2,
+      title: 'Order Confirmed',
+      time: isConfirmed 
+        ? (order.confirmedAt || order.approvedAt || formatDateLong(order.date)) 
+        : 'Pending Broker Desk Confirmation',
+      desc: isConfirmed
+        ? (order.parentBatchId 
+            ? `Trade contract confirmed & purchase order allocated to mill (${sanitizeSupplierName(order.supplier, 'Mill Partner')}).` 
+            : 'Trade contract accepted and verified by brokerage desk.')
+        : 'Pending trade contract review and mill allocation.',
+      completed: isConfirmed,
+      active: isConfirmed && !isDispatched
+    },
+    {
+      id: 3,
+      title: 'Dispatched from Mill',
+      time: isDispatched ? (order.dispatchDate || 'In Transit') : 'Scheduled',
+      desc: isDispatched 
+        ? (order.truckNo 
+            ? `Ex-mill loading target completed on Lorry ${order.truckNo}. En route to APMC Yard.` 
+            : 'Ex-mill loading target confirmed. Logistics freight allocated and in transit.')
+        : `Estimated loading within ${order.loadingDays !== undefined ? order.loadingDays : 5} days. Logistics freight being arranged.`,
+      completed: isDispatched,
+      active: isDispatched && !isDelivered && !isApproaching
+    },
+    {
+      id: 4,
+      title: 'Out for Delivery',
+      time: isDelivered ? 'Arrived' : isApproaching ? 'Approaching APMC Yard' : isDispatched ? 'Pending Transit' : 'Pending Loading',
+      desc: isDelivered 
+        ? 'Truck reached destination APMC Yard unloading dock.'
+        : isApproaching
+        ? 'Truck approaching destination APMC Yard unloading bay.'
+        : isDispatched
+        ? 'Freight moving along national highway corridor towards Bangalore.'
+        : 'Awaiting mill dispatch before APMC Yard arrival.',
+      completed: isDelivered,
+      active: isApproaching && !isDelivered
+    },
+    {
+      id: 5,
+      title: 'Delivered & Unloaded',
+      time: isDelivered ? (order.arrivalDate || 'Completed') : 'Pending Arrival',
+      desc: isDelivered 
+        ? 'Shipment received, verified, and weighed at unloading yard.'
+        : 'Shipment will be inspected and weighed upon APMC Yard arrival.',
+      completed: isDelivered,
+      active: false
+    }
+  ];
+};
+
 function MerchantOrdersView({ 
   orders, 
   isLoading, 
@@ -309,7 +380,7 @@ function MerchantOrdersView({
   isLoading: boolean, 
   onRefresh: () => void,
 }) {
-  const [trackingOrder, setTrackingOrder] = useState<any | null>(null);
+  const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'PENDING' | 'CONFIRMED' | 'DISPATCHED' | 'DELIVERED'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const navigate = useNavigate();
@@ -382,232 +453,6 @@ function MerchantOrdersView({
       className: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200 dark:border-amber-800'
     };
   };
-
-  // Screen 8: Order Tracking View with Real-time Shipment Timeline
-  if (trackingOrder) {
-    const isDelivered = isOrderDelivered(trackingOrder);
-    const isDispatched = isOrderDispatched(trackingOrder);
-    const isApproaching = isOrderApproaching(trackingOrder);
-    const isConfirmed = isOrderConfirmed(trackingOrder);
-    const isPlaced = true;
-
-    const pill = getOrderStatusPill(trackingOrder.status, trackingOrder.progress, trackingOrder);
-    const orderQty = trackingOrder.originalOrders 
-      ? trackingOrder.originalOrders.reduce((sum, sub) => sum + (parseFloat(sub.qty) || 0), 0)
-      : (parseFloat(trackingOrder.qty) || 18);
-
-    const steps = [
-      {
-        id: 1,
-        title: 'Order Placed',
-        time: formatDateLong(trackingOrder.date),
-        desc: 'Order received by Tejas Canvassing brokerage desk.',
-        completed: isPlaced,
-        active: !isConfirmed
-      },
-      {
-        id: 2,
-        title: 'Order Confirmed',
-        time: isConfirmed 
-          ? (trackingOrder.confirmedAt || trackingOrder.approvedAt || formatDateLong(trackingOrder.date)) 
-          : 'Pending Broker Desk Confirmation',
-        desc: isConfirmed
-          ? (trackingOrder.parentBatchId 
-              ? `Trade contract confirmed & purchase order allocated to mill (${sanitizeSupplierName(trackingOrder.supplier, 'Mill Partner')}).` 
-              : 'Trade contract accepted and verified by brokerage desk.')
-          : 'Pending trade contract review and mill allocation.',
-        completed: isConfirmed,
-        active: isConfirmed && !isDispatched
-      },
-      {
-        id: 3,
-        title: 'Dispatched from Mill',
-        time: isDispatched ? (trackingOrder.dispatchDate || 'In Transit') : 'Scheduled',
-        desc: isDispatched 
-          ? (trackingOrder.truckNo 
-              ? `Ex-mill loading target completed on Lorry ${trackingOrder.truckNo}. En route to APMC Yard.` 
-              : 'Ex-mill loading target confirmed. Logistics freight allocated and in transit.')
-          : `Estimated loading within ${trackingOrder.loadingDays !== undefined ? trackingOrder.loadingDays : 5} days. Logistics freight being arranged.`,
-        completed: isDispatched,
-        active: isDispatched && !isDelivered && !isApproaching
-      },
-      {
-        id: 4,
-        title: 'Out for Delivery',
-        time: isDelivered ? 'Arrived' : isApproaching ? 'Approaching APMC Yard' : isDispatched ? 'Pending Transit' : 'Pending Loading',
-        desc: isDelivered 
-          ? 'Truck reached destination APMC Yard unloading dock.'
-          : isApproaching
-          ? 'Truck approaching destination APMC Yard unloading bay.'
-          : isDispatched
-          ? 'Freight moving along national highway corridor towards Bangalore.'
-          : 'Awaiting mill dispatch before APMC Yard arrival.',
-        completed: isDelivered,
-        active: isApproaching && !isDelivered
-      },
-      {
-        id: 5,
-        title: 'Delivered & Unloaded',
-        time: isDelivered ? (trackingOrder.arrivalDate || 'Completed') : 'Pending Arrival',
-        desc: isDelivered 
-          ? 'Shipment received, verified, and weighed at unloading yard.'
-          : 'Shipment will be inspected and weighed upon APMC Yard arrival.',
-        completed: isDelivered,
-        active: false
-      }
-    ];
-
-    return (
-      <div className="max-w-2xl mx-auto px-3 sm:px-6 py-4 pb-28 space-y-4 font-sans text-[#111827] dark:text-slate-100">
-        {/* Header matching Screen 8: < Order Tracking */}
-        <header className="flex items-center gap-2 pb-2 border-b border-[#E5E7EB] dark:border-neutral-800">
-          <button 
-            type="button"
-            onClick={() => setTrackingOrder(null)}
-            className="p-1.5 -ml-1 text-[#111827] dark:text-white hover:bg-slate-100 dark:hover:bg-neutral-800 rounded-lg transition-colors cursor-pointer"
-            title="Back to Orders"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <h1 className="text-lg font-bold tracking-tight text-[#111827] dark:text-white">
-            Order Tracking
-          </h1>
-        </header>
-
-        {/* Order Summary Card (Screen 8) */}
-        <section className="bg-white dark:bg-[#141414] border border-[#E5E7EB] dark:border-[#262626] rounded-2xl p-4 sm:p-5 shadow-xs space-y-3 text-left">
-          <div className="flex items-start justify-between gap-2 pb-2 border-b border-[#E5E7EB] dark:border-[#262626]">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-sm text-[#111827] dark:text-white font-mono">
-                  Order #{trackingOrder.billNo || trackingOrder.id}
-                </span>
-                <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold", pill.className)}>
-                  {pill.label}
-                </span>
-              </div>
-              <p className="text-xs text-[#6B7280] dark:text-neutral-400 mt-0.5">
-                Placed on {formatDateLong(trackingOrder.date)}
-              </p>
-            </div>
-            <div className="text-right">
-              <span className="text-[10px] text-[#6B7280] dark:text-neutral-400 block">Total Amount</span>
-              <span className="font-bold text-sm font-mono text-[#C22424]">
-                {trackingOrder.total || `₹ ${formatINR(orderQty * 4200)}`}
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between text-xs pt-1.5 gap-2">
-            <span className="text-[#6B7280] dark:text-neutral-400 shrink-0">Product:</span>
-            <div className="flex items-center gap-2 justify-end min-w-0 flex-1">
-              <div className="w-8 h-8 rounded-lg bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 flex items-center justify-center p-0.5 shrink-0 overflow-hidden">
-                <img 
-                  src={getOrderBagImage(trackingOrder)} 
-                  alt="Rice Bag" 
-                  className="w-full h-full object-contain"
-                  onError={(e) => {
-                    (e.currentTarget as HTMLImageElement).src = '/images/keshar_kali.png';
-                  }}
-                />
-              </div>
-              <span className="font-bold text-[#111827] dark:text-white text-right truncate max-w-[200px]">
-                {trackingOrder.items || trackingOrder.product || '1121 Raw Basmati Rice'} ({orderQty} QTL)
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-[#6B7280] dark:text-neutral-400">Direct Mill Supplier:</span>
-            <span className="font-medium text-[#111827] dark:text-white text-right">
-              {sanitizeSupplierName(trackingOrder.supplier, 'Direct Mill Partner')}
-            </span>
-          </div>
-
-          {/* Delivery Yard */}
-          <div className="bg-[#FAFBFA] dark:bg-[#1C1C1C] p-3 rounded-xl border border-[#E5E7EB] dark:border-[#262626] flex items-start gap-2.5 text-xs text-[#6B7280] dark:text-neutral-300">
-            <MapPin className="w-4 h-4 text-[#C22424] shrink-0 mt-0.5" />
-            <div>
-              <span className="font-bold text-[#111827] dark:text-white block">Delivery Destination:</span>
-              <span className="text-[11px] leading-relaxed">
-                {trackingOrder.destination || trackingOrder.address || 'APMC Yard, Yeshwanthpur, Bangalore, Karnataka - 560022'}
-              </span>
-            </div>
-          </div>
-        </section>
-
-        {/* Vertical 5-Step Order Status Timeline (Screen 8) */}
-        <section className="bg-white dark:bg-[#141414] border border-[#E5E7EB] dark:border-[#262626] rounded-2xl p-4 sm:p-5 shadow-xs space-y-4 text-left">
-          <h2 className="text-sm font-bold text-[#111827] dark:text-white pb-2 border-b border-[#E5E7EB] dark:border-[#262626]">
-            Shipment Timeline
-          </h2>
-
-          <div className="relative pl-6 space-y-6">
-            {/* Vertical connector line */}
-            <div className="absolute left-[11px] top-2 bottom-2 w-0.5 bg-[#E5E7EB] dark:bg-[#262626]" />
-
-            {steps.map((st) => (
-              <div key={st.id} className="relative flex items-start gap-3.5">
-                {/* Timeline Icon Node */}
-                <div 
-                  className={cn(
-                    "absolute -left-6 w-6 h-6 rounded-full flex items-center justify-center text-white shrink-0 z-10 transition-all",
-                    st.completed 
-                      ? "bg-[#C22424] shadow-xs" 
-                      : st.active
-                      ? "bg-white border-2 border-[#C22424] text-[#C22424]"
-                      : "bg-neutral-100 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 text-neutral-400"
-                  )}
-                >
-                  {st.completed ? (
-                    <Check className="w-3.5 h-3.5 stroke-[3]" />
-                  ) : st.active ? (
-                    <span className="w-2 h-2 rounded-full bg-[#C22424] animate-ping" />
-                  ) : (
-                    <span className="w-1.5 h-1.5 rounded-full bg-neutral-300 dark:bg-neutral-600" />
-                  )}
-                </div>
-
-                <div className="min-w-0 flex-1 pl-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <h3 className={cn(
-                      "text-xs font-bold leading-tight",
-                      st.completed || st.active ? "text-[#111827] dark:text-white" : "text-[#6B7280] dark:text-neutral-500"
-                    )}>
-                      {st.title}
-                    </h3>
-                    <span className="text-[10px] text-[#6B7280] dark:text-neutral-400 whitespace-nowrap">
-                      {st.time}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-[#6B7280] dark:text-neutral-400 leading-relaxed mt-0.5">
-                    {st.desc}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* Back and Support Actions */}
-        <div className="space-y-2 pt-2">
-          <a
-            href="tel:+919916416995"
-            className="w-full py-3 bg-[#FAFBFA] dark:bg-neutral-800 hover:bg-neutral-100 text-[#111827] dark:text-neutral-200 border border-[#E5E7EB] dark:border-neutral-700 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all no-underline cursor-pointer"
-          >
-            <span>Direct APMC Broker Desk: +91 99164 16995</span>
-          </a>
-          <button
-            type="button"
-            onClick={() => setTrackingOrder(null)}
-            className="w-full py-3 bg-white dark:bg-[#141414] hover:bg-neutral-50 text-[#6B7280] dark:text-neutral-400 rounded-xl font-bold text-xs transition-all cursor-pointer border border-[#E5E7EB] dark:border-[#262626]"
-          >
-            Return to My Orders List
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   // Screen 7: My Orders List View
   return (
@@ -685,25 +530,64 @@ function MerchantOrdersView({
       ) : (
         <div className="space-y-3">
           {filteredOrders.map((order) => {
-            const pill = getOrderStatusPill(order.status, order.progress);
-            const orderQty = order.originalOrders 
-              ? order.originalOrders.reduce((sum, sub) => sum + (parseFloat(sub.qty) || 0), 0)
-              : (parseFloat(order.qty) || 18);
-            const totalDisplay = order.total || `₹ ${formatINR(orderQty * 4200)}`;
+            const parseNum = (val: any): number => {
+              if (typeof val === 'number') return isNaN(val) ? 0 : val;
+              if (!val) return 0;
+              const cl = String(val).replace(/[^0-9.-]/g, '');
+              const n = parseFloat(cl);
+              return isNaN(n) ? 0 : n;
+            };
+
+            const isExpanded = expandedOrderId === order.id;
+            const pill = getOrderStatusPill(order.status, order.progress, order);
+            const steps = buildOrderTimelineSteps(order);
+
+            const orderQty = order.originalOrders && order.originalOrders.length > 0
+              ? order.originalOrders.reduce((sum: number, sub: any) => sum + parseNum(sub.qty), 0)
+              : (parseNum(order.qty) || parseNum(order.totalQty) || 0);
+
+            let unitRate = parseNum(order.rate || order.price);
+            if (!unitRate && order.originalOrders && order.originalOrders.length > 0) {
+              unitRate = parseNum(order.originalOrders[0].rate || order.originalOrders[0].price);
+            }
+
+            let totalVal = parseNum(order.total);
+            if (!totalVal && orderQty > 0 && unitRate > 0) {
+              totalVal = orderQty * unitRate;
+            }
+            if (!unitRate && totalVal > 0 && orderQty > 0) {
+              unitRate = Math.round(totalVal / orderQty);
+            }
+
+            const formattedRate = unitRate > 0 ? `₹${formatINR(unitRate)}` : null;
+            const formattedTotal = totalVal > 0 ? `₹${formatINR(totalVal)}` : (orderQty > 0 ? `₹${formatINR(orderQty * 4200)}` : '—');
 
             return (
               <motion.div
                 key={order.id}
                 whileHover={{ y: -1 }}
-                whileTap={{ scale: 0.99 }}
-                onClick={() => setTrackingOrder(order)}
-                className="bg-white dark:bg-[#141414] border border-[#E5E7EB] dark:border-[#262626] rounded-2xl p-4 shadow-xs hover:border-[#C22424]/40 transition-all cursor-pointer text-left space-y-3"
+                className={cn(
+                  "bg-white dark:bg-[#141414] border rounded-2xl p-4 shadow-xs transition-all text-left space-y-3",
+                  isExpanded 
+                    ? "border-[#C22424]/60 ring-1 ring-[#C22424]/20 shadow-sm" 
+                    : "border-[#E5E7EB] dark:border-[#262626] hover:border-[#C22424]/40"
+                )}
               >
                 {/* Top Row: Order ID & Status Pill */}
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-xs sm:text-sm font-mono text-[#111827] dark:text-white">
-                    Order #{order.billNo || order.id}
-                  </span>
+                <div 
+                  onClick={() => setExpandedOrderId(isExpanded ? null : order.id)}
+                  className="flex items-center justify-between cursor-pointer"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-xs sm:text-sm font-mono text-[#111827] dark:text-white">
+                      Order #{order.billNo || order.id}
+                    </span>
+                    {order.parentBatchId && (
+                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400">
+                        PO Allocated
+                      </span>
+                    )}
+                  </div>
                   <span className={cn("px-2.5 py-0.5 rounded-full text-[10px] font-bold", pill.className)}>
                     {pill.label}
                   </span>
@@ -714,33 +598,204 @@ function MerchantOrdersView({
                   Placed on {formatDateLong(order.date)}
                 </p>
 
-                {/* Middle Item info with thumbnail */}
-                <div className="flex items-center justify-between gap-3 pt-1 border-t border-[#E5E7EB] dark:border-neutral-800">
-                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                    <div className="w-11 h-11 rounded-xl bg-slate-50 dark:bg-neutral-800 border border-[#E5E7EB] dark:border-neutral-700 flex items-center justify-center shrink-0 p-1 overflow-hidden shadow-2xs">
+                {/* Middle Item info with high-contrast breakdown */}
+                <div className="flex items-start justify-between gap-3 pt-2 border-t border-[#E5E7EB] dark:border-neutral-800">
+                  <div 
+                    onClick={() => setExpandedOrderId(isExpanded ? null : order.id)}
+                    className="flex items-start gap-3 min-w-0 flex-1 cursor-pointer"
+                  >
+                    <div className="w-12 h-12 rounded-xl bg-slate-50 dark:bg-neutral-800 border border-[#E5E7EB] dark:border-neutral-700 flex items-center justify-center shrink-0 p-1.5 overflow-hidden shadow-2xs">
                       <img 
                         src={getOrderBagImage(order)} 
                         alt={order.items || order.product || 'Rice Bag'} 
                         className="w-full h-full object-contain"
                         loading="lazy"
                         onError={(e) => {
-                          // Fallback to keshar kali if specific image fails
                           (e.currentTarget as HTMLImageElement).src = '/images/keshar_kali.png';
                         }}
                       />
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <h4 className="font-bold text-xs text-[#111827] dark:text-white truncate">
-                        {order.items || order.product || '1121 Raw Basmati Rice'}
+
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <h4 className="font-extrabold text-sm text-[#111827] dark:text-white truncate tracking-tight">
+                        {order.items || order.product || 'Direct Mill Grain'}
                       </h4>
-                      <p className="text-[11px] text-[#6B7280] dark:text-slate-400 mt-0.5">
-                        {orderQty} QTL • <span className="font-mono font-bold text-[#111827] dark:text-white">{totalDisplay}</span>
-                      </p>
+
+                      {/* Quantities & Rate Pill Chips */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="inline-flex items-center gap-1 font-bold text-xs text-[#111827] dark:text-neutral-100 bg-neutral-100 dark:bg-neutral-800 px-2 py-0.5 rounded-md border border-neutral-200/70 dark:border-neutral-700/70">
+                          <span>{orderQty}</span>
+                          <span className="text-[10px] text-neutral-500 dark:text-neutral-400 font-semibold">QTL</span>
+                        </span>
+
+                        {formattedRate && (
+                          <span className="text-xs text-neutral-600 dark:text-neutral-400 font-medium">
+                            @ <span className="font-semibold text-neutral-900 dark:text-neutral-200">{formattedRate}</span>/QTL
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Total Value */}
+                      <div className="flex items-baseline gap-1.5 pt-0.5">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+                          Total:
+                        </span>
+                        <span className="font-mono font-extrabold text-sm text-[#C22424] dark:text-[#E05252]">
+                          {formattedTotal}
+                        </span>
+                      </div>
                     </div>
                   </div>
 
-                  <ChevronRight className="w-4 h-4 text-[#6B7280] shrink-0" />
+                  {/* Arrow Toggle Button */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setExpandedOrderId(isExpanded ? null : order.id);
+                    }}
+                    className={cn(
+                      "p-2 rounded-xl border transition-all cursor-pointer shrink-0 mt-0.5 flex items-center gap-1.5",
+                      isExpanded 
+                        ? "bg-[#C22424]/10 border-[#C22424]/30 text-[#C22424]" 
+                        : "bg-neutral-50 hover:bg-neutral-100 dark:bg-neutral-800/60 dark:hover:bg-neutral-700/60 border-neutral-200 dark:border-neutral-700/60 text-neutral-600 dark:text-neutral-300"
+                    )}
+                    title={isExpanded ? "Collapse Timeline" : "View Shipment Timeline"}
+                    aria-expanded={isExpanded}
+                  >
+                    <span className="text-[11px] font-bold hidden sm:inline">
+                      {isExpanded ? 'Hide' : 'Timeline'}
+                    </span>
+                    <ChevronDown 
+                      className={cn(
+                        "w-4 h-4 transition-transform duration-200",
+                        isExpanded && "rotate-180 text-[#C22424]"
+                      )} 
+                    />
+                  </button>
                 </div>
+
+                {/* Inline Shipment Timeline Section (shows here only, instead of full screen animation) */}
+                <AnimatePresence initial={false}>
+                  {isExpanded && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="pt-3 mt-3 border-t border-dashed border-[#E5E7EB] dark:border-neutral-800 space-y-3.5">
+                        {/* Logistics Summary Info */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs bg-[#FAFBFA] dark:bg-[#1C1C1C] p-2.5 rounded-xl border border-[#E5E7EB] dark:border-[#262626]">
+                          <div className="flex items-start gap-2">
+                            <Building className="w-3.5 h-3.5 text-[#C22424] shrink-0 mt-0.5" />
+                            <div className="min-w-0">
+                              <span className="text-[10px] uppercase font-bold text-[#6B7280] dark:text-neutral-400 block tracking-wider">
+                                Mill Partner
+                              </span>
+                              <span className="font-semibold text-[#111827] dark:text-white truncate block">
+                                {sanitizeSupplierName(order.supplier, 'Direct Mill Partner')}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-start gap-2">
+                            <MapPin className="w-3.5 h-3.5 text-[#C22424] shrink-0 mt-0.5" />
+                            <div className="min-w-0">
+                              <span className="text-[10px] uppercase font-bold text-[#6B7280] dark:text-neutral-400 block tracking-wider">
+                                Unloading Yard
+                              </span>
+                              <span className="font-semibold text-[#111827] dark:text-white line-clamp-1 block">
+                                {order.destination || order.address || 'APMC Yard, Yeshwanthpur, Bangalore'}
+                              </span>
+                            </div>
+                          </div>
+
+                          {(order.truckNo || order.vehicleNo || order.lorryNo) && (
+                            <div className="sm:col-span-2 flex items-center gap-2 pt-1 border-t border-neutral-200/60 dark:border-neutral-800">
+                              <Truck className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                              <span className="text-[11px] text-neutral-600 dark:text-neutral-300">
+                                Assigned Lorry: <span className="font-mono font-bold text-neutral-900 dark:text-white">{order.truckNo || order.vehicleNo || order.lorryNo}</span>
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* 5-Step Order Status Timeline */}
+                        <div className="space-y-2.5">
+                          <div className="flex items-center justify-between pb-1">
+                            <h5 className="text-[11px] font-bold uppercase tracking-wider text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
+                              <Clock className="w-3.5 h-3.5 text-[#C22424]" />
+                              Live Shipment Timeline
+                            </h5>
+                            <span className="text-[10px] font-semibold text-neutral-500 dark:text-neutral-400">
+                              {order.loadingDays !== undefined ? `Est. loading: ${order.loadingDays} days` : 'Daily updates'}
+                            </span>
+                          </div>
+
+                          <div className="relative pl-5 space-y-3.5">
+                            {/* Vertical connector line */}
+                            <div className="absolute left-[9px] top-2 bottom-2 w-0.5 bg-[#E5E7EB] dark:bg-neutral-800" />
+
+                            {steps.map((st) => (
+                              <div key={st.id} className="relative flex items-start gap-2.5">
+                                {/* Timeline Node */}
+                                <div 
+                                  className={cn(
+                                    "absolute -left-5 w-5 h-5 rounded-full flex items-center justify-center text-white shrink-0 z-10 transition-all",
+                                    st.completed 
+                                      ? "bg-[#C22424] shadow-2xs" 
+                                      : st.active
+                                      ? "bg-white dark:bg-[#141414] border-2 border-[#C22424] text-[#C22424]"
+                                      : "bg-neutral-100 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 text-neutral-400"
+                                  )}
+                                >
+                                  {st.completed ? (
+                                    <Check className="w-3 h-3 stroke-[3]" />
+                                  ) : st.active ? (
+                                    <span className="w-1.5 h-1.5 rounded-full bg-[#C22424] animate-ping" />
+                                  ) : (
+                                    <span className="w-1 h-1 rounded-full bg-neutral-300 dark:bg-neutral-600" />
+                                  )}
+                                </div>
+
+                                <div className="min-w-0 flex-1 pl-1.5">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className={cn(
+                                      "text-xs font-bold leading-tight",
+                                      st.completed || st.active ? "text-[#111827] dark:text-white" : "text-[#6B7280] dark:text-neutral-500"
+                                    )}>
+                                      {st.title}
+                                    </span>
+                                    <span className="text-[10px] text-[#6B7280] dark:text-neutral-400 shrink-0 font-medium">
+                                      {st.time}
+                                    </span>
+                                  </div>
+                                  <p className="text-[11px] text-[#6B7280] dark:text-neutral-400 leading-relaxed mt-0.5">
+                                    {st.desc}
+                                  </p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Broker Support Button */}
+                        <div className="pt-1">
+                          <a
+                            href="tel:+919916416995"
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-full py-2 px-3 bg-neutral-50 hover:bg-neutral-100 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 border border-[#E5E7EB] dark:border-neutral-700 rounded-xl font-semibold text-[11px] flex items-center justify-center gap-2 transition-all no-underline"
+                          >
+                            <PhoneCall className="w-3.5 h-3.5 text-[#C22424]" />
+                            <span>Direct APMC Broker Desk: +91 99164 16995</span>
+                          </a>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </motion.div>
             );
           })}
