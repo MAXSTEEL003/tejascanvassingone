@@ -115,22 +115,35 @@ export default function BagView() {
 
                   {/* Stepper & Total */}
                   <div className="flex items-center justify-between pt-2 mt-1 border-t border-neutral-100 dark:border-[#262626]">
-                    <div className="flex items-center bg-neutral-100 dark:bg-neutral-800 rounded-lg p-0.5 gap-1.5 border border-neutral-200 dark:border-neutral-700">
+                    <div className="flex items-center bg-neutral-100 dark:bg-neutral-800 rounded-lg p-0.5 gap-1 border border-neutral-200 dark:border-neutral-700">
                       <button
                         type="button"
-                        onClick={() => updateQty(item.id, Math.max(1, item.qty - (item.qty > 10 ? 5 : 1)))}
-                        className="w-6 h-6 rounded bg-white dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 font-bold text-xs flex items-center justify-center cursor-pointer shadow-xs active:scale-95"
+                        onClick={() => updateQty(item.id, Math.max(1, item.qty - 1))}
+                        className="w-6 h-6 rounded bg-white dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 font-bold text-xs flex items-center justify-center cursor-pointer shadow-xs active:scale-95 select-none"
                         title="Decrease"
                       >
                         -
                       </button>
-                      <span className="font-mono font-bold text-xs text-neutral-900 dark:text-white px-1">
-                        {item.qty} QTL
-                      </span>
+                      <div className="flex items-center px-1">
+                        <input
+                          type="number"
+                          min={1}
+                          max={99999}
+                          value={item.qty}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value, 10);
+                            updateQty(item.id, isNaN(val) ? 1 : Math.max(1, val));
+                          }}
+                          className="w-10 text-center font-mono font-bold text-xs text-neutral-900 dark:text-white bg-transparent outline-none p-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          title="Enter custom quantity"
+                        />
+                        <span className="text-[9.5px] font-bold text-neutral-400 font-mono pr-0.5 select-none">QTL</span>
+                      </div>
                       <button
                         type="button"
-                        onClick={() => updateQty(item.id, item.qty + (item.qty >= 10 ? 5 : 1))}
-                        className="w-6 h-6 rounded bg-white dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 font-bold text-xs flex items-center justify-center cursor-pointer shadow-xs active:scale-95"
+                        onClick={() => updateQty(item.id, item.qty + 1)}
+                        className="w-6 h-6 rounded bg-white dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 font-bold text-xs flex items-center justify-center cursor-pointer shadow-xs active:scale-95 select-none"
                         title="Increase"
                       >
                         +

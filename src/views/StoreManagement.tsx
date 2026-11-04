@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   Store, 
@@ -150,6 +150,129 @@ function ProductCardMedia({ product }: { product: any }) {
       variant={product.variant || 'basmati'} 
       isBrownRice={(product.category || '').toLowerCase().includes('brown') || (product.name || '').toLowerCase().includes('brown')}
     />
+  );
+}
+
+function ProductCardQtyStepper({
+  product,
+  inCartItem,
+  updateQty,
+  removeItem,
+  openQtyModal,
+  autoFocus
+}: {
+  product: any;
+  inCartItem: { id: string; qty: number };
+  updateQty: (id: string, qty: number) => void;
+  removeItem: (id: string) => void;
+  openQtyModal?: (product: any, initialQty?: number) => void;
+  autoFocus?: boolean;
+}) {
+  const [localQty, setLocalQty] = useState<string>(String(inCartItem.qty));
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setLocalQty(String(inCartItem.qty));
+  }, [inCartItem.qty]);
+
+  useEffect(() => {
+    if (autoFocus && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [autoFocus]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const text = e.target.value;
+    setLocalQty(text);
+    const parsed = parseInt(text, 10);
+    if (!isNaN(parsed) && parsed > 0) {
+      updateQty(product.id, parsed);
+    }
+  };
+
+  const handleBlur = () => {
+    const parsed = parseInt(localQty, 10);
+    if (isNaN(parsed) || parsed < 1) {
+      updateQty(product.id, 1);
+      setLocalQty('1');
+    } else {
+      updateQty(product.id, parsed);
+      setLocalQty(String(parsed));
+    }
+  };
+
+  return (
+    <div
+      onClick={(e) => e.stopPropagation()}
+      className="flex items-center bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-full px-1.5 py-0.5 gap-0.5 shadow-2xs hover:border-red-300 dark:hover:border-red-800 transition-colors shrink-0"
+    >
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          const step = e.shiftKey ? 5 : 1;
+          if (inCartItem.qty <= step) {
+            if (inCartItem.qty <= 1) {
+              removeItem(product.id);
+            } else {
+              updateQty(product.id, 1);
+              setLocalQty('1');
+            }
+          } else {
+            const next = inCartItem.qty - step;
+            updateQty(product.id, next);
+            setLocalQty(String(next));
+          }
+        }}
+        className="w-5 h-5 flex items-center justify-center text-[#C22424] dark:text-red-400 font-black text-sm rounded-full hover:bg-red-100 dark:hover:bg-red-900/60 active:scale-90 transition-transform cursor-pointer select-none shrink-0"
+        title={inCartItem.qty <= 1 ? "Remove from cart" : "Decrease quantity (-1)"}
+      >
+        -
+      </button>
+
+      <input
+        ref={inputRef}
+        type="number"
+        min={1}
+        max={99999}
+        value={localQty}
+        onClick={(e) => e.stopPropagation()}
+        onFocus={(e) => {
+          e.stopPropagation();
+          e.target.select();
+        }}
+        onChange={handleChange}
+        onBlur={handleBlur}
+        onKeyDown={(e) => {
+          e.stopPropagation();
+          if (e.key === 'Enter') {
+            (e.target as HTMLInputElement).blur();
+          }
+        }}
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          openQtyModal?.(product, inCartItem.qty);
+        }}
+        className="w-8 sm:w-9 text-center text-xs font-bold font-mono text-[#C22424] dark:text-red-400 bg-transparent outline-none p-0 border-b border-transparent focus:border-[#C22424] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none cursor-text select-all"
+        title="Type custom quantity (or double-click for bulk presets)"
+      />
+
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          const step = e.shiftKey ? 5 : 1;
+          const next = inCartItem.qty + step;
+          updateQty(product.id, next);
+          setLocalQty(String(next));
+        }}
+        className="w-5 h-5 flex items-center justify-center text-[#C22424] dark:text-red-400 font-black text-sm rounded-full hover:bg-red-100 dark:hover:bg-red-900/60 active:scale-90 transition-transform cursor-pointer select-none shrink-0"
+        title="Increase quantity (+1)"
+      >
+        +
+      </button>
+    </div>
   );
 }
 
@@ -1425,40 +1548,20 @@ export default function StoreManagement() {
 
                           {/* Red Plus Button or Mini Stepper */}
                           {inCartItem ? (
-                            <div className="flex items-center bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-full px-1 py-0.5 gap-1">
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (inCartItem.qty <= 5) removeItem(product.id);
-                                  else updateQty(product.id, inCartItem.qty - 5);
-                                }}
-                                className="text-[#C22424] font-black text-xs px-0.5 cursor-pointer hover:scale-110 active:scale-90"
-                                title="Decrease"
-                              >
-                                -
-                              </button>
-                              <span className="text-[9.5px] font-bold text-[#C22424] font-mono">
-                                {inCartItem.qty}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  updateQty(product.id, inCartItem.qty + 5);
-                                }}
-                                className="text-[#C22424] font-black text-xs px-0.5 cursor-pointer hover:scale-110 active:scale-90"
-                                title="Increase"
-                              >
-                                +
-                              </button>
-                            </div>
+                            <ProductCardQtyStepper
+                              product={product}
+                              inCartItem={inCartItem}
+                              updateQty={updateQty}
+                              removeItem={removeItem}
+                              openQtyModal={openQtyModal}
+                              autoFocus={justAddedId === product.id}
+                            />
                           ) : (
                             <button
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleAddToCartProduct(product, 5);
+                                handleAddToCartProduct(product, 1);
                               }}
                               className="w-7 h-7 sm:w-7.5 sm:h-7.5 rounded-full bg-[#C22424] hover:bg-[#A81C1C] text-white flex items-center justify-center shadow-2xs cursor-pointer active:scale-90 transition-transform"
                               title="Add to Cart"
@@ -1959,22 +2062,37 @@ export default function StoreManagement() {
 
                 {/* Sticky Bottom Actions: Stepper and Red Add to Cart Button */}
                 <div className="pt-2 border-t border-neutral-200/80 dark:border-neutral-800 flex items-center gap-3">
-                  {/* Stepper */}
-                  <div className="flex items-center bg-neutral-100 dark:bg-neutral-800 rounded-xl p-1 gap-2">
+                  {/* Stepper with direct custom quantity input */}
+                  <div className="flex items-center bg-neutral-100 dark:bg-neutral-800 rounded-xl p-1 gap-1 border border-neutral-200 dark:border-neutral-700">
                     <button
                       type="button"
-                      onClick={() => setDetailQtyValue(prev => Math.max(1, prev - (prev > 10 ? 5 : 1)))}
-                      className="w-8 h-8 rounded-lg bg-white dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 font-black text-sm flex items-center justify-center hover:bg-neutral-50 active:scale-95 cursor-pointer shadow-xs"
+                      onClick={() => setDetailQtyValue(prev => Math.max(1, prev - 1))}
+                      className="w-8 h-8 rounded-lg bg-white dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 font-black text-sm flex items-center justify-center hover:bg-neutral-50 active:scale-95 cursor-pointer shadow-xs select-none"
+                      title="Decrease by 1"
                     >
                       -
                     </button>
-                    <span className="font-mono font-black text-xs text-neutral-900 dark:text-white min-w-10 text-center">
-                      {detailQtyValue} QTL
-                    </span>
+                    <div className="flex items-center px-1">
+                      <input
+                        type="number"
+                        min={1}
+                        max={99999}
+                        value={detailQtyValue}
+                        onFocus={(e) => e.target.select()}
+                        onChange={(e) => {
+                          const v = parseInt(e.target.value, 10);
+                          setDetailQtyValue(isNaN(v) ? 1 : Math.max(1, v));
+                        }}
+                        className="w-12 text-center font-mono font-black text-xs text-neutral-900 dark:text-white bg-transparent outline-none p-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        title="Type custom quantity"
+                      />
+                      <span className="text-[10px] font-bold text-neutral-400 font-mono -ml-0.5 select-none">QTL</span>
+                    </div>
                     <button
                       type="button"
-                      onClick={() => setDetailQtyValue(prev => prev + (prev >= 10 ? 5 : 1))}
-                      className="w-8 h-8 rounded-lg bg-white dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 font-black text-sm flex items-center justify-center hover:bg-neutral-50 active:scale-95 cursor-pointer shadow-xs"
+                      onClick={() => setDetailQtyValue(prev => prev + 1)}
+                      className="w-8 h-8 rounded-lg bg-white dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 font-black text-sm flex items-center justify-center hover:bg-neutral-50 active:scale-95 cursor-pointer shadow-xs select-none"
+                      title="Increase by 1"
                     >
                       +
                     </button>

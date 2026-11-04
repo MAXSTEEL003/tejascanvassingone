@@ -180,24 +180,29 @@ export default function GlobalCartDrawer() {
                           <div className="flex items-center bg-white dark:bg-[#1C1C1C] border border-[#E5E7EB] dark:border-[#262626] rounded-lg overflow-hidden">
                             <button
                               type="button"
-                              onClick={() => updateQty(item.id, Math.max(1, item.qty - 5))}
-                              className="px-2.5 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-xs font-bold text-neutral-700 dark:text-neutral-300 cursor-pointer"
+                              onClick={() => updateQty(item.id, Math.max(1, item.qty - 1))}
+                              className="px-2.5 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-xs font-bold text-neutral-700 dark:text-neutral-300 cursor-pointer select-none"
+                              title="Decrease"
                             >
                               -
                             </button>
                             <input
                               type="number"
+                              min={1}
+                              max={99999}
                               value={item.qty}
+                              onFocus={(e) => e.target.select()}
                               onChange={(e) => {
-                                const val = parseInt(e.target.value);
-                                updateQty(item.id, isNaN(val) ? 0 : Math.max(1, val));
+                                const val = parseInt(e.target.value, 10);
+                                updateQty(item.id, isNaN(val) ? 1 : Math.max(1, val));
                               }}
-                              className="w-12 text-center bg-transparent border-none text-xs font-bold font-mono text-neutral-900 dark:text-white p-0 focus:ring-0 focus:outline-none"
+                              className="w-12 text-center bg-transparent border-none text-xs font-bold font-mono text-neutral-900 dark:text-white p-0 focus:ring-0 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             />
                             <button
                               type="button"
-                              onClick={() => updateQty(item.id, item.qty + 5)}
-                              className="px-2.5 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-xs font-bold text-neutral-700 dark:text-neutral-300 cursor-pointer"
+                              onClick={() => updateQty(item.id, item.qty + 1)}
+                              className="px-2.5 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-xs font-bold text-neutral-700 dark:text-neutral-300 cursor-pointer select-none"
+                              title="Increase"
                             >
                               +
                             </button>
