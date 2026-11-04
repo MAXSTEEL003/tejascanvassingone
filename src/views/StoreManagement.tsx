@@ -205,7 +205,7 @@ function ProductCardQtyStepper({
   return (
     <div
       onClick={(e) => e.stopPropagation()}
-      className="flex items-center bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-full px-1.5 py-0.5 gap-0.5 shadow-2xs hover:border-red-300 dark:hover:border-red-800 transition-colors shrink-0"
+      className="w-full flex items-center justify-between bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-lg sm:rounded-xl px-1.5 py-1 shadow-2xs hover:border-red-300 dark:hover:border-red-800 transition-colors"
     >
       <button
         type="button"
@@ -225,38 +225,43 @@ function ProductCardQtyStepper({
             setLocalQty(String(next));
           }
         }}
-        className="w-5 h-5 flex items-center justify-center text-[#C22424] dark:text-red-400 font-black text-sm rounded-full hover:bg-red-100 dark:hover:bg-red-900/60 active:scale-90 transition-transform cursor-pointer select-none shrink-0"
+        className="w-7 h-7 flex items-center justify-center text-[#C22424] dark:text-red-400 font-black text-sm bg-white dark:bg-neutral-800 border border-red-200/80 dark:border-red-900/80 rounded-md sm:rounded-lg hover:bg-red-100 dark:hover:bg-red-900/60 active:scale-90 transition-transform cursor-pointer select-none shrink-0 shadow-2xs"
         title={inCartItem.qty <= 1 ? "Remove from cart" : "Decrease quantity (-1)"}
       >
         -
       </button>
 
-      <input
-        ref={inputRef}
-        type="number"
-        min={1}
-        max={99999}
-        value={localQty}
-        onClick={(e) => e.stopPropagation()}
-        onFocus={(e) => {
-          e.stopPropagation();
-          e.target.select();
-        }}
-        onChange={handleChange}
-        onBlur={handleBlur}
-        onKeyDown={(e) => {
-          e.stopPropagation();
-          if (e.key === 'Enter') {
-            (e.target as HTMLInputElement).blur();
-          }
-        }}
-        onDoubleClick={(e) => {
-          e.stopPropagation();
-          openQtyModal?.(product, inCartItem.qty);
-        }}
-        className="w-8 sm:w-9 text-center text-xs font-bold font-mono text-[#C22424] dark:text-red-400 bg-transparent outline-none p-0 border-b border-transparent focus:border-[#C22424] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none cursor-text select-all"
-        title="Type custom quantity (or double-click for bulk presets)"
-      />
+      <div className="flex items-center justify-center flex-1 min-w-0 px-1 gap-1">
+        <input
+          ref={inputRef}
+          type="number"
+          min={1}
+          max={99999}
+          value={localQty}
+          onClick={(e) => e.stopPropagation()}
+          onFocus={(e) => {
+            e.stopPropagation();
+            e.target.select();
+          }}
+          onChange={handleChange}
+          onBlur={handleBlur}
+          onKeyDown={(e) => {
+            e.stopPropagation();
+            if (e.key === 'Enter') {
+              (e.target as HTMLInputElement).blur();
+            }
+          }}
+          onDoubleClick={(e) => {
+            e.stopPropagation();
+            openQtyModal?.(product, inCartItem.qty);
+          }}
+          className="w-12 sm:w-14 text-center text-xs sm:text-sm font-black font-mono text-[#C22424] dark:text-red-400 bg-transparent outline-none p-0 border-b border-transparent focus:border-[#C22424] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none cursor-text select-all"
+          title="Type custom quantity (or double-click for bulk presets)"
+        />
+        <span className="text-[10px] sm:text-[11px] font-bold text-neutral-500 dark:text-neutral-400 font-mono select-none">
+          QTL
+        </span>
+      </div>
 
       <button
         type="button"
@@ -267,7 +272,7 @@ function ProductCardQtyStepper({
           updateQty(product.id, next);
           setLocalQty(String(next));
         }}
-        className="w-5 h-5 flex items-center justify-center text-[#C22424] dark:text-red-400 font-black text-sm rounded-full hover:bg-red-100 dark:hover:bg-red-900/60 active:scale-90 transition-transform cursor-pointer select-none shrink-0"
+        className="w-7 h-7 flex items-center justify-center text-[#C22424] dark:text-red-400 font-black text-sm bg-white dark:bg-neutral-800 border border-red-200/80 dark:border-red-900/80 rounded-md sm:rounded-lg hover:bg-red-100 dark:hover:bg-red-900/60 active:scale-90 transition-transform cursor-pointer select-none shrink-0 shadow-2xs"
         title="Increase quantity (+1)"
       >
         +
@@ -1526,27 +1531,19 @@ export default function StoreManagement() {
                             {product.variant ? `Grade A • ${product.variant}` : product.category || 'Premium Sortex'}
                           </p>
 
-                          {/* In Stock Indicator */}
-                          <div className="flex items-center gap-1 mt-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-                            <span className="text-[9.5px] font-semibold text-emerald-600 dark:text-emerald-400">
-                              In Stock
+                          {/* Rate in place of In Stock Status */}
+                          <div className="flex items-baseline gap-1 mt-1 text-left">
+                            <span className="text-xs sm:text-sm font-extrabold text-neutral-900 dark:text-white tracking-tight">
+                              ₹{formatINR(unitPrice)}
+                            </span>
+                            <span className="text-[9px] text-neutral-400 dark:text-neutral-500 font-medium">
+                              / QTL
                             </span>
                           </div>
                         </div>
 
-                        {/* Price & Add to Cart Action */}
-                        <div className="flex items-center justify-between pt-1 mt-1 border-t border-neutral-100 dark:border-neutral-800">
-                          <div className="text-left">
-                            <span className="text-xs sm:text-sm font-extrabold text-neutral-900 dark:text-white tracking-tight">
-                              ₹{formatINR(unitPrice)}
-                            </span>
-                            <span className="text-[8.5px] text-neutral-400 dark:text-neutral-500 font-medium block leading-none mt-0.5">
-                              / QTL
-                            </span>
-                          </div>
-
-                          {/* Red Plus Button or Mini Stepper */}
+                        {/* Dedicated Extra Space for Quantity Field */}
+                        <div className="pt-1.5 mt-1 border-t border-neutral-100 dark:border-neutral-800 w-full">
                           {inCartItem ? (
                             <ProductCardQtyStepper
                               product={product}
@@ -1563,10 +1560,11 @@ export default function StoreManagement() {
                                 e.stopPropagation();
                                 handleAddToCartProduct(product, 1);
                               }}
-                              className="w-7 h-7 sm:w-7.5 sm:h-7.5 rounded-full bg-[#C22424] hover:bg-[#A81C1C] text-white flex items-center justify-center shadow-2xs cursor-pointer active:scale-90 transition-transform"
+                              className="w-full py-1.5 rounded-lg sm:rounded-xl bg-[#C22424] hover:bg-[#A81C1C] text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer active:scale-95 transition-all"
                               title="Add to Cart"
                             >
                               <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                              <span>Add</span>
                             </button>
                           )}
                         </div>
