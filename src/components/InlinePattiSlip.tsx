@@ -518,7 +518,7 @@ Generated via TEJAS CANVASSING Terminal.`;
   };
 
   // Exact high-fidelity Copy as Image matching PattiView
-  const generatePattiCanvas = async (scale: number = 3): Promise<HTMLCanvasElement | null> => {
+  const generatePattiCanvas = async (scale: number = 2): Promise<HTMLCanvasElement | null> => {
     const element = document.getElementById(formId);
     if (!element) return null;
 
@@ -530,7 +530,7 @@ Generated via TEJAS CANVASSING Terminal.`;
       }
     }
 
-    await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 60)));
+    await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 20)));
 
     const originalGetComputedStyle = window.getComputedStyle;
     window.getComputedStyle = createComputedStyleProxy(window) as any;
@@ -562,29 +562,6 @@ Generated via TEJAS CANVASSING Terminal.`;
               styleTag.textContent = convertOklchAndOklabColorInString(styleTag.textContent);
             }
           });
-
-          try {
-            const sheets = Array.from(clonedDoc.styleSheets);
-            sheets.forEach((sheet: any) => {
-              try {
-                const rules = sheet.cssRules || sheet.rules;
-                if (rules) {
-                  for (let i = 0; i < rules.length; i++) {
-                    const rule = rules[i];
-                    if (rule.style) {
-                      for (let j = 0; j < rule.style.length; j++) {
-                        const propName = rule.style[j];
-                        const propVal = rule.style.getPropertyValue(propName);
-                        if (propVal && (propVal.includes('oklch') || propVal.includes('oklab'))) {
-                          rule.style.setProperty(propName, convertOklchAndOklabColorInString(propVal));
-                        }
-                      }
-                    }
-                  }
-                }
-              } catch (err) {}
-            });
-          } catch (e) {}
 
           const clonedEl = clonedDoc.getElementById(formId);
           if (clonedEl) {
@@ -808,7 +785,7 @@ Generated via TEJAS CANVASSING Terminal.`;
     if (isCapturingImage) return;
     setIsCapturingImage(true);
     try {
-      const canvas = await generatePattiCanvas(3);
+      const canvas = await generatePattiCanvas(2);
       if (!canvas) {
         alert('Could not render document canvas. Please try again.');
         return;
@@ -864,7 +841,7 @@ Generated via TEJAS CANVASSING Terminal.`;
     }
 
     try {
-      const canvas = await generatePattiCanvas(3);
+      const canvas = await generatePattiCanvas(2);
       if (!canvas) {
         const err = new Error('Could not render document canvas.');
         if (promiseClipboardSupported) rejectBlob(err);

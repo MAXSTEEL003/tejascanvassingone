@@ -132,7 +132,7 @@ export default function PattiView() {
   const [copied, setCopied] = useState(false);
   const [copiedImage, setCopiedImage] = useState(false);
   const [isCapturingImage, setIsCapturingImage] = useState(false);
-  const [imageScale, setImageScale] = useState<2 | 3>(3);
+  const [imageScale, setImageScale] = useState<2 | 3>(2);
   const [copyNotification, setCopyNotification] = useState<{ type: 'success' | 'fallback' | 'error'; message: string } | null>(null);
 
   // Print Configuration Options
@@ -546,7 +546,7 @@ Generated via TEJAS CANVASSING Terminal.`;
     }
 
     // 2. Short RAF delay to ensure any pending React layout or input paint completes
-    await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 60)));
+    await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 20)));
 
     const originalGetComputedStyle = window.getComputedStyle;
     window.getComputedStyle = createComputedStyleProxy(window) as any;
@@ -580,30 +580,6 @@ Generated via TEJAS CANVASSING Terminal.`;
               styleTag.textContent = convertOklchAndOklabColorInString(styleTag.textContent);
             }
           });
-
-          // Sanitize stylesheets rules
-          try {
-            const sheets = Array.from(clonedDoc.styleSheets);
-            sheets.forEach((sheet: any) => {
-              try {
-                const rules = sheet.cssRules || sheet.rules;
-                if (rules) {
-                  for (let i = 0; i < rules.length; i++) {
-                    const rule = rules[i];
-                    if (rule.style) {
-                      for (let j = 0; j < rule.style.length; j++) {
-                        const propName = rule.style[j];
-                        const propVal = rule.style.getPropertyValue(propName);
-                        if (propVal && (propVal.includes('oklch') || propVal.includes('oklab'))) {
-                          rule.style.setProperty(propName, convertOklchAndOklabColorInString(propVal));
-                        }
-                      }
-                    }
-                  }
-                }
-              } catch (err) {}
-            });
-          } catch (e) {}
 
           const clonedEl = clonedDoc.getElementById('patti-ledger-form');
           if (clonedEl) {
