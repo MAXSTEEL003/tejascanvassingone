@@ -1025,7 +1025,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
     );
 
     const validPlaced = normalizePlacedOrdersSequential(filterIgnored(placedList).filter((o: any) => !isDeleted(o?.id)));
-    const validProc = (isCleared && validPlaced.length === 0) ? [] : (procList || []).filter(
+    const validProc = (procList || []).filter(
       (o: any) => o && 
         o.id !== 'ORD-TC-1024' && 
         !String(o.id).startsWith('#ORD-99') && 
@@ -1472,7 +1472,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
       const isCleared = localStorage.getItem('cleared_placed_orders') === 'true' || localStorage.getItem('placed_orders_cleared_all') === 'true';
 
       const savedPlaced = JSON.parse(localStorage.getItem('placed_orders') || '[]');
-      const effectiveSavedPlaced = (isCleared && savedPlaced.length === 0) ? [] : savedPlaced;
+      const effectiveSavedPlaced = Array.isArray(savedPlaced) ? savedPlaced : [];
 
       // 1. Read local storage first for INSTANT local rendering (0ms delay)
       const savedProcurements = JSON.parse(localStorage.getItem('procurement_requests') || '[]');
@@ -1489,12 +1489,19 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
         setIsLoading(true);
       }
 
-      // 2. Fetch Firestore documents in PARALLEL
+      // 2. Fetch Firestore documents in PARALLEL with forceFresh
       const [cloudPlacedRaw, cloudProcurementsRaw, cloudArrivals] = await Promise.all([
-        getCollectionDocs('placed_orders').catch(() => []),
-        getCollectionDocs('procurement_requests').catch(() => []),
-        getCollectionDocs('arrival_entries').catch(() => [])
+        getCollectionDocs('placed_orders', true).catch(() => []),
+        getCollectionDocs('procurement_requests', true).catch(() => []),
+        getCollectionDocs('arrival_entries', true).catch(() => [])
       ]);
+
+      if (cloudPlacedRaw && cloudPlacedRaw.length > 0) {
+        try {
+          localStorage.removeItem('cleared_placed_orders');
+          localStorage.removeItem('placed_orders_cleared_all');
+        } catch (e) {}
+      }
 
       const deletedPlacedSet = getDeletedPlacedOrderIds();
       const isDeleted = (id: any) => {
@@ -1503,13 +1510,14 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
         return deletedPlacedSet.has(norm);
       };
 
-      const cloudPlaced = (isCleared && savedPlaced.length === 0)
-        ? []
-        : (cloudPlacedRaw || []).filter((o: any) => o && o.id && !isDeleted(o.id));
+      const cloudPlaced = (cloudPlacedRaw || []).filter((o: any) => o && o.id && !isDeleted(o.id));
+      const cloudProcurements = (cloudProcurementsRaw || []).filter((o: any) => o && o.id && !isDeleted(o.id));
 
-      const cloudProcurements = (isCleared && savedPlaced.length === 0)
-        ? []
-        : (cloudProcurementsRaw || []).filter((o: any) => o && o.id && !isDeleted(o.id));
+      if (cloudPlaced.length > 0) {
+        try {
+          localStorage.setItem('placed_orders', JSON.stringify(cloudPlaced));
+        } catch (e) {}
+      }
 
       let finalArrivals = [...localArrivals];
       if (cloudArrivals && cloudArrivals.length > 0) {

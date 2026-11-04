@@ -385,18 +385,18 @@ async function fetchAndSyncFreshCollection(collectionName: string): Promise<any[
       let items = Array.from(itemsMap.values());
       if (typeof window !== 'undefined') {
         if (collectionName === 'placed_orders') {
-          const isWiped = localStorage.getItem('cleared_placed_orders') === 'true' || localStorage.getItem('placed_orders_cleared_all') === 'true';
-          const rawPlaced = localStorage.getItem('placed_orders');
-          if (isWiped && (!rawPlaced || rawPlaced === '[]')) {
-            items = [];
-          } else {
-            const delRaw = localStorage.getItem('deleted_placed_order_ids');
-            if (delRaw) {
-              try {
-                const delSet = new Set(JSON.parse(delRaw).map((id: string) => String(id).trim().toLowerCase().replace(/^#/, '')));
-                items = items.filter((item: any) => item && item.id && !delSet.has(String(item.id).trim().toLowerCase().replace(/^#/, '')));
-              } catch {}
-            }
+          if (items.length > 0) {
+            try {
+              localStorage.removeItem('cleared_placed_orders');
+              localStorage.removeItem('placed_orders_cleared_all');
+            } catch (e) {}
+          }
+          const delRaw = localStorage.getItem('deleted_placed_order_ids');
+          if (delRaw) {
+            try {
+              const delSet = new Set(JSON.parse(delRaw).map((id: string) => String(id).trim().toLowerCase().replace(/^#/, '')));
+              items = items.filter((item: any) => item && item.id && !delSet.has(String(item.id).trim().toLowerCase().replace(/^#/, '')));
+            } catch {}
           }
         } else if (collectionName === 'procurement_requests') {
           const delProcRaw = localStorage.getItem('deleted_procurement_ids');
@@ -419,6 +419,9 @@ async function fetchAndSyncFreshCollection(collectionName: string): Promise<any[
       if (typeof window !== 'undefined') {
         try {
           localStorage.setItem(`firestore_cache_${collectionName}`, JSON.stringify(items));
+          if (collectionName === 'placed_orders' && items.length > 0) {
+            localStorage.setItem('placed_orders', JSON.stringify(items));
+          }
 
           // When stakeholders are fetched from Firestore, seamlessly merge into stakeholders_v2 so all devices stay in sync
           if (collectionName === 'stakeholders' && items.length > 0) {

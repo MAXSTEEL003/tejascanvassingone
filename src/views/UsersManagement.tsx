@@ -1892,19 +1892,21 @@ export default function UsersManagement() {
                     </div>
                   )}
 
-                  <div className="space-y-1.5">
-                    <label className="text-[9px] font-black uppercase tracking-widest text-secondary">
-                      {activeTab === 'employees' ? 'Email Address (Optional)' : 'Email Address'}
-                    </label>
-                    <input 
-                      required={activeTab !== 'employees'}
-                      type="email" 
-                      placeholder={activeTab === 'employees' ? 'Optional (Not required for employee login)' : 'contact@entity.com'}
-                      value={selectedUser.email || ''}
-                      onChange={(e) => setSelectedUser({...selectedUser, email: e.target.value})}
-                      className="w-full bg-surface-container border border-outline-variant/40 rounded-xl px-4 py-2.5 text-xs font-bold font-mono outline-none"
-                    />
-                  </div>
+                  {activeTab !== 'buyers' && (
+                    <div className="space-y-1.5">
+                      <label className="text-[9px] font-black uppercase tracking-widest text-secondary">
+                        {activeTab === 'employees' ? 'Email Address (Optional)' : 'Email Address'}
+                      </label>
+                      <input 
+                        required={activeTab === 'suppliers'}
+                        type="email" 
+                        placeholder={activeTab === 'employees' ? 'Optional (Not required for employee login)' : 'contact@entity.com'}
+                        value={selectedUser.email || ''}
+                        onChange={(e) => setSelectedUser({...selectedUser, email: e.target.value})}
+                        className="w-full bg-surface-container border border-outline-variant/40 rounded-xl px-4 py-2.5 text-xs font-bold font-mono outline-none"
+                      />
+                    </div>
+                  )}
 
                   <div className="space-y-1.5">
                     <label className="text-[9px] font-black uppercase tracking-widest text-secondary">
@@ -2536,22 +2538,24 @@ export default function UsersManagement() {
                   </div>
                 )}
 
-                <div className="space-y-1.5">
-                  <label className="text-[9px] font-black uppercase tracking-widest text-secondary px-1">
-                    {newUser.category === 'employees' ? 'Email ID (Optional)' : 'Email ID'}
-                  </label>
-                  <div className="relative group">
-                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-outline select-none mt-px" />
-                    <input 
-                      required={newUser.category !== 'employees'}
-                      type="email" 
-                      placeholder={newUser.category === 'employees' ? 'Optional for staff' : 'contact@entity.com'} 
-                      value={newUser.email}
-                      onChange={(e) => setNewUser({...newUser, email: e.target.value})}
-                      className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl pl-12 pr-4 py-3 text-xs font-bold outline-none font-mono"
-                    />
+                {newUser.category !== 'buyers' && (
+                  <div className="space-y-1.5">
+                    <label className="text-[9px] font-black uppercase tracking-widest text-secondary px-1">
+                      {newUser.category === 'employees' ? 'Email ID (Optional)' : 'Email ID'}
+                    </label>
+                    <div className="relative group">
+                      <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-outline select-none mt-px" />
+                      <input 
+                        required={newUser.category === 'suppliers'}
+                        type="email" 
+                        placeholder={newUser.category === 'employees' ? 'Optional for staff' : 'contact@entity.com'} 
+                        value={newUser.email}
+                        onChange={(e) => setNewUser({...newUser, email: e.target.value})}
+                        className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl pl-12 pr-4 py-3 text-xs font-bold outline-none font-mono"
+                      />
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <div className="space-y-1.5">
                   <label className="text-[9px] font-black uppercase tracking-widest text-secondary px-1">

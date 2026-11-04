@@ -923,8 +923,15 @@ export async function fetchOperationalOrders(forceFresh = false): Promise<Operat
 
     const isWiped = localStorage.getItem('cleared_placed_orders') === 'true' || localStorage.getItem('placed_orders_cleared_all') === 'true';
 
+    if (cloudPlaced.length > 0) {
+      try {
+        localStorage.removeItem('cleared_placed_orders');
+        localStorage.removeItem('placed_orders_cleared_all');
+      } catch (e) {}
+    }
+
     const placedOrderMap = new Map<string, any>();
-    if (!isWiped || localPlaced.length > 0) {
+    if (!isWiped || cloudPlaced.length > 0 || localPlaced.length > 0) {
       [...cloudPlaced, ...localPlaced].forEach(ord => {
         if (!ord || !ord.id) return;
         if (ord.status === 'Rejected') return;
