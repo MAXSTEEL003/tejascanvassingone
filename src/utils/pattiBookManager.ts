@@ -921,7 +921,7 @@ function drawSinglePattiCell(
   doc.rect(cX, curY, grossW, r5H, 'F');
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(29, 78, 216); // Blue-700
-  drawFittedText(doc, `Gross: ${formatCurrencyForPdf(patti.grossAmount)}`, cX + 2, curY + 5.2, grossW - 3, { maxFontSize: 6.8, minFontSize: 5.2 });
+  drawFittedText(doc, formatCurrencyForPdf(patti.grossAmount), cX + 2, curY + 5.2, grossW - 3, { maxFontSize: 7.2, minFontSize: 5.5 });
   drawRowBorder(r5H);
   curY += r5H;
 
@@ -940,7 +940,7 @@ function drawSinglePattiCell(
   doc.rect(cX, curY, 22, r6H, 'F');
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(185, 28, 28);
-  drawFittedText(doc, `Ded: ${formatCurrencyForPdf(patti.expensesSum)}`, cX + 2, curY + 5.2, 20, { maxFontSize: 6.5, minFontSize: 5.0 });
+  drawFittedText(doc, formatCurrencyForPdf(patti.expensesSum), cX + 2, curY + 5.2, 20, { maxFontSize: 6.8, minFontSize: 5.2 });
   cX += 22;
   doc.line(cX, curY, cX, curY + r6H);
 
@@ -975,7 +975,7 @@ function drawSinglePattiCell(
   doc.rect(cX, curY, 22, r7H, 'F');
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(4, 120, 87); // Emerald-700
-  drawFittedText(doc, `NET: ${formatCurrencyForPdf(patti.netAmount)}`, cX + 2, curY + 5.2, 20, { maxFontSize: 6.8, minFontSize: 5.0 });
+  drawFittedText(doc, formatCurrencyForPdf(patti.netAmount), cX + 2, curY + 5.2, 20, { maxFontSize: 7.2, minFontSize: 5.5 });
   cX += 22;
   doc.line(cX, curY, cX, curY + r7H);
 
@@ -1010,7 +1010,7 @@ function drawSinglePattiCell(
   doc.rect(cX, curY, 22, r8H, 'F');
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(29, 78, 216); // Blue-700
-  drawFittedText(doc, `Chq: ${formatCurrencyForPdf(patti.chqAm)}`, cX + 2, curY + 5.2, 20, { maxFontSize: 6.5, minFontSize: 5.0 });
+  drawFittedText(doc, formatCurrencyForPdf(patti.chqAm), cX + 2, curY + 5.2, 20, { maxFontSize: 6.8, minFontSize: 5.2 });
   cX += 22;
   doc.line(cX, curY, cX, curY + r8H);
 
@@ -1046,7 +1046,7 @@ function drawSinglePattiCell(
   doc.rect(cX, curY, 22, r9H, 'F');
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(deltaColor[0], deltaColor[1], deltaColor[2]);
-  drawFittedText(doc, `Diff: ${formatNumberForPdf(patti.shortageDelta)}`, cX + 2, curY + 5.2, 20, { maxFontSize: 6.5, minFontSize: 5.0 });
+  drawFittedText(doc, formatNumberForPdf(patti.shortageDelta), cX + 2, curY + 5.2, 20, { maxFontSize: 6.8, minFontSize: 5.2 });
   cX += 22;
   doc.line(cX, curY, cX, curY + r9H);
 
@@ -1358,7 +1358,7 @@ function drawSinglePattiRow1x4(
   doc.rect(cX4, curY, 3 * colW, r5H, 'F');
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(3, 105, 161); // Sky-700
-  drawFittedText(doc, `GROSS: ${formatNumberForPdf(patti.grossAmount)}`, cX4 + colW * 1.5, curY + (r5H / 2) + 1.1, 3 * colW - 4, { align: 'center', maxFontSize: 7.2, minFontSize: 5.5 });
+  drawFittedText(doc, formatNumberForPdf(patti.grossAmount), cX4 + colW * 1.5, curY + (r5H / 2) + 1.1, 3 * colW - 4, { align: 'center', maxFontSize: 8.0, minFontSize: 6.0 });
   doc.line(cX7, curY, cX7, curY + r5H);
 
   // Cols 9-10: SETTLEMENT DETAILS Header (width 2 * colW = 38.8 mm)
@@ -1394,7 +1394,7 @@ function drawSinglePattiRow1x4(
   doc.rect(cX4, curY, 3 * colW, r6H, 'F');
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(190, 18, 60); // Rose-700
-  drawFittedText(doc, `TOTAL DED: ${formatNumberForPdf(patti.expensesSum)}`, cX4 + colW * 1.5, curY + (r6H / 2) + 1.1, 3 * colW - 4, { align: 'center', maxFontSize: 6.8, minFontSize: 5.2 });
+  drawFittedText(doc, formatNumberForPdf(patti.expensesSum), cX4 + colW * 1.5, curY + (r6H / 2) + 1.1, 3 * colW - 4, { align: 'center', maxFontSize: 7.8, minFontSize: 5.8 });
   doc.line(cX7, curY, cX7, curY + r6H);
 
   // Col 9: CHQ AM label
@@ -1442,7 +1442,7 @@ function drawSinglePattiRow1x4(
   doc.rect(cX4, curY, 3 * colW, r7H, 'F');
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(6, 95, 70); // Emerald-800
-  drawFittedText(doc, `NET AMT: ${formatNumberForPdf(patti.netAmount)}`, cX4 + colW * 1.5, curY + (r7H / 2) + 1.1, 3 * colW - 4, { align: 'center', maxFontSize: 7.4, minFontSize: 5.5 });
+  drawFittedText(doc, formatNumberForPdf(patti.netAmount), cX4 + colW * 1.5, curY + (r7H / 2) + 1.1, 3 * colW - 4, { align: 'center', maxFontSize: 8.2, minFontSize: 6.0 });
   doc.line(cX7, curY, cX7, curY + r7H);
 
   // Col 9: CHQ NO label
@@ -1485,7 +1485,7 @@ function drawSinglePattiRow1x4(
   doc.rect(cX4, curY, 3 * colW, r8H, 'F');
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(29, 78, 216); // Blue-700
-  drawFittedText(doc, `CHQ PAID: ${patti.chqAm > 0 ? formatNumberForPdf(patti.chqAm) : '0.00'}`, cX4 + colW * 1.5, curY + (r8H / 2) + 1.1, 3 * colW - 4, { align: 'center', maxFontSize: 6.8, minFontSize: 5.2 });
+  drawFittedText(doc, patti.chqAm > 0 ? formatNumberForPdf(patti.chqAm) : '0.00', cX4 + colW * 1.5, curY + (r8H / 2) + 1.1, 3 * colW - 4, { align: 'center', maxFontSize: 7.8, minFontSize: 5.8 });
   doc.line(cX7, curY, cX7, curY + r8H);
 
   // Col 9: CHQ DT label
@@ -1530,7 +1530,7 @@ function drawSinglePattiRow1x4(
   doc.rect(cX4, curY, 3 * colW, r9H, 'F');
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(isDiffPositive ? 6 : 190, isDiffPositive ? 95 : 18, isDiffPositive ? 70 : 60);
-  drawFittedText(doc, `SHORTAGE DIFF: ${formatNumberForPdf(patti.shortageDelta)}`, cX4 + colW * 1.5, curY + (r9H / 2) + 1.1, 3 * colW - 4, { align: 'center', maxFontSize: 6.8, minFontSize: 5.2 });
+  drawFittedText(doc, formatNumberForPdf(patti.shortageDelta), cX4 + colW * 1.5, curY + (r9H / 2) + 1.1, 3 * colW - 4, { align: 'center', maxFontSize: 7.8, minFontSize: 5.8 });
   doc.line(cX7, curY, cX7, curY + r9H);
 
   // Col 9: BANK label
@@ -1687,9 +1687,9 @@ export async function generatePattiBookPdf(options: GeneratePdfOptions): Promise
 
   // Cell Coordinates for 2x2 Grid (Printer-Safe Margins)
   const cellW_2x2 = 95; // mm
-  const cellH_2x2 = 128; // mm
-  const topGridY = 28; // mm (Immediately below shared header)
-  const bottomGridY = 160; // mm
+  const cellH_2x2 = 132; // mm
+  const topGridY = 10; // mm (Clean top margin without shared header)
+  const bottomGridY = 148; // mm
   const leftGridX = 8; // mm
   const rightGridX = 107; // mm
 
@@ -1702,12 +1702,12 @@ export async function generatePattiBookPdf(options: GeneratePdfOptions): Promise
 
   // Cell Coordinates for 1x4 Stack (Full Page Width Stack)
   const cellW_1x4 = 194; // mm
-  const cellH_1x4 = 62; // mm
+  const cellH_1x4 = 64; // mm
   const cellPositions1x4 = [
-    { x: leftGridX, y: 28 },     // Slip 1
-    { x: leftGridX, y: 92.5 },   // Slip 2
-    { x: leftGridX, y: 157 },    // Slip 3
-    { x: leftGridX, y: 221.5 }   // Slip 4
+    { x: leftGridX, y: 10 },     // Slip 1
+    { x: leftGridX, y: 78 },     // Slip 2
+    { x: leftGridX, y: 146 },    // Slip 3
+    { x: leftGridX, y: 214 }     // Slip 4
   ];
 
   // 3. Render Each Page
@@ -1718,8 +1718,7 @@ export async function generatePattiBookPdf(options: GeneratePdfOptions): Promise
 
     const pageNum = pageIndex + 1;
 
-    // A. Shared Tejas Canvassing Company Header (ONCE per page)
-    drawSharedPageHeader(doc, pageNum, totalPages, logoDataUrl);
+    // A. Shared Tejas Canvassing Company Header removed as requested
 
     // B. Four Pattis in designated layout
     if (layout === '1x4') {

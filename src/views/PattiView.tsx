@@ -1299,7 +1299,6 @@ Generated via TEJAS CANVASSING Terminal.`;
           <LabelCell borderClass={colors.border} bgClass={colors.labelBg} className="col-span-1 text-[8px] font-bold">X</LabelCell>
           <InputCell value={formData.rateRate} onChange={(v) => updateField('rateRate', v)} className="col-span-1" borderClass={colors.border} activeTextClass={colors.textMain} />
           <div className={cn("col-span-3 border-r border-b h-10 flex items-center justify-center px-2 text-sm font-mono font-black tabular-nums tracking-tight", colors.border, colors.accentBg)}>
-            <span className="text-[10px] font-black text-blue-600/70 dark:text-blue-400/70 mr-1.5 uppercase tracking-wider">GROSS:</span>
             <span className="text-blue-700 dark:text-blue-300 font-extrabold">{formatINR(formData.rateAmount)}</span>
           </div>
           <div className={cn("col-span-2 border-r border-b h-10 flex items-center justify-center text-[9px] font-black uppercase tracking-widest text-neutral-400 bg-neutral-50/50 dark:bg-neutral-900/50", colors.border)}>
@@ -1312,7 +1311,6 @@ Generated via TEJAS CANVASSING Terminal.`;
           <div className={cn("col-span-1 border-r border-b h-10", colors.border)} />
           <div className={cn("col-span-1 border-r border-b h-10", colors.border)} />
           <div className={cn("col-span-3 border-r border-b h-10 flex items-center justify-center px-2 text-sm font-mono font-black tabular-nums tracking-tight", colors.border, colors.dedBg)}>
-            <span className="text-[10px] font-black text-rose-500/80 mr-1.5 uppercase tracking-wider">TOTAL DED:</span>
             <span className="font-extrabold">{formatINR(formData.expensesSum)}</span>
           </div>
           <LabelCell borderClass={colors.border} bgClass={colors.labelBg} className="col-span-1 text-[9px]">CHQ AM</LabelCell>
@@ -1342,7 +1340,6 @@ Generated via TEJAS CANVASSING Terminal.`;
           </div>
           <div className={cn("col-span-1 border-r border-b h-10", colors.border)} />
           <div className={cn("col-span-3 border-r border-b h-10 flex items-center justify-center px-2 text-sm font-mono font-black tabular-nums tracking-tight", colors.border, colors.netBg)}>
-            <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 mr-1.5 uppercase tracking-wider">NET AMT:</span>
             <span className="text-emerald-700 dark:text-emerald-300 font-extrabold">{formatINR(formData.netAmount)}</span>
           </div>
           <LabelCell borderClass={colors.border} bgClass={colors.labelBg} className="col-span-1 text-[9px]">CHQ NO</LabelCell>
@@ -1360,7 +1357,6 @@ Generated via TEJAS CANVASSING Terminal.`;
           />
           <div className={cn("col-span-2 border-r border-b h-10", colors.border)} />
           <div className={cn("col-span-3 border-r border-b h-10 flex items-center justify-center px-2 text-sm font-mono font-bold tabular-nums tracking-tight text-blue-600 dark:text-blue-400", colors.border, colors.accentBg)}>
-            <span className="text-[10px] font-black text-blue-500 mr-1.5 uppercase tracking-wider">CHQ PAID:</span>
             <span className="font-extrabold">{formatINR(formData.chqAm)}</span>
           </div>
           <LabelCell borderClass={colors.border} bgClass={colors.labelBg} className="col-span-1 text-[9px]">CHQ DT</LabelCell>
@@ -1382,7 +1378,6 @@ Generated via TEJAS CANVASSING Terminal.`;
             colors.border,
             parseFloat(formData.shortageDelta) >= 0 ? "text-emerald-600 bg-emerald-500/[0.04]" : "text-rose-600 bg-rose-500/[0.04]"
           )}>
-            <span className="text-[10px] font-black opacity-80 mr-1.5 uppercase tracking-wider">SHORTAGE Δ:</span>
             <span className="font-extrabold">{formatINR(formData.shortageDelta)}</span>
           </div>
           <LabelCell borderClass={colors.border} bgClass={colors.labelBg} className="col-span-1 text-[9px]">BANK</LabelCell>

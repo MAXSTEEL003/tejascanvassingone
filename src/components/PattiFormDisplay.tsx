@@ -246,7 +246,6 @@ export default function PattiFormDisplay({
               </td>
               <td colSpan={3} className="px-2 py-1 font-black text-sky-950 bg-[#e0f2fe] text-center font-mono text-[10.5px] sm:text-[11.5px] tracking-tight border-r border-slate-300">
                 <div className="flex items-center justify-center gap-1.5">
-                  <span className="text-[7.5px] sm:text-[8px] font-black text-sky-800/80 uppercase tracking-wider">GROSS:</span>
                   <span className="font-extrabold">{formatRupeesINR(patti.grossAmount)}</span>
                 </div>
               </td>
@@ -271,7 +270,6 @@ export default function PattiFormDisplay({
               </td>
               <td colSpan={3} className="px-2 py-0.5 font-black text-rose-700 bg-rose-500/[0.06] text-center border-r border-slate-300 font-mono text-[10px] sm:text-[11px] tracking-tight">
                 <div className="flex items-center justify-center gap-1.5">
-                  <span className="text-[7.5px] sm:text-[8px] font-black text-rose-600/80 uppercase tracking-wider">TOTAL DED:</span>
                   <span className="font-extrabold">{patti.expensesSum > 0 ? formatRupeesINR(patti.expensesSum) : '0.00'}</span>
                 </div>
               </td>
@@ -302,7 +300,6 @@ export default function PattiFormDisplay({
               </td>
               <td colSpan={3} className="px-2 py-0.5 font-black text-emerald-900 bg-[#dcfce7] text-center border-r border-slate-300 font-mono text-[10.5px] sm:text-[11.5px] tracking-tight">
                 <div className="flex items-center justify-center gap-1.5">
-                  <span className="text-[7.5px] sm:text-[8px] font-black text-emerald-700 uppercase tracking-wider">NET AMT:</span>
                   <span className="font-black text-emerald-950">{patti.netAmount > 0 ? formatRupeesINR(patti.netAmount) : '0.00'}</span>
                 </div>
               </td>
@@ -327,7 +324,6 @@ export default function PattiFormDisplay({
               </td>
               <td colSpan={3} className="px-2 py-0.5 font-black text-blue-800 bg-blue-500/[0.05] text-center border-r border-slate-300 font-mono text-[10px] sm:text-[11px] tracking-tight">
                 <div className="flex items-center justify-center gap-1.5">
-                  <span className="text-[7.5px] sm:text-[8px] font-black text-blue-600/80 uppercase tracking-wider">CHQ PAID:</span>
                   <span className="font-extrabold">{patti.chqAm > 0 ? formatRupeesINR(patti.chqAm) : '0.00'}</span>
                 </div>
               </td>
@@ -355,7 +351,6 @@ export default function PattiFormDisplay({
                 patti.shortageDelta >= 0 ? "text-emerald-900 bg-[#e6f9f0]" : "text-rose-700 bg-rose-50"
               )}>
                 <div className="flex items-center justify-center gap-1.5">
-                  <span className="text-[7.5px] sm:text-[8px] font-black opacity-80 uppercase tracking-wider">SHORTAGE Δ:</span>
                   <span className="font-extrabold">{formatRupeesINR(patti.shortageDelta)}</span>
                 </div>
               </td>
