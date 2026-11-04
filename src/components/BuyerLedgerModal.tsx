@@ -19,6 +19,7 @@ import { useNavigate } from 'react-router-dom';
 import { cn, formatINR, getDeletedPlacedOrderIds, getDeletedProcurementIds } from '../lib/utils';
 import { getCollectionDocs } from '../lib/firebase';
 import { resolveBuyerProfile } from '../utils/poEmailTemplate';
+import { isDateBeforeNov3 } from '../utils/orderOperations';
 
 export interface BuyerLedgerModalProps {
   buyerName: string | null;
@@ -152,8 +153,9 @@ export default function BuyerLedgerModal({
 
         const activeArrivals = allArrivals.filter(row => row && (row.partyName || row.millerName || row.billNo || row.qty));
         
-        // Match arrivals for this buyer
+        // Match arrivals for this buyer (strictly on or after Nov 3)
         const arrivalEntries = activeArrivals.filter(row => {
+          if (isDateBeforeNov3(row.date)) return false;
           const rowParty = String(row.partyName || '').trim().toUpperCase();
           return rowParty === normBuyer || (rowParty && normBuyer.includes(rowParty));
         }).map((row, index) => {
@@ -189,9 +191,10 @@ export default function BuyerLedgerModal({
           };
         });
 
-        // Also include trade orders from placed_orders for this buyer that haven't arrived yet
+        // Also include trade orders from placed_orders for this buyer that haven't arrived yet (strictly on or after Nov 3)
         const tradeOrders = uniquePlaced.filter(p => {
           if (!p) return false;
+          if (isDateBeforeNov3(p.date || p.purchaseOrderSentAt || p.createdAt)) return false;
           const directMatch = p.buyer && String(p.buyer).trim().toUpperCase() === normBuyer;
           if (directMatch) return true;
           if (p.originalOrders && Array.isArray(p.originalOrders)) {

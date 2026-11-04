@@ -37,12 +37,15 @@ import {
   ChevronUp,
   ArrowUp,
   ArrowDown,
-  Layers
+  Layers,
+  CreditCard,
+  CheckCircle2,
+  Receipt
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { getVerifiedUserRole } from '../lib/auth';
-import { cn, formatINR, getRegisteredSuppliers, getRegisteredBuyerNames, sanitizeSupplierName } from '../lib/utils';
+import { cn, formatINR, getRegisteredSuppliers, getRegisteredBuyerNames, getRegisteredBuyers, sanitizeSupplierName } from '../lib/utils';
 import { getCollectionDocs, setCollectionDoc, deleteCollectionDoc, db, invalidateCollectionCache } from '../lib/firebase';
 import { doc, writeBatch, collection, query, where, getDocs } from 'firebase/firestore';
 import * as XLSX from 'xlsx';
@@ -50,6 +53,9 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import ManifestCameraScanner, { ParsedManifestData } from '../components/ManifestCameraScanner';
 import BillPhotoModal from '../components/BillPhotoModal';
+import ArrivalPaymentModal, { PaymentEntryData } from '../components/ArrivalPaymentModal';
+import { recordPaymentClearedForPatti, unmarkPaymentClearedForPatti } from '../utils/pattiBookManager';
+import { isDateBeforeNov3, resolveSubOrderNumber } from '../utils/orderOperations';
 import ExcelImportModal from '../components/ExcelImportModal';
 import ColumnVisibilityModal from '../components/ColumnVisibilityModal';
 import ExcelColumnFilter, { FilterCondition as ExcelFilterCondition } from '../components/ExcelColumnFilter';
@@ -198,30 +204,45 @@ export type FilterCondition = ExcelFilterCondition;
 
 export const normalizeRowDaysAndStatus = (row: any) => {
   if (!row) return row;
-  const dVal = String(row.noOfDays ?? '').trim();
-  const sVal = String(row.noOfDayRec ?? '').trim();
+  let updatedRow = { ...row };
+
+  // Heal corrupted netAmt where previous bug subtracted chqAm and zeroed it out
+  const rawAmt = parseFloat(String(updatedRow.amount || 0).replace(/,/g, '')) || 0;
+  const rawNet = parseFloat(String(updatedRow.netAmt || 0).replace(/,/g, '')) || 0;
+  const rawChq = parseFloat(String(updatedRow.chqAm || 0).replace(/,/g, '')) || 0;
+  if (rawAmt > 0 && rawNet === 0 && rawChq > 0 && !updatedRow.isNetAmtManual && !isFormula(updatedRow.netAmt)) {
+    const lhVal = parseFloat(String(updatedRow.lh || 0).replace(/,/g, '')) || 0;
+    const ccVal = parseFloat(String(updatedRow.cc || 0).replace(/,/g, '')) || 0;
+    const tdsVal = parseFloat(String(updatedRow.tds || 0).replace(/,/g, '')) || 0;
+    const shortageVal = parseFloat(String(updatedRow.shortage || 0).replace(/,/g, '')) || 0;
+    const diffInVal = parseFloat(String(updatedRow.diffIn || 0).replace(/,/g, '')) || 0;
+    updatedRow.netAmt = Math.max(0, rawAmt - lhVal - ccVal - tdsVal - shortageVal - diffInVal).toFixed(2);
+  }
+
+  const dVal = String(updatedRow.noOfDays ?? '').trim();
+  const sVal = String(updatedRow.noOfDayRec ?? '').trim();
   const isDStatus = /^(cleared|clear|paid|pending|not cleared|not-cleared|unpaid)$/i.test(dVal);
   const isSDays = /^\d+\s*days?$/i.test(sVal) || (!isNaN(Number(sVal)) && Number(sVal) > 0 && Number(sVal) < 1000);
 
   if (isDStatus && isSDays) {
     return {
-      ...row,
+      ...updatedRow,
       noOfDays: sVal,
       noOfDayRec: /clear|paid/i.test(dVal) ? 'Cleared' : 'Not Cleared'
     };
   } else if (isDStatus && !sVal) {
     return {
-      ...row,
+      ...updatedRow,
       noOfDays: '',
       noOfDayRec: /clear|paid/i.test(dVal) ? 'Cleared' : 'Not Cleared'
     };
   } else if (isSDays && !dVal) {
     return {
-      ...row,
+      ...updatedRow,
       noOfDays: sVal
     };
   }
-  return row;
+  return updatedRow;
 };
 
 export default function ArrivalEntry() {
@@ -332,6 +353,9 @@ export default function ArrivalEntry() {
 
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState<string>('');
+  const editValueRef = useRef<string>('');
+  const skipBlurSaveRef = useRef(false);
+  const [stakeholdersVersion, setStakeholdersVersion] = useState(0);
   const [formulaBarText, setFormulaBarText] = useState<string>('');
   const isFormulaFocused = useRef(false);
 
@@ -454,6 +478,11 @@ export default function ArrivalEntry() {
     rowIndex: number;
     row: any;
   }>({ isOpen: false, rowIndex: -1, row: null });
+  const [paymentModalState, setPaymentModalState] = useState<{
+    isOpen: boolean;
+    rowIndex: number;
+    row: any;
+  }>({ isOpen: false, rowIndex: -1, row: null });
 
   // Export XLS Modal states
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
@@ -522,26 +551,21 @@ export default function ArrivalEntry() {
   useEffect(() => {
     async function loadMeta() {
       try {
-        const cloudDocs = await getCollectionDocs('stakeholders').catch(() => []);
         const reg = getRegisteredSuppliers();
         const regBuyers = getRegisteredBuyerNames();
-        const supSet = new Set<string>(reg.length > 0 ? reg.map(s => s.name) : SUPPLIERS);
-        const buySet = new Set<string>(regBuyers);
+        const supList = reg.map(s => s.name).filter(Boolean);
         const buyerRoadsSet = new Set<string>();
 
-        cloudDocs.forEach(d => {
-          if (d && d.name) {
-            if (d.type === 'suppliers') supSet.add(d.name.trim());
-            if (d.type === 'buyers') {
-              buySet.add(d.name.trim());
-              if (d.road && String(d.road).trim()) buyerRoadsSet.add(String(d.road).trim());
-              if (d.area && String(d.area).trim()) buyerRoadsSet.add(String(d.area).trim());
-            }
-          }
-        });
+        try {
+          const registeredBuyersList = getRegisteredBuyers();
+          registeredBuyersList.forEach((b: any) => {
+            if (b?.road && String(b.road).trim()) buyerRoadsSet.add(String(b.road).trim());
+            if (b?.area && String(b.area).trim()) buyerRoadsSet.add(String(b.area).trim());
+          });
+        } catch {}
 
-        setDynamicSuppliers(Array.from(supSet).sort());
-        setDynamicBuyers(Array.from(buySet).sort());
+        setDynamicSuppliers(supList);
+        setDynamicBuyers(regBuyers);
         setRegisteredBuyerRoads(Array.from(buyerRoadsSet).sort());
 
         // Load brands from product_inventory (local and cloud)
@@ -552,6 +576,7 @@ export default function ArrivalEntry() {
         }
         const cloudInv = await getCollectionDocs('product_inventory').catch(() => []);
         const allProds = [...(Array.isArray(invArr) ? invArr : []), ...(Array.isArray(cloudInv) ? cloudInv : [])];
+        setInventoryProducts(allProds);
         const brandsSet = new Set<string>();
         allProds.forEach((p: any) => {
           const b = (p?.name || p?.brand || '').trim();
@@ -561,11 +586,22 @@ export default function ArrivalEntry() {
 
         const orders = await getCollectionDocs('placed_orders').catch(() => []);
         setPlacedOrders(orders);
+        setStakeholdersVersion(v => v + 1);
       } catch (e) {
         console.warn('Metadata load error in ArrivalEntry:', e);
       }
     }
     loadMeta();
+
+    const handleStakeholdersUpdated = () => {
+      setStakeholdersVersion(v => v + 1);
+    };
+    window.addEventListener('stakeholders-updated', handleStakeholdersUpdated);
+    window.addEventListener('storage', handleStakeholdersUpdated);
+    return () => {
+      window.removeEventListener('stakeholders-updated', handleStakeholdersUpdated);
+      window.removeEventListener('storage', handleStakeholdersUpdated);
+    };
   }, []);
 
   // Track sheets loaded from Firestore in this session to prevent repeated downloads
@@ -737,13 +773,176 @@ export default function ArrivalEntry() {
 
     let row = { ...newData[idx], [colId]: val, lastUpdated: Date.now() };
 
+    // Auto-fill delivery area/road if buyer was selected and area is currently blank
+    if (colId === 'partyName' && val) {
+      try {
+        const regBuyers = getRegisteredBuyers();
+        const match = regBuyers.find(b => b?.name && b.name.trim().toLowerCase() === String(val).trim().toLowerCase());
+        if (match && (!row.area || !String(row.area).trim())) {
+          if (match.road && String(match.road).trim()) row.area = String(match.road).trim();
+          else if ((match as any).area && String((match as any).area).trim()) row.area = String((match as any).area).trim();
+        }
+      } catch {}
+    }
+
+    // Auto-fill order details if supplier sub-order reference was selected
+    if (colId === 'purchaseOrderNo' && val) {
+      try {
+        const searchVal = String(val).trim().toUpperCase();
+        let matchedSub: any = null;
+        let parentOrder: any = null;
+
+        // 1. Search in placedOrders sub-orders
+        for (const o of placedOrders) {
+          if (Array.isArray(o?.originalOrders)) {
+            for (let sIdx = 0; sIdx < o.originalOrders.length; sIdx++) {
+              const sub = o.originalOrders[sIdx];
+              const sRef = sub?.supplierSubOrderNo || resolveSubOrderNumber(sub, sIdx, o.supplier);
+              if (
+                String(sRef || '').trim().toUpperCase() === searchVal ||
+                String(sub?.subOrderNo || '').trim().toUpperCase() === searchVal ||
+                String(sub?.id || '').trim().toUpperCase() === searchVal
+              ) {
+                matchedSub = sub;
+                parentOrder = o;
+                break;
+              }
+            }
+          }
+          if (matchedSub) break;
+        }
+
+        // 2. Search in procurement_requests if not found in placedOrders
+        if (!matchedSub) {
+          try {
+            const savedProc = JSON.parse(localStorage.getItem('procurement_requests') || '[]');
+            if (Array.isArray(savedProc)) {
+              matchedSub = savedProc.find((p: any) => 
+                String(p.supplierSubOrderNo || '').trim().toUpperCase() === searchVal ||
+                String(p.subOrderNo || '').trim().toUpperCase() === searchVal ||
+                String(p.id || '').trim().toUpperCase() === searchVal
+              );
+            }
+          } catch {}
+        }
+
+        if (matchedSub) {
+          const sup = matchedSub.supplier || parentOrder?.supplier || '';
+          const buyer = matchedSub.buyer || parentOrder?.buyer || '';
+          const brand = matchedSub.brand || matchedSub.product || parentOrder?.brand || parentOrder?.product || '';
+          const qty = Number(matchedSub.qty) || 0;
+          const rate = Number(matchedSub.rate) || 0;
+
+          if ((!row.millerName || !String(row.millerName).trim()) && sup) {
+            row.millerName = sup;
+          }
+          if ((!row.partyName || !String(row.partyName).trim()) && buyer) {
+            row.partyName = buyer;
+            try {
+              const regBuyers = getRegisteredBuyers();
+              const match = regBuyers.find(b => b?.name && b.name.trim().toLowerCase() === String(buyer).trim().toLowerCase());
+              if (match && (!row.area || !String(row.area).trim())) {
+                if (match.road && String(match.road).trim()) row.area = String(match.road).trim();
+                else if ((match as any).area && String((match as any).area).trim()) row.area = String((match as any).area).trim();
+              }
+            } catch {}
+          }
+          if ((!row.brand || !String(row.brand).trim()) && brand) {
+            row.brand = brand;
+          }
+          if ((!row.rateQty || Number(row.rateQty) === 0) && qty > 0) {
+            row.rateQty = qty;
+          }
+          if ((!row.rateRate || Number(row.rateRate) === 0) && rate > 0) {
+            row.rateRate = rate;
+          }
+        }
+      } catch (err) {
+        console.warn('Error auto-filling from purchaseOrderNo:', err);
+      }
+    }
+
     // Standard business calculations if not overridden by explicit formula
-    row = recalculateRowBusinessLogic(row);
+    row = recalculateRowBusinessLogic(row, colId);
 
     newData[idx] = row;
     if (row.id) dirtyRowIds.current.add(row.id);
     setData(newData);
   }, [data, saveToHistory, setData]);
+
+  // Handle Payment Entry Save from Modal
+  const handleSavePaymentEntry = useCallback((payData: PaymentEntryData) => {
+    if (!paymentModalState.row) return;
+
+    saveToHistory();
+    const targetRow = paymentModalState.row;
+    const targetId = targetRow.id || paymentModalState.rowIndex;
+
+    const nextData = [...data];
+    let idx = -1;
+    if (typeof targetId === 'string') {
+      idx = nextData.findIndex(r => r && r.id === targetId);
+    }
+    if (idx === -1 && typeof targetId === 'number') {
+      idx = targetId;
+    }
+    if (idx === -1 || !nextData[idx]) return;
+
+    const isCleared = payData.status === 'Cleared';
+    let updatedRow = {
+      ...nextData[idx],
+      noOfDayRec: payData.status,
+      noOfDays: isCleared ? 'Cleared' : (nextData[idx].noOfDays === 'Cleared' ? '' : nextData[idx].noOfDays),
+      chqAm: payData.amount > 0 ? payData.amount : '',
+      chqNo: payData.chqNo || '',
+      chqDt: payData.chqDt || '',
+      bank: payData.bank || '',
+      lastUpdated: Date.now()
+    };
+
+    // Update deductions if provided
+    if (payData.shortage !== undefined) updatedRow.shortage = payData.shortage > 0 ? payData.shortage : '';
+    if (payData.tds !== undefined) updatedRow.tds = payData.tds > 0 ? payData.tds : '';
+    if (payData.diffIn !== undefined) updatedRow.diffIn = payData.diffIn > 0 ? payData.diffIn : '';
+    if (payData.lh !== undefined) updatedRow.lh = payData.lh > 0 ? payData.lh : '';
+    if (payData.cc !== undefined) updatedRow.cc = payData.cc > 0 ? payData.cc : '';
+
+    // Business recalculation for amount, netAmt
+    updatedRow = recalculateRowBusinessLogic(updatedRow, 'paymentEntry');
+
+    nextData[idx] = updatedRow;
+    if (updatedRow.id) dirtyRowIds.current.add(updatedRow.id);
+    setData(nextData);
+
+    // Sync with Patti Book
+    try {
+      if (isCleared) {
+        recordPaymentClearedForPatti({
+          sourceType: 'arrival_entry',
+          sourceId: updatedRow.id || String(idx),
+          sheetId: currentSheetId,
+          sheetIndex: idx,
+          clearedDate: payData.chqDt || new Date().toISOString().split('T')[0],
+          millerName: updatedRow.millerName,
+          partyName: updatedRow.partyName,
+          billNo: updatedRow.billNo,
+          amount: parseFloat(updatedRow.netAmt) || parseFloat(updatedRow.amount) || payData.amount,
+          chqAm: payData.amount,
+          chqNo: payData.chqNo,
+          chqDt: payData.chqDt,
+          bank: payData.bank,
+          rawRow: updatedRow
+        });
+      } else {
+        const pattiId = `patti-arr-${currentSheetId || 'def'}-${updatedRow.id || idx}`;
+        unmarkPaymentClearedForPatti(pattiId);
+      }
+    } catch (e) {
+      console.warn('Patti registry sync error:', e);
+    }
+
+    setPaymentModalState({ isOpen: false, rowIndex: -1, row: null });
+  }, [paymentModalState, data, saveToHistory, setData, currentSheetId]);
 
   // Unique dropdown option sets for Quick Controls, Autocomplete, and Due List PDF
   // DELIVERY ROADS ARE COMMON FOR THE CANVASSING BUSINESS ACROSS ALL MONTHS:
@@ -799,80 +998,98 @@ export default function ArrivalEntry() {
   }, [sheets, data, registeredBuyerRoads]);
 
   // Dynamic Option Lists for Dropdowns across all columns
+  // Derived strictly from registered entities in Users Registry so no random/test values appear
   const allAvailableSuppliers = useMemo(() => {
     const set = new Set<string>();
-    dynamicSuppliers.forEach(s => { if (s && String(s).trim()) set.add(String(s).trim()); });
     try {
-      getRegisteredSuppliers().forEach(s => { if (s?.name && String(s.name).trim()) set.add(String(s.name).trim()); });
-    } catch {}
-    sheets.forEach(sh => {
-      (sh.data || []).forEach(r => {
-        if (r?.millerName && String(r.millerName).trim()) set.add(String(r.millerName).trim());
+      getRegisteredSuppliers().forEach(s => {
+        if (s?.name && String(s.name).trim()) set.add(String(s.name).trim());
       });
-    });
-    data.forEach(r => {
-      if (r?.millerName && String(r.millerName).trim()) set.add(String(r.millerName).trim());
-    });
+    } catch {}
     return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [dynamicSuppliers, sheets, data]);
+  }, [stakeholdersVersion]);
 
   const allAvailableBuyers = useMemo(() => {
     const set = new Set<string>();
-    dynamicBuyers.forEach(b => { if (b && String(b).trim()) set.add(String(b).trim()); });
     try {
-      getRegisteredBuyerNames().forEach(b => { if (b && String(b).trim()) set.add(String(b).trim()); });
-    } catch {}
-    sheets.forEach(sh => {
-      (sh.data || []).forEach(r => {
-        if (r?.partyName && String(r.partyName).trim()) set.add(String(r.partyName).trim());
+      getRegisteredBuyerNames().forEach(b => {
+        if (b && String(b).trim()) set.add(String(b).trim());
       });
-    });
-    data.forEach(r => {
-      if (r?.partyName && String(r.partyName).trim()) set.add(String(r.partyName).trim());
-    });
+    } catch {}
     return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [dynamicBuyers, sheets, data]);
+  }, [stakeholdersVersion]);
 
   const allAvailableBrands = useMemo(() => {
     const set = new Set<string>();
     dynamicBrands.forEach(b => { if (b && String(b).trim()) set.add(String(b).trim()); });
-    sheets.forEach(sh => {
-      (sh.data || []).forEach(r => {
-        if (r?.brand && String(r.brand).trim()) set.add(String(r.brand).trim());
-      });
-    });
-    data.forEach(r => {
-      if (r?.brand && String(r.brand).trim()) set.add(String(r.brand).trim());
-    });
     return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [dynamicBrands, sheets, data]);
+  }, [dynamicBrands]);
 
   const allAvailablePOs = useMemo(() => {
     const set = new Set<string>();
-    placedOrders.forEach(o => {
-      const po = o.orderId || o.id || o.poNumber;
-      if (po && String(po).trim()) set.add(String(po).trim());
-    });
-    sheets.forEach(sh => {
-      (sh.data || []).forEach(r => {
-        if (r?.purchaseOrderNo && String(r.purchaseOrderNo).trim()) set.add(String(r.purchaseOrderNo).trim());
-      });
-    });
-    data.forEach(r => {
-      if (r?.purchaseOrderNo && String(r.purchaseOrderNo).trim()) set.add(String(r.purchaseOrderNo).trim());
-    });
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [placedOrders, sheets, data]);
 
-  const getColumnDropdownOptions = useCallback((colId: string) => {
+    const isValidSubRef = (ref?: string) => {
+      if (!ref || typeof ref !== 'string') return false;
+      const clean = ref.trim().toUpperCase();
+      return /^[A-Z]{2,6}-\d{4}$/.test(clean) && !/^(MO|SO|OD|PO|TC)-/.test(clean);
+    };
+
+    // 1. Placed orders: extract supplier-specific sub-orders
+    placedOrders.forEach(o => {
+      if (isDateBeforeNov3(o?.date || o?.createdAt)) return;
+      if (Array.isArray(o?.originalOrders) && o.originalOrders.length > 0) {
+        o.originalOrders.forEach((sub: any, sIdx: number) => {
+          const sRef = sub?.supplierSubOrderNo || resolveSubOrderNumber(sub, sIdx, o.supplier);
+          if (isValidSubRef(sRef)) {
+            set.add(sRef.trim().toUpperCase());
+          }
+        });
+      } else if (isValidSubRef(o?.supplierSubOrderNo)) {
+        set.add(o.supplierSubOrderNo.trim().toUpperCase());
+      }
+    });
+
+    // 2. Approved procurement requests
+    try {
+      const savedProc = JSON.parse(localStorage.getItem('procurement_requests') || '[]');
+      if (Array.isArray(savedProc)) {
+        savedProc.forEach((p: any) => {
+          if (isDateBeforeNov3(p?.date || p?.createdAt)) return;
+          const sRef = p?.supplierSubOrderNo || (p?.status === 'Approved' ? p?.subOrderNo : null);
+          if (isValidSubRef(sRef)) {
+            set.add(sRef.trim().toUpperCase());
+          }
+        });
+      }
+    } catch {}
+
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [placedOrders]);
+
+  const getColumnDropdownOptions = useCallback((colId: string, row?: any) => {
     if (colId === 'millerName') return allAvailableSuppliers;
     if (colId === 'partyName') return allAvailableBuyers;
-    if (colId === 'brand') return allAvailableBrands;
+    if (colId === 'brand') {
+      if (row?.millerName && inventoryProducts.length > 0) {
+        const rowSup = String(row.millerName).trim().toLowerCase();
+        const matchingBrands = inventoryProducts
+          .filter((p: any) => {
+            const pSup = String(p.supplier || p.supplierName || p.millerName || '').trim().toLowerCase();
+            return pSup === rowSup || pSup.includes(rowSup) || rowSup.includes(pSup);
+          })
+          .map((p: any) => (p.name || p.brand || '').trim())
+          .filter(Boolean);
+        if (matchingBrands.length > 0) {
+          return Array.from(new Set(matchingBrands)).sort((a, b) => a.localeCompare(b));
+        }
+      }
+      return allAvailableBrands;
+    }
     if (colId === 'noOfDayRec') return ['Not Cleared', 'Cleared'];
     if (colId === 'purchaseOrderNo') return allAvailablePOs;
     const col = visibleColumns.find(c => c.id === colId);
     return col?.options || [];
-  }, [allAvailableSuppliers, allAvailableBuyers, allAvailableBrands, allAvailablePOs, visibleColumns]);
+  }, [allAvailableSuppliers, allAvailableBuyers, allAvailableBrands, allAvailablePOs, visibleColumns, inventoryProducts]);
 
   // When filtering by a road in the current sheet, find how many matching entries exist in other sheets
   const otherSheetsWithQuickRoad = useMemo(() => {
@@ -1177,7 +1394,12 @@ export default function ArrivalEntry() {
       setBillPhotoModalState({ isOpen: true, rowIndex: r, row: targetRow });
       return;
     }
+    if (col.id === 'noOfDayRec') {
+      setPaymentModalState({ isOpen: true, rowIndex: r, row: targetRow });
+      return;
+    }
 
+    skipBlurSaveRef.current = false;
     setActiveCell({ r, c });
     setSelectionRange({ startR: r, startC: c, endR: r, endC: c });
     setIsEditing(true);
@@ -1186,8 +1408,12 @@ export default function ArrivalEntry() {
     if (col.id === 'noOfDayRec') {
       const isClr = /^(cleared|clear|paid)$/i.test(String(rawVal || '').trim());
       rawVal = isClr ? 'Cleared' : 'Not Cleared';
+    } else if ((col.type === 'calc' || col.type === 'number') && typeof rawVal === 'string' && !isFormula(rawVal)) {
+      rawVal = rawVal.replace(/[₹\s,]/g, '');
     }
-    setEditValue(rawVal !== undefined && rawVal !== null ? String(rawVal) : '');
+    const cleanStr = rawVal !== undefined && rawVal !== null ? String(rawVal) : '';
+    editValueRef.current = cleanStr;
+    setEditValue(cleanStr);
 
     setTimeout(() => {
       if (inputRef.current) {
@@ -1203,14 +1429,19 @@ export default function ArrivalEntry() {
   }, [visibleColumns, filteredData]);
 
   const stopEditing = useCallback((save: boolean = true) => {
+    if (skipBlurSaveRef.current) {
+      setIsEditing(false);
+      return;
+    }
     if (save && activeCell && visibleColumns[activeCell.c]) {
       const targetRow = filteredData[activeCell.r];
       if (targetRow) {
-        handleUpdateCell(targetRow.id || activeCell.r, visibleColumns[activeCell.c].id, editValue);
+        const rowId = targetRow.id ?? activeCell.r;
+        handleUpdateCell(rowId, visibleColumns[activeCell.c].id, editValueRef.current);
       }
     }
     setIsEditing(false);
-  }, [activeCell, filteredData, visibleColumns, editValue, handleUpdateCell]);
+  }, [activeCell, filteredData, visibleColumns, handleUpdateCell]);
 
   // Excel Copy (TSV) & Multi-Cell Paste
   const handleCopySelection = useCallback(() => {
@@ -1278,7 +1509,8 @@ export default function ArrivalEntry() {
             cellCount++;
           }
         }
-        rowObj = recalculateRowBusinessLogic(rowObj);
+        const pasteColId = (minC === maxC && visibleColumns[minC]) ? visibleColumns[minC].id : undefined;
+        rowObj = recalculateRowBusinessLogic(rowObj, pasteColId);
         nextData[r] = rowObj;
         if (rowObj.id) dirtyRowIds.current.add(rowObj.id);
       }
@@ -1872,9 +2104,16 @@ export default function ArrivalEntry() {
               if (col.id === 'billNo') {
                 updatedRow.billPhoto = '';
               }
+              if (col.id === 'netAmt') {
+                updatedRow.isNetAmtManual = false;
+              }
+              if (col.id === 'amount') {
+                updatedRow.isAmountManual = false;
+              }
             }
           }
-          const recalculated = recalculateRowBusinessLogic(updatedRow);
+          const deleteColId = (startC === endC && visibleColumns[startC]) ? visibleColumns[startC].id : undefined;
+          const recalculated = recalculateRowBusinessLogic(updatedRow, deleteColId);
           nextData[realIdx] = recalculated;
           if (recalculated.id) {
             dirtyRowIds.current.add(recalculated.id);
@@ -3087,7 +3326,8 @@ export default function ArrivalEntry() {
                 if (activeCell && visibleColumns[activeCell.c]) {
                   const targetRow = filteredData[activeCell.r];
                   if (targetRow) {
-                    handleUpdateCell(targetRow.id || activeCell.r, visibleColumns[activeCell.c].id, formulaBarText);
+                    const rowId = targetRow.id ?? activeCell.r;
+                    handleUpdateCell(rowId, visibleColumns[activeCell.c].id, formulaBarText);
                   }
                   if (activeCell.r < filteredData.length - 1) {
                     const nextR = activeCell.r + 1;
@@ -3107,7 +3347,8 @@ export default function ArrivalEntry() {
               if (activeCell && visibleColumns[activeCell.c]) {
                 const targetRow = filteredData[activeCell.r];
                 if (targetRow) {
-                  handleUpdateCell(targetRow.id || activeCell.r, visibleColumns[activeCell.c].id, formulaBarText);
+                  const rowId = targetRow.id ?? activeCell.r;
+                  handleUpdateCell(rowId, visibleColumns[activeCell.c].id, formulaBarText);
                 }
               }
             }}
@@ -3429,23 +3670,35 @@ export default function ArrivalEntry() {
                                   const custom = window.prompt(`Enter new ${col.label}:`);
                                   if (custom && custom.trim()) {
                                     const clean = custom.trim();
+                                    skipBlurSaveRef.current = true;
+                                    editValueRef.current = clean;
                                     setEditValue(clean);
-                                    handleUpdateCell(row.id || rIdx, col.id, clean);
-                                    if (col.id === 'millerName') setDynamicSuppliers(prev => Array.from(new Set([...prev, clean])).sort());
-                                    if (col.id === 'partyName') setDynamicBuyers(prev => Array.from(new Set([...prev, clean])).sort());
-                                    if (col.id === 'brand') setDynamicBrands(prev => Array.from(new Set([...prev, clean])).sort());
+                                    const targetRow = filteredData[activeCell?.r ?? rIdx] || row;
+                                    const targetId = targetRow?.id ?? (row.id || rIdx);
+                                    handleUpdateCell(targetId, col.id, clean);
                                   }
                                   setIsEditing(false);
                                   gridContainerRef.current?.focus({ preventScroll: true });
+                                  setTimeout(() => {
+                                    skipBlurSaveRef.current = false;
+                                  }, 200);
                                   return;
                                 }
+                                skipBlurSaveRef.current = true;
+                                editValueRef.current = newVal;
                                 setEditValue(newVal);
-                                handleUpdateCell(row.id || rIdx, col.id, newVal);
+                                const targetRow = filteredData[activeCell?.r ?? rIdx] || row;
+                                const targetId = targetRow?.id ?? (row.id || rIdx);
+                                handleUpdateCell(targetId, col.id, newVal);
                                 setIsEditing(false);
                                 gridContainerRef.current?.focus({ preventScroll: true });
+                                setTimeout(() => {
+                                  skipBlurSaveRef.current = false;
+                                }, 200);
                               }}
                               onBlur={(e) => {
                                 if (e.relatedTarget === formulaInputRef.current) return;
+                                if (skipBlurSaveRef.current) return;
                                 stopEditing(true);
                               }}
                               onKeyDown={(e) => {
@@ -3463,7 +3716,7 @@ export default function ArrivalEntry() {
                             >
                               <option value="">-- Select {col.label} --</option>
                               {(() => {
-                                const baseOpts = getColumnDropdownOptions(col.id);
+                                const baseOpts = getColumnDropdownOptions(col.id, row);
                                 const fullOpts = (editValue && !baseOpts.includes(editValue))
                                   ? [editValue, ...baseOpts]
                                   : baseOpts;
@@ -3482,9 +3735,13 @@ export default function ArrivalEntry() {
                               ref={inputRef}
                               value={editValue}
                               list={col.id === 'area' || col.id === 'place' ? 'arrival-roads-autocomplete' : undefined}
-                              onChange={(e) => setEditValue(e.target.value)}
+                              onChange={(e) => {
+                                editValueRef.current = e.target.value;
+                                setEditValue(e.target.value);
+                              }}
                               onBlur={(e) => {
                                 if (e.relatedTarget === formulaInputRef.current) return;
+                                if (skipBlurSaveRef.current) return;
                                 stopEditing(true);
                               }}
                               onKeyDown={(e) => {
@@ -3513,16 +3770,25 @@ export default function ArrivalEntry() {
                           </span>
                         )
                       ) : col.id === 'noOfDayRec' ? (
-                        <div className="w-full h-full flex items-center justify-between gap-1 overflow-hidden">
-                          <div className="truncate flex-1 flex justify-center">
+                        <div className="w-full h-full flex items-center justify-between gap-1 overflow-hidden px-1">
+                          <div className="truncate flex-1 flex items-center justify-center">
                             {(() => {
                               const statusStr = String(row?.noOfDayRec || displayVal || '').trim();
                               const isCleared = /^(cleared|clear|paid)$/i.test(statusStr);
                               if (isCleared) {
                                 return (
-                                  <span className="bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300/50 dark:border-emerald-800/50 font-bold px-2 py-0.5 rounded text-[11px] leading-tight select-none">
-                                    Cleared
-                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setPaymentModalState({ isOpen: true, rowIndex: rIdx, row });
+                                    }}
+                                    className="inline-flex items-center gap-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 dark:text-emerald-300 border border-emerald-300/50 dark:border-emerald-800/50 font-bold px-2 py-0.5 rounded text-[11px] leading-tight select-none cursor-pointer transition-colors"
+                                    title="Payment Cleared - Click to view or edit settlement details"
+                                  >
+                                    <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                                    <span>Cleared</span>
+                                  </button>
                                 );
                               }
 
@@ -3533,26 +3799,47 @@ export default function ArrivalEntry() {
                               }
 
                               const daysNum = getDaysPendingNum(row);
-                              let statusBadgeClass = "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300/50 dark:border-emerald-800/50 font-bold px-2 py-0.5 rounded text-[11px] leading-tight select-none";
+                              let statusBadgeClass = "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300/50 dark:border-emerald-800/50 font-bold px-1.5 py-0.5 rounded text-[11px] leading-tight select-none";
                               if (daysNum >= 15 && daysNum <= 28) {
-                                statusBadgeClass = "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300/50 dark:border-amber-800/50 font-bold px-2 py-0.5 rounded text-[11px] leading-tight select-none";
+                                statusBadgeClass = "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300/50 dark:border-amber-800/50 font-bold px-1.5 py-0.5 rounded text-[11px] leading-tight select-none";
                               } else if (daysNum >= 29) {
-                                statusBadgeClass = "bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300/50 dark:border-rose-800/50 font-bold px-2 py-0.5 rounded text-[11px] leading-tight select-none";
+                                statusBadgeClass = "bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300/50 dark:border-rose-800/50 font-bold px-1.5 py-0.5 rounded text-[11px] leading-tight select-none";
                               }
 
                               return (
-                                <span className={statusBadgeClass} title={`Arrival: ${row?.date || 'N/A'} - ${daysNum} days elapsed till today`}>
-                                  {daysNum} {daysNum === 1 ? 'Day' : 'Days'} Pending
-                                </span>
+                                <div className="flex items-center gap-1.5">
+                                  <span 
+                                    className={cn(statusBadgeClass, "cursor-pointer hover:opacity-80 transition-opacity")} 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setPaymentModalState({ isOpen: true, rowIndex: rIdx, row });
+                                    }}
+                                    title={`Arrival: ${row?.date || 'N/A'} - ${daysNum} days elapsed. Click to record payment.`}
+                                  >
+                                    {daysNum} {daysNum === 1 ? 'Day' : 'Days'} Pending
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setPaymentModalState({ isOpen: true, rowIndex: rIdx, row });
+                                    }}
+                                    className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-black uppercase tracking-wider shadow-xs hover:shadow transition-all shrink-0 cursor-pointer active:scale-95"
+                                    title="Take Payment Entry for this pending bill"
+                                  >
+                                    <CreditCard className="w-3 h-3" />
+                                    <span>Pay</span>
+                                  </button>
+                                </div>
                               );
                             })()}
                           </div>
                           <button
                             type="button"
-                            title="Change Payment Status"
+                            title="Open Payment Entry Modal"
                             onClick={(e) => {
                               e.stopPropagation();
-                              startEditing(rIdx, cIdx);
+                              setPaymentModalState({ isOpen: true, rowIndex: rIdx, row });
                             }}
                             className="p-1 rounded hover:bg-primary/10 text-secondary/60 hover:text-primary shrink-0 transition-colors cursor-pointer"
                           >
@@ -4528,8 +4815,8 @@ export default function ArrivalEntry() {
         onApply={handleApplyManifest}
         hasSelectedRow={!!activeCell && activeCell.r >= 0}
         selectedRowIndex={activeCell?.r}
-        knownSuppliers={dynamicSuppliers}
-        knownBuyers={dynamicBuyers}
+        knownSuppliers={allAvailableSuppliers}
+        knownBuyers={allAvailableBuyers}
         knownBrands={dynamicBrands.length > 0 ? dynamicBrands : BRANDS}
       />
 
@@ -4547,6 +4834,16 @@ export default function ArrivalEntry() {
           const targetId = billPhotoModalState.row?.id || billPhotoModalState.rowIndex;
           handleUpdateCell(targetId, 'billPhoto', '');
         }}
+      />
+
+      {/* Payment Entry Modal for Pending/Settled Row */}
+      <ArrivalPaymentModal
+        isOpen={paymentModalState.isOpen}
+        onClose={() => setPaymentModalState(prev => ({ ...prev, isOpen: false }))}
+        row={paymentModalState.row}
+        rowIndex={paymentModalState.rowIndex}
+        onSavePayment={handleSavePaymentEntry}
+        onNavigateToPayments={() => navigate('/payments')}
       />
 
       {/* Export XLS Modal (Current Sheet or Merge Sheets) */}

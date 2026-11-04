@@ -30,13 +30,14 @@ import {
   Check
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { cn, formatINR } from '../lib/utils';
 import { getCollectionDocs, syncCollection, auth, setCollectionDoc, deleteCollectionDoc, db } from '../lib/firebase';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { manageEmployeeServer } from '../lib/auth';
 import ExcelMerchantImportModal from '../components/ExcelMerchantImportModal';
 import merchantsDirectory from '../data/merchants_directory.json';
+import { deriveSupplierCode, getSupplierCode } from '../utils/orderOperations';
 
 type Category = 'suppliers' | 'buyers' | 'employees';
 
@@ -44,6 +45,7 @@ export const DEFAULT_VERIFIED_SUPPLIERS = [
   {
     id: 'SUP-01',
     name: 'SAI TEJA PARBOILED RICE MILLS (P) LTD',
+    code: 'STP',
     contact: 'Operations Desk',
     phone: '9440188941',
     email: 'saitejapbrm@gmail.com',
@@ -55,6 +57,7 @@ export const DEFAULT_VERIFIED_SUPPLIERS = [
   {
     id: 'SUP-02',
     name: 'RIDDHE SIDDHE RICE INDUSTRIES PVT LTD',
+    code: 'RSR',
     contact: 'Sales Desk',
     phone: '7001234567',
     email: 'sales@riddhesiddhe.in',
@@ -66,6 +69,7 @@ export const DEFAULT_VERIFIED_SUPPLIERS = [
   {
     id: 'SUP-03',
     name: 'NIDHI AGROS',
+    code: 'NAR',
     contact: 'Operations Desk',
     phone: '9885123459',
     email: 'nidhiagros.trade@yahoo.com',
@@ -77,6 +81,7 @@ export const DEFAULT_VERIFIED_SUPPLIERS = [
   {
     id: 'SUP-04',
     name: 'VAISHNAVI FOOD PRODUCTS PVT LTD',
+    code: 'VFP',
     contact: 'Procurement Desk',
     phone: '9985901234',
     email: 'vaishnavifoods.sales@gmail.com',
@@ -88,6 +93,7 @@ export const DEFAULT_VERIFIED_SUPPLIERS = [
   {
     id: 'SUP-05',
     name: 'ANNAPURNA RICE & AGRO INDUSTRIES',
+    code: 'ARA',
     contact: 'Operations Desk',
     phone: '9440188941',
     email: 'annapurnariceagro@gmail.com',
@@ -99,6 +105,7 @@ export const DEFAULT_VERIFIED_SUPPLIERS = [
   {
     id: 'SUP-06',
     name: 'BHAGWATI RICE AND AGRO INDUSTRIES',
+    code: 'BRI',
     contact: 'Operations Desk',
     phone: '9440188941',
     email: 'bhagwatirice@gmail.com',
@@ -110,11 +117,24 @@ export const DEFAULT_VERIFIED_SUPPLIERS = [
   {
     id: 'SUP-07',
     name: 'AMRITSAR GRAIN EXPORT LTD.',
+    code: 'AGE',
     contact: 'Export Operations',
     phone: '9814012345',
     email: 'amritsargrain@gmail.com',
     gstin: '03AABCA5678G1Z5',
     address: 'GT Road, Amritsar, Punjab',
+    status: 'Active',
+    type: 'suppliers'
+  },
+  {
+    id: 'SUP-08',
+    name: 'SRI LAKSHMI RICE INDUSTRIES',
+    code: 'SLR',
+    contact: 'Commercial Operations',
+    phone: '9440188942',
+    email: 'srilakshmirice@gmail.com',
+    gstin: '29AABCS1234J1Z8',
+    address: 'Industrial APMC Yard, Karnataka',
     status: 'Active',
     type: 'suppliers'
   }
@@ -239,8 +259,10 @@ export default function UsersManagement() {
   const [showBuyerPassword, setShowBuyerPassword] = useState(false);
   const [copiedCred, setCopiedCred] = useState<string | null>(null);
 
+  const [isCodeManuallyEdited, setIsCodeManuallyEdited] = useState(false);
   const [newUser, setNewUser] = useState({
     name: '',
+    code: '',
     email: '',
     phone: '',
     gstin: '',
@@ -339,10 +361,11 @@ export default function UsersManagement() {
                 (cs.email && cs.email.trim() && s.email && s.email.trim().toLowerCase() === cs.email.trim().toLowerCase()) ||
                 (cs.name && cs.name.trim() && s.name && s.name.trim().toLowerCase() === cs.name.trim().toLowerCase())
               );
+              const code = cs.code || cs.supplierCode || (idx !== -1 ? suppliers[idx].code : '') || getSupplierCode(cs.name);
               if (idx !== -1) {
-                suppliers[idx] = { ...suppliers[idx], ...cs, type: 'suppliers' };
+                suppliers[idx] = { ...suppliers[idx], ...cs, code, type: 'suppliers' };
               } else {
-                suppliers.push({ ...cs, id: cs.id || `SUP-${Date.now()}`, type: 'suppliers' });
+                suppliers.push({ ...cs, code, id: cs.id || `SUP-${Date.now()}`, type: 'suppliers' });
               }
             } else if (isEmployee) {
               const idx = employees.findIndex((e: any) => 
@@ -768,9 +791,22 @@ export default function UsersManagement() {
       }).catch(err => console.warn('Error syncing employee credentials to server:', err));
     }
 
+    let supplierCode = '';
+    if (newUser.category === 'suppliers') {
+      supplierCode = (newUser.code || deriveSupplierCode(newUser.name)).trim().toUpperCase();
+      const duplicate = (stakeholders.suppliers || []).find((s: any) => 
+        s.code && s.code.toUpperCase() === supplierCode
+      );
+      if (duplicate) {
+        alert(`Supplier code "${supplierCode}" is already in use by "${duplicate.name}". Please choose a unique supplier code.`);
+        return;
+      }
+    }
+
     const entry = {
       id,
       name: newUser.name,
+      ...(newUser.category === 'suppliers' ? { code: supplierCode } : {}),
       email: newUser.email ? newUser.email.trim() : '',
       phone: newUser.phone,
       gstin: newUser.gstin || 'N/A',
@@ -830,8 +866,10 @@ export default function UsersManagement() {
     setTimeout(() => setActionSuccessMsg(null), 4000);
 
     setIsAddModalOpen(false);
+    setIsCodeManuallyEdited(false);
     setNewUser({
       name: '',
+      code: '',
       email: '',
       phone: '',
       gstin: '',
@@ -852,9 +890,25 @@ export default function UsersManagement() {
 
     const isEmployee = activeTab === 'employees';
     const isBuyer = activeTab === 'buyers';
+    const isSupplier = activeTab === 'suppliers';
+
+    if (isSupplier) {
+      const supCode = (selectedUser.code || deriveSupplierCode(selectedUser.name)).trim().toUpperCase();
+      const duplicate = (stakeholders.suppliers || []).find((s: any) => 
+        s.id !== selectedUser.id && s.code && s.code.toUpperCase() === supCode
+      );
+      if (duplicate) {
+        alert(`Supplier code "${supCode}" is already in use by "${duplicate.name}". Please choose a unique supplier code.`);
+        return;
+      }
+    }
+
     const userToSave: any = {
       ...selectedUser,
       email: selectedUser.email ? selectedUser.email.trim() : '',
+      ...(isSupplier ? {
+        code: (selectedUser.code || deriveSupplierCode(selectedUser.name)).trim().toUpperCase()
+      } : {}),
       ...(isEmployee ? {
         username: (selectedUser.username || '').trim().toLowerCase() || selectedUser.name.trim().toLowerCase().replace(/\s+/g, '_'),
         role: (selectedUser.role || '').trim() || 'Staff'
@@ -1126,39 +1180,98 @@ export default function UsersManagement() {
     setCurrentPage(1);
   }, [activeTab, buyerFilter, tableSearch]);
 
-  const filteredItems = (stakeholders[activeTab] || []).filter((item: any) => {
-    if (!item) return false;
-    if (activeTab === 'buyers') {
-      if (buyerFilter === 'pending') {
-        return item.status === 'Pending Approval' || item.status === 'pending';
+  const filteredItems = useMemo(() => {
+    const rawList = (stakeholders[activeTab] || []).filter((item: any) => {
+      if (!item) return false;
+      if (activeTab === 'buyers') {
+        if (buyerFilter === 'pending') {
+          return item.status === 'Pending Approval' || item.status === 'pending';
+        }
+        if (buyerFilter === 'active') {
+          return item.status !== 'Pending Approval' && item.status !== 'pending';
+        }
       }
-      if (buyerFilter === 'active') {
-        return item.status !== 'Pending Approval' && item.status !== 'pending';
+      return true;
+    });
+
+    const q = tableSearch.toLowerCase().trim();
+    if (!q) {
+      // Sort alphabetically by name when not actively searching
+      return [...rawList].sort((a: any, b: any) => {
+        const nameA = String(a.name || '').trim();
+        const nameB = String(b.name || '').trim();
+        return nameA.localeCompare(nameB);
+      });
+    }
+
+    const scoredItems: { item: any; score: number }[] = [];
+
+    for (const item of rawList) {
+      const name = String(item.name || '').toLowerCase().trim();
+      const id = String(item.id || '').toLowerCase().trim();
+      const phone = String(item.phone || item.mobile || '').toLowerCase().trim();
+      const gstin = String(item.gstin || '').toLowerCase().trim();
+      const road = String(item.road || '').toLowerCase().trim();
+      const address = String(item.address || '').toLowerCase().trim();
+      const email = String(item.email || '').toLowerCase().trim();
+      const mandi = String(item.mandi || '').toLowerCase().trim();
+
+      let score = 0;
+
+      // 1. Name starts with search query (highest priority)
+      if (name.startsWith(q)) {
+        score = 1000 + (100 - Math.min(name.length, 90));
+      } 
+      // 2. Word in name starts with search query (e.g. "SRI RAMA" when searching "RA")
+      else if (name.split(/[\s,.-]+/).some((w: string) => w.startsWith(q))) {
+        score = 800;
+      } 
+      // 3. Name contains search query
+      else if (name.includes(q)) {
+        score = 500;
+      } 
+      // 4. ID match
+      else if (id.startsWith(q) || id.replace(/^(buy|sup|emp)[-_]/i, '').startsWith(q)) {
+        score = 400;
+      } else if (id.includes(q)) {
+        score = 300;
+      }
+      // 5. Phone match
+      else if (phone.includes(q)) {
+        score = 250;
+      }
+      // 6. GSTIN match
+      else if (gstin.includes(q)) {
+        score = 200;
+      }
+      // 7. Road / Area / Address / Mandi / Email matches (only for query length >= 3 to avoid generic address noise)
+      else if (q.length >= 3) {
+        if (road.startsWith(q)) {
+          score = 150;
+        } else if (road.includes(q)) {
+          score = 120;
+        } else if (mandi.includes(q)) {
+          score = 100;
+        } else if (email.includes(q)) {
+          score = 80;
+        } else if (address.includes(q)) {
+          score = 50;
+        }
+      }
+
+      if (score > 0) {
+        scoredItems.push({ item, score });
       }
     }
-    if (tableSearch.trim()) {
-      const q = tableSearch.toLowerCase().trim();
-      const name = String(item.name || '').toLowerCase();
-      const id = String(item.id || '').toLowerCase();
-      const gstin = String(item.gstin || '').toLowerCase();
-      const road = String(item.road || '').toLowerCase();
-      const address = String(item.address || '').toLowerCase();
-      const phone = String(item.phone || item.mobile || '').toLowerCase();
-      const email = String(item.email || '').toLowerCase();
-      const mandi = String(item.mandi || '').toLowerCase();
-      return (
-        name.includes(q) ||
-        id.includes(q) ||
-        gstin.includes(q) ||
-        road.includes(q) ||
-        address.includes(q) ||
-        phone.includes(q) ||
-        email.includes(q) ||
-        mandi.includes(q)
-      );
-    }
-    return true;
-  });
+
+    // Sort by score descending; if equal score, sort alphabetically by name
+    return scoredItems
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return String(a.item.name || '').localeCompare(String(b.item.name || ''));
+      })
+      .map(s => s.item);
+  }, [stakeholders, activeTab, buyerFilter, tableSearch]);
 
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / pageSize));
   const paginatedItems = filteredItems.slice((currentPage - 1) * pageSize, currentPage * pageSize);
@@ -1194,6 +1307,7 @@ export default function UsersManagement() {
             onClick={() => {
               setNewUser({
                 name: '',
+                code: '',
                 email: '',
                 phone: '',
                 gstin: '',
@@ -1560,6 +1674,13 @@ export default function UsersManagement() {
                           </div>
                         ) : (
                           <div className="space-y-1 max-w-xs">
+                            {activeTab === 'suppliers' && item.code && (
+                              <div className="flex items-center gap-1.5 mb-0.5">
+                                <span className="px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-400 font-mono font-black text-[10px] tracking-wider">
+                                  CODE: {item.code}
+                                </span>
+                              </div>
+                            )}
                             <p className="font-extrabold text-on-surface/90 font-mono text-[10.5px]">GSTIN: {item.gstin || 'N/A'}</p>
                             {activeTab === 'buyers' && item.road && (
                               <p className="text-primary font-bold text-[10.5px]">Road: {item.road}</p>
@@ -1800,6 +1921,26 @@ export default function UsersManagement() {
 
                   {activeTab !== 'employees' && (
                     <>
+                      {activeTab === 'suppliers' && (
+                        <div className="space-y-1.5 p-3.5 bg-amber-500/5 dark:bg-amber-500/10 rounded-2xl border border-amber-500/20">
+                          <div className="flex items-center justify-between">
+                            <label className="text-[9px] font-black uppercase tracking-widest text-amber-800 dark:text-amber-300">
+                              Supplier Permanent Code
+                            </label>
+                            <span className="text-[9px] text-amber-700/70 dark:text-amber-400/70 font-medium">
+                              Permanent • Used for order tracking (e.g. BRI-0001)
+                            </span>
+                          </div>
+                          <input 
+                            required
+                            type="text" 
+                            value={selectedUser.code || ''}
+                            onChange={(e) => setSelectedUser({...selectedUser, code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5)})}
+                            className="w-full bg-surface-container border border-amber-500/40 rounded-xl px-4 py-2.5 text-xs font-black font-mono tracking-wider outline-none text-amber-900 dark:text-amber-200 uppercase"
+                          />
+                        </div>
+                      )}
+
                       <div className="space-y-1.5">
                         <label className="text-[9px] font-black uppercase tracking-widest text-secondary">GSTIN Tax ID</label>
                         <input 
@@ -2362,10 +2503,38 @@ export default function UsersManagement() {
                     type="text" 
                     placeholder={newUser.category === 'employees' ? 'e.g. Vikram Singh' : 'e.g. RELIANCE AGRI HUB'} 
                     value={newUser.name}
-                    onChange={(e) => setNewUser({...newUser, name: e.target.value})}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const autoCode = !isCodeManuallyEdited && newUser.category === 'suppliers' ? deriveSupplierCode(val) : newUser.code;
+                      setNewUser({...newUser, name: val, code: autoCode});
+                    }}
                     className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl px-4 py-3 text-xs font-bold outline-none font-sans"
                   />
                 </div>
+
+                {newUser.category === 'suppliers' && (
+                  <div className="col-span-2 space-y-1.5 p-3.5 bg-amber-500/5 dark:bg-amber-500/10 rounded-2xl border border-amber-500/20">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[9px] font-black uppercase tracking-widest text-amber-800 dark:text-amber-300 px-1">
+                        Supplier Permanent Code
+                      </label>
+                      <span className="text-[9px] text-amber-700/70 dark:text-amber-400/70 font-medium">
+                        Auto-suggested • Used for order tracking (e.g. BRI-0001)
+                      </span>
+                    </div>
+                    <input 
+                      required
+                      type="text" 
+                      placeholder="e.g. BRI" 
+                      value={newUser.code || ''}
+                      onChange={(e) => {
+                        setIsCodeManuallyEdited(true);
+                        setNewUser({...newUser, code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5)});
+                      }}
+                      className="w-full bg-white dark:bg-neutral-900 border border-amber-500/30 rounded-xl px-4 py-2.5 text-xs font-black font-mono tracking-wider outline-none text-amber-900 dark:text-amber-200 uppercase"
+                    />
+                  </div>
+                )}
 
                 <div className="space-y-1.5">
                   <label className="text-[9px] font-black uppercase tracking-widest text-secondary px-1">

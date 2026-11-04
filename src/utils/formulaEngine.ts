@@ -23,8 +23,7 @@ export const COLS_ORDER = [
   'chqNo',           // T (19)
   'chqDt',           // U (20)
   'bank',            // V (21)
-  'billPhoto',       // W (22)
-  'purchaseOrderNo'  // X (23)
+  'purchaseOrderNo'  // W (22)
 ];
 
 const NUMERIC_COLS = new Set([
@@ -174,31 +173,56 @@ export function shiftFormula(formula: string, rowDelta: number, colDelta: number
 /**
  * Standard business automatic row calculations (QTLS * Rate, Net Amt deduction)
  */
-export function recalculateRowBusinessLogic(row: any): any {
+export function recalculateRowBusinessLogic(row: any, updatedColId?: string): any {
   if (!row) return row;
   const updated = { ...row };
 
   // 1. Amount calculation
-  if (!isFormula(updated.amount)) {
-    const q = parseFloat(String(updated.qty || 0).replace(/,/g, '')) || 0;
-    const rt = parseFloat(String(updated.rate || 0).replace(/,/g, '')) || 0;
-    if (q > 0 || rt > 0) {
-      updated.amount = (q * rt).toFixed(2);
+  if (updatedColId === 'amount') {
+    if (updated.amount === '' || updated.amount === null || updated.amount === undefined) {
+      updated.isAmountManual = false;
+    } else if (!isFormula(updated.amount)) {
+      updated.isAmountManual = true;
     }
   }
 
-  // 2. Net Amt calculation: Net Amt = Amount - L.H - C.C - TDS - Shortage - DiffIn - ChqAm
-  if (!isFormula(updated.netAmt)) {
+  if (!updated.isAmountManual && !isFormula(updated.amount)) {
+    const q = parseFloat(String(updated.qty || 0).replace(/,/g, '')) || 0;
+    const rt = parseFloat(String(updated.rate || 0).replace(/,/g, '')) || 0;
+    if (updatedColId === 'qty' || updatedColId === 'rate' || !updated.amount) {
+      if (q > 0 || rt > 0) {
+        updated.amount = (q * rt).toFixed(2);
+      }
+    }
+  }
+
+  // 2. Net Amt calculation: Net Amt = Amount - L.H - C.C - TDS - Shortage - DiffIn
+  // IMPORTANT: chqAm is payment received; NEVER subtract it from invoice Net Amt!
+  if (updatedColId === 'netAmt') {
+    if (updated.netAmt === '' || updated.netAmt === null || updated.netAmt === undefined) {
+      updated.isNetAmtManual = false;
+    } else if (!isFormula(updated.netAmt)) {
+      updated.isNetAmtManual = true;
+    }
+  }
+
+  if (!updated.isNetAmtManual && !isFormula(updated.netAmt)) {
     const amt = parseFloat(String(updated.amount || 0).replace(/,/g, '')) || 0;
     const lhVal = parseFloat(String(updated.lh || 0).replace(/,/g, '')) || 0;
     const ccVal = parseFloat(String(updated.cc || 0).replace(/,/g, '')) || 0;
     const tdsVal = parseFloat(String(updated.tds || 0).replace(/,/g, '')) || 0;
     const shortageVal = parseFloat(String(updated.shortage || 0).replace(/,/g, '')) || 0;
     const diffInVal = parseFloat(String(updated.diffIn || 0).replace(/,/g, '')) || 0;
-    const chqAmVal = parseFloat(String(updated.chqAm || 0).replace(/,/g, '')) || 0;
 
-    if (amt > 0 || lhVal > 0 || ccVal > 0 || tdsVal > 0 || shortageVal > 0 || diffInVal > 0 || chqAmVal > 0) {
-      updated.netAmt = (amt - lhVal - ccVal - tdsVal - shortageVal - diffInVal - chqAmVal).toFixed(2);
+    const isDeductionOrAmtEdit = 
+      updatedColId === 'amount' || updatedColId === 'qty' || updatedColId === 'rate' ||
+      updatedColId === 'lh' || updatedColId === 'cc' || updatedColId === 'tds' ||
+      updatedColId === 'shortage' || updatedColId === 'diffIn';
+
+    if (isDeductionOrAmtEdit || !updated.netAmt || updated.netAmt === '0.00' || updated.netAmt === '0') {
+      if (amt > 0 || lhVal > 0 || ccVal > 0 || tdsVal > 0 || shortageVal > 0 || diffInVal > 0) {
+        updated.netAmt = Math.max(0, amt - lhVal - ccVal - tdsVal - shortageVal - diffInVal).toFixed(2);
+      }
     }
   }
 

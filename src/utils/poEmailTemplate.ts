@@ -1,5 +1,6 @@
 import { sanitizeSupplierName } from '../lib/utils';
 import merchantsDirectory from '../data/merchants_directory.json';
+import { resolveSubOrderNumber, resolveGroupedPoNumber } from './orderOperations';
 
 export interface BuyerProfileData {
   address: string;
@@ -480,11 +481,13 @@ export const generateSupplierPOEmailHtml = (
   }
 ): string => {
   const normSupplier = sanitizeSupplierName(supplierName, 'DIRECT MILL').toUpperCase();
+  const groupedPoNo = resolveGroupedPoNumber(order);
 
   const itemsList = (subOrders && subOrders.length > 0)
     ? subOrders
     : [{
-        id: order?.id || 'PO-1',
+        id: order?.id || 'OD-0001',
+        orderNo: 'OD-0001',
         buyer: order?.buyer || 'Authorized Merchant',
         product: order?.product || order?.items?.replace(/\(\d+.*$/, '').trim() || 'JMR KNM STEAM',
         qty: parseFloat(order?.qty || order?.items?.match(/\d+/)?.[0] || '20.8'),
@@ -495,10 +498,11 @@ export const generateSupplierPOEmailHtml = (
         remarks: order?.remarks || '',
       }];
 
-  const tableRowsHtml = itemsList.map((sub: any) => {
+  const tableRowsHtml = itemsList.map((sub: any, sIdx: number) => {
     const buyerName = sub.buyer || order?.buyer || 'Authorized Merchant';
     const profile = resolveBuyerProfile(buyerName);
     const dateFormatted = formatPoDate(sub.date || order?.date);
+    const subOrderNo = resolveSubOrderNumber(sub, sIdx, normSupplier);
     
     // Product formatting: multi-word products split onto multiple lines as in reference screenshot
     const rawProduct = (sub.product || order?.product || sub.items?.replace(/\(\d+.*$/, '') || 'JMR KNM STEAM')
@@ -522,7 +526,14 @@ export const generateSupplierPOEmailHtml = (
     return `
       <tr>
         <td style="padding: 12px 14px; border: 1px solid #b0b0b0; vertical-align: top; text-align: left; font-size: 13px; line-height: 1.4; color: #000000; width: 14%;">
-          ${dateFormatted}
+          <div>${dateFormatted}</div>
+          ${subOrderNo ? `
+            <div style="margin-top: 8px;">
+              <span style="display: inline-block; background-color: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; font-weight: 800; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace; font-size: 11.5px; padding: 3px 8px; border-radius: 4px; letter-spacing: 0.5px;">
+                ${subOrderNo}
+              </span>
+            </div>
+          ` : ''}
         </td>
         <td style="padding: 12px 14px; border: 1px solid #b0b0b0; vertical-align: top; text-align: left; font-size: 13px; line-height: 1.45; color: #000000; width: 42%;">
           <div style="font-weight: bold; margin-bottom: 4px; text-transform: uppercase;">${buyerName}</div>
@@ -576,8 +587,8 @@ export const generateSupplierPOEmailHtml = (
 <body style="margin: 0; padding: 20px; background-color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #000000;">
   <div style="max-width: 880px; margin: 0 auto; background-color: #ffffff; color: #000000; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
     
-    <!-- Top Header: TC Logo + Tejas Canvassing / Bangalore -->
-    <table cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 16px;">
+    <!-- Top Header: TC Logo + Tejas Canvassing / Bangalore + Grouped PO Ref -->
+    <table cellpadding="0" cellspacing="0" border="0" style="width: 100%; margin-bottom: 16px;">
       <tr>
         <td style="vertical-align: middle; padding-right: 14px; width: 48px;">
           <div style="background-color: #0084ff; color: #ffffff; font-weight: bold; font-size: 22px; width: 48px; height: 48px; line-height: 48px; text-align: center; border-radius: 6px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">TC</div>
@@ -585,6 +596,15 @@ export const generateSupplierPOEmailHtml = (
         <td style="vertical-align: middle;">
           <div style="font-size: 20px; font-weight: bold; color: #000000; line-height: 1.2;">Tejas Canvassing</div>
           <div style="font-size: 14px; color: #333333; margin-top: 2px;">Bangalore</div>
+        </td>
+        <td style="vertical-align: middle; text-align: right;">
+          <div style="font-size: 13px; font-weight: 800; color: #000000; text-transform: uppercase;">PURCHASE ORDER</div>
+          <div style="margin-top: 3px;">
+            <span style="display: inline-block; background-color: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; font-weight: 800; font-family: monospace; font-size: 12px; padding: 2px 8px; border-radius: 4px;">
+              Grouped PO: ${groupedPoNo}
+            </span>
+          </div>
+          <div style="font-size: 11px; color: #555555; margin-top: 2px;">Date: <strong>${formatPoDate(order?.date || new Date())}</strong></div>
         </td>
       </tr>
     </table>
@@ -632,11 +652,13 @@ export const generateSupplierPOA4PrintHtml = (
   subOrders: any[]
 ): string => {
   const normSupplier = sanitizeSupplierName(supplierName, 'DIRECT MILL').toUpperCase();
+  const groupedPoNo = resolveGroupedPoNumber(order);
 
   const itemsList = (subOrders && subOrders.length > 0)
     ? subOrders
     : [{
-        id: order?.id || 'PO-1',
+        id: order?.id || 'OD-0001',
+        orderNo: 'OD-0001',
         buyer: order?.buyer || 'Authorized Merchant',
         product: order?.product || order?.items?.replace(/\(\d+.*$/, '').trim() || 'KESHAR KALI',
         qty: parseFloat(order?.qty || order?.items?.match(/\d+/)?.[0] || '80'),
@@ -649,10 +671,11 @@ export const generateSupplierPOA4PrintHtml = (
 
   const totalQty = itemsList.reduce((sum: number, item: any) => sum + (parseFloat(item.qty) || 0), 0);
 
-  const tableRowsHtml = itemsList.map((sub: any) => {
+  const tableRowsHtml = itemsList.map((sub: any, sIdx: number) => {
     const buyerName = sub.buyer || order?.buyer || 'Authorized Merchant';
     const profile = resolveBuyerProfile(buyerName);
     const dateFormatted = formatPoDate(sub.date || order?.date);
+    const subOrderNo = resolveSubOrderNumber(sub, sIdx, normSupplier);
     const product = (sub.product || order?.product || 'KESHAR KALI').toUpperCase();
     const qty = sub.qty !== undefined ? sub.qty : 80;
     const rate = sub.rate !== undefined ? sub.rate : 8400;
@@ -663,7 +686,14 @@ export const generateSupplierPOA4PrintHtml = (
     return `
       <tr style="page-break-inside: avoid; break-inside: avoid;">
         <td style="padding: 10px 12px; border: 1px solid #1f2937; vertical-align: top; font-size: 11px; font-weight: 600; white-space: nowrap;">
-          ${dateFormatted}
+          <div style="color: #0f172a;">${dateFormatted}</div>
+          ${subOrderNo ? `
+            <div style="margin-top: 6px;">
+              <span style="display: inline-block; background-color: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; font-weight: 800; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace; font-size: 10.5px; padding: 2px 6px; border-radius: 3px; letter-spacing: 0.4px;">
+                ${subOrderNo}
+              </span>
+            </div>
+          ` : ''}
         </td>
         <td style="padding: 10px 12px; border: 1px solid #1f2937; vertical-align: top; text-align: left;">
           <div style="font-weight: 800; font-size: 12.5px; color: #000000; text-transform: uppercase; margin-bottom: 3px;">${buyerName}</div>
@@ -814,10 +844,14 @@ export const generateSupplierPOA4PrintHtml = (
           Bangalore Grain Brokerage &amp; Supply Chain Logistics &bull; APMC Yard, Yeshwanthpur, Bangalore
         </div>
       </div>
-      <div style="display: table-cell; vertical-align: middle; text-align: right; width: 220px;">
-        <div style="font-size: 13px; font-weight: 800; color: #0f172a;">PURCHASE ORDER</div>
-        <div style="font-size: 10.5px; color: #334155; margin-top: 2px;">PO Ref: <strong style="font-family: monospace;">${order?.id || 'PO-BATCH'}</strong></div>
-        <div style="font-size: 10px; color: #64748b; margin-top: 1px;">Date: <strong>${formatPoDate(order?.date || new Date())}</strong></div>
+      <div style="display: table-cell; vertical-align: middle; text-align: right; width: 240px;">
+        <div style="font-size: 13px; font-weight: 800; color: #0f172a; text-transform: uppercase;">PURCHASE ORDER</div>
+        <div style="margin-top: 2px;">
+          <span style="display: inline-block; background-color: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; font-weight: 800; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace; font-size: 11.5px; padding: 2px 7px; border-radius: 3px;">
+            Grouped PO: ${groupedPoNo}
+          </span>
+        </div>
+        <div style="font-size: 10px; color: #64748b; margin-top: 2px;">Date: <strong>${formatPoDate(order?.date || new Date())}</strong></div>
       </div>
     </div>
 

@@ -32,7 +32,7 @@ export function formatINR(amount: number | string | undefined | null) {
   return sign + formatted;
 }
 
-export function getRegisteredSuppliers(): Array<{ id: string; name: string; phone?: string; email?: string }> {
+export function getRegisteredSuppliers(): Array<{ id: string; name: string; phone?: string; email?: string; code?: string }> {
   try {
     const rawDel = localStorage.getItem('deleted_stakeholder_ids');
     const deletedIds: string[] = rawDel ? JSON.parse(rawDel) : [];
@@ -52,7 +52,8 @@ export function getRegisteredSuppliers(): Array<{ id: string; name: string; phon
             id: s.id || '',
             name: String(s.name).trim(),
             phone: s.phone || '',
-            email: s.email || ''
+            email: s.email || '',
+            code: s.code || s.supplierCode || ''
           }));
       }
     }
@@ -67,7 +68,8 @@ export function getRegisteredSuppliers(): Array<{ id: string; name: string; phon
             id: s.id || '',
             name: String(s.name).trim(),
             phone: s.phone || '',
-            email: s.email || ''
+            email: s.email || '',
+            code: s.code || s.supplierCode || ''
           }));
       }
     }

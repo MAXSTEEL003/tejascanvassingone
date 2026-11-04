@@ -28,7 +28,9 @@ import {
   OperationalPO, 
   fetchOperationalOrders, 
   formatQtl, 
-  formatDifference 
+  formatDifference,
+  isDateBeforeNov3,
+  purgeRecordsBeforeNov3
 } from '../utils/orderOperations';
 import PrintEntriesPdfModal from '../components/PrintEntriesPdfModal';
 
@@ -37,14 +39,22 @@ export default function LedgerManagement() {
   const [orders, setOrders] = useState<OperationalPO[]>(() => {
     try {
       const cached = localStorage.getItem('cached_operational_orders');
-      if (cached) return JSON.parse(cached);
+      if (cached) {
+        const arr = JSON.parse(cached);
+        if (Array.isArray(arr)) {
+          return arr.filter((o: any) => !isDateBeforeNov3(o?.dateTimestamp || o?.date));
+        }
+      }
     } catch {}
     return [];
   });
   const [isLoading, setIsLoading] = useState<boolean>(() => {
     try {
       const cached = localStorage.getItem('cached_operational_orders');
-      if (cached && JSON.parse(cached).length > 0) return false;
+      if (cached) {
+        const arr = JSON.parse(cached);
+        if (Array.isArray(arr) && arr.filter((o: any) => !isDateBeforeNov3(o?.dateTimestamp || o?.date)).length > 0) return false;
+      }
     } catch {}
     return true;
   });
@@ -88,18 +98,25 @@ export default function LedgerManagement() {
   };
 
   useEffect(() => {
-    loadOrdersData();
+    // Purge legacy pre-Nov 3 orders once silently in background
+    purgeRecordsBeforeNov3().catch(() => {});
+    loadOrdersData(true);
   }, []);
 
   // Reactively reload when orders are placed or deleted from Placed Orders
   useEffect(() => {
+    let timer: any = null;
     const handleUpdate = () => {
-      loadOrdersData(true);
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        loadOrdersData(true);
+      }, 300);
     };
     window.addEventListener('operational-orders-updated', handleUpdate);
     window.addEventListener('ledgers-updated', handleUpdate);
     window.addEventListener('storage', handleUpdate);
     return () => {
+      if (timer) clearTimeout(timer);
       window.removeEventListener('operational-orders-updated', handleUpdate);
       window.removeEventListener('ledgers-updated', handleUpdate);
       window.removeEventListener('storage', handleUpdate);
@@ -109,19 +126,19 @@ export default function LedgerManagement() {
   // Unique Lists for Dropdown Filters
   const uniqueBuyers = useMemo(() => {
     const set = new Set<string>();
-    orders.forEach(o => { if (o.buyer) set.add(o.buyer); });
+    orders.forEach(o => { if (o?.buyer) set.add(o.buyer); });
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [orders]);
 
   const uniqueSuppliers = useMemo(() => {
     const set = new Set<string>();
-    orders.forEach(o => { if (o.supplier) set.add(o.supplier); });
+    orders.forEach(o => { if (o?.supplier) set.add(o.supplier); });
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [orders]);
 
   const uniqueBrands = useMemo(() => {
     const set = new Set<string>();
-    orders.forEach(o => { if (o.brand) set.add(o.brand); });
+    orders.forEach(o => { if (o?.brand) set.add(o.brand); });
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [orders]);
 
@@ -135,14 +152,23 @@ export default function LedgerManagement() {
   // Filtered Orders (runs 100% locally in-memory with zero Firestore reads)
   const filteredOrders = useMemo(() => {
     return orders.filter(po => {
+      if (!po) return false;
+
       // 1. Search Query (across PO number, Buyer, Supplier/Miller, Brand, Bill number)
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
-        const poNoMatch = po.poNumber.toLowerCase().includes(q);
-        const buyerMatch = po.buyer.toLowerCase().includes(q);
-        const supMatch = po.supplier.toLowerCase().includes(q);
-        const brandMatch = po.brand.toLowerCase().includes(q);
-        const billMatch = po.billNo ? po.billNo.toLowerCase().includes(q) : false;
+        const poNo = (po.poNumber || '').toLowerCase();
+        const subId = (po.subOrderId || '').toLowerCase();
+        const buyer = (po.buyer || '').toLowerCase();
+        const sup = (po.supplier || '').toLowerCase();
+        const brand = (po.brand || '').toLowerCase();
+        const bill = (po.billNo || '').toLowerCase();
+
+        const poNoMatch = poNo.includes(q) || subId.includes(q);
+        const buyerMatch = buyer.includes(q);
+        const supMatch = sup.includes(q);
+        const brandMatch = brand.includes(q);
+        const billMatch = bill.includes(q);
 
         if (!poNoMatch && !buyerMatch && !supMatch && !brandMatch && !billMatch) {
           return false;
@@ -150,17 +176,17 @@ export default function LedgerManagement() {
       }
 
       // 2. Buyer Filter
-      if (selectedBuyer !== 'all' && po.buyer.toLowerCase() !== selectedBuyer.toLowerCase()) {
+      if (selectedBuyer !== 'all' && (po.buyer || '').toLowerCase() !== selectedBuyer.toLowerCase()) {
         return false;
       }
 
       // 3. Supplier Filter
-      if (selectedSupplier !== 'all' && po.supplier.toLowerCase() !== selectedSupplier.toLowerCase()) {
+      if (selectedSupplier !== 'all' && (po.supplier || '').toLowerCase() !== selectedSupplier.toLowerCase()) {
         return false;
       }
 
       // 4. Brand Filter
-      if (selectedBrand !== 'all' && po.brand.toLowerCase() !== selectedBrand.toLowerCase()) {
+      if (selectedBrand !== 'all' && (po.brand || '').toLowerCase() !== selectedBrand.toLowerCase()) {
         return false;
       }
 
@@ -173,21 +199,22 @@ export default function LedgerManagement() {
       }
 
       // 6. Date Filter
+      const poTs = po.dateTimestamp || 0;
       if (dateRange === 'today') {
-        if (po.dateTimestamp < todayStart) return false;
+        if (poTs < todayStart) return false;
       } else if (dateRange === 'yesterday') {
-        if (po.dateTimestamp < yesterdayStart || po.dateTimestamp >= todayStart) return false;
+        if (poTs < yesterdayStart || poTs >= todayStart) return false;
       } else if (dateRange === 'week') {
-        if (po.dateTimestamp < weekStart) return false;
+        if (poTs < weekStart) return false;
       } else if (dateRange === 'month') {
-        if (po.dateTimestamp < monthStart) return false;
+        if (poTs < monthStart) return false;
       } else if (dateRange === 'custom' && customDate) {
         // match YYYY-MM-DD
         const targetDate = new Date(customDate);
         if (!isNaN(targetDate.getTime())) {
           const targetStart = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate()).getTime();
           const targetEnd = targetStart + 86400000;
-          if (po.dateTimestamp < targetStart || po.dateTimestamp >= targetEnd) return false;
+          if (poTs < targetStart || poTs >= targetEnd) return false;
         }
       }
 
@@ -283,8 +310,8 @@ export default function LedgerManagement() {
   // Buyer Mini Profile Data (Section 7)
   const buyerProfileData = useMemo(() => {
     if (!selectedBuyerForModal) return null;
-    const buyerName = selectedBuyerForModal;
-    const buyerOrders = orders.filter(o => o.buyer.toLowerCase() === buyerName.toLowerCase());
+    const buyerName = selectedBuyerForModal.toLowerCase();
+    const buyerOrders = orders.filter(o => (o?.buyer || '').toLowerCase() === buyerName);
 
     let totalPo = 0;
     let totalArrived = 0;
@@ -292,18 +319,20 @@ export default function LedgerManagement() {
     const suppliersSet = new Set<string>();
 
     buyerOrders.forEach(o => {
-      totalPo += o.poQtl;
-      totalArrived += o.arrivalQtl;
-      pending += Math.max(0, o.poQtl - o.arrivalQtl);
+      const pQtl = Number(o.poQtl) || 0;
+      const aQtl = Number(o.arrivalQtl) || 0;
+      totalPo += pQtl;
+      totalArrived += aQtl;
+      pending += Math.max(0, pQtl - aQtl);
       if (o.supplier) suppliersSet.add(o.supplier);
     });
 
     const recentOrders = [...buyerOrders]
-      .sort((a, b) => b.dateTimestamp - a.dateTimestamp)
+      .sort((a, b) => (b.dateTimestamp || 0) - (a.dateTimestamp || 0))
       .slice(0, 8);
 
     return {
-      name: buyerName,
+      name: selectedBuyerForModal,
       totalOrders: buyerOrders.length,
       totalPoQtl: totalPo,
       totalArrivalQtl: totalArrived,

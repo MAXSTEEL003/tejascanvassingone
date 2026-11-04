@@ -91,12 +91,17 @@ export default function PendingLoadings() {
 
   // Reactively reload when orders are placed or deleted from Placed Orders
   useEffect(() => {
+    let timer: any = null;
     const handleUpdate = () => {
-      loadOrdersData(true);
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        loadOrdersData(true);
+      }, 300);
     };
     window.addEventListener('operational-orders-updated', handleUpdate);
     window.addEventListener('storage', handleUpdate);
     return () => {
+      if (timer) clearTimeout(timer);
       window.removeEventListener('operational-orders-updated', handleUpdate);
       window.removeEventListener('storage', handleUpdate);
     };
@@ -105,19 +110,19 @@ export default function PendingLoadings() {
   // Unique lists for Dropdown Filters
   const uniqueBuyers = useMemo(() => {
     const set = new Set<string>();
-    orders.forEach(o => { if (o.buyer) set.add(o.buyer); });
+    orders.forEach(o => { if (o?.buyer) set.add(o.buyer); });
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [orders]);
 
   const uniqueSuppliers = useMemo(() => {
     const set = new Set<string>();
-    orders.forEach(o => { if (o.supplier) set.add(o.supplier); });
+    orders.forEach(o => { if (o?.supplier) set.add(o.supplier); });
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [orders]);
 
   const uniqueBrands = useMemo(() => {
     const set = new Set<string>();
-    orders.forEach(o => { if (o.brand) set.add(o.brand); });
+    orders.forEach(o => { if (o?.brand) set.add(o.brand); });
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [orders]);
 
@@ -131,14 +136,23 @@ export default function PendingLoadings() {
   // Filtered Pending Loadings (runs locally in-memory with zero Firestore reads)
   const filteredOrders = useMemo(() => {
     return orders.filter(po => {
+      if (!po) return false;
+
       // 1. Search Query (PO number, Buyer, Supplier, Brand)
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
-        const poNoMatch = po.poNumber.toLowerCase().includes(q);
-        const buyerMatch = po.buyer.toLowerCase().includes(q);
-        const supMatch = po.supplier.toLowerCase().includes(q);
-        const brandMatch = po.brand.toLowerCase().includes(q);
-        const billMatch = po.billNo ? po.billNo.toLowerCase().includes(q) : false;
+        const poNo = (po.poNumber || '').toLowerCase();
+        const subId = (po.subOrderId || '').toLowerCase();
+        const buyer = (po.buyer || '').toLowerCase();
+        const sup = (po.supplier || '').toLowerCase();
+        const brand = (po.brand || '').toLowerCase();
+        const bill = (po.billNo || '').toLowerCase();
+
+        const poNoMatch = poNo.includes(q) || subId.includes(q);
+        const buyerMatch = buyer.includes(q);
+        const supMatch = sup.includes(q);
+        const brandMatch = brand.includes(q);
+        const billMatch = bill.includes(q);
 
         if (!poNoMatch && !buyerMatch && !supMatch && !brandMatch && !billMatch) {
           return false;
@@ -146,17 +160,17 @@ export default function PendingLoadings() {
       }
 
       // 2. Buyer Filter
-      if (selectedBuyer !== 'all' && po.buyer.toLowerCase() !== selectedBuyer.toLowerCase()) {
+      if (selectedBuyer !== 'all' && (po.buyer || '').toLowerCase() !== selectedBuyer.toLowerCase()) {
         return false;
       }
 
       // 3. Supplier Filter
-      if (selectedSupplier !== 'all' && po.supplier.toLowerCase() !== selectedSupplier.toLowerCase()) {
+      if (selectedSupplier !== 'all' && (po.supplier || '').toLowerCase() !== selectedSupplier.toLowerCase()) {
         return false;
       }
 
       // 4. Brand Filter
-      if (selectedBrand !== 'all' && po.brand.toLowerCase() !== selectedBrand.toLowerCase()) {
+      if (selectedBrand !== 'all' && (po.brand || '').toLowerCase() !== selectedBrand.toLowerCase()) {
         return false;
       }
 
@@ -652,7 +666,7 @@ export default function PendingLoadings() {
                                     className="font-mono font-bold text-xs text-rose-600 dark:text-rose-400 hover:underline hover:text-rose-700 inline-flex items-center gap-1 cursor-pointer btn-tactile"
                                     title="Click to view PO details"
                                   >
-                                    <span>{po.poNumber}</span>
+                                    <span>{po.subOrderId ? `${po.subOrderId} (${po.poNumber})` : po.poNumber}</span>
                                   </button>
                                 </td>
 
@@ -758,7 +772,9 @@ export default function PendingLoadings() {
                                               </span>
                                             </div>
                                             <div>
-                                              <p className="text-xs font-mono font-black text-slate-900 dark:text-white">{po.poNumber}</p>
+                                              <p className="text-xs font-mono font-black text-slate-900 dark:text-white">
+                                                {po.subOrderId ? `${po.subOrderId} • ${po.poNumber}` : po.poNumber}
+                                              </p>
                                               <p className="text-[11px] text-slate-500">Contract Date: {po.date}</p>
                                             </div>
                                             <div className="pt-2 border-t border-slate-100 dark:border-white/5 space-y-1">
@@ -857,7 +873,7 @@ export default function PendingLoadings() {
                                             <div className="space-y-2">
                                               <button
                                                 type="button"
-                                                onClick={() => navigate(`/arrival-entry?po=${encodeURIComponent(po.poNumber)}`)}
+                                                onClick={() => navigate(`/arrival-entry?po=${encodeURIComponent(po.subOrderId || po.poNumber)}`)}
                                                 className="w-full flex items-center justify-between px-3 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm btn-tactile cursor-pointer"
                                               >
                                                 <span>Record in Arrival Entry</span>

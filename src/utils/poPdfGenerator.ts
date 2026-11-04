@@ -2,6 +2,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { sanitizeSupplierName } from '../lib/utils';
 import { formatPoDate, resolveBuyerProfile } from './poEmailTemplate';
+import { resolveSubOrderNumber, resolveGroupedPoNumber } from './orderOperations';
 
 /**
  * Builds the official jsPDF Purchase Order document matching the exact
@@ -13,7 +14,7 @@ import { formatPoDate, resolveBuyerProfile } from './poEmailTemplate';
 export function buildPoPdfDocument(order: any, subOrders: any[] = []): jsPDF {
   const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
   const supplierName = sanitizeSupplierName(order?.supplier || order?.origin, 'DIRECT MILL');
-  const poRef = order?.id || 'PO-BATCH';
+  const poRef = resolveGroupedPoNumber(order);
   const dateFormatted = formatPoDate(order?.date);
   
   // Header Logo (TC Blue Square)
@@ -39,10 +40,13 @@ export function buildPoPdfDocument(order: any, subOrders: any[] = []): jsPDF {
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(15, 23, 42);
   doc.text('PURCHASE ORDER', 196, 17, { align: 'right' });
-  doc.setFontSize(11);
+  doc.setFontSize(10.5);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(29, 78, 216);
+  doc.text(`Grouped PO: ${poRef}`, 196, 22, { align: 'right' });
+  doc.setFontSize(9.5);
   doc.setFont('helvetica', 'normal');
-  doc.setTextColor(30, 41, 59);
-  doc.text(`PO Ref: ${poRef}`, 196, 22, { align: 'right' });
+  doc.setTextColor(71, 85, 105);
   doc.text(`Date: ${dateFormatted}`, 196, 27, { align: 'right' });
 
   // Divider
@@ -67,10 +71,11 @@ export function buildPoPdfDocument(order: any, subOrders: any[] = []): jsPDF {
       : [order];
 
   // Table Data
-  const tableData = itemsList.map((sub: any) => {
+  const tableData = itemsList.map((sub: any, sIdx: number) => {
     const buyerName = sub.buyer || order?.buyer || 'Authorized Merchant';
     const profile = resolveBuyerProfile(buyerName);
     const subDate = formatPoDate(sub.date || order?.date);
+    const subOrderNo = resolveSubOrderNumber(sub, sIdx, order?.supplier || supplierName);
     const product = (sub.product || order?.product || 'KESHAR KALI').toUpperCase();
     const qty = `${sub.qty !== undefined ? sub.qty : 80}`;
     const rate = `${sub.rate !== undefined ? sub.rate : 8400}`;
@@ -93,7 +98,9 @@ export function buildPoPdfDocument(order: any, subOrders: any[] = []): jsPDF {
     }
     const buyerDetails = buyerLines.join('\n');
 
-    return [subDate, buyerDetails, product, qty, rate, loading];
+    const dateCol = subOrderNo ? `${subDate}\n[ ${subOrderNo} ]` : subDate;
+
+    return [dateCol, buyerDetails, product, qty, rate, loading];
   });
 
   autoTable(doc, {
@@ -164,7 +171,7 @@ export function buildPoPdfDocument(order: any, subOrders: any[] = []): jsPDF {
  * e.g. PO_TC-3425_Tejas_Canvassing.pdf
  */
 export function getPoPdfFileName(order: any): string {
-  const poRef = order?.id || 'PO-BATCH';
+  const poRef = resolveGroupedPoNumber(order);
   return `PO_${poRef}_Tejas_Canvassing.pdf`;
 }
 

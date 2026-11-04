@@ -10,7 +10,14 @@ import { doc, deleteDoc, collection, getDocs, onSnapshot } from 'firebase/firest
 import SearchableSelect from '../components/SearchableSelect';
 import { generateSupplierPOEmailHtml, resolveSupplierProfile, isAuthenticSupplierEmail } from '../utils/poEmailTemplate';
 import { dispatchOrderPlacedWhatsApp } from '../lib/whatsapp';
-import { invalidateOperationalOrdersCache } from '../utils/orderOperations';
+import { 
+  invalidateOperationalOrdersCache, 
+  generateRandomPoNumber, 
+  getNextManualOrderNumber, 
+  getNextSupplierSubOrderNumber, 
+  getSupplierCode, 
+  resolveSubOrderNumber 
+} from '../utils/orderOperations';
 import merchantsDirectory from '../data/merchants_directory.json';
 
 
@@ -187,6 +194,7 @@ export const normalizeOrder = (raw: any): any => {
   let orderType = raw.orderType;
   if (!orderType) {
     if (
+      String(raw.id || '').toUpperCase().startsWith('MO-') ||
       String(raw.id || '').toUpperCase().startsWith('MA-') ||
       raw.isManual === true ||
       raw.source === 'manual'
@@ -198,11 +206,22 @@ export const normalizeOrder = (raw: any): any => {
   }
 
   const brand = String(raw.brand || product).trim();
+  const buyerRequestNo = raw.buyerRequestNo || (
+    String(raw.id || '').toUpperCase().startsWith('MO-') || 
+    String(raw.id || '').toUpperCase().startsWith('SO-') 
+      ? raw.id 
+      : undefined
+  );
 
   return {
     ...raw,
     id: raw.id,
     orderType,
+    buyerRequestNo,
+    supplierCode: raw.supplierCode || undefined,
+    supplierSubOrderNo: raw.supplierSubOrderNo || undefined,
+    subOrderNo: raw.supplierSubOrderNo || raw.subOrderNo || raw.orderNo || raw.id,
+    orderNo: raw.supplierSubOrderNo || raw.orderNo || raw.id,
     buyer,
     product,
     brand,
@@ -1210,12 +1229,25 @@ export default function OrdersDashboard() {
 
       if (action === 'accept') {
         const nextStatus = 'Approved';
+        const supName = sanitizeSupplierName(orderToUpdate?.supplier || orderToUpdate?.assignedSupplier || getPrimaryRegisteredSupplier('DIRECT MILL'), 'DIRECT MILL');
+        const supCode = getSupplierCode(supName);
+        const subRef = orderToUpdate?.supplierSubOrderNo || getNextSupplierSubOrderNumber(supCode);
+        const buyerReqNo = orderToUpdate?.buyerRequestNo || orderToUpdate?.orderNo || orderToUpdate?.id || id;
+        const confidentialPo = orderToUpdate?.poNumber || generateRandomPoNumber();
+
         const updatedOrder = orderToUpdate 
           ? { 
               ...orderToUpdate, 
               status: nextStatus, 
               isArchived: false, 
-              approvedAt: nowIso 
+              approvedAt: nowIso,
+              supplier: supName,
+              supplierCode: supCode,
+              supplierSubOrderNo: subRef,
+              subOrderNo: subRef,
+              orderNo: subRef,
+              poNumber: confidentialPo,
+              buyerRequestNo: buyerReqNo
             }
           : null;
 
@@ -1223,7 +1255,19 @@ export default function OrdersDashboard() {
         // so it remains visible in the dashboard table for selection and batch grouping
         const nextOrders = currentOrders.map(o => {
           if (o.id === id) {
-            return normalizeOrder({ ...o, status: nextStatus, isArchived: false, approvedAt: nowIso });
+            return normalizeOrder({ 
+              ...o, 
+              status: nextStatus, 
+              isArchived: false, 
+              approvedAt: nowIso,
+              supplier: supName,
+              supplierCode: supCode,
+              supplierSubOrderNo: subRef,
+              subOrderNo: subRef,
+              orderNo: subRef,
+              poNumber: confidentialPo,
+              buyerRequestNo: buyerReqNo
+            });
           }
           return o;
         });
@@ -1615,8 +1659,8 @@ export default function OrdersDashboard() {
     });
     if (selected.length === 0) return;
     
-    // Create the grouped order summary
-    const batchId = `TC-${Math.floor(1000 + Math.random() * 9000)}`;
+    // Create the grouped order summary with confidential random Grouped PO reference e.g. TC-K8M492
+    const batchId = generateRandomPoNumber();
     const uniqueBuyers = Array.from(new Set(selected.map((s: any) => s.buyer).filter(Boolean))) as string[];
     const buyerName = uniqueBuyers.length === 1 
       ? uniqueBuyers[0] 
@@ -1630,11 +1674,30 @@ export default function OrdersDashboard() {
     const firstColor = selected[0]?.color || 'zinc';
     const firstUrgency = selected[0]?.urgency || 'Standard';
 
-    const enrichedSelected = selected.map((s: any) => ({
-      ...s,
-      product: s.product || s.brand || firstProduct,
-      brand: s.brand || s.product || firstProduct
-    }));
+    const usedBatchSubRefs = new Set<string>();
+    const enrichedSelected = selected.map((s: any, idx: number) => {
+      const subSupplier = sanitizeSupplierName(s.supplier || assignedBatchSupplier, 'DIRECT MILL');
+      const subCode = s.supplierCode || getSupplierCode(subSupplier);
+      let subRef = s.supplierSubOrderNo;
+      if (!subRef || usedBatchSubRefs.has(subRef) || !new RegExp(`^${subCode}-\\d{4}$`, 'i').test(subRef)) {
+        subRef = getNextSupplierSubOrderNumber(subCode);
+      }
+      usedBatchSubRefs.add(subRef);
+      const origBuyerReqNo = s.buyerRequestNo || s.orderNo || s.id;
+      return {
+        ...s,
+        id: s.id,
+        buyerRequestNo: origBuyerReqNo,
+        supplier: subSupplier,
+        supplierCode: subCode,
+        supplierSubOrderNo: subRef,
+        orderNo: subRef,
+        subOrderNo: subRef,
+        poNumber: batchId,
+        product: s.product || s.brand || firstProduct,
+        brand: s.brand || s.product || firstProduct
+      };
+    });
 
     const buyerProfiles = uniqueBuyers.map(b => {
       const prof = resolveBuyerProfile(b);
@@ -1656,6 +1719,8 @@ export default function OrdersDashboard() {
 
     const groupedOrder = {
       id: batchId,
+      poNumber: batchId,
+      batchId: batchId,
       date: (() => {
         const d = new Date();
         const day = d.getDate();
@@ -1746,23 +1811,13 @@ export default function OrdersDashboard() {
 
     // 4. DISPATCH SUPPLIER PO EMAIL & BUYER WHATSAPP ALERTS IN BACKGROUND
     if (hasAuthenticSupplierEmail && supplierProfile.email) {
-      const subOrders = selected.map((s: any) => ({
-        id: s.id,
-        buyer: s.buyer || 'Authorized Merchant',
-        product: (s.product || groupedOrder.product || 'Premium Rice').replace(/\(\d+.*$/, '').trim(),
-        qty: Number(s.qty) || 0,
-        rate: Number(s.rate) || avgRate,
-        date: s.date || groupedOrder.date,
-        loadingDays: s.loadingDays !== undefined ? s.loadingDays : 3,
-        unloadingPoint: s.unloadingPoint || 'shop',
-        remarks: (s.remarks || s.notes || (groupedOrder as any).remarks || '').trim()
-      }));
+      const subOrders = enrichedSelected;
 
       const emailHtml = generateSupplierPOEmailHtml(assignedBatchSupplier, groupedOrder, subOrders);
       const poSubject = `Tejas Canvassing: Purchase Order ${groupedOrder.id} - ${assignedBatchSupplier}`;
 
-      const subOrdersSummaryText = subOrders.map((so: any, idx: number) => 
-        `${idx + 1}. Buyer: ${so.buyer}\n   Brand/Product: ${so.product}\n   Quantity: ${so.qty} QTLS @ ₹${so.rate}/QTL\n   Loading Days: ${so.loadingDays} | Unloading Point: ${so.unloadingPoint}\n   Remarks: ${so.remarks || 'None'}`
+      const subOrdersSummaryText = subOrders.map((so: any) => 
+        `Order Ref: ${so.orderNo || so.subOrderNo || so.id}\nBuyer: ${so.buyer}\nBrand/Product: ${so.product}\nQuantity: ${so.qty} QTLS @ ₹${so.rate}/QTL\nLoading Days: ${so.loadingDays} | Unloading Point: ${so.unloadingPoint}\nRemarks: ${so.remarks || 'None'}`
       ).join('\n\n');
 
       const poPlainText = `Official Purchase Order: ${groupedOrder.id}\nSupplier: ${assignedBatchSupplier}\nTotal Quantity: ${groupedOrder.qty} QTLS\nTotal Value: ${groupedOrder.total}\n\nSub-Order Particulars:\n${subOrdersSummaryText}\n\n--\nTejas Canvassing Grain Brokerage`;
@@ -1773,7 +1828,6 @@ export default function OrdersDashboard() {
         body: JSON.stringify({
           to: supplierProfile.email,
           from: localStorage.getItem('companyEmail') || 'nani@tejasc.in',
-          cc: localStorage.getItem('companyEmail') || 'nani@tejasc.in',
           subject: poSubject,
           html: emailHtml,
           htmlContent: emailHtml,
@@ -1826,12 +1880,11 @@ export default function OrdersDashboard() {
 
     const saved = JSON.parse(localStorage.getItem('procurement_requests') || '[]');
     
-    // Generate a unique collision-free ID that will never conflict with previously deleted IDs
-    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-    const maId = `MA-${randomSuffix}`;
+    // Generate sequential buyer request reference starting strictly from MO-0001
+    const orderId = getNextManualOrderNumber();
 
     // Purge new ID from deleted set and clear cleared flag
-    removeDeletedProcurementId(maId);
+    removeDeletedProcurementId(orderId);
     localStorage.removeItem('cleared_procurement_requests');
 
     const initials = newOrder.buyer.split(' ').filter(Boolean).map(n => n[0]).join('').toUpperCase().slice(0, 2) || 'TC';
@@ -1854,7 +1907,10 @@ export default function OrdersDashboard() {
 
     const loadingDaysNum = parseInt(String(newOrder.loadingDays), 10);
     const orderToAdd = normalizeOrder({
-      id: maId,
+      id: orderId,
+      orderNo: orderId,
+      buyerRequestNo: orderId,
+      subOrderNo: orderId,
       orderType: 'manual',
       isManual: true,
       date: dateStr,
@@ -1874,10 +1930,10 @@ export default function OrdersDashboard() {
       remarks: (newOrder.remarks || '').trim()
     });
 
-    const updatedOrders = [orderToAdd, ...currentOrders.filter(o => o && String(o.id).toLowerCase() !== maId.toLowerCase())];
+    const updatedOrders = [orderToAdd, ...currentOrders.filter(o => o && String(o.id).toLowerCase() !== orderId.toLowerCase())];
     setCurrentOrders(updatedOrders);
     
-    const updatedSaved = [orderToAdd, ...saved.filter((o: any) => o && String(o.id).toLowerCase() !== maId.toLowerCase())];
+    const updatedSaved = [orderToAdd, ...saved.filter((o: any) => o && String(o.id).toLowerCase() !== orderId.toLowerCase())];
     localStorage.setItem('procurement_requests', JSON.stringify(updatedSaved));
 
     // Reset filters so the new order is immediately visible on the table!
@@ -1886,7 +1942,7 @@ export default function OrdersDashboard() {
     setFilterOrderType('all');
     setSearchQuery('');
 
-    setCollectionDoc('procurement_requests', maId, orderToAdd).catch(err => {
+    setCollectionDoc('procurement_requests', orderId, orderToAdd).catch(err => {
       console.warn('Firestore sync notice for manual order (saved locally):', err?.message || err);
     });
 
@@ -2240,7 +2296,12 @@ export default function OrdersDashboard() {
                               {order.buyer}
                             </button>
                             <p className="text-[9px] text-secondary/60 font-black uppercase tracking-widest font-mono mt-0.5 flex items-center gap-1.5 flex-wrap">
-                              <span>{getOrderBillNo(order.id)}</span>
+                              <span className={order.supplierSubOrderNo ? "text-primary font-black" : ""}>
+                                {order.supplierSubOrderNo || getOrderBillNo(order.id)}
+                              </span>
+                              {order.supplierSubOrderNo && order.buyerRequestNo && order.buyerRequestNo !== order.supplierSubOrderNo && (
+                                <span className="opacity-50 text-[8px]">({order.buyerRequestNo})</span>
+                              )}
                               <span className="opacity-40">•</span>
                               <span>{order.date}</span>
                               <span className={cn(

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { 
   Package, 
@@ -51,7 +51,7 @@ import { generateSupplierPOEmailHtml, generateSupplierPOA4PrintHtml, printPoDocu
 import { buildPoPdfDocument, getPoPdfFileName } from '../utils/poPdfGenerator';
 import EmailTrackingModal, { getStatusBadgeConfig } from '../components/EmailTrackingModal';
 import BuyerLedgerModal from '../components/BuyerLedgerModal';
-import { purgeOperationalAndLedgerRecords, purgeAllOperationalAndLedgerRecords } from '../utils/orderOperations';
+import { purgeOperationalAndLedgerRecords, purgeAllOperationalAndLedgerRecords, resolveSubOrderNumber, resolveGroupedPoNumber, normalizePlacedOrdersSequential } from '../utils/orderOperations';
 
 const BUYER_PROFILES: Record<string, { address: string; gstin: string; phone: string; email: string }> = {};
 
@@ -1024,7 +1024,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
         o.status !== 'Rejected'
     );
 
-    const validPlaced = filterIgnored(placedList).filter((o: any) => !isDeleted(o?.id));
+    const validPlaced = normalizePlacedOrdersSequential(filterIgnored(placedList).filter((o: any) => !isDeleted(o?.id)));
     const validProc = (isCleared && validPlaced.length === 0) ? [] : (procList || []).filter(
       (o: any) => o && 
         o.id !== 'ORD-TC-1024' && 
@@ -1107,16 +1107,21 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
           if (addedKeys.has(subKey)) return;
 
           if (isMerchantMatch(sub)) {
+            const subSupplier = placed.supplier || sub.supplier || 'Direct Mill';
+            const subRef = sub.supplierSubOrderNo || resolveSubOrderNumber(sub, 0, subSupplier);
             results.push({
               id: sub.id,
-              billNo: placed.billNo || sub.billNo || sub.id,
+              supplierSubOrderNo: subRef,
+              subOrderNo: subRef,
+              buyerRequestNo: sub.buyerRequestNo || sub.orderNo || sub.id,
+              billNo: placed.billNo || subRef,
               items: sub.product || sub.items || 'Bulk Grain Lot',
               product: sub.product || sub.name,
               qty: sub.qty,
               rate: sub.rate || sub.price,
               total: sub.total || (Number(sub.qty || 0) * Number(sub.rate || 0)) || placed.total,
               buyer: sub.buyer || merchantName,
-              supplier: placed.supplier || sub.supplier || 'Direct Mill',
+              supplier: subSupplier,
               status: placed.status || 'Approved',
               progress: placed.progress || 35,
               date: sub.date || placed.date || placed.createdAt || new Date().toISOString(),
@@ -1202,22 +1207,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
       }
     );
 
-    const validPlaced = filterIgnored(placedList).map((item: any) => {
-      if (item && Array.isArray(item.originalOrders) && item.originalOrders.length > 0) {
-        const cleanSubs = item.originalOrders.map((sub: any, sIdx: number) => ({
-          ...sub,
-          id: sub.id || `${item.id}-sub-${sIdx + 1}`,
-          buyer: sub.buyer || item.buyer || 'Authorized Merchant',
-          product: sub.product || sub.brand || item.product || item.brand || 'Standard Rice',
-          qty: sub.qty || item.qty || 0,
-          rate: sub.rate || item.rate || 0,
-          supplier: sub.supplier || item.supplier || 'Direct Mill',
-          remarks: sub.remarks || sub.notes || item.remarks || ''
-        }));
-        return { ...item, originalOrders: cleanSubs };
-      }
-      return item;
-    });
+    const validPlaced = normalizePlacedOrdersSequential(filterIgnored(placedList));
 
     let combined = [...validPlaced];
 
@@ -1659,6 +1649,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
       ? poOrder.originalOrders
       : [{
           id: poOrder.id,
+          poNumber: poOrder.poNumber || poOrder.id,
           buyer: poOrder.buyer || "Authorized Merchant",
           product: poOrder.items?.replace(/\(\d+.*$/, '').trim() || poOrder.product || "KESHAR KALI",
           qty: parseFloat(poOrder.qty || poOrder.items?.match(/\d+/)?.[0] || '80'),
@@ -1735,6 +1726,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
       ? order.originalOrders
       : [{
           id: order.id,
+          poNumber: order.poNumber || order.id,
           buyer: order.buyer || "Authorized Merchant",
           product: order.items?.replace(/\(\d+.*$/, '').trim() || order.product || "KESHAR KALI",
           qty: parseFloat(order.qty || order.items?.match(/\d+/)?.[0] || '80'),
@@ -1917,7 +1909,6 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
         body: JSON.stringify({
           to: poRecipient,
           from: poSender || 'nani@tejasc.in',
-          cc: poSender || 'nani@tejasc.in',
           subject: poSubject,
           html: emailHtml,
           batchId: poOrder.id,
@@ -2750,7 +2741,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                   </div>
 
                   <div className="w-16 h-16 rounded-2xl bg-surface-container flex items-center justify-center shrink-0 border border-outline-variant">
-                    {order.id.startsWith('TC') ? <Layers className="w-8 h-8 text-primary" /> : 
+                    {order.id.startsWith('TC') || order.id.startsWith('PO') ? <Layers className="w-8 h-8 text-primary" /> : 
                      order.status === 'In Transit' ? <Truck className="w-8 h-8 text-primary" /> : <Package className="w-8 h-8 text-secondary" />}
                   </div>
 
@@ -2758,7 +2749,19 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
                       <div>
                         <h3 className="font-black text-lg flex flex-wrap items-center gap-2">
-                          {order.billNo || order.id}
+                          <span className="font-mono text-primary font-black tracking-wide text-lg" title="Encrypted Confidential Purchase Order Reference">
+                            {resolveGroupedPoNumber(order)}
+                          </span>
+                          {order.supplierSubOrderNo && (
+                            <span className="text-xs font-mono font-bold px-2.5 py-0.5 rounded bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300" title="Supplier Sub-Order Reference">
+                              {order.supplierSubOrderNo}
+                            </span>
+                          )}
+                          {order.originalOrders && order.originalOrders.length > 0 && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-surface-container border border-outline-variant/30 text-secondary uppercase tracking-wider">
+                              Grouped PO ({order.originalOrders.length} Sub-Orders)
+                            </span>
+                          )}
                           <span className={cn(
                             "text-[10px] px-2 py-0.5 rounded-full uppercase tracking-widest font-black",
                             order.status === 'In Transit' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
@@ -2814,7 +2817,11 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                             );
                           })()}
                         </h3>
-                        <p className="text-xs text-secondary font-medium">{order.items}</p>
+                        <div className="flex items-center gap-2 text-xs text-secondary font-medium">
+                          <span>{order.items}</span>
+                          <span className="opacity-40">•</span>
+                          <span className="font-mono font-bold text-primary">PO: {resolveGroupedPoNumber(order)}</span>
+                        </div>
                       </div>
                       <div className="md:text-right">
                         <p className="text-base font-black text-on-surface">{displayTotalStr}</p>
@@ -2825,9 +2832,14 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                     {/* Supplier & Consignee Buyers Info Panel (Replacing Progress Bar) */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-surface-container-low/60 dark:bg-neutral-900/40 p-4 rounded-xl border border-outline-variant/30">
                       <div className="space-y-1">
-                        <span className="text-[9px] font-black tracking-widest text-secondary uppercase block">
-                          🌾 Primary Supplier Channel
-                        </span>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[9px] font-black tracking-widest text-secondary uppercase block">
+                            🌾 Primary Supplier Channel
+                          </span>
+                          <span className="text-[10px] font-mono font-black text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded border border-blue-200 dark:border-blue-800">
+                            PO: {resolveGroupedPoNumber(order)}
+                          </span>
+                        </div>
                         <p className="text-xs font-black text-on-surface uppercase flex items-center gap-1.5">
                           <span className="w-1.5 h-1.5 rounded-full bg-amber-550" />
                           {sanitizeSupplierName(order.supplier || (order.originalOrders && order.originalOrders[0]?.supplier), 'Direct Mill')}
@@ -3041,12 +3053,13 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                               const subAmount = subQty * subRate;
                               const subProduct = sub.product || sub.items?.replace(/\(\d+.*$/, '').trim() || "1121 Sella Rice";
                               const subSupplier = sub.supplier || sub.seller || order.supplier || "Amritsar Grain Export Ltd.";
+                              const subOrderNo = sub.supplierSubOrderNo || resolveSubOrderNumber(sub, sIdx, subSupplier);
 
                               return (
                                 <div key={`${sub.id}-${sIdx}`} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-primary/5 rounded-2xl border border-primary/10 gap-4">
                                   <div className="flex items-start gap-4">
-                                     <div className="w-8 h-8 rounded-lg bg-surface flex items-center justify-center text-[9px] font-black text-primary border border-outline-variant shadow-sm px-1 text-center leading-tight shrink-0 mt-1">
-                                       {String(sub.id || '').replace('TC-', '').replace('#', '') || `${sIdx + 1}`}
+                                     <div className="px-2.5 py-1.5 rounded-lg bg-surface flex items-center justify-center text-[11px] font-black font-mono text-primary border border-outline-variant shadow-sm text-center shrink-0 mt-0.5">
+                                       {subOrderNo}
                                      </div>
                                      <div className="space-y-1">
                                         <div className="flex items-center gap-2">
@@ -3065,6 +3078,11 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                                           <span className="text-[9px] font-mono text-secondary bg-surface-container border border-outline-variant/30 px-1.5 py-0.5 rounded">
                                             {subProduct}
                                           </span>
+                                          {sub.buyerRequestNo && sub.buyerRequestNo !== subOrderNo && (
+                                            <span className="text-[9px] font-mono text-secondary/70 bg-surface-container border border-outline-variant/30 px-1.5 py-0.5 rounded" title="Original Buyer Request Number">
+                                              Req: {sub.buyerRequestNo}
+                                            </span>
+                                          )}
                                         </div>
                                         <p className="text-[10px] text-secondary font-medium">
                                           Supplier: <strong className="text-on-surface">{subSupplier}</strong>
@@ -3259,9 +3277,14 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
               className="bg-surface border border-outline-variant w-full max-w-5xl rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
             >
               <div className="p-6 border-b border-outline-variant flex items-center justify-between shrink-0">
-                <div className="flex items-center gap-2 text-primary">
-                  <Mail className="w-5 h-5" />
-                  <h3 className="font-black text-lg">Send Purchase Order (PO)</h3>
+                <div className="flex items-center gap-2.5">
+                  <Mail className="w-5 h-5 text-primary" />
+                  <h3 className="font-black text-lg text-on-surface">Send Purchase Order (PO)</h3>
+                  {poOrder && (
+                    <span className="font-mono font-black text-xs px-2.5 py-0.5 rounded-md bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300">
+                      {resolveGroupedPoNumber(poOrder)}
+                    </span>
+                  )}
                 </div>
                 <button 
                   onClick={() => setPoOrder(null)}
@@ -3392,7 +3415,6 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                         <div className="bg-surface/85 backdrop-blur-sm p-3 rounded-lg border border-outline-variant/30 text-[10px] space-y-1 text-secondary font-bold">
                           <div><span className="text-outline uppercase text-[8px] tracking-widest mr-1">From:</span> <span className="text-on-surface">{poSender || 'nani@tejasc.in'}</span></div>
                           <div><span className="text-outline uppercase text-[8px] tracking-widest mr-1">To:</span> <span className="text-on-surface">{poRecipient}</span></div>
-                          <div><span className="text-outline uppercase text-[8px] tracking-widest mr-1">Confirmation CC:</span> <span className="text-primary font-bold">{poSender || 'nani@tejasc.in'}</span></div>
                           <div><span className="text-outline uppercase text-[8px] tracking-widest mr-1">Subject:</span> <span className="text-on-surface select-all">{poSubject}</span></div>
                         </div>
 
@@ -3403,14 +3425,25 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                           style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif' }}
                         >
                           {/* Top row with Logo and Business details */}
-                          <div className="flex items-center gap-3.5 pb-4">
-                            {/* Blue TC logo box */}
-                            <div className="w-12 h-12 bg-[#0084ff] flex items-center justify-center rounded-md text-white font-sans font-bold text-xl select-none shrink-0">
-                              TC
+                          <div className="flex items-center justify-between pb-4">
+                            <div className="flex items-center gap-3.5">
+                              {/* Blue TC logo box */}
+                              <div className="w-12 h-12 bg-[#0084ff] flex items-center justify-center rounded-md text-white font-sans font-bold text-xl select-none shrink-0">
+                                TC
+                              </div>
+                              <div className="text-left font-sans">
+                                <h3 className="text-xl font-bold text-black leading-tight">Tejas Canvassing</h3>
+                                <p className="text-sm text-[#333333] font-normal mt-0.5">Bangalore</p>
+                              </div>
                             </div>
-                            <div className="text-left font-sans">
-                              <h3 className="text-xl font-bold text-black leading-tight">Tejas Canvassing</h3>
-                              <p className="text-sm text-[#333333] font-normal mt-0.5">Bangalore</p>
+                            <div className="text-right font-sans">
+                              <div className="text-xs font-black uppercase text-black tracking-wide">PURCHASE ORDER</div>
+                              <div className="text-xs font-mono font-black text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 mt-1 inline-block">
+                                Grouped PO: {resolveGroupedPoNumber(poOrder)}
+                              </div>
+                              <div className="text-[10px] text-slate-500 font-bold mt-1">
+                                Date: {formatPoDate(poOrder.date)}
+                              </div>
                             </div>
                           </div>
 
@@ -3445,11 +3478,20 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                                   const productWords = subProduct.replace(/<br\s*\/?>/gi, ' ').split(/[\s\n]+/);
                                   const loadingDays = sub.loadingDays !== undefined ? sub.loadingDays : 0;
                                   const unloadingPoint = sub.unloadingPoint || 'shop';
+                                  const subDate = formatPoDate(sub.date || poOrder.date);
+                                  const subOrderNo = resolveSubOrderNumber(sub, sIdx, poOrder?.supplier);
 
                                   return (
                                     <tr key={sIdx} className="align-top bg-white font-normal hover:bg-slate-50/50 transition-colors">
                                       <td className="p-3.5 border border-[#b0b0b0] text-black text-left">
-                                        {formatPoDate(sub.date || poOrder.date)}
+                                        <div className="font-semibold text-black">{subDate}</div>
+                                        {subOrderNo && (
+                                          <div className="mt-2">
+                                            <span className="inline-block px-2.5 py-1 rounded bg-[#eff6ff] border border-[#bfdbfe] text-[#1d4ed8] font-black font-mono text-xs tracking-wide shadow-2xs">
+                                              {subOrderNo}
+                                            </span>
+                                          </div>
+                                        )}
                                       </td>
                                       <td className="p-3.5 border border-[#b0b0b0] text-left space-y-1.5">
                                         <div className="font-bold text-black uppercase tracking-wide">{sub.buyer || 'Authorized Merchant'}</div>
@@ -3840,12 +3882,20 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                         const subNetAmt = Math.max(0, subGross - subTotalLh);
                         const subBillNo = arrivalSupplierBillNos[subId] || '';
 
+                        const subSupplier = sub.supplier || arrivalConfirmOrder.supplier || "Supplier";
+                        const subOrderNo = sub.supplierSubOrderNo || resolveSubOrderNumber(sub, sIdx, subSupplier);
+
                         return (
                           <div key={subId} className="p-4 bg-surface-container/40 rounded-xl border border-outline-variant/30 space-y-3.5">
                             <div className="flex justify-between items-start">
-                              <div>
-                                <h4 className="text-xs font-black text-on-surface uppercase">{sub.buyer}</h4>
-                                <p className="text-[10px] text-secondary font-semibold">{subProduct} • {sub.supplier || "Supplier"}</p>
+                              <div className="space-y-0.5">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[10px] font-black font-mono text-primary bg-primary/10 border border-primary/25 px-1.5 py-0.5 rounded">
+                                    {subOrderNo}
+                                  </span>
+                                  <h4 className="text-xs font-black text-on-surface uppercase">{sub.buyer}</h4>
+                                </div>
+                                <p className="text-[10px] text-secondary font-semibold">{subProduct} • {subSupplier}</p>
                               </div>
                               <span className="text-[10px] font-mono bg-surface-container px-2 py-0.5 rounded text-secondary border border-outline-variant/30">
                                 Original: {origQty} QTLS @ ₹{origRate}
@@ -4276,6 +4326,8 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                               const isSelected = selectedSubOrderIds.includes(subId);
                               const qtyVal = parseFloat(sub.qty) || parseFloat(sub.totalQty) || 0;
                               const rateVal = parseFloat(sub.rate) || 4200;
+                              const subSupplier = sub.supplier || liftingOrder.supplier || "Supplier";
+                              const subOrderNo = sub.supplierSubOrderNo || resolveSubOrderNumber(sub, sIdx, subSupplier);
 
                               return (
                                 <div
@@ -4296,9 +4348,14 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                                       className="w-4 h-4 rounded text-purple-600 focus:ring-purple-500/20 shrink-0"
                                     />
                                     <div className="min-w-0">
-                                      <p className="font-bold truncate text-on-surface">
-                                        {sub.buyer || `Suborder #${sIdx + 1}`}
-                                      </p>
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="text-[9px] font-mono font-black text-purple-700 dark:text-purple-300 bg-purple-500/15 px-1.5 py-0.2 rounded border border-purple-500/20">
+                                          {subOrderNo}
+                                        </span>
+                                        <p className="font-bold truncate text-on-surface">
+                                          {sub.buyer || `Suborder #${sIdx + 1}`}
+                                        </p>
+                                      </div>
                                       <p className="text-[10px] text-secondary font-mono">
                                         {sub.product || 'Rice Product'}
                                       </p>
@@ -4478,8 +4535,8 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                   <div>
                     <h3 className="font-black text-sm text-slate-100 flex items-center gap-2">
                       Purchase Order A4 Document
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30">
-                        {a4PreviewOrder.id || 'PO-BATCH'}
+                      <span className="text-[10px] font-mono font-black px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                        {resolveGroupedPoNumber(a4PreviewOrder)}
                       </span>
                     </h3>
                     <p className="text-[11px] text-slate-400">
@@ -4557,10 +4614,10 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                         <div className="text-sm font-black uppercase text-slate-950 tracking-wider">
                           PURCHASE ORDER
                         </div>
-                        <div className="text-[11px] font-mono font-bold text-blue-700">
-                          Ref: {a4PreviewOrder.id || 'PO-BATCH'}
+                        <div className="text-[11.5px] font-mono font-black text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 mt-1 inline-block">
+                          Grouped PO: {resolveGroupedPoNumber(a4PreviewOrder)}
                         </div>
-                        <div className="text-[10px] text-slate-600 font-bold">
+                        <div className="text-[10px] text-slate-600 font-bold mt-1">
                           Date: {formatPoDate(a4PreviewOrder.date)}
                         </div>
                       </div>
@@ -4594,6 +4651,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                             const buyerName = sub.buyer || a4PreviewOrder.buyer || 'Authorized Merchant';
                             const profile = resolveBuyerProfile(buyerName);
                             const subDate = formatPoDate(sub.date || a4PreviewOrder.date);
+                            const subOrderNo = resolveSubOrderNumber(sub, sIdx, a4PreviewOrder?.supplier);
                             const product = (sub.product || a4PreviewOrder.product || 'KESHAR KALI').toUpperCase();
                             const qty = sub.qty !== undefined ? sub.qty : 80;
                             const rate = sub.rate !== undefined ? sub.rate : 8400;
@@ -4603,7 +4661,14 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                             return (
                               <tr key={sIdx} className="border-b border-slate-800">
                                 <td className="p-2.5 border border-slate-800 font-semibold align-top whitespace-nowrap">
-                                  {subDate}
+                                  <div className="text-slate-900 font-bold">{subDate}</div>
+                                  {subOrderNo && (
+                                    <div className="mt-1.5">
+                                      <span className="inline-block px-2 py-0.5 rounded bg-blue-50 border border-blue-200 text-blue-700 font-black font-mono text-[11px] tracking-wide shadow-2xs">
+                                        {subOrderNo}
+                                      </span>
+                                    </div>
+                                  )}
                                 </td>
                                 <td className="p-2.5 border border-slate-800 align-top">
                                   <div className="font-black text-slate-950 uppercase text-xs">

@@ -23,6 +23,7 @@ import {
   X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { getNextStoreOrderNumber, generateRandomPoNumber } from '../utils/orderOperations';
 import { cn, formatINR, sanitizeSupplierName } from '../lib/utils';
 import { setCollectionDoc } from '../lib/firebase';
 import { dispatchOrderPlacedWhatsApp } from '../lib/whatsapp';
@@ -209,18 +210,7 @@ export default function CheckoutView() {
       setIsSuccess(true);
       
       const existing = JSON.parse(localStorage.getItem('procurement_requests') || '[]');
-      const storeOrders = existing.filter((o: any) => o.id && o.id.includes('ONI-'));
-      let maxIdx = 0;
-      storeOrders.forEach((o: any) => {
-        const match = o.id.match(/ONI[_-](\d+)/);
-        if (match) {
-          const idx = parseInt(match[1]);
-          if (idx > maxIdx) maxIdx = idx;
-        }
-      });
-      const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-      const oniId = `ONI-${randomSuffix}`;
-      const finalOrderId = bulkData?.bulkOrder ? `TC-${randomSuffix}` : oniId;
+      const finalOrderId = bulkData?.bulkOrder ? generateRandomPoNumber() : getNextStoreOrderNumber();
       setCreatedOrderRef(finalOrderId);
       
       const buyerText = bulkData?.bulkOrder 
@@ -260,6 +250,9 @@ export default function CheckoutView() {
 
       const newOrder = {
         id: finalOrderId,
+        orderNo: finalOrderId,
+        buyerRequestNo: finalOrderId,
+        subOrderNo: finalOrderId,
         buyer: buyerText,
         date: (() => {
           const d = new Date();
@@ -439,7 +432,7 @@ export default function CheckoutView() {
                 className="flex items-center gap-1.5 font-mono font-bold text-xs text-[#C22424] hover:underline cursor-pointer"
                 title="Copy Order ID"
               >
-                <span>{createdOrderRef || (bulkData?.bulkOrder ? '#BATCH-TC-9104' : '#ONI-0001')}</span>
+                <span>{createdOrderRef || (bulkData?.bulkOrder ? '#BATCH-TC-9104' : '#SO-0001')}</span>
                 {isCopiedRef ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
               </button>
             </div>

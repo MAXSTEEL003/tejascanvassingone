@@ -351,6 +351,32 @@ const PaymentRow = memo(function PaymentRow({
             )}>
               {isCleared ? 'CLEARED' : 'PENDING'}
             </span>
+
+            {/* Settled Payment Details Display */}
+            {isCleared && (txn.chqAm > 0 || txn.chqNo || txn.chqDt || txn.bank) && (
+              <div className="flex flex-col items-center gap-0.5 mt-1 text-[9px] font-mono bg-emerald-500/[0.06] dark:bg-emerald-500/[0.04] border border-emerald-500/20 rounded-lg px-2 py-1 max-w-[160px]">
+                {txn.chqAm > 0 && (
+                  <span className="font-black text-emerald-700 dark:text-emerald-300">
+                    Paid: ₹{formatINR(txn.chqAm)}
+                  </span>
+                )}
+                {txn.chqNo && (
+                  <span className="text-[8px] font-bold text-neutral-600 dark:text-neutral-300 truncate max-w-[140px]" title={`Ref/Chq: ${txn.chqNo}`}>
+                    Ref: {txn.chqNo}
+                  </span>
+                )}
+                {txn.bank && (
+                  <span className="text-[8px] text-neutral-500 dark:text-neutral-400 truncate max-w-[140px]" title={txn.bank}>
+                    {txn.bank}
+                  </span>
+                )}
+                {txn.chqDt && (
+                  <span className="text-[8px] text-neutral-400 dark:text-neutral-500">
+                    {formatDateToDDMMYYYY(txn.chqDt)}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         </td>
 
