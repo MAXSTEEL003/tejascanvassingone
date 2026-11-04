@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
-  ShoppingBag, Trash2, ArrowRight, ChevronLeft, ChevronRight, Tag,
-  ShieldCheck, PackageCheck, AlertCircle, Sparkles
+  ShoppingBag, Trash2, ArrowRight, ChevronLeft, ChevronRight,
+  ShieldCheck, PackageCheck, AlertCircle
 } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { cn, formatINR } from '../lib/utils';
@@ -10,28 +10,11 @@ import { cn, formatINR } from '../lib/utils';
 export default function BagView() {
   const navigate = useNavigate();
   const { items, updateQty, removeItem, clearCart } = useCart();
-  const [couponCode, setCouponCode] = useState('');
-  const [isCouponApplied, setIsCouponApplied] = useState(false);
-  const [couponError, setCouponError] = useState('');
 
   // Totals: Rate is strictly per QTL
   const totalQty = items.reduce((sum, item) => sum + item.qty, 0);
   const totalAmount = items.reduce((sum, item) => sum + (item.price * item.qty), 0);
-  const discountAmount = isCouponApplied ? Math.min(2500, Math.round(totalAmount * 0.02)) : 0;
-  const estimatedTotal = Math.max(0, totalAmount - discountAmount);
-
-  const handleApplyCoupon = (e: React.FormEvent) => {
-    e.preventDefault();
-    setCouponError('');
-    const code = couponCode.trim().toUpperCase();
-    if (!code) return;
-    if (code === 'TEJAS50' || code === 'FIRSTMILL' || code === 'EXMILL') {
-      setIsCouponApplied(true);
-      setCouponError('');
-    } else {
-      setCouponError('Invalid promo code. Try "TEJAS50" or "EXMILL"');
-    }
-  };
+  const estimatedTotal = totalAmount;
 
   // ----------------------------------------------------
   // RENDER: EMPTY CART
@@ -167,53 +150,6 @@ export default function BagView() {
         })}
       </div>
 
-      {/* Screen 4 Apply Coupon Card */}
-      <div className="bg-white dark:bg-[#141414] border border-[#E5E7EB] dark:border-[#262626] rounded-2xl p-3 shadow-xs space-y-2">
-        <form onSubmit={handleApplyCoupon} className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-red-50 dark:bg-red-950/40 text-[#C22424] flex items-center justify-center shrink-0">
-            <Tag className="w-4 h-4" />
-          </div>
-          <input
-            type="text"
-            placeholder="Apply trade promo code..."
-            value={couponCode}
-            onChange={(e) => setCouponCode(e.target.value)}
-            disabled={isCouponApplied}
-            className="flex-1 min-w-0 bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl px-2.5 py-1.5 text-xs text-neutral-900 dark:text-white placeholder:text-neutral-400 outline-none uppercase font-mono"
-          />
-          {isCouponApplied ? (
-            <button
-              type="button"
-              onClick={() => {
-                setIsCouponApplied(false);
-                setCouponCode('');
-              }}
-              className="text-xs font-bold text-neutral-500 hover:text-neutral-700 dark:hover:text-white px-2 py-1.5 cursor-pointer"
-            >
-              Remove
-            </button>
-          ) : (
-            <button
-              type="submit"
-              className="px-3 py-1.5 rounded-xl bg-[#C22424] hover:bg-[#B91C1C] text-white text-xs font-bold transition-all cursor-pointer shrink-0"
-            >
-              Apply
-            </button>
-          )}
-        </form>
-        {isCouponApplied && (
-          <div className="flex items-center gap-1.5 text-[11px] text-emerald-600 dark:text-emerald-400 font-bold px-1">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Promo discount of ₹{formatINR(discountAmount)} applied!</span>
-          </div>
-        )}
-        {couponError && (
-          <p className="text-[11px] text-red-600 dark:text-red-400 font-medium px-1">
-            {couponError}
-          </p>
-        )}
-      </div>
-
       {/* Screen 4 Order Summary Card */}
       <div className="bg-white dark:bg-[#141414] border border-[#E5E7EB] dark:border-[#262626] rounded-2xl p-4 shadow-xs space-y-2.5 text-xs text-left">
         <h3 className="font-bold text-xs uppercase tracking-wider text-neutral-400">
@@ -233,15 +169,6 @@ export default function BagView() {
             ₹{formatINR(totalAmount)}
           </span>
         </div>
-
-        {isCouponApplied && (
-          <div className="flex justify-between text-emerald-600 dark:text-emerald-400">
-            <span>Trade Discount</span>
-            <span className="font-bold font-mono">
-              - ₹{formatINR(discountAmount)}
-            </span>
-          </div>
-        )}
 
         <div className="flex justify-between text-neutral-600 dark:text-neutral-300">
           <span>Delivery & Transport</span>
