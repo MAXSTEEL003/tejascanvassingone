@@ -1,3 +1,4 @@
+import { TC_COMPANY_LOGO_BASE64 } from "./logoBase64";
 import { jsPDF } from 'jspdf';
 import { normalizeDate } from './dateUtils';
 import { formatINR } from '../lib/utils';
@@ -739,17 +740,16 @@ function drawSharedPageHeader(
  * Fallback vector TC Logo for razor-sharp offline rendering
  */
 function drawVectorTcLogo(doc: jsPDF, x: number, y: number): void {
-  // Rounded square with orange-amber fill
-  doc.setFillColor(245, 158, 11); // Amber-500
-  doc.setDrawColor(217, 119, 6); // Amber-600
-  doc.setLineWidth(0.3);
-  doc.roundedRect(x, y, 15, 15, 2.5, 2.5, 'FD');
-
-  // Text "TC" in bold white
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9.5);
-  doc.setTextColor(255, 255, 255);
-  doc.text('TC', x + 7.5, y + 10, { align: 'center' });
+  try {
+    doc.addImage(TC_COMPANY_LOGO_BASE64, 'PNG', x, y, 15, 15);
+  } catch {
+    doc.setFillColor(194, 36, 36);
+    doc.roundedRect(x, y, 15, 15, 2.5, 2.5, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9.5);
+    doc.setTextColor(255, 255, 255);
+    doc.text('TC', x + 7.5, y + 10, { align: 'center' });
+  }
 }
 
 /**

@@ -116,8 +116,8 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
           else navigate('/admin');
         }}
       >
-        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#f2ca50] to-[#d4af37] flex items-center justify-center text-[#3c2f00] font-bold shrink-0 shadow-[0_0_12px_rgba(242,202,80,0.25)]">
-          <Warehouse className="w-6 h-6" />
+        <div className="w-10 h-10 rounded-xl bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 flex items-center justify-center shrink-0 p-1 shadow-sm">
+          <img src="/logo.png" alt="Tejas Canvassing" className="w-full h-full object-contain" />
         </div>
         {!isCollapsed && (
           <div className="whitespace-nowrap transition-all duration-300">

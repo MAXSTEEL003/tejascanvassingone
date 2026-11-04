@@ -1,3 +1,4 @@
+import { TC_COMPANY_LOGO_BASE64 } from "./logoBase64";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { sanitizeSupplierName } from '../lib/utils';
@@ -17,13 +18,17 @@ export function buildPoPdfDocument(order: any, subOrders: any[] = []): jsPDF {
   const poRef = resolveGroupedPoNumber(order);
   const dateFormatted = formatPoDate(order?.date);
   
-  // Header Logo (TC Blue Square)
-  doc.setFillColor(0, 132, 255);
-  doc.roundedRect(14, 12, 12, 12, 2, 2, 'F');
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(14);
-  doc.setFont('helvetica', 'bold');
-  doc.text('TC', 16.5, 20);
+  // Header Logo (Official Company Symbol)
+  try {
+    doc.addImage(TC_COMPANY_LOGO_BASE64, 'PNG', 14, 12, 12, 12);
+  } catch {
+    doc.setFillColor(194, 36, 36);
+    doc.roundedRect(14, 12, 12, 12, 2, 2, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('TC', 16.5, 20);
+  }
 
   // Brand Name
   doc.setTextColor(15, 23, 42);

@@ -66,14 +66,11 @@ function GoogleGIcon({ className = "w-4 h-4" }: { className?: string }) {
   );
 }
 
-// Brand Leaf Emblem
+// Company Symbol Emblem
 export function TejasLogoEmblem({ className = "w-10 h-10" }: { className?: string }) {
   return (
-    <div className={cn("rounded-2xl bg-[#C22424] text-white flex items-center justify-center shadow-md", className)}>
-      <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/>
-        <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/>
-      </svg>
+    <div className={cn("rounded-2xl bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 flex items-center justify-center p-1.5 shadow-md", className)}>
+      <img src="/logo.png" alt="Tejas Canvassing" className="w-full h-full object-contain" />
     </div>
   );
 }

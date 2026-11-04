@@ -476,8 +476,8 @@ export default function PattiBookView() {
       {/* Top Header Card */}
       <div className="bg-white/85 dark:bg-[#0d1e15]/80 backdrop-blur-xl border border-slate-200/80 dark:border-white/10 rounded-3xl p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center text-white font-black text-xl shadow-lg shadow-amber-500/20">
-            TC
+          <div className="w-14 h-14 rounded-2xl bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 flex items-center justify-center p-2 shadow-sm">
+            <img src="/logo.png" alt="TC" className="w-full h-full object-contain" />
           </div>
           <div>
             <div className="flex items-center gap-2.5 flex-wrap">
@@ -1259,8 +1259,8 @@ export default function PattiBookView() {
             >
               <div className="flex items-center justify-between border-b border-slate-200 dark:border-white/10 pb-3">
                 <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-lg bg-amber-500/15 text-amber-600 flex items-center justify-center font-black text-xs">
-                    TC
+                  <div className="w-7 h-7 rounded-lg bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 p-0.5 flex items-center justify-center">
+                    <img src="/logo.png" alt="TC" className="w-full h-full object-contain" />
                   </div>
                   <div>
                     <h3 className="text-sm font-bold text-slate-900 dark:text-white">

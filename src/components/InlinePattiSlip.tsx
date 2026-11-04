@@ -1010,8 +1010,8 @@ Generated via TEJAS CANVASSING Terminal.`;
         {/* Print Layout Header */}
         <div className="mb-6 pb-6 border-b border-dashed border-neutral-300 dark:border-neutral-800 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 text-left">
           <div className="flex items-center gap-3.5">
-            <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center font-black text-lg p-0.5 shrink-0 shadow-sm", colors.logoBg)}>
-              TC
+            <div className="w-12 h-12 rounded-2xl flex items-center justify-center p-1 shrink-0 shadow-sm bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700">
+              <img src="/logo.png" alt="TC" className="w-full h-full object-contain" />
             </div>
             <div>
               <h2 className={cn("text-xl font-bold tracking-tight uppercase leading-none pb-1", colors.primaryText)}>
