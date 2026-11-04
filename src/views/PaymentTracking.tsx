@@ -319,62 +319,72 @@ const PaymentRow = memo(function PaymentRow({
 
         {/* Settlement Status Trackers */}
         <td className="p-4">
-          <div className="flex flex-col items-center justify-center gap-1 text-center">
-            <span className={cn(
-              "inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border",
-              isCleared
-                ? 'bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-950/20 dark:border-emerald-900/30'
-                : over60
-                  ? 'bg-rose-50 text-rose-600 border-rose-200 dark:bg-rose-950/30 dark:border-rose-900/50'
-                  : 'bg-amber-50 text-amber-600 border-amber-100 dark:bg-amber-950/20 dark:border-amber-900/40'
-            )}>
-              <span className={cn(
-                "w-1.5 h-1.5 rounded-full",
-                isCleared
-                  ? "bg-emerald-500"
-                  : over60
-                    ? "bg-rose-500 animate-pulse"
-                    : "bg-amber-500 animate-pulse"
-              )} />
-              {txn.daysOutstanding !== undefined && txn.daysOutstanding > 0
-                ? `${txn.daysOutstanding} ${txn.daysOutstanding === 1 ? 'DAY' : 'DAYS'}`
-                : '0 DAYS'
-              }
-            </span>
-            <span className={cn(
-              "text-[9px] font-mono font-bold tracking-tight px-1.5 py-0.5 rounded uppercase",
-              isCleared
-                ? "text-emerald-600 dark:text-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/10"
-                : over60
-                  ? "text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/20 font-black animate-pulse"
-                  : "text-neutral-500 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-800"
-            )}>
-              {isCleared ? 'CLEARED' : 'PENDING'}
-            </span>
+          <div className="flex flex-col items-center justify-center text-center">
+            {isCleared ? (
+              <div className="inline-flex flex-col items-center px-3 py-2 rounded-xl bg-emerald-50/80 dark:bg-emerald-950/25 border border-emerald-200/80 dark:border-emerald-800/40 shadow-xs max-w-[170px] w-full transition-all">
+                {/* Status Header Badge with Turnaround Time */}
+                <div className="flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+                    Cleared
+                  </span>
+                  {txn.daysOutstanding !== undefined && txn.daysOutstanding > 0 && (
+                    <span className="text-[9px] font-mono font-bold text-emerald-600/90 dark:text-emerald-400/90 bg-emerald-100/70 dark:bg-emerald-900/50 px-1.5 py-0.2 rounded-full">
+                      {txn.daysOutstanding}d
+                    </span>
+                  )}
+                </div>
 
-            {/* Settled Payment Details Display */}
-            {isCleared && (txn.chqAm > 0 || txn.chqNo || txn.chqDt || txn.bank) && (
-              <div className="flex flex-col items-center gap-0.5 mt-1 text-[9px] font-mono bg-emerald-500/[0.06] dark:bg-emerald-500/[0.04] border border-emerald-500/20 rounded-lg px-2 py-1 max-w-[160px]">
-                {txn.chqAm > 0 && (
-                  <span className="font-black text-emerald-700 dark:text-emerald-300">
-                    Paid: ₹{formatINR(txn.chqAm)}
-                  </span>
+                {/* Settled Payment Amount & Ref Meta */}
+                {(txn.chqAm > 0 || txn.chqNo || txn.chqDt || txn.bank) && (
+                  <div className="flex flex-col items-center mt-1.5 pt-1.5 border-t border-emerald-200/60 dark:border-emerald-800/40 w-full text-center">
+                    {txn.chqAm > 0 && (
+                      <span className="font-black font-mono text-[11px] text-neutral-900 dark:text-neutral-100 tabular-nums leading-tight">
+                        ₹{formatINR(txn.chqAm)}
+                      </span>
+                    )}
+                    <div className="flex items-center justify-center gap-1 text-[9px] font-mono text-neutral-500 dark:text-neutral-400 leading-tight mt-0.5">
+                      {txn.chqNo && (
+                        <span className="font-semibold text-neutral-700 dark:text-neutral-300" title={`Ref/Chq: ${txn.chqNo}`}>
+                          Ref {txn.chqNo}
+                        </span>
+                      )}
+                      {txn.chqNo && txn.chqDt && <span className="opacity-40">•</span>}
+                      {txn.chqDt && (
+                        <span>{formatDateToDDMMYYYY(txn.chqDt)}</span>
+                      )}
+                    </div>
+                    {txn.bank && (
+                      <span className="text-[8px] font-semibold text-neutral-400 dark:text-neutral-500 truncate max-w-[140px] leading-tight mt-0.5" title={txn.bank}>
+                        {txn.bank}
+                      </span>
+                    )}
+                  </div>
                 )}
-                {txn.chqNo && (
-                  <span className="text-[8px] font-bold text-neutral-600 dark:text-neutral-300 truncate max-w-[140px]" title={`Ref/Chq: ${txn.chqNo}`}>
-                    Ref: {txn.chqNo}
-                  </span>
-                )}
-                {txn.bank && (
-                  <span className="text-[8px] text-neutral-500 dark:text-neutral-400 truncate max-w-[140px]" title={txn.bank}>
-                    {txn.bank}
-                  </span>
-                )}
-                {txn.chqDt && (
-                  <span className="text-[8px] text-neutral-400 dark:text-neutral-500">
-                    {formatDateToDDMMYYYY(txn.chqDt)}
-                  </span>
-                )}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-1">
+                <span className={cn(
+                  "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border shadow-xs",
+                  over60
+                    ? "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/30 dark:border-rose-900/50 dark:text-rose-300"
+                    : "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:border-amber-900/50 dark:text-amber-300"
+                )}>
+                  <span className={cn(
+                    "w-2 h-2 rounded-full",
+                    over60 ? "bg-rose-500 animate-pulse" : "bg-amber-500 animate-pulse"
+                  )} />
+                  <span>{over60 ? 'Overdue' : 'Pending'}</span>
+                </span>
+                <span className={cn(
+                  "text-[9px] font-mono font-bold tracking-tight",
+                  over60 ? "text-rose-600 dark:text-rose-400 font-black" : "text-neutral-500 dark:text-neutral-400"
+                )}>
+                  {txn.daysOutstanding !== undefined && txn.daysOutstanding > 0
+                    ? `${txn.daysOutstanding} ${txn.daysOutstanding === 1 ? 'day' : 'days'} aging`
+                    : 'Awaiting log'
+                  }
+                </span>
               </div>
             )}
           </div>
