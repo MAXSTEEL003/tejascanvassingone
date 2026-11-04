@@ -388,10 +388,17 @@ Generated via TEJAS CANVASSING Terminal.`;
     });
   };
 
+  const oklchColorCache = new Map<string, string>();
+
   const convertOklchAndOklabColorInString = (val: string): string => {
     if (!val || typeof val !== 'string') {
       return val;
     }
+    if (!val.includes('oklch') && !val.includes('oklab')) {
+      return val;
+    }
+    const cached = oklchColorCache.get(val);
+    if (cached) return cached;
 
     let result = val;
 
@@ -497,6 +504,7 @@ Generated via TEJAS CANVASSING Terminal.`;
       });
     }
 
+    oklchColorCache.set(val, result);
     return result;
   };
 
@@ -536,17 +544,20 @@ Generated via TEJAS CANVASSING Terminal.`;
     const element = document.getElementById('patti-ledger-form');
     if (!element) return null;
 
-    // 1. Wait for document fonts to finish loading
+    // 1. Cap font wait to 50ms so slow network fonts never stall capture
     if (document.fonts && document.fonts.ready) {
       try {
-        await document.fonts.ready;
+        await Promise.race([
+          document.fonts.ready,
+          new Promise((resolve) => setTimeout(resolve, 50))
+        ]);
       } catch (e) {
         console.warn('Font loading wait warning:', e);
       }
     }
 
-    // 2. Short RAF delay to ensure any pending React layout or input paint completes
-    await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 20)));
+    // 2. Next paint frame buffer
+    await new Promise((resolve) => requestAnimationFrame(resolve));
 
     const originalGetComputedStyle = window.getComputedStyle;
     window.getComputedStyle = createComputedStyleProxy(window) as any;
@@ -562,9 +573,8 @@ Generated via TEJAS CANVASSING Terminal.`;
         windowHeight: 1600,
         scrollX: 0,
         scrollY: 0,
-        imageTimeout: 15000,
+        imageTimeout: 5000,
         onclone: (clonedDoc) => {
-          // Force light mode on cloned document for clean print/image output
           clonedDoc.documentElement.classList.remove('dark');
           clonedDoc.body.classList.remove('dark');
           clonedDoc.documentElement.style.colorScheme = 'light';
@@ -574,15 +584,15 @@ Generated via TEJAS CANVASSING Terminal.`;
             clonedDoc.defaultView.getComputedStyle = createComputedStyleProxy(clonedDoc.defaultView) as any;
           }
 
-          // Sanitize OKLCH in style tags
-          clonedDoc.querySelectorAll('style').forEach(styleTag => {
-            if (styleTag.textContent) {
-              styleTag.textContent = convertOklchAndOklabColorInString(styleTag.textContent);
-            }
-          });
-
           const clonedEl = clonedDoc.getElementById('patti-ledger-form');
           if (clonedEl) {
+            // Hide all unrelated elements in body so html2canvas ignores the rest of the application
+            Array.from(clonedDoc.body.children).forEach((child) => {
+              if (child !== clonedEl && !child.contains(clonedEl)) {
+                (child as HTMLElement).style.display = 'none';
+              }
+            });
+
             const originalElContainer = document.getElementById('patti-ledger-form')!;
             
             // Standardize container dimensions to landscape desktop A4 proportion
@@ -625,176 +635,126 @@ Generated via TEJAS CANVASSING Terminal.`;
               }
             });
 
-            const propsToConvert = [
-              'color',
-              'backgroundColor',
-              'borderColor',
-              'borderTopColor',
-              'borderBottomColor',
-              'borderLeftColor',
-              'borderRightColor',
-              'boxShadow',
-              'outlineColor',
-              'fill',
-              'stroke'
+            // Fast, non-blocking direct replacement of inputs with clean text divs
+            const originalInputs = originalElContainer.querySelectorAll('input');
+            const clonedInputs = clonedEl.querySelectorAll('input');
+            for (let i = 0; i < clonedInputs.length; i++) {
+              const orig = originalInputs[i];
+              const clone = clonedInputs[i];
+              if (!orig || !clone || !clone.parentNode) continue;
+
+              const textDiv = clonedDoc.createElement('div');
+              let displayText = orig.value || '';
+              if (orig.type === 'date' && displayText) {
+                const parts = displayText.split('-');
+                if (parts.length === 3) displayText = `${parts[2]}/${parts[1]}/${parts[0]}`;
+              }
+              const isCentered = orig.classList.contains('text-center');
+              const isNumeric = orig.classList.contains('font-mono') || orig.classList.contains('tabular-nums');
+
+              textDiv.style.width = '100%';
+              textDiv.style.height = '100%';
+              textDiv.style.minHeight = '36px';
+              textDiv.style.display = 'flex';
+              textDiv.style.alignItems = 'center';
+              textDiv.style.justifyContent = isCentered ? 'center' : 'flex-start';
+              textDiv.style.textAlign = isCentered ? 'center' : 'left';
+              textDiv.style.padding = isCentered ? '0 4px' : '0 16px';
+              textDiv.style.boxSizing = 'border-box';
+              textDiv.style.color = '#000000';
+              textDiv.style.backgroundColor = 'transparent';
+              textDiv.style.fontWeight = '800';
+              textDiv.style.lineHeight = 'normal';
+              textDiv.style.overflow = 'visible';
+              textDiv.style.fontFamily = isNumeric 
+                ? '"Consolas", "Courier New", monospace' 
+                : '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif';
+
+              if (displayText.length > 25) {
+                textDiv.style.fontSize = '9.5px';
+              } else if (displayText.length > 18) {
+                textDiv.style.fontSize = '11px';
+              } else if (displayText.length > 13) {
+                textDiv.style.fontSize = '12px';
+              } else {
+                textDiv.style.fontSize = '13px';
+              }
+
+              if (!displayText) {
+                if (orig.placeholder && (orig.placeholder.includes('MILLER') || orig.placeholder.includes('PARTY'))) {
+                  textDiv.textContent = orig.placeholder;
+                  textDiv.style.color = '#9ca3af';
+                  textDiv.style.fontWeight = '500';
+                } else {
+                  textDiv.textContent = '—';
+                  textDiv.style.color = '#d1d5db';
+                }
+              } else {
+                textDiv.textContent = displayText;
+              }
+
+              clone.parentNode.replaceChild(textDiv, clone);
+            }
+
+            // Fast replacement of selects
+            const originalSelects = originalElContainer.querySelectorAll('select');
+            const clonedSelects = clonedEl.querySelectorAll('select');
+            for (let i = 0; i < clonedSelects.length; i++) {
+              const orig = originalSelects[i];
+              const clone = clonedSelects[i];
+              if (!orig || !clone || !clone.parentNode) continue;
+
+              const textDiv = clonedDoc.createElement('div');
+              const opt = orig.options[orig.selectedIndex];
+              textDiv.textContent = opt ? opt.text : `${(parseFloat(orig.value || '0') * 100).toFixed(0)}%`;
+              textDiv.style.width = '100%';
+              textDiv.style.height = '100%';
+              textDiv.style.display = 'flex';
+              textDiv.style.alignItems = 'center';
+              textDiv.style.justifyContent = 'center';
+              textDiv.style.textAlign = 'center';
+              textDiv.style.color = '#000000';
+              textDiv.style.fontFamily = '"Geist Mono", monospace';
+              textDiv.style.fontVariantNumeric = 'tabular-nums';
+              textDiv.style.fontSize = '11px';
+              textDiv.style.fontWeight = '900';
+              textDiv.style.boxSizing = 'border-box';
+
+              clone.parentNode.replaceChild(textDiv, clone);
+            }
+
+            // Fast direct utility color mapping for reliable contrast in cloned canvas
+            const colorClassMap: [string, string][] = [
+              ['text-rose-600', '#dc2626'],
+              ['text-rose-500', '#dc2626'],
+              ['text-emerald-600', '#059669'],
+              ['text-emerald-500', '#059669'],
+              ['text-sky-600', '#0284c7'],
+              ['text-sky-500', '#0284c7'],
+              ['text-blue-600', '#2563eb'],
+              ['text-blue-500', '#2563eb'],
+              ['text-indigo-600', '#4f46e5'],
+              ['text-red-600', '#dc2626'],
+              ['text-red-500', '#dc2626'],
+              ['text-amber-600', '#dc2626']
             ];
+            for (const [cls, color] of colorClassMap) {
+              clonedEl.querySelectorAll('.' + cls).forEach((el) => {
+                (el as HTMLElement).style.color = color;
+              });
+            }
 
-            const convertTree = (originalNode: HTMLElement, clonedNode: HTMLElement) => {
-              const style = originalGetComputedStyle(originalNode);
-              if (style) {
-                for (const prop of propsToConvert) {
-                  const val = style[prop as any];
-                  if (typeof val === 'string' && (val.includes('oklch') || val.includes('oklab'))) {
-                    clonedNode.style[prop as any] = convertOklchAndOklabColorInString(val);
-                  }
-                }
-              }
-
-              // Replace input elements with clean text divs to eliminate native form clipping
-              if (originalNode instanceof HTMLInputElement && clonedNode instanceof HTMLInputElement) {
-                const parent = clonedNode.parentNode;
-                if (parent) {
-                  const textDiv = clonedDoc.createElement('div');
-                  let displayText = originalNode.value || '';
-                  
-                  if (originalNode.type === 'date' && displayText) {
-                    const parts = displayText.split('-');
-                    if (parts.length === 3) {
-                      displayText = `${parts[2]}/${parts[1]}/${parts[0]}`;
-                    }
-                  }
-
-                  const isCentered = originalNode.classList.contains('text-center') || style?.textAlign === 'center';
-                  const isNumeric = originalNode.classList.contains('font-mono') ||
-                                    originalNode.classList.contains('tabular-nums') ||
-                                    (!isNaN(Number(displayText.replace(/[,₹ \-]/g, ''))) && displayText.length > 0);
-                  
-                  textDiv.style.width = '100%';
-                  textDiv.style.height = '100%';
-                  textDiv.style.minHeight = '38px';
-                  textDiv.style.display = 'flex';
-                  textDiv.style.alignItems = 'center';
-                  textDiv.style.justifyContent = isCentered ? 'center' : 'flex-start';
-                  textDiv.style.textAlign = isCentered ? 'center' : 'left';
-                  textDiv.style.padding = isCentered ? '0 4px' : '0 16px';
-                  textDiv.style.boxSizing = 'border-box';
-                  textDiv.style.color = '#000000';
-                  textDiv.style.backgroundColor = 'transparent';
-                  textDiv.style.fontWeight = style?.fontWeight || '800';
-                  textDiv.style.lineHeight = 'normal';
-                  textDiv.style.overflow = 'visible';
-
-                  textDiv.style.fontFamily = isNumeric 
-                    ? '"Consolas", "Courier New", monospace' 
-                    : '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif';
-
-                  let baseFontSize = parseFloat(style?.fontSize || '13');
-                  if (isNaN(baseFontSize) || baseFontSize <= 0) baseFontSize = 13;
-
-                  if (displayText.length > 25) {
-                    textDiv.style.fontSize = '9.5px';
-                  } else if (displayText.length > 18) {
-                    textDiv.style.fontSize = '11px';
-                  } else if (displayText.length > 13) {
-                    textDiv.style.fontSize = '12px';
-                  } else {
-                    textDiv.style.fontSize = `${baseFontSize}px`;
-                  }
-
-                  if (!displayText) {
-                    if (originalNode.placeholder && (originalNode.placeholder.includes('MILLER') || originalNode.placeholder.includes('PARTY'))) {
-                      textDiv.textContent = originalNode.placeholder;
-                      textDiv.style.color = '#9ca3af';
-                      textDiv.style.fontWeight = '500';
-                    } else {
-                      textDiv.textContent = '—';
-                      textDiv.style.color = '#d1d5db';
-                    }
-                  } else {
-                    textDiv.textContent = displayText;
-                  }
-
-                  parent.replaceChild(textDiv, clonedNode);
-                  return;
-                }
-              }
-
-              // Replace select elements with clean percentage text
-              if (originalNode instanceof HTMLSelectElement && clonedNode instanceof HTMLSelectElement) {
-                const parent = clonedNode.parentNode;
-                if (parent) {
-                  const textDiv = clonedDoc.createElement('div');
-                  const opt = originalNode.options[originalNode.selectedIndex];
-                  const optText = opt ? opt.text : `${(parseFloat(originalNode.value || '0') * 100).toFixed(0)}%`;
-
-                  textDiv.textContent = optText;
-                  textDiv.style.width = '100%';
-                  textDiv.style.height = '100%';
-                  textDiv.style.display = 'flex';
-                  textDiv.style.alignItems = 'center';
-                  textDiv.style.justifyContent = 'center';
-                  textDiv.style.textAlign = 'center';
-                  textDiv.style.color = '#000000';
-                  textDiv.style.fontFamily = '"Geist Mono", monospace';
-                  textDiv.style.fontVariantNumeric = 'tabular-nums';
-                  textDiv.style.fontSize = '11px';
-                  textDiv.style.fontWeight = '900';
-                  textDiv.style.boxSizing = 'border-box';
-
-                  parent.replaceChild(textDiv, clonedNode);
-                  return;
-                }
-              }
-
-              // Numeric formatting optimization for high-density amount cells
-              if (clonedNode.classList && (clonedNode.classList.contains('font-mono') || clonedNode.classList.contains('tabular-nums'))) {
-                const text = (clonedNode.textContent || '').trim();
-                if (text.length > 13) {
-                  clonedNode.style.fontSize = '10.5px';
-                  clonedNode.style.letterSpacing = '-0.025em';
-                } else if (text.length > 10) {
-                  clonedNode.style.fontSize = '11.5px';
-                  clonedNode.style.letterSpacing = '-0.015em';
-                }
-              }
-
-              // Tailwind utility color mapping for reliable contrast in cloned canvas
-              const classList = clonedNode.classList;
-              if (classList) {
-                if (classList.contains('text-rose-600') || classList.contains('text-rose-500')) clonedNode.style.color = '#dc2626';
-                if (classList.contains('text-emerald-600') || classList.contains('text-emerald-500')) clonedNode.style.color = '#059669';
-                if (classList.contains('text-sky-600') || classList.contains('text-sky-500')) clonedNode.style.color = '#0284c7';
-                if (classList.contains('text-blue-600') || classList.contains('text-blue-500')) clonedNode.style.color = '#2563eb';
-                if (classList.contains('text-indigo-600')) clonedNode.style.color = '#4f46e5';
-                if (classList.contains('text-red-600') || classList.contains('text-red-500') || classList.contains('text-amber-600')) clonedNode.style.color = '#dc2626';
-                
-                if (classList.contains('bg-rose-500/[0.03]') || classList.contains('bg-rose-50')) {
-                  clonedNode.style.backgroundColor = '#fff1f2';
-                }
-                if (classList.contains('bg-emerald-500/[0.04]') || classList.contains('bg-emerald-50')) {
-                  clonedNode.style.backgroundColor = '#ecfdf5';
-                }
-                if (classList.contains('bg-sky-500/[0.04]') || classList.contains('bg-sky-50')) {
-                  clonedNode.style.backgroundColor = '#f0f9ff';
-                }
-                if (classList.contains('bg-blue-500/[0.02]')) {
-                  clonedNode.style.backgroundColor = '#eff6ff';
-                }
-                if (classList.contains('bg-neutral-100')) {
-                  clonedNode.style.backgroundColor = '#f5f5f5';
-                }
-              }
-
-              const originalChildren = Array.from(originalNode.children) as HTMLElement[];
-              const clonedChildren = Array.from(clonedNode.children) as HTMLElement[];
-              for (let i = 0; i < originalChildren.length; i++) {
-                if (clonedChildren[i]) {
-                  convertTree(originalChildren[i], clonedChildren[i]);
-                }
-              }
-            };
-
-            convertTree(originalElContainer, clonedEl);
+            const bgClassMap: [string, string][] = [
+              ['bg-rose-50', '#fff1f2'],
+              ['bg-emerald-50', '#ecfdf5'],
+              ['bg-sky-50', '#f0f9ff'],
+              ['bg-neutral-100', '#f5f5f5']
+            ];
+            for (const [cls, color] of bgClassMap) {
+              clonedEl.querySelectorAll('.' + cls).forEach((el) => {
+                (el as HTMLElement).style.backgroundColor = color;
+              });
+            }
           }
         }
       });
@@ -804,7 +764,7 @@ Generated via TEJAS CANVASSING Terminal.`;
     }
   };
 
-  const exportPDF = async () => {
+    const exportPDF = async () => {
     try {
       const canvas = await generatePattiCanvas(3);
       if (!canvas) {
