@@ -487,21 +487,28 @@ export async function loginWithServer(
 
   // Check if credentials match any assigned buyer profile in stakeholders_v2
   try {
+    const lowerInput = cleanUser.toLowerCase();
+    const prefixInput = cleanUser.includes('@') ? cleanUser.split('@')[0].toLowerCase() : lowerInput;
+    const digitsInput = cleanUser.replace(/\D/g, '');
+
     const stakeholdersStr = localStorage.getItem('stakeholders_v2');
     if (stakeholdersStr) {
       const parsed = JSON.parse(stakeholdersStr);
       const buyers = Array.isArray(parsed.buyers) ? parsed.buyers : [];
-      const lowerInput = cleanUser.toLowerCase();
-      const digitsInput = cleanUser.replace(/\D/g, '');
 
       const matchedBuyer = buyers.find((b: any) => {
         if (!b) return false;
-        const uMatch = b.username && b.username.toLowerCase() === lowerInput;
-        const eMatch = b.email && b.email.toLowerCase() === lowerInput;
-        const iMatch = b.id && b.id.toLowerCase() === lowerInput;
-        const nMatch = b.name && b.name.toLowerCase() === lowerInput;
+        const bUser = (b.username || '').toLowerCase();
+        const bEmail = (b.email || '').toLowerCase();
+        const bId = (b.id || '').toLowerCase();
+        const bName = (b.name || '').toLowerCase();
         const pDigits = (b.phone || '').replace(/\D/g, '');
-        const phMatch = digitsInput.length >= 7 && (pDigits.includes(digitsInput) || digitsInput.includes(pDigits));
+
+        const uMatch = bUser && (bUser === lowerInput || bUser === prefixInput);
+        const eMatch = bEmail && (bEmail === lowerInput || bEmail === prefixInput);
+        const iMatch = bId && (bId === lowerInput || bId === prefixInput);
+        const nMatch = bName && (bName === lowerInput || bName === prefixInput || (prefixInput.length >= 4 && bName.includes(prefixInput)) || (lowerInput.length >= 4 && prefixInput.includes(bName)));
+        const phMatch = digitsInput.length >= 7 && pDigits.length >= 7 && (pDigits.includes(digitsInput) || digitsInput.includes(pDigits));
         return uMatch || eMatch || iMatch || nMatch || phMatch;
       });
 
@@ -512,15 +519,17 @@ export async function loginWithServer(
         if (!expectedPass || expectedPass === cleanPass) {
           const resolvedBuyerUser: AuthenticatedUser = {
             sub: matchedBuyer.id,
-            username: matchedBuyer.username || matchedBuyer.phone || cleanUser,
+            username: matchedBuyer.username || prefixInput,
             role: 'merchant',
-            name: matchedBuyer.name,
-            email: matchedBuyer.email || `${(matchedBuyer.phone || cleanUser).replace(/\D/g, '')}@riceaggregator.com`,
+            name: matchedBuyer.name, // The exact official Buyer Name saved in Users!
+            email: matchedBuyer.email || `${(matchedBuyer.phone || prefixInput).replace(/\D/g, '') || prefixInput}@riceaggregator.com`,
           };
           localStorage.setItem('userName', matchedBuyer.name);
           if (matchedBuyer.phone) localStorage.setItem('userPhone', matchedBuyer.phone);
           if (matchedBuyer.gstin) localStorage.setItem('userGstin', matchedBuyer.gstin);
           if (matchedBuyer.address) localStorage.setItem('userAddress', matchedBuyer.address);
+          if (matchedBuyer.id) localStorage.setItem('userId', matchedBuyer.id);
+          localStorage.setItem('profileLocked', matchedBuyer.profileLocked ? 'true' : 'false');
 
           const token = createClientAuthToken(resolvedBuyerUser);
           setAuthSession(token, resolvedBuyerUser);
@@ -537,10 +546,11 @@ export async function loginWithServer(
   const resolvedEmail = isPhone 
     ? `${cleanUser.replace(/\D/g, '')}@riceaggregator.com` 
     : (cleanUser.includes('@') ? cleanUser : `${cleanUser.toLowerCase().replace(/[^a-z0-9]/g, '') || 'buyer'}@riceaggregator.com`);
-  const resolvedName = cleanUser.toUpperCase() || 'AUTHORIZED MERCHANT';
+  const cleanName = cleanUser.includes('@') ? cleanUser.split('@')[0].toUpperCase() : cleanUser.toUpperCase();
+  const resolvedName = cleanName || 'AUTHORIZED MERCHANT';
 
   const merchantUser: AuthenticatedUser = {
-    username: cleanUser,
+    username: cleanUser.includes('@') ? cleanUser.split('@')[0] : cleanUser,
     role: 'merchant',
     name: resolvedName,
     email: resolvedEmail,

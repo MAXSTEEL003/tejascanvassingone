@@ -23,7 +23,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { cn } from '../lib/utils';
+import { cn, resolveBuyerProfile, syncCurrentMerchantProfile } from '../lib/utils';
 import { 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword,
@@ -197,22 +197,28 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
         return;
       }
 
+      // Resolve official buyer profile from Users database FIRST
+      const matchedBuyer = resolveBuyerProfile(rawInput);
+
       let resolvedEmail = rawInput;
-      let resolvedName = 'Merchant';
-      let resolvedPhone = '';
+      let resolvedName = matchedBuyer?.name || (rawInput.includes('@') ? rawInput.split('@')[0].toUpperCase() : rawInput.toUpperCase()) || 'Merchant';
+      let resolvedPhone = matchedBuyer?.phone || '';
 
       // Check if input is a phone number
       const isPhone = /^[0-9+\s-]{8,15}$/.test(rawInput);
       if (isPhone) {
         const digitsOnly = rawInput.replace(/\D/g, '');
-        resolvedEmail = `${digitsOnly}@riceaggregator.com`;
+        resolvedEmail = matchedBuyer?.email || `${digitsOnly}@riceaggregator.com`;
         resolvedPhone = digitsOnly;
-        resolvedName = `Merchant (+91 ${digitsOnly})`;
+        if (!matchedBuyer?.name) {
+          resolvedName = `Merchant (+91 ${digitsOnly})`;
+        }
       } else if (!rawInput.includes('@')) {
         // Input is a username / firm name
         const cleanUser = rawInput.toLowerCase().replace(/[^a-z0-9]/g, '');
-        resolvedEmail = `${cleanUser || 'merchant'}@riceaggregator.com`;
-        resolvedName = rawInput.toUpperCase();
+        resolvedEmail = matchedBuyer?.email || `${cleanUser || 'merchant'}@riceaggregator.com`;
+      } else {
+        resolvedEmail = rawInput;
       }
 
       // Authenticate securely with Express backend
@@ -232,25 +238,26 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
       }
 
       localStorage.setItem('tejas_intro_viewed', 'true');
-      let userPhoneVal = resolvedPhone;
-      if (!userPhoneVal) {
-        if (resolvedName.toUpperCase().includes('TEJAS') || resolvedName.toUpperCase().includes('VISION')) {
-          userPhoneVal = '9945351166';
+      
+      // Synchronize Merchant Trade Name strictly with the Buyer Name saved in Users
+      if (matchedBuyer) {
+        syncCurrentMerchantProfile(matchedBuyer);
+        resolvedName = matchedBuyer.name;
+      } else {
+        const afterMatch = resolveBuyerProfile(resolvedEmail) || resolveBuyerProfile(rawInput);
+        if (afterMatch) {
+          syncCurrentMerchantProfile(afterMatch);
+          resolvedName = afterMatch.name;
         } else {
-          try {
-            const saved = localStorage.getItem('stakeholders_v2');
-            if (saved) {
-              const parsed = JSON.parse(saved);
-              const buyers = parsed.buyers || [];
-              const matched = buyers.find((b: any) => (b.name || '').trim().toUpperCase() === resolvedName.trim().toUpperCase());
-              if (matched?.phone) userPhoneVal = matched.phone;
-            }
-          } catch {}
+          localStorage.setItem('userName', resolvedName);
+          if (resolvedPhone) localStorage.setItem('userPhone', resolvedPhone);
         }
       }
-      if (userPhoneVal) localStorage.setItem('userPhone', userPhoneVal);
 
+      localStorage.setItem('userRole', 'merchant');
       window.dispatchEvent(new Event('role-changed'));
+      window.dispatchEvent(new Event('storage'));
+      window.dispatchEvent(new Event('profile-updated'));
 
       setSuccessMsg(`Welcome back, ${resolvedName}!`);
       const target = redirectTarget || '/store';
@@ -540,16 +547,39 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
         return;
       }
 
+      const matched = resolveBuyerProfile(userEmail);
+      const finalName = matched?.name || userName;
+
       localStorage.setItem('userRole', 'merchant');
       localStorage.setItem('userEmail', userEmail || 'tejas@example.com');
-      localStorage.setItem('userName', userName);
+      localStorage.setItem('userName', finalName);
       localStorage.setItem('userId', userUid);
       localStorage.setItem('tejas_intro_viewed', 'true');
+
+      if (matched) {
+        syncCurrentMerchantProfile(matched);
+      }
+
+      // Ensure merchant session token is strictly role: 'merchant'
+      const token = createClientAuthToken({
+        sub: userUid,
+        username: userEmail.split('@')[0] || 'merchant',
+        role: 'merchant',
+        name: finalName,
+        email: userEmail,
+      });
+      setAuthSession(token, {
+        sub: userUid,
+        username: userEmail.split('@')[0] || 'merchant',
+        role: 'merchant',
+        name: finalName,
+        email: userEmail,
+      });
 
       try {
         await setCollectionDoc('stakeholders', userUid, {
           id: userUid,
-          name: userName,
+          name: finalName,
           type: 'buyers',
           email: userEmail,
           phone: user.phoneNumber || '',
@@ -562,7 +592,10 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
       } catch (dbErr) {}
 
       window.dispatchEvent(new Event('role-changed'));
-      setSuccessMsg(`Welcome, ${userName}`);
+      window.dispatchEvent(new Event('storage'));
+      window.dispatchEvent(new Event('profile-updated'));
+
+      setSuccessMsg(`Welcome, ${finalName}`);
       const target = redirectTarget || '/store';
       setTimeout(() => {
         navigate(target, { replace: true });

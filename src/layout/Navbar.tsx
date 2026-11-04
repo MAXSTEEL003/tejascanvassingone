@@ -100,36 +100,40 @@ export default function Navbar({
 
   const [role, setRole] = useState(() => {
     try {
-      return getVerifiedUserRole() || 'admin';
+      return getVerifiedUserRole() || 'merchant';
     } catch {
-      return 'admin';
+      return 'merchant';
     }
   });
 
   const [userName, setUserName] = useState(() => {
     try {
-      const r = getVerifiedUserRole() || 'admin';
+      const r = getVerifiedUserRole() || 'merchant';
       const stored = localStorage.getItem('userName');
-      return stored || (r === 'admin' ? 'Tejas Canvassing' : r === 'merchant' ? 'Wholesale Merchant' : 'Procurement Staff');
+      const cleanStored = stored && stored.includes('@') ? stored.split('@')[0].toUpperCase() : stored;
+      return cleanStored || (r === 'admin' ? 'Tejas Canvassing' : r === 'merchant' ? 'Wholesale Merchant' : 'Procurement Staff');
     } catch {
-      return 'Tejas Canvassing';
+      return 'Wholesale Merchant';
     }
   });
 
   useEffect(() => {
     const handleSync = () => {
       try {
-        const r = getVerifiedUserRole() || 'admin';
+        const r = getVerifiedUserRole() || 'merchant';
         setRole(r);
         const stored = localStorage.getItem('userName');
-        setUserName(stored || (r === 'admin' ? 'Tejas Canvassing' : r === 'merchant' ? 'Wholesale Merchant' : 'Procurement Staff'));
+        const cleanStored = stored && stored.includes('@') ? stored.split('@')[0].toUpperCase() : stored;
+        setUserName(cleanStored || (r === 'admin' ? 'Tejas Canvassing' : r === 'merchant' ? 'Wholesale Merchant' : 'Procurement Staff'));
       } catch {}
     };
     window.addEventListener('storage', handleSync);
     window.addEventListener('role-changed', handleSync);
+    window.addEventListener('profile-updated', handleSync);
     return () => {
       window.removeEventListener('storage', handleSync);
       window.removeEventListener('role-changed', handleSync);
+      window.removeEventListener('profile-updated', handleSync);
     };
   }, []);
 

@@ -51,16 +51,16 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
   const location = useLocation();
   const [role, setRole] = useState(() => {
     try {
-      return getVerifiedUserRole() || 'admin';
+      return getVerifiedUserRole() || 'merchant';
     } catch {
-      return 'admin';
+      return 'merchant';
     }
   });
 
   useEffect(() => {
     const handleSync = () => {
       try {
-        setRole(getVerifiedUserRole() || 'admin');
+        setRole(getVerifiedUserRole() || 'merchant');
       } catch {}
     };
     window.addEventListener('storage', handleSync);

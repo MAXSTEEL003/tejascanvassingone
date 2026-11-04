@@ -3,11 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { 
   Building2, MapPin, ShieldCheck, Phone, Check, Copy,
   CheckCircle2, Plus, Trash2, LogOut, Edit3, Save, ChevronRight,
-  Package, Layers, ChevronDown, Bell, ExternalLink, X
+  Package, Layers, ChevronDown, Bell, ExternalLink, X, Lock
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { performSecureLogout } from '../lib/auth';
-import { cn } from '../lib/utils';
+import { cn, resolveBuyerProfile, syncCurrentMerchantProfile } from '../lib/utils';
+import { setCollectionDoc } from '../lib/firebase';
 import { 
   getDeliveryLocations, 
   DeliveryLocation, 
@@ -18,13 +19,18 @@ import {
 export default function ProfileView() {
   const navigate = useNavigate();
 
+  // Initial lookup against official Buyer profiles saved in Users Management
+  const initialBuyer = resolveBuyerProfile();
+
   const [profName, setProfName] = useState(() => {
-    return localStorage.getItem('userName') || 'Authorized Merchant';
+    if (initialBuyer?.name) return initialBuyer.name;
+    const stored = localStorage.getItem('userName') || 'Authorized Merchant';
+    return stored.includes('@') ? (stored.split('@')[0].toUpperCase() || 'Authorized Merchant') : stored;
   });
-  const [profPhone, setProfPhone] = useState(() => localStorage.getItem('userPhone') || '');
-  const [profGstin, setProfGstin] = useState(() => localStorage.getItem('userGstin') || '29AAGCV7712M1ZP');
-  const [profAddress, setProfAddress] = useState(() => localStorage.getItem('userAddress') || 'No. 15, APMC Yard, Yeshwanthpur, Bangalore, Karnataka - 560022');
-  const [isProfileLocked, setIsProfileLocked] = useState(() => localStorage.getItem('profileLocked') === 'true');
+  const [profPhone, setProfPhone] = useState(() => initialBuyer?.phone || localStorage.getItem('userPhone') || '');
+  const [profGstin, setProfGstin] = useState(() => initialBuyer?.gstin || localStorage.getItem('userGstin') || '29AAGCV7712M1ZP');
+  const [profAddress, setProfAddress] = useState(() => initialBuyer?.address || localStorage.getItem('userAddress') || 'No. 15, APMC Yard, Yeshwanthpur, Bangalore, Karnataka - 560022');
+  const [isProfileLocked, setIsProfileLocked] = useState(() => Boolean(initialBuyer?.profileLocked) || localStorage.getItem('profileLocked') === 'true');
   const [isEditMode, setIsEditMode] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   
@@ -48,8 +54,39 @@ export default function ProfileView() {
   const [newLocAddress, setNewLocAddress] = useState('');
   const [newLocPhone, setNewLocPhone] = useState('');
 
+  // Dynamically resolve & sync Merchant Trade Name with official Buyer Name from Users
   useEffect(() => {
     setLocations(getDeliveryLocations());
+
+    const syncProfileFromUsers = () => {
+      const buyer = resolveBuyerProfile();
+      if (buyer) {
+        setProfName(buyer.name);
+        setProfPhone(buyer.phone || '');
+        setProfGstin(buyer.gstin || '29AAGCV7712M1ZP');
+        setProfAddress(buyer.address || 'No. 15, APMC Yard, Yeshwanthpur, Bangalore, Karnataka - 560022');
+        setIsProfileLocked(Boolean(buyer.profileLocked));
+        syncCurrentMerchantProfile(buyer);
+      } else {
+        const stored = localStorage.getItem('userName') || '';
+        if (stored.includes('@')) {
+          const clean = stored.split('@')[0].toUpperCase();
+          setProfName(clean);
+          localStorage.setItem('userName', clean);
+        }
+      }
+    };
+
+    syncProfileFromUsers();
+
+    window.addEventListener('storage', syncProfileFromUsers);
+    window.addEventListener('stakeholders-updated', syncProfileFromUsers);
+    window.addEventListener('profile-updated', syncProfileFromUsers);
+    return () => {
+      window.removeEventListener('storage', syncProfileFromUsers);
+      window.removeEventListener('stakeholders-updated', syncProfileFromUsers);
+      window.removeEventListener('profile-updated', syncProfileFromUsers);
+    };
   }, []);
 
   const copyToClipboard = (text: string, label: string) => {
@@ -83,22 +120,87 @@ export default function ProfileView() {
     localStorage.setItem('userGstin', finalGstin);
     localStorage.setItem('userAddress', finalAddress);
 
+    // Sync updated Buyer Trade Name directly to stakeholders_v2 and cloud
+    try {
+      const raw = localStorage.getItem('stakeholders_v2');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed.buyers)) {
+          const currentId = localStorage.getItem('userId');
+          const buyerIdx = parsed.buyers.findIndex((b: any) => 
+            (currentId && b.id === currentId) ||
+            (finalPhone && b.phone && b.phone.replace(/\D/g, '') === finalPhone.replace(/\D/g, '')) ||
+            (b.name && b.name.trim().toLowerCase() === profName.trim().toLowerCase())
+          );
+          if (buyerIdx >= 0) {
+            parsed.buyers[buyerIdx] = {
+              ...parsed.buyers[buyerIdx],
+              name: finalName,
+              phone: finalPhone || parsed.buyers[buyerIdx].phone,
+              gstin: finalGstin,
+              address: finalAddress,
+            };
+            localStorage.setItem('stakeholders_v2', JSON.stringify(parsed));
+            setCollectionDoc('stakeholders', parsed.buyers[buyerIdx].id, parsed.buyers[buyerIdx]).catch(() => {});
+            window.dispatchEvent(new CustomEvent('stakeholders-updated', { detail: { category: 'buyers', user: parsed.buyers[buyerIdx] } }));
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Error syncing profile update to stakeholders_v2:', e);
+    }
+
     setIsEditModalOpen(false);
     setIsEditMode(false);
     setSuccessMsg('Profile updated successfully!');
     setTimeout(() => setSuccessMsg(null), 2500);
     window.dispatchEvent(new Event('storage'));
+    window.dispatchEvent(new Event('profile-updated'));
   };
 
   const handleSaveProfile = () => {
-    localStorage.setItem('userName', profName.trim());
-    localStorage.setItem('userPhone', profPhone.trim());
-    localStorage.setItem('userGstin', profGstin.trim().toUpperCase());
-    localStorage.setItem('userAddress', profAddress.trim());
+    const finalName = profName.trim();
+    const finalPhone = profPhone.trim();
+    const finalGstin = profGstin.trim().toUpperCase();
+    const finalAddress = profAddress.trim();
+
+    localStorage.setItem('userName', finalName);
+    localStorage.setItem('userPhone', finalPhone);
+    localStorage.setItem('userGstin', finalGstin);
+    localStorage.setItem('userAddress', finalAddress);
+
+    try {
+      const raw = localStorage.getItem('stakeholders_v2');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed.buyers)) {
+          const currentId = localStorage.getItem('userId');
+          const buyerIdx = parsed.buyers.findIndex((b: any) => 
+            (currentId && b.id === currentId) ||
+            (finalPhone && b.phone && b.phone.replace(/\D/g, '') === finalPhone.replace(/\D/g, '')) ||
+            (b.name && b.name.trim().toLowerCase() === finalName.toLowerCase())
+          );
+          if (buyerIdx >= 0) {
+            parsed.buyers[buyerIdx] = {
+              ...parsed.buyers[buyerIdx],
+              name: finalName,
+              phone: finalPhone,
+              gstin: finalGstin,
+              address: finalAddress,
+            };
+            localStorage.setItem('stakeholders_v2', JSON.stringify(parsed));
+            setCollectionDoc('stakeholders', parsed.buyers[buyerIdx].id, parsed.buyers[buyerIdx]).catch(() => {});
+            window.dispatchEvent(new CustomEvent('stakeholders-updated', { detail: { category: 'buyers', user: parsed.buyers[buyerIdx] } }));
+          }
+        }
+      }
+    } catch (e) {}
+
     setIsEditMode(false);
     setSuccessMsg('Profile updated successfully!');
     setTimeout(() => setSuccessMsg(null), 2500);
     window.dispatchEvent(new Event('storage'));
+    window.dispatchEvent(new Event('profile-updated'));
   };
 
   const handleCreateDestination = (e: React.FormEvent) => {
@@ -173,14 +275,21 @@ export default function ProfileView() {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={openEditModal}
-          className="p-2.5 text-[#C22424] hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-xl transition-colors cursor-pointer shrink-0 border border-transparent hover:border-red-200 dark:hover:border-red-900/50"
-          title="Edit Profile"
-        >
-          <Edit3 className="w-4 h-4" />
-        </button>
+        {!isProfileLocked ? (
+          <button
+            type="button"
+            onClick={openEditModal}
+            className="p-2.5 text-[#C22424] hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-xl transition-colors cursor-pointer shrink-0 border border-transparent hover:border-red-200 dark:hover:border-red-900/50"
+            title="Edit Profile"
+          >
+            <Edit3 className="w-4 h-4" />
+          </button>
+        ) : (
+          <div className="p-2 text-neutral-400 dark:text-neutral-500 rounded-xl shrink-0 flex items-center gap-1 text-[11px] font-medium" title="Profile verified and locked by Admin">
+            <Lock className="w-3.5 h-3.5 text-amber-500" />
+            <span className="hidden sm:inline text-amber-600 dark:text-amber-400 font-bold">Locked</span>
+          </div>
+        )}
       </div>
 
       {/* Toast Feedback */}
@@ -224,7 +333,15 @@ export default function ProfileView() {
           {expandedSection === 'business' && (
             <div className="p-4 pt-0 bg-slate-50/70 dark:bg-neutral-900/40 space-y-3 text-xs font-sans">
               <div className="flex items-center justify-between pt-2">
-                <span className="font-bold text-xs text-[#111827] dark:text-white font-sans">Commercial Profile</span>
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-xs text-[#111827] dark:text-white font-sans">Commercial Profile</span>
+                  {isProfileLocked && (
+                    <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-800 flex items-center gap-1 font-sans">
+                      <Lock className="w-3 h-3" />
+                      Locked by Admin
+                    </span>
+                  )}
+                </div>
                 {!isProfileLocked && (
                   <button
                     type="button"

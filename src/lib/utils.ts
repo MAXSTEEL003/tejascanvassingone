@@ -294,5 +294,166 @@ export function removeDeletedPlacedOrderId(id: string): void {
   } catch (e) {}
 }
 
+export interface ResolvedBuyerProfile {
+  id: string;
+  name: string;
+  username: string;
+  phone: string;
+  gstin: string;
+  address: string;
+  email?: string;
+  profileLocked?: boolean;
+  credit?: string;
+}
+
+/**
+ * Resolves the official Buyer Name (Merchant Trade Name) and profile details
+ * as saved by Admin in the Users Management / stakeholders database.
+ */
+export function resolveBuyerProfile(identifier?: string): ResolvedBuyerProfile | null {
+  try {
+    const rawSaved = localStorage.getItem('stakeholders_v2');
+    let buyersList: any[] = [];
+    if (rawSaved) {
+      try {
+        const parsed = JSON.parse(rawSaved);
+        if (Array.isArray(parsed.buyers)) buyersList = parsed.buyers;
+      } catch {}
+    }
+
+    // Also get merged list from getRegisteredBuyers
+    const registered = getRegisteredBuyers();
+    // Prioritize explicitly saved buyers from stakeholders_v2
+    const allBuyers: any[] = [
+      ...buyersList,
+      ...registered.filter(r => !buyersList.some(b => (b.id && b.id === r.id) || (b.name && b.name.trim().toLowerCase() === (r.name || '').trim().toLowerCase())))
+    ];
+
+    if (!allBuyers.length) return null;
+
+    // Collect query tokens to match
+    const tokens: string[] = [];
+    if (identifier && typeof identifier === 'string') tokens.push(identifier.trim());
+
+    const storedUser = localStorage.getItem('user_session_v1') || sessionStorage.getItem('user_session_v1');
+    if (storedUser) {
+      try {
+        const parsed = JSON.parse(storedUser);
+        if (parsed.sub) tokens.push(String(parsed.sub));
+        if (parsed.username) tokens.push(String(parsed.username));
+        if (parsed.email) tokens.push(String(parsed.email));
+        if (parsed.name) tokens.push(String(parsed.name));
+      } catch {}
+    }
+
+    const uId = localStorage.getItem('userId');
+    if (uId) tokens.push(uId);
+
+    const uPhone = localStorage.getItem('userPhone');
+    if (uPhone) tokens.push(uPhone);
+
+    const uEmail = localStorage.getItem('userEmail');
+    if (uEmail) tokens.push(uEmail);
+
+    const uName = localStorage.getItem('userName');
+    if (uName) tokens.push(uName);
+
+    // Normalize candidates
+    const cleanTokens = Array.from(new Set(tokens.filter(Boolean)));
+
+    for (const rawToken of cleanTokens) {
+      const lowerToken = rawToken.toLowerCase().trim();
+      const prefixToken = lowerToken.includes('@') ? lowerToken.split('@')[0].trim() : lowerToken;
+      const digitsToken = rawToken.replace(/\D/g, '');
+
+      const matched = allBuyers.find((b: any) => {
+        if (!b) return false;
+        const bId = String(b.id || '').toLowerCase().trim();
+        const bUser = String(b.username || '').toLowerCase().trim();
+        const bName = String(b.name || '').toLowerCase().trim();
+        const bEmail = String(b.email || '').toLowerCase().trim();
+        const bDigits = String(b.phone || '').replace(/\D/g, '');
+
+        // 1. Direct ID match
+        if (bId && (bId === lowerToken || bId === prefixToken)) return true;
+
+        // 2. Phone match (10 digits)
+        if (digitsToken.length >= 7 && bDigits.length >= 7) {
+          if (bDigits === digitsToken || bDigits.endsWith(digitsToken) || digitsToken.endsWith(bDigits)) return true;
+        }
+
+        // 3. Username match
+        if (bUser && (bUser === lowerToken || bUser === prefixToken)) return true;
+
+        // 4. Email match
+        if (bEmail && (bEmail === lowerToken || bEmail.split('@')[0] === prefixToken)) return true;
+
+        // 5. Name match (case-insensitive exact or substring)
+        if (bName) {
+          if (bName === lowerToken || bName === prefixToken) return true;
+          // If token is username slug (e.g. "mookambika"), check if buyer name contains it (e.g. "MOOKAMBIKA TRADERS")
+          if (prefixToken.length >= 4 && bName.includes(prefixToken)) return true;
+          // If token is buyer name containing prefix
+          if (lowerToken.length >= 4 && !lowerToken.includes('@') && prefixToken.includes(bName)) return true;
+        }
+
+        return false;
+      });
+
+      if (matched && matched.name) {
+        return {
+          id: matched.id || `buy-${Date.now()}`,
+          name: String(matched.name).trim(),
+          username: matched.username || prefixToken,
+          phone: matched.phone || '',
+          gstin: matched.gstin || '',
+          address: matched.address || '',
+          email: matched.email || '',
+          profileLocked: Boolean(matched.profileLocked),
+          credit: matched.credit || ''
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('Error resolving buyer profile:', err);
+  }
+  return null;
+}
+
+/**
+ * Synchronizes the active merchant trade profile across localStorage and events
+ * using the verified buyer profile from Users Management.
+ */
+export function syncCurrentMerchantProfile(buyer?: any): void {
+  try {
+    const target = buyer || resolveBuyerProfile();
+    if (!target) return;
+
+    if (target.name) localStorage.setItem('userName', target.name);
+    if (target.phone) localStorage.setItem('userPhone', target.phone);
+    if (target.gstin) localStorage.setItem('userGstin', target.gstin);
+    if (target.address) localStorage.setItem('userAddress', target.address);
+    if (target.id) localStorage.setItem('userId', target.id);
+    localStorage.setItem('profileLocked', target.profileLocked ? 'true' : 'false');
+
+    // Update session user in local/sessionStorage
+    const storedUser = localStorage.getItem('user_session_v1') || sessionStorage.getItem('user_session_v1');
+    if (storedUser) {
+      try {
+        const parsed = JSON.parse(storedUser);
+        parsed.name = target.name;
+        localStorage.setItem('user_session_v1', JSON.stringify(parsed));
+        sessionStorage.setItem('user_session_v1', JSON.stringify(parsed));
+      } catch {}
+    }
+
+    window.dispatchEvent(new Event('storage'));
+    window.dispatchEvent(new Event('profile-updated'));
+  } catch (err) {
+    console.warn('Error syncing merchant profile:', err);
+  }
+}
+
+
 
 

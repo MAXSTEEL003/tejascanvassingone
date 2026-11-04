@@ -338,7 +338,7 @@ authRouter.post("/login", (req, res) => {
     // Check Merchant Authentication
     // Merchants authenticate with phone, email, or username
     let resolvedEmail = cleanUser;
-    let resolvedName = cleanUser.toUpperCase();
+    let resolvedName = cleanUser.includes("@") ? cleanUser.split("@")[0].toUpperCase() : cleanUser.toUpperCase();
     const isPhone = /^[0-9+\s-]{8,15}$/.test(cleanUser);
     if (isPhone) {
       const digitsOnly = cleanUser.replace(/\D/g, "");

@@ -26,7 +26,7 @@ import {
   Filter
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { cn, formatINR } from '../lib/utils';
+import { cn, formatINR, resolveBuyerProfile, syncCurrentMerchantProfile } from '../lib/utils';
 import { auth, getCollectionDocs, setCollectionDoc, addCollectionDoc } from '../lib/firebase';
 import { useCart } from '../context/CartContext';
 import RicePouchGraphic from '../components/RicePouchGraphic';
@@ -613,35 +613,23 @@ export default function StoreManagement() {
     setTempAddress(address);
   }, [buyerName, phone, gstin, address, isEditingBuyer]);
 
-  // Fetch Firestore details for current active merchant
+  // Fetch profile details for current active merchant from official Users database
   useEffect(() => {
-    async function loadActiveMerchantProfile() {
+    function loadActiveMerchantProfile() {
       try {
-        const userEmail = localStorage.getItem('userEmail') || auth.currentUser?.email || '';
-        const currentUid = auth.currentUser?.uid;
-        if (!userEmail && !currentUid) return;
-
-        const docs = await getCollectionDocs('stakeholders').catch(() => []);
-        if (docs && docs.length > 0) {
-          const found = docs.find((d: any) => 
-            (currentUid && d.id === currentUid) ||
-            (userEmail && d.email?.toLowerCase() === userEmail.toLowerCase())
-          );
-          if (found) {
-            const resolvedName = found.name || localStorage.getItem('userName') || 'Merchant Store';
-            const resolvedPhone = found.phone || localStorage.getItem('userPhone') || '';
-            const resolvedGstin = found.gstin || localStorage.getItem('userGstin') || '';
-            const resolvedAddr = found.address || localStorage.getItem('userAddress') || 'APMC Yard, Yeshwanthpur, Bangalore';
-
-            setBuyerName(resolvedName);
-            setPhone(resolvedPhone);
-            setGstin(resolvedGstin);
-            setAddress(resolvedAddr);
-            
-            localStorage.setItem('userName', resolvedName);
-            localStorage.setItem('userPhone', resolvedPhone);
-            localStorage.setItem('userGstin', resolvedGstin);
-            localStorage.setItem('userAddress', resolvedAddr);
+        const matched = resolveBuyerProfile();
+        if (matched) {
+          setBuyerName(matched.name);
+          if (matched.phone) setPhone(matched.phone);
+          if (matched.gstin) setGstin(matched.gstin);
+          if (matched.address) setAddress(matched.address);
+          syncCurrentMerchantProfile(matched);
+        } else {
+          const stored = localStorage.getItem('userName');
+          if (stored && stored.includes('@')) {
+            const clean = stored.split('@')[0].toUpperCase();
+            setBuyerName(clean);
+            localStorage.setItem('userName', clean);
           }
         }
       } catch (err) {
@@ -654,7 +642,9 @@ export default function StoreManagement() {
   // Listen for storage events (e.g., from header profile updates) to keep active page states updated dynamically
   useEffect(() => {
     const handleStorageUpdate = () => {
-      setBuyerName(localStorage.getItem('userName') || 'Merchant Store');
+      const stored = localStorage.getItem('userName');
+      const clean = stored && stored.includes('@') ? stored.split('@')[0].toUpperCase() : stored;
+      setBuyerName(clean || 'Merchant Store');
       setPhone(localStorage.getItem('userPhone') || '');
       setGstin(localStorage.getItem('userGstin') || '');
       setAddress(localStorage.getItem('userAddress') || 'APMC Yard, Yeshwanthpur, Bangalore');

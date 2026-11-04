@@ -1015,14 +1015,21 @@ export default function UsersManagement() {
 
     // If this is the currently logged-in user, also sync the local session
     const currentEmail = auth.currentUser?.email;
+    const currentUid = localStorage.getItem('userId');
+    const currentPhone = (localStorage.getItem('userPhone') || '').replace(/\D/g, '');
+    const currentSavedName = (localStorage.getItem('userName') || '').trim().toLowerCase();
     const isCurrentUser = (selectedUser.email && currentEmail && selectedUser.email.toLowerCase() === (currentEmail || '').toLowerCase()) || 
                           selectedUser.id === auth.currentUser?.uid ||
-                          (selectedUser.name === localStorage.getItem('userName'));
+                          (currentUid && selectedUser.id === currentUid) ||
+                          (currentPhone && selectedUser.phone && selectedUser.phone.replace(/\D/g, '') === currentPhone) ||
+                          (currentSavedName && (selectedUser.name?.toLowerCase() === currentSavedName || selectedUser.username?.toLowerCase() === currentSavedName));
     if (isCurrentUser) {
       localStorage.setItem('userName', selectedUser.name);
       localStorage.setItem('userPhone', selectedUser.phone);
       localStorage.setItem('userGstin', selectedUser.gstin || '29AAGCV7712M1ZP');
       localStorage.setItem('userAddress', selectedUser.address || 'No. 15, APMC Yard, Yeshwanthpur, Bangalore, Karnataka - 560022');
+      localStorage.setItem('profileLocked', selectedUser.profileLocked ? 'true' : 'false');
+      window.dispatchEvent(new Event('profile-updated'));
     }
 
     setIsEditing(false);
