@@ -11,7 +11,7 @@
   --font-display: "Instrument Serif", Georgia, serif;
   --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, monospace;
   
-  /* Light Theme (Porcelain, Crisp Translucent Glass & Executive Gold) */
+  /* Light Theme (Porcelain, Crisp Translucent Glass & TC Crimson Red) */
   --color-surface: #ffffff;
   --color-surface-dim: #f8fafc;
   --color-surface-bright: #ffffff;
@@ -26,45 +26,45 @@
   --color-inverse-on-surface: #ffffff;
   --color-outline: #64748b;
   --color-outline-variant: #e2e8f0;
-  --color-surface-tint: #d97706;
-  --color-primary: #d97706; /* Rich Executive Amber Gold for Light Mode */
+  --color-surface-tint: #dc2626;
+  --color-primary: #dc2626; /* Official TC Crimson Red */
   --color-on-primary: #ffffff;
-  --color-primary-container: #fef3c7;
-  --color-on-primary-container: #78350f;
-  --color-inverse-primary: #f59e0b;
-  --color-secondary: #92400e;
+  --color-primary-container: #fee2e2;
+  --color-on-primary-container: #991b1b;
+  --color-inverse-primary: #ef4444;
+  --color-secondary: #1e293b; /* Sleek Charcoal Slate */
   --color-on-secondary: #ffffff;
-  --color-secondary-container: #fef08a;
-  --color-on-secondary-container: #854d0e;
+  --color-secondary-container: #f1f5f9;
+  --color-on-secondary-container: #0f172a;
   --color-background: #f8fafc;
   --color-on-background: #0f172a;
 
-  /* Dark Theme Variable Overrides (Midnight Gold Obsidian) */
-  --color-dark-surface: #0a0a0a;
-  --color-dark-surface-dim: #0a0a0a;
-  --color-dark-surface-bright: #2e2d2d;
-  --color-dark-surface-container-lowest: #050505;
-  --color-dark-surface-container-low: #121212;
-  --color-dark-surface-container: #181818;
-  --color-dark-surface-container-high: #222222;
-  --color-dark-surface-container-highest: #2d2c2c;
-  --color-dark-on-surface: #e5e2e1;
-  --color-dark-on-surface-variant: #d0c5af;
-  --color-dark-inverse-surface: #e5e2e1;
-  --color-dark-inverse-on-surface: #313030;
-  --color-dark-outline: #99907c;
-  --color-dark-outline-variant: #4d4635;
-  --color-dark-surface-tint: #e9c349;
-  --color-dark-primary: #f2ca50;
-  --color-dark-on-primary: #3c2f00;
-  --color-dark-primary-container: #d4af37;
-  --color-dark-on-primary-container: #554300;
-  --color-dark-secondary: #e6c26f;
-  --color-dark-on-secondary: #3e2e00;
-  --color-dark-secondary-container: #654c00;
-  --color-dark-on-secondary-container: #e1bf6b;
-  --color-dark-background: #0a0a0a;
-  --color-dark-on-background: #e5e2e1;
+  /* Dark Theme Variable Overrides (Midnight Obsidian Charcoal & TC Crimson) */
+  --color-dark-surface: #09090b;
+  --color-dark-surface-dim: #09090b;
+  --color-dark-surface-bright: #27272a;
+  --color-dark-surface-container-lowest: #050506;
+  --color-dark-surface-container-low: #101012;
+  --color-dark-surface-container: #18181b;
+  --color-dark-surface-container-high: #222226;
+  --color-dark-surface-container-highest: #2e2e33;
+  --color-dark-on-surface: #f4f4f5;
+  --color-dark-on-surface-variant: #a1a1aa;
+  --color-dark-inverse-surface: #f4f4f5;
+  --color-dark-inverse-on-surface: #18181b;
+  --color-dark-outline: #52525b;
+  --color-dark-outline-variant: #27272a;
+  --color-dark-surface-tint: #ef4444;
+  --color-dark-primary: #ef4444; /* Luminous TC Crimson Red */
+  --color-dark-on-primary: #ffffff;
+  --color-dark-primary-container: #7f1d1d;
+  --color-dark-on-primary-container: #fecaca;
+  --color-dark-secondary: #94a3b8; /* Cool Slate Silver */
+  --color-dark-on-secondary: #0f172a;
+  --color-dark-secondary-container: #1e293b;
+  --color-dark-on-secondary-container: #cbd5e1;
+  --color-dark-background: #09090b;
+  --color-dark-on-background: #f4f4f5;
 
   --radius-sm: 0.125rem;
   --radius-md: 0.25rem;
@@ -107,16 +107,16 @@
   :root {
     --font-serif: 'Instrument Serif', Georgia, 'Times New Roman', serif;
     --font-sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    --gold: #C9A158;
-    --gold-light: #E8C97A;
-    --gold-dark: #9A7A3E;
-    --brand-dark: #0D2318;
-    --brand: #1A4731;
-    --brand-mid: #2D6A4F;
-    --warm-bg: #F8F4EE;
-    --warm-bg-alt: #F0EBE1;
-    --dark-bg: #0C1A12;
-    --primary-glow: rgba(242, 202, 80, 0.25);
+    --gold: #dc2626;
+    --gold-light: #ef4444;
+    --gold-dark: #b91c1c;
+    --brand-dark: #7f1d1d;
+    --brand: #dc2626;
+    --brand-mid: #b91c1c;
+    --warm-bg: #f8fafc;
+    --warm-bg-alt: #f1f5f9;
+    --dark-bg: #09090b;
+    --primary-glow: rgba(220, 38, 38, 0.25);
   }
 
   button, input, select, textarea {
@@ -149,7 +149,7 @@
     --color-on-secondary-container: var(--color-dark-on-secondary-container);
     --color-background: var(--color-dark-background);
     --color-on-background: var(--color-dark-on-background);
-    --primary-glow: rgba(242, 202, 80, 0.4);
+    --primary-glow: rgba(239, 68, 68, 0.4);
   }
 }
 
@@ -178,7 +178,7 @@
   }
   
   .dark .liquid-glass {
-    background: rgba(13, 27, 20, 0.65);
+    background: rgba(18, 18, 20, 0.75);
     border: 1px solid rgba(255, 255, 255, 0.08);
     box-shadow: 0 16px 40px -10px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
   }
@@ -233,12 +233,12 @@
   }
 
   .dark .glass-header {
-    background: rgba(8, 20, 14, 0.8);
+    background: rgba(12, 12, 14, 0.85);
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   }
 
   .premium-border {
-    @apply border border-slate-200/90 dark:border-white/10 hover:border-amber-500/40 transition-all duration-300;
+    @apply border border-slate-200/90 dark:border-white/10 hover:border-red-500/40 transition-all duration-300;
   }
 
   .nav-active-glow {

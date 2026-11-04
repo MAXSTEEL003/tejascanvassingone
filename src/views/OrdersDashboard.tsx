@@ -1980,9 +1980,9 @@ export default function OrdersDashboard() {
             <PlusCircle className="w-5 h-5 text-on-primary animate-pulse" />
             <span>Create Manual Order</span>
           </button>
-          <div className="bg-amber-500/10 dark:bg-primary/5 px-4 py-2.5 rounded-xl border border-amber-500/20 dark:border-primary/15 flex items-center gap-2.5 shadow-sm">
+          <div className="bg-red-500/10 dark:bg-primary/10 px-4 py-2.5 rounded-xl border border-red-500/20 dark:border-primary/20 flex items-center gap-2.5 shadow-sm">
              <div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
-             <span className="text-[10px] font-black text-amber-700 dark:text-primary uppercase tracking-widest font-mono">Live Node Sync</span>
+             <span className="text-[10px] font-black text-red-700 dark:text-primary uppercase tracking-widest font-mono">Live Node Sync</span>
           </div>
         </div>
       </div>
@@ -1990,12 +1990,12 @@ export default function OrdersDashboard() {
       {/* Hero Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {stats.map((stat, i) => {
-          const iconBgClass = i === 0 ? "bg-amber-500/15 text-amber-700 dark:text-primary border-amber-500/30" :
-                              i === 1 ? "bg-amber-500/15 text-amber-700 dark:text-amber-500 border-amber-500/30" :
+          const iconBgClass = i === 0 ? "bg-red-500/15 text-red-700 dark:text-red-400 border-red-500/30" :
+                              i === 1 ? "bg-slate-700/10 text-slate-800 dark:text-slate-200 border-slate-700/20 dark:border-white/10" :
                               i === 2 ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-500 border-emerald-500/30" :
                                         "bg-blue-500/15 text-blue-700 dark:text-blue-500 border-blue-500/30";
-          const glowColor = i === 0 ? "hover:shadow-amber-500/10" :
-                            i === 1 ? "hover:shadow-amber-500/10" :
+          const glowColor = i === 0 ? "hover:shadow-red-500/10 hover:border-red-500/40" :
+                            i === 1 ? "hover:shadow-slate-500/10 hover:border-slate-500/40" :
                             i === 2 ? "hover:shadow-emerald-500/10" :
                                       "hover:shadow-blue-500/10";
 
@@ -2027,8 +2027,8 @@ export default function OrdersDashboard() {
               {/* Ambient radial accent glow */}
               <div className={cn(
                 "absolute -right-6 -bottom-6 w-24 h-24 rounded-full blur-2xl pointer-events-none opacity-20 transition-opacity group-hover:opacity-40",
-                i === 0 ? "bg-amber-500" :
-                i === 1 ? "bg-amber-400" :
+                i === 0 ? "bg-red-500" :
+                i === 1 ? "bg-slate-600" :
                 i === 2 ? "bg-emerald-500" :
                           "bg-blue-500"
               )} />
@@ -2178,7 +2178,7 @@ export default function OrdersDashboard() {
              <motion.div
                initial={{ opacity: 0, y: -4 }}
                animate={{ opacity: 1, y: 0 }}
-               className="my-3 mx-6 p-4 bg-amber-500/10 border border-amber-500/25 text-amber-800 dark:text-amber-300 rounded-2xl text-xs font-semibold flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs"
+               className="my-3 mx-6 p-4 bg-red-500/10 border border-red-500/25 text-red-800 dark:text-red-300 rounded-2xl text-xs font-semibold flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs"
              >
                <div className="flex items-center gap-2.5">
                  <Filter className="w-4 h-4 text-amber-600 shrink-0" />
@@ -2189,7 +2189,7 @@ export default function OrdersDashboard() {
                <button
                  type="button"
                  onClick={() => { setFilterSupplier(''); setFilterProduct(''); setSearchQuery(''); }}
-                 className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-[10px] uppercase tracking-wider rounded-xl transition-colors cursor-pointer shrink-0 self-start sm:self-auto"
+                 className="px-3.5 py-1.5 bg-primary hover:bg-primary/90 text-white font-bold text-[10px] uppercase tracking-wider rounded-xl transition-colors cursor-pointer shrink-0 self-start sm:self-auto"
                >
                  Show All Orders ({currentOrders.length})
                </button>
@@ -2403,11 +2403,11 @@ export default function OrdersDashboard() {
                           animate={{ opacity: 1, height: 'auto' }}
                           exit={{ opacity: 0, height: 0 }}
                           transition={{ duration: 0.25, ease: "easeInOut" }}
-                          className="overflow-hidden border-y border-amber-500/20 dark:border-primary/20 bg-slate-900/60 dark:bg-black/60 p-6 backdrop-blur-md"
+                          className="overflow-hidden border-y border-red-500/20 dark:border-primary/20 bg-slate-900/80 dark:bg-black/80 p-6 backdrop-blur-md"
                         >
                           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
                             <div className="p-4 rounded-2xl bg-white/5 dark:bg-white/[0.03] border border-white/10 space-y-1.5">
-                              <div className="flex items-center gap-2 text-xs font-bold text-amber-500">
+                              <div className="flex items-center gap-2 text-xs font-bold text-red-600 dark:text-red-400">
                                 <User className="w-4 h-4" />
                                 <span>Buyer Entity</span>
                               </div>
@@ -2457,9 +2457,9 @@ export default function OrdersDashboard() {
                             </div>
 
                             {/* PO Logistics (Loading Days & Unloading Point) */}
-                            <div className="p-4 rounded-2xl bg-amber-500/[0.07] dark:bg-amber-500/[0.04] border border-amber-500/25 space-y-2">
+                            <div className="p-4 rounded-2xl bg-white/5 dark:bg-white/[0.03] border border-white/10 space-y-2">
                               <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2 text-xs font-bold text-amber-500">
+                                <div className="flex items-center gap-2 text-xs font-bold text-red-600 dark:text-red-400">
                                   <Truck className="w-4 h-4" />
                                   <span>PO Details</span>
                                 </div>
@@ -2472,7 +2472,7 @@ export default function OrdersDashboard() {
                                       setEditLogisticsPoint(order.unloadingPoint || 'shop');
                                       setEditLogisticsRemarks(order.remarks || '');
                                     }}
-                                    className="p-1 rounded-md bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 text-[10px] flex items-center gap-1 font-bold cursor-pointer transition-colors"
+                                    className="p-1 rounded-md bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 text-[10px] flex items-center gap-1 font-bold cursor-pointer transition-colors"
                                     title="Edit loading days and unloading point"
                                   >
                                     <Edit3 className="w-3 h-3" />
@@ -2500,7 +2500,7 @@ export default function OrdersDashboard() {
                                       max="30"
                                       value={editLogisticsDays}
                                       onChange={(e) => setEditLogisticsDays(parseInt(e.target.value) || 0)}
-                                      className="w-20 px-2 py-1 text-xs font-bold bg-white dark:bg-neutral-900 border border-amber-500/40 rounded text-on-surface font-mono"
+                                      className="w-20 px-2 py-1 text-xs font-bold bg-white dark:bg-neutral-900 border border-slate-300 dark:border-neutral-700 focus:border-red-500 rounded text-on-surface font-mono"
                                     />
                                   </div>
                                   <div>
@@ -2509,7 +2509,7 @@ export default function OrdersDashboard() {
                                       type="text"
                                       value={editLogisticsPoint}
                                       onChange={(e) => setEditLogisticsPoint(e.target.value)}
-                                      className="w-full px-2 py-1 text-xs bg-white dark:bg-neutral-900 border border-amber-500/40 rounded text-on-surface"
+                                      className="w-full px-2 py-1 text-xs bg-white dark:bg-neutral-900 border border-slate-300 dark:border-neutral-700 focus:border-red-500 rounded text-on-surface"
                                     />
                                   </div>
                                   <div>
@@ -2527,14 +2527,14 @@ export default function OrdersDashboard() {
                                 <div className="text-xs space-y-1">
                                   <div className="flex items-center justify-between">
                                     <span className="text-[10px] text-secondary">Loading Days:</span>
-                                    <strong className="font-mono text-amber-700 dark:text-amber-400 font-bold">{order.loadingDays !== undefined ? order.loadingDays : 3} days</strong>
+                                    <strong className="font-mono text-red-700 dark:text-red-400 font-bold">{order.loadingDays !== undefined ? order.loadingDays : 3} days</strong>
                                   </div>
                                   <div className="flex items-center justify-between">
                                     <span className="text-[10px] text-secondary">Unloading:</span>
                                     <strong className="text-on-surface font-bold capitalize">{order.unloadingPoint || 'shop'}</strong>
                                   </div>
                                   {order.remarks && (
-                                    <div className="flex items-start justify-between pt-1 border-t border-amber-500/10 text-[10px]">
+                                    <div className="flex items-start justify-between pt-1 border-t border-white/10 text-[10px]">
                                       <span className="text-secondary shrink-0">Remarks:</span>
                                       <span className="text-on-surface font-medium truncate ml-2 text-right" title={order.remarks}>{order.remarks}</span>
                                     </div>
@@ -2645,7 +2645,7 @@ export default function OrdersDashboard() {
                   <tr>
                     <td colSpan={7} className="px-6 py-16 text-center">
                       <div className="flex flex-col items-center justify-center max-w-sm mx-auto space-y-3">
-                        <div className="w-14 h-14 rounded-2xl bg-amber-500/10 dark:bg-primary/10 border border-amber-500/20 dark:border-primary/20 flex items-center justify-center text-primary">
+                        <div className="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
                           <Inbox className="w-7 h-7" />
                         </div>
                         <div className="space-y-1 text-center">
@@ -2739,7 +2739,7 @@ export default function OrdersDashboard() {
               <div className="p-6 border-b border-outline-variant/20 bg-surface-container-low/50 backdrop-blur-md space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-600 dark:text-amber-400">
+                    <div className="w-10 h-10 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-600 dark:text-red-400">
                       <History className="w-5 h-5" />
                     </div>
                     <div>
@@ -2747,7 +2747,7 @@ export default function OrdersDashboard() {
                         <h3 className="text-sm font-black uppercase tracking-widest text-on-surface">
                           Previous & Archived Orders
                         </h3>
-                        <span className="text-[10px] font-black uppercase bg-amber-500/10 text-amber-600 dark:text-amber-400 px-2.5 py-0.5 rounded-full border border-amber-500/20 font-mono">
+                        <span className="text-[10px] font-black uppercase bg-red-500/10 text-red-600 dark:text-red-400 px-2.5 py-0.5 rounded-full border border-red-500/20 font-mono">
                           {filteredArchivedOrders.length} Records
                         </span>
                       </div>
@@ -3265,14 +3265,14 @@ export default function OrdersDashboard() {
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-amber-500/[0.04] dark:bg-amber-500/[0.02] border border-amber-500/20 p-5 rounded-2xl">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-red-500/[0.03] dark:bg-red-500/[0.02] border border-red-500/20 p-5 rounded-2xl">
                     {/* No of days for loading */}
                     <div className="space-y-2">
                       <div className="flex justify-between items-center">
                         <label className="text-[10px] font-black uppercase tracking-widest text-neutral-700 dark:text-neutral-300 ml-1">
                           No of days for loading
                         </label>
-                        <span className="text-[9px] font-bold text-amber-700 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full font-mono">
+                        <span className="text-[9px] font-bold text-red-700 dark:text-red-400 bg-red-500/10 px-2 py-0.5 rounded-full font-mono">
                           {newOrder.loadingDays} Day{newOrder.loadingDays !== 1 ? 's' : ''}
                         </span>
                       </div>
@@ -3333,8 +3333,8 @@ export default function OrdersDashboard() {
                               className={cn(
                                 "px-2 py-1 rounded-md text-[9px] font-bold uppercase tracking-wider transition-all border cursor-pointer",
                                 (newOrder.unloadingPoint || '').toLowerCase() === pt.toLowerCase()
-                                  ? "bg-amber-600 text-white border-amber-600 shadow-xs"
-                                  : "bg-white dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 border-neutral-200 dark:border-neutral-800 hover:border-amber-500/40"
+                                  ? "bg-primary text-on-primary border-primary shadow-xs"
+                                  : "bg-white dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 border-neutral-200 dark:border-neutral-800 hover:border-primary/40"
                               )}
                             >
                               {pt}
@@ -3345,7 +3345,7 @@ export default function OrdersDashboard() {
                     </div>
 
                     {/* Remarks / Excess Details */}
-                    <div className="col-span-1 md:col-span-2 space-y-1.5 pt-3 border-t border-amber-500/15">
+                    <div className="col-span-1 md:col-span-2 space-y-1.5 pt-3 border-t border-red-500/15">
                       <div className="flex justify-between items-center">
                         <label className="text-[10px] font-black uppercase tracking-widest text-neutral-700 dark:text-neutral-300 ml-1">
                           Remarks
@@ -3592,10 +3592,10 @@ export default function OrdersDashboard() {
                     ) : (
                       <div className="space-y-4">
                         {/* Info Banner showing purpose */}
-                        <div className="flex items-center justify-between bg-amber-500/5 dark:bg-amber-500/10 border border-amber-500/15 p-3 rounded-2xl">
+                        <div className="flex items-center justify-between bg-red-500/5 dark:bg-red-500/10 border border-red-500/15 p-3 rounded-2xl">
                           <div className="flex items-center gap-2">
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                            <p className="text-xs font-bold text-amber-800 dark:text-amber-300">
+                            <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                            <p className="text-xs font-bold text-red-800 dark:text-red-300">
                               Outstanding payments pending collection for physically arrived cargo & completed trade orders
                             </p>
                           </div>

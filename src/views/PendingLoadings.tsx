@@ -302,10 +302,10 @@ export default function PendingLoadings() {
   }, [selectedBuyerForModal, orders]);
 
   return (
-    <div className="flex-1 flex flex-col min-h-screen bg-[#fafaf9] dark:bg-[#07110c] text-slate-900 dark:text-slate-100 font-sans antialiased">
+    <div className="flex-1 flex flex-col min-h-screen bg-[#fafaf9] dark:bg-[#09090b] text-slate-900 dark:text-slate-100 font-sans antialiased">
       
       {/* 1. Header Workspace Bar */}
-      <div className="bg-white/80 dark:bg-[#0a1610]/80 backdrop-blur-md border-b border-slate-200/80 dark:border-white/10 px-4 md:px-8 py-4 shrink-0 sticky top-0 z-20 transition-colors">
+      <div className="bg-white/80 dark:bg-[#121214]/80 backdrop-blur-md border-b border-slate-200/80 dark:border-white/10 px-4 md:px-8 py-4 shrink-0 sticky top-0 z-20 transition-colors">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2.5">
@@ -435,7 +435,7 @@ export default function PendingLoadings() {
         </div>
 
         {/* 3. Search & Filter Bar */}
-        <div className="p-4 rounded-2xl bg-white dark:bg-[#0a1610] border border-slate-200/80 dark:border-white/10 shadow-2xs space-y-3">
+        <div className="p-4 rounded-2xl bg-white dark:bg-[#121214] border border-slate-200/80 dark:border-white/10 shadow-2xs space-y-3">
           <div className="relative">
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
@@ -561,7 +561,7 @@ export default function PendingLoadings() {
 
         {/* 4. Operational List (Section 5) */}
         {groupedOrders.length === 0 ? (
-          <div className="p-12 text-center rounded-2xl bg-white dark:bg-[#0a1610] border border-slate-200/80 dark:border-white/10 shadow-2xs space-y-3">
+          <div className="p-12 text-center rounded-2xl bg-white dark:bg-[#121214] border border-slate-200/80 dark:border-white/10 shadow-2xs space-y-3">
             <div className="w-12 h-12 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto">
               <CheckCircle2 className="w-6 h-6" />
             </div>
@@ -605,7 +605,7 @@ export default function PendingLoadings() {
                   </div>
 
                   {/* Clean Operational Table: Date | PO No. | Buyer | Supplier/Miller | Brand | PO QTL | Arrival QTL | Pending QTL | Rate / QTL */}
-                  <div className="overflow-x-auto rounded-2xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-[#0a1610] shadow-2xs">
+                  <div className="overflow-x-auto rounded-2xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-[#121214] shadow-2xs">
                     <table className="w-full text-left text-xs border-collapse">
                       <thead>
                         <tr className="border-b border-slate-200/80 dark:border-white/10 bg-slate-50/75 dark:bg-neutral-900/60 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
@@ -938,7 +938,7 @@ export default function PendingLoadings() {
               initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.96 }}
-              className="bg-white dark:bg-[#0a1610] border border-slate-200/90 dark:border-white/10 rounded-3xl shadow-2xl p-6 w-full max-w-2xl text-slate-900 dark:text-white space-y-5"
+              className="bg-white dark:bg-[#121214] border border-slate-200/90 dark:border-white/10 rounded-3xl shadow-2xl p-6 w-full max-w-2xl text-slate-900 dark:text-white space-y-5"
             >
               <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-white/10">
                 <div className="flex items-center gap-3">
@@ -1071,7 +1071,7 @@ export default function PendingLoadings() {
                   onClick={() => {
                     navigate(`/ledger?buyer=${encodeURIComponent(buyerProfileData.name)}`);
                   }}
-                  className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+                  className="px-4 py-2 rounded-xl bg-primary hover:bg-primary/90 text-white text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
                 >
                   <span>View All Orders in Ledger</span>
                   <ArrowRight className="w-3.5 h-3.5" />
@@ -1090,7 +1090,7 @@ export default function PendingLoadings() {
               initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.96 }}
-              className="bg-white dark:bg-[#0a1610] border border-slate-200/90 dark:border-white/10 rounded-3xl shadow-2xl p-6 w-full max-w-lg text-slate-900 dark:text-white space-y-5"
+              className="bg-white dark:bg-[#121214] border border-slate-200/90 dark:border-white/10 rounded-3xl shadow-2xl p-6 w-full max-w-lg text-slate-900 dark:text-white space-y-5"
             >
               <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-white/10">
                 <div className="flex items-center gap-3">

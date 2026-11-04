@@ -193,7 +193,7 @@ export default function Navbar({
   return (
     <>
       <header className={cn(
-        "fixed top-0 right-0 z-40 bg-white/75 dark:bg-[#07130d]/80 backdrop-blur-2xl border-b border-slate-200/80 dark:border-white/10 shadow-[0_4px_24px_rgba(0,0,0,0.03)] dark:shadow-none transition-all duration-300 left-0 w-full md:w-auto admin-font font-sf",
+        "fixed top-0 right-0 z-40 bg-white/75 dark:bg-[#0c0d0e]/85 backdrop-blur-2xl border-b border-slate-200/80 dark:border-white/10 shadow-[0_4px_24px_rgba(0,0,0,0.03)] dark:shadow-none transition-all duration-300 left-0 w-full md:w-auto admin-font font-sf",
         "pt-[env(safe-area-inset-top,0px)]",
         isSidebarCollapsed ? "md:left-20" : "md:left-64"
       )}>
@@ -213,7 +213,7 @@ export default function Navbar({
               onClick={onSearchClick}
               className="flex-1 relative cursor-pointer group"
             >
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-hover:text-amber-600 transition-colors" />
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-hover:text-primary transition-colors" />
               <input 
                 type="text" 
                 readOnly

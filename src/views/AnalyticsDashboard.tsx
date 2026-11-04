@@ -23,7 +23,7 @@ import {
   runBIAnalytics, getMonthYearLabel, BIResults, formatDateToISO, parseAnyDate 
 } from '../lib/analyticsEngine';
 
-const COLORS = ['#d4af37', '#93000b', '#f2ca50', '#b45309', '#e9c349', '#78350f', '#f59e0b', '#3c2f00'];
+const COLORS = ['#d4af37', '#dc2626', '#f2ca50', '#b45309', '#e9c349', '#78350f', '#f59e0b', '#3c2f00'];
 
 function isRealArrivalRow(r: any): boolean {
   if (!r || typeof r !== 'object') return false;
@@ -579,7 +579,7 @@ export default function AnalyticsDashboard() {
       head: [['Rice Brand', 'Volume Sold', 'Avg Rate / QTL', 'Gross Revenue (INR)', 'Market Share %']],
       body: brandTableData,
       theme: 'grid',
-      headStyles: { fillColor: '#93000b', textColor: '#ffffff', fontStyle: 'bold' },
+      headStyles: { fillColor: '#dc2626', textColor: '#ffffff', fontStyle: 'bold' },
       styles: { fontSize: 8 },
       margin: { left: 14, right: 14 }
     });
@@ -642,26 +642,26 @@ export default function AnalyticsDashboard() {
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[65vh] gap-4">
-        <Loader2 className="w-12 h-12 animate-spin text-[#93000b]" />
+        <Loader2 className="w-12 h-12 animate-spin text-[#dc2626]" />
         <p className="text-gray-500 text-xs font-black uppercase tracking-wider animate-pulse">Compiling Enterprise Data Aggregation...</p>
       </div>
     );
   }
 
   return (
-    <div className="p-4 sm:p-8 space-y-8 max-w-7xl mx-auto text-gray-900 dark:text-amber-100 bg-slate-50/50 dark:bg-[#0a0a0a] min-h-screen">
+    <div className="p-4 sm:p-8 space-y-8 max-w-7xl mx-auto text-gray-900 dark:text-zinc-100 bg-slate-50/50 dark:bg-[#09090b] min-h-screen">
       
       {/* HEADER SECTION */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 pb-6 border-b border-gray-200 dark:border-neutral-800">
         <div className="space-y-1.5">
-          <div className="flex items-center gap-2 text-xs font-bold text-[#93000b] dark:text-amber-400 uppercase tracking-widest">
-            <span className="w-2 h-2 rounded-full bg-[#93000b] dark:bg-amber-400 animate-ping" />
+          <div className="flex items-center gap-2 text-xs font-bold text-[#dc2626] dark:text-red-400 uppercase tracking-widest">
+            <span className="w-2 h-2 rounded-full bg-[#dc2626] dark:bg-red-500 animate-ping" />
             Live BI System Online
           </div>
-          <h1 className="text-3xl font-black tracking-tight text-gray-950 dark:text-amber-100 flex items-center gap-2">
-            Tejas Canvassing <span className="text-xs font-medium text-gray-400 dark:text-amber-400/80 bg-gray-200/60 dark:bg-amber-500/10 px-2 py-0.5 rounded-lg border border-gray-300/40 dark:border-amber-500/20">v2.0 BI Platform</span>
+          <h1 className="text-3xl font-black tracking-tight text-gray-950 dark:text-zinc-100 flex items-center gap-2">
+            Tejas Canvassing <span className="text-xs font-medium text-gray-400 dark:text-zinc-400 bg-gray-200/60 dark:bg-red-500/10 px-2 py-0.5 rounded-lg border border-gray-300/40 dark:border-white/10">v2.0 BI Platform</span>
           </h1>
-          <p className="text-gray-500 dark:text-amber-200/70 text-sm italic font-medium">
+          <p className="text-gray-500 dark:text-zinc-400 text-sm italic font-medium">
             World-Class Decision Support Dashboard for Enterprise Rice Trading Operations.
           </p>
         </div>
@@ -669,8 +669,8 @@ export default function AnalyticsDashboard() {
         {/* TOP LEVEL CONTROLS */}
         <div className="flex flex-wrap items-center gap-3">
           {/* XLS Upload Handler */}
-          <label className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-[#121212] hover:bg-slate-50 dark:hover:bg-[#1a1a1a] border border-slate-200 dark:border-amber-500/20 text-gray-800 dark:text-amber-100 rounded-xl shadow-sm text-xs font-black tracking-widest uppercase cursor-pointer transition-all">
-            <FileUp className="w-4 h-4 text-[#93000b] dark:text-amber-400" />
+          <label className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-[#121214] hover:bg-slate-50 dark:hover:bg-[#1a1a1a] border border-slate-200 dark:border-white/10 text-gray-800 dark:text-zinc-100 rounded-xl shadow-sm text-xs font-black tracking-widest uppercase cursor-pointer transition-all">
+            <FileUp className="w-4 h-4 text-[#dc2626] dark:text-red-400" />
             Import Excel
             <input type="file" className="hidden" accept=".xlsx, .xls" onChange={handleImportExcel} />
           </label>
@@ -678,7 +678,7 @@ export default function AnalyticsDashboard() {
           {/* Export PDF */}
           <button 
             onClick={handleExportPDF}
-            className="flex items-center gap-2 px-4 py-2 bg-[#93000b]/10 dark:bg-amber-500/10 text-[#93000b] dark:text-amber-300 hover:bg-[#93000b]/15 rounded-xl text-xs font-black tracking-widest uppercase transition-all"
+            className="flex items-center gap-2 px-4 py-2 bg-[#dc2626]/10 dark:bg-red-500/10 text-[#dc2626] dark:text-red-300 hover:bg-[#dc2626]/15 rounded-xl text-xs font-black tracking-widest uppercase transition-all"
           >
             <FileText className="w-4 h-4" />
             PDF Briefing
@@ -687,7 +687,7 @@ export default function AnalyticsDashboard() {
           {/* Export Excel */}
           <button 
             onClick={handleExportExcel}
-            className="flex items-center gap-2 px-4 py-2 bg-gray-900 dark:bg-amber-500 text-white dark:text-black hover:bg-gray-850 dark:hover:bg-amber-400 rounded-xl text-xs font-black tracking-widest uppercase shadow-md transition-all"
+            className="flex items-center gap-2 px-4 py-2 bg-gray-900 dark:bg-red-600 text-white dark:text-black hover:bg-gray-850 dark:hover:bg-red-500 rounded-xl text-xs font-black tracking-widest uppercase shadow-md transition-all"
           >
             <Download className="w-4 h-4" />
             Export BI Ledger
@@ -700,7 +700,7 @@ export default function AnalyticsDashboard() {
         "flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-5 py-3.5 rounded-2xl border transition-all shadow-sm",
         isArrivalSource 
           ? "bg-gradient-to-r from-emerald-500/10 via-amber-500/5 to-emerald-500/10 border-emerald-500/30 dark:border-emerald-500/20"
-          : "bg-gradient-to-r from-amber-500/10 via-orange-500/5 to-amber-500/10 border-amber-500/30 dark:border-amber-500/20"
+          : "bg-gradient-to-r from-amber-500/10 via-orange-500/5 to-amber-500/10 border-amber-500/30 dark:border-white/10"
       )}>
         <div className="flex items-center gap-3">
           <div className={cn(
@@ -711,19 +711,19 @@ export default function AnalyticsDashboard() {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h4 className="text-xs font-black uppercase tracking-wider text-gray-900 dark:text-amber-100">
+              <h4 className="text-xs font-black uppercase tracking-wider text-gray-900 dark:text-zinc-100">
                 {isArrivalSource ? "🌾 Arrival Entry Intelligence Engine" : "⚡ Enterprise Demo Dataset"}
               </h4>
               <span className={cn(
                 "text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider",
                 isArrivalSource 
                   ? "bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800"
-                  : "bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800"
+                  : "bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-red-300 border border-amber-300 dark:border-amber-800"
               )}>
                 {isArrivalSource ? "Live Synchronized" : "Starter Demo"}
               </span>
             </div>
-            <p className="text-[11px] text-gray-600 dark:text-amber-200/80 font-medium">
+            <p className="text-[11px] text-gray-600 dark:text-zinc-400 font-medium">
               {isArrivalSource 
                 ? `Analytics is computed directly from ${rawTransactions.length} verified trade records across ${arrivalSheets.length || 1} sheet(s). Last synced: ${lastSyncTime}.`
                 : `Showing the preloaded enterprise trade dataset. Add or manage sheets in Arrival Entry to view your custom analytics!`}
@@ -734,27 +734,27 @@ export default function AnalyticsDashboard() {
         <div className="flex items-center gap-2 self-end sm:self-center">
           <button
             onClick={() => loadAndMergeRecords()}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-[#181818] hover:bg-slate-100 dark:hover:bg-[#222] text-gray-800 dark:text-amber-200 text-xs font-bold rounded-xl border border-slate-200 dark:border-amber-500/20 shadow-sm transition-all cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-[#18181b] hover:bg-slate-100 dark:hover:bg-[#222] text-gray-800 dark:text-amber-200 text-xs font-bold rounded-xl border border-slate-200 dark:border-white/10 shadow-sm transition-all cursor-pointer"
             title="Re-fetch and synchronize Arrival Entry data"
           >
-            <RefreshCw className="w-3.5 h-3.5 text-[#93000b] dark:text-amber-400" />
+            <RefreshCw className="w-3.5 h-3.5 text-[#dc2626] dark:text-red-400" />
             <span>Sync Live Arrivals</span>
           </button>
         </div>
       </div>
 
       {/* MULTI-DIMENSIONAL FILTER RAIL */}
-      <div className="bg-white dark:bg-[#121212] rounded-3xl border border-gray-200/80 dark:border-amber-500/20 p-5 shadow-sm space-y-4 relative overflow-hidden">
-        <div className="absolute top-0 left-0 w-1.5 h-full bg-[#93000b] dark:bg-amber-500" />
+      <div className="bg-white dark:bg-[#121214] rounded-3xl border border-gray-200/80 dark:border-white/10 p-5 shadow-sm space-y-4 relative overflow-hidden">
+        <div className="absolute top-0 left-0 w-1.5 h-full bg-[#dc2626] dark:bg-red-600" />
         
         <div className="flex items-center justify-between">
-          <h2 className="text-xs font-black uppercase tracking-wider text-gray-400 dark:text-amber-400/80 flex items-center gap-2">
-            <Filter className="w-3.5 h-3.5 text-[#93000b] dark:text-amber-400" />
+          <h2 className="text-xs font-black uppercase tracking-wider text-gray-400 dark:text-zinc-400 flex items-center gap-2">
+            <Filter className="w-3.5 h-3.5 text-[#dc2626] dark:text-red-400" />
             Active Filter Rail
           </h2>
           <button 
             onClick={handleResetFilters}
-            className="text-[10px] font-black text-[#93000b] dark:text-amber-400 hover:underline uppercase flex items-center gap-1"
+            className="text-[10px] font-black text-[#dc2626] dark:text-red-400 hover:underline uppercase flex items-center gap-1"
           >
             <Undo2 className="w-3 h-3" />
             Clear Filters
@@ -765,189 +765,189 @@ export default function AnalyticsDashboard() {
           
           {/* Arrival Sheet Filter */}
           <div className="space-y-1">
-            <label className="text-[10px] font-black text-gray-500 dark:text-amber-300/80 uppercase">Arrival Sheet</label>
+            <label className="text-[10px] font-black text-gray-500 dark:text-zinc-400 uppercase">Arrival Sheet</label>
             <div className="relative">
               <select
                 value={selectedSheet}
                 onChange={(e) => setSelectedSheet(e.target.value)}
-                className="w-full bg-slate-50 dark:bg-[#181818] border border-slate-200 dark:border-amber-500/20 rounded-xl pl-3 pr-8 py-2 text-xs font-bold text-gray-800 dark:text-amber-100 appearance-none focus:outline-none focus:border-[#93000b] dark:focus:border-amber-400 truncate"
+                className="w-full bg-slate-50 dark:bg-[#18181b] border border-slate-200 dark:border-white/10 rounded-xl pl-3 pr-8 py-2 text-xs font-bold text-gray-800 dark:text-zinc-100 appearance-none focus:outline-none focus:border-[#dc2626] dark:focus:border-amber-400 truncate"
               >
-                <option value="all" className="bg-white dark:bg-[#121212]">ALL SHEETS (Consolidated)</option>
+                <option value="all" className="bg-white dark:bg-[#121214]">ALL SHEETS (Consolidated)</option>
                 {arrivalSheets.map(s => (
-                  <option key={s.id} value={s.id} className="bg-white dark:bg-[#121212]">
+                  <option key={s.id} value={s.id} className="bg-white dark:bg-[#121214]">
                     {s.name} ({s.count} rows)
                   </option>
                 ))}
               </select>
-              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 dark:text-amber-400/60 pointer-events-none" />
+              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 dark:text-zinc-500 pointer-events-none" />
             </div>
           </div>
 
           {/* Month/Timeline filter */}
           <div className="space-y-1">
-            <label className="text-[10px] font-black text-gray-500 dark:text-amber-300/80 uppercase">Timeline Month</label>
+            <label className="text-[10px] font-black text-gray-500 dark:text-zinc-400 uppercase">Timeline Month</label>
             <div className="relative">
               <select
                 value={selectedMonth}
                 onChange={(e) => setSelectedMonth(e.target.value)}
-                className="w-full bg-slate-50 dark:bg-[#181818] border border-slate-200 dark:border-amber-500/20 rounded-xl pl-3 pr-8 py-2 text-xs font-bold text-gray-800 dark:text-amber-100 appearance-none focus:outline-none focus:border-[#93000b] dark:focus:border-amber-400"
+                className="w-full bg-slate-50 dark:bg-[#18181b] border border-slate-200 dark:border-white/10 rounded-xl pl-3 pr-8 py-2 text-xs font-bold text-gray-800 dark:text-zinc-100 appearance-none focus:outline-none focus:border-[#dc2626] dark:focus:border-amber-400"
               >
-                <option value="all" className="bg-white dark:bg-[#121212]">ALL MONTHS</option>
+                <option value="all" className="bg-white dark:bg-[#121214]">ALL MONTHS</option>
                 {filterOptions.months.map(m => (
-                  <option key={m} value={m} className="bg-white dark:bg-[#121212]">{m}</option>
+                  <option key={m} value={m} className="bg-white dark:bg-[#121214]">{m}</option>
                 ))}
               </select>
-              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 dark:text-amber-400/60 pointer-events-none" />
+              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 dark:text-zinc-500 pointer-events-none" />
             </div>
           </div>
 
           {/* Buyer filter */}
           <div className="space-y-1">
-            <label className="text-[10px] font-black text-gray-500 dark:text-amber-300/80 uppercase">Filter Buyer</label>
+            <label className="text-[10px] font-black text-gray-500 dark:text-zinc-400 uppercase">Filter Buyer</label>
             <div className="relative">
               <select
                 value={selectedBuyer}
                 onChange={(e) => setSelectedBuyer(e.target.value)}
-                className="w-full bg-slate-50 dark:bg-[#181818] border border-slate-200 dark:border-amber-500/20 rounded-xl pl-3 pr-8 py-2 text-xs font-bold text-gray-800 dark:text-amber-100 appearance-none focus:outline-none focus:border-[#93000b] dark:focus:border-amber-400"
+                className="w-full bg-slate-50 dark:bg-[#18181b] border border-slate-200 dark:border-white/10 rounded-xl pl-3 pr-8 py-2 text-xs font-bold text-gray-800 dark:text-zinc-100 appearance-none focus:outline-none focus:border-[#dc2626] dark:focus:border-amber-400"
               >
-                <option value="all" className="bg-white dark:bg-[#121212]">ALL BUYERS</option>
+                <option value="all" className="bg-white dark:bg-[#121214]">ALL BUYERS</option>
                 {filterOptions.buyers.map(b => (
-                  <option key={b} value={b} className="bg-white dark:bg-[#121212]">{b}</option>
+                  <option key={b} value={b} className="bg-white dark:bg-[#121214]">{b}</option>
                 ))}
               </select>
-              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 dark:text-amber-400/60 pointer-events-none" />
+              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 dark:text-zinc-500 pointer-events-none" />
             </div>
           </div>
 
           {/* Miller filter */}
           <div className="space-y-1">
-            <label className="text-[10px] font-black text-gray-500 dark:text-amber-300/80 uppercase">Filter Miller Name</label>
+            <label className="text-[10px] font-black text-gray-500 dark:text-zinc-400 uppercase">Filter Miller Name</label>
             <div className="relative">
               <select
                 value={selectedMiller}
                 onChange={(e) => setSelectedMiller(e.target.value)}
-                className="w-full bg-slate-50 dark:bg-[#181818] border border-slate-200 dark:border-amber-500/20 rounded-xl pl-3 pr-8 py-2 text-xs font-bold text-gray-800 dark:text-amber-100 appearance-none focus:outline-none focus:border-[#93000b] dark:focus:border-amber-400"
+                className="w-full bg-slate-50 dark:bg-[#18181b] border border-slate-200 dark:border-white/10 rounded-xl pl-3 pr-8 py-2 text-xs font-bold text-gray-800 dark:text-zinc-100 appearance-none focus:outline-none focus:border-[#dc2626] dark:focus:border-amber-400"
               >
-                <option value="all" className="bg-white dark:bg-[#121212]">ALL MILLERS</option>
+                <option value="all" className="bg-white dark:bg-[#121214]">ALL MILLERS</option>
                 {filterOptions.millers.map(m => (
-                  <option key={m} value={m} className="bg-white dark:bg-[#121212]">{m}</option>
+                  <option key={m} value={m} className="bg-white dark:bg-[#121214]">{m}</option>
                 ))}
               </select>
-              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 dark:text-amber-400/60 pointer-events-none" />
+              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 dark:text-zinc-500 pointer-events-none" />
             </div>
           </div>
 
           {/* Brand filter */}
           <div className="space-y-1">
-            <label className="text-[10px] font-black text-gray-500 dark:text-amber-300/80 uppercase">Filter Brand</label>
+            <label className="text-[10px] font-black text-gray-500 dark:text-zinc-400 uppercase">Filter Brand</label>
             <div className="relative">
               <select
                 value={selectedBrand}
                 onChange={(e) => setSelectedBrand(e.target.value)}
-                className="w-full bg-slate-50 dark:bg-[#181818] border border-slate-200 dark:border-amber-500/20 rounded-xl pl-3 pr-8 py-2 text-xs font-bold text-gray-800 dark:text-amber-100 appearance-none focus:outline-none focus:border-[#93000b] dark:focus:border-amber-400"
+                className="w-full bg-slate-50 dark:bg-[#18181b] border border-slate-200 dark:border-white/10 rounded-xl pl-3 pr-8 py-2 text-xs font-bold text-gray-800 dark:text-zinc-100 appearance-none focus:outline-none focus:border-[#dc2626] dark:focus:border-amber-400"
               >
-                <option value="all" className="bg-white dark:bg-[#121212]">ALL BRANDS</option>
+                <option value="all" className="bg-white dark:bg-[#121214]">ALL BRANDS</option>
                 {filterOptions.brands.map(b => (
-                  <option key={b} value={b} className="bg-white dark:bg-[#121212]">{b}</option>
+                  <option key={b} value={b} className="bg-white dark:bg-[#121214]">{b}</option>
                 ))}
               </select>
-              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 dark:text-amber-400/60 pointer-events-none" />
+              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 dark:text-zinc-500 pointer-events-none" />
             </div>
           </div>
 
           {/* Area filter */}
           <div className="space-y-1">
-            <label className="text-[10px] font-black text-gray-500 dark:text-amber-300/80 uppercase">Place / Area</label>
+            <label className="text-[10px] font-black text-gray-500 dark:text-zinc-400 uppercase">Place / Area</label>
             <div className="relative">
               <select
                 value={selectedArea}
                 onChange={(e) => setSelectedArea(e.target.value)}
-                className="w-full bg-slate-50 dark:bg-[#181818] border border-slate-200 dark:border-amber-500/20 rounded-xl pl-3 pr-8 py-2 text-xs font-bold text-gray-800 dark:text-amber-100 appearance-none focus:outline-none focus:border-[#93000b] dark:focus:border-amber-400"
+                className="w-full bg-slate-50 dark:bg-[#18181b] border border-slate-200 dark:border-white/10 rounded-xl pl-3 pr-8 py-2 text-xs font-bold text-gray-800 dark:text-zinc-100 appearance-none focus:outline-none focus:border-[#dc2626] dark:focus:border-amber-400"
               >
-                <option value="all" className="bg-white dark:bg-[#121212]">ALL AREAS</option>
+                <option value="all" className="bg-white dark:bg-[#121214]">ALL AREAS</option>
                 {filterOptions.areas.map(a => (
-                  <option key={a} value={a} className="bg-white dark:bg-[#121212]">{a}</option>
+                  <option key={a} value={a} className="bg-white dark:bg-[#121214]">{a}</option>
                 ))}
               </select>
-              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 dark:text-amber-400/60 pointer-events-none" />
+              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 dark:text-zinc-500 pointer-events-none" />
             </div>
           </div>
 
           {/* Status filter */}
           <div className="space-y-1">
-            <label className="text-[10px] font-black text-gray-500 dark:text-amber-300/80 uppercase">Payment Status</label>
+            <label className="text-[10px] font-black text-gray-500 dark:text-zinc-400 uppercase">Payment Status</label>
             <div className="relative">
               <select
                 value={selectedStatus}
                 onChange={(e) => setSelectedStatus(e.target.value)}
-                className="w-full bg-slate-50 dark:bg-[#181818] border border-slate-200 dark:border-amber-500/20 rounded-xl pl-3 pr-8 py-2 text-xs font-bold text-gray-800 dark:text-amber-100 appearance-none focus:outline-none focus:border-[#93000b] dark:focus:border-amber-400"
+                className="w-full bg-slate-50 dark:bg-[#18181b] border border-slate-200 dark:border-white/10 rounded-xl pl-3 pr-8 py-2 text-xs font-bold text-gray-800 dark:text-zinc-100 appearance-none focus:outline-none focus:border-[#dc2626] dark:focus:border-amber-400"
               >
-                <option value="all" className="bg-white dark:bg-[#121212]">Cleared & Pending</option>
-                <option value="Cleared" className="bg-white dark:bg-[#121212]">Cleared Bills Only</option>
-                <option value="Pending" className="bg-white dark:bg-[#121212]">Outstanding / Pending</option>
+                <option value="all" className="bg-white dark:bg-[#121214]">Cleared & Pending</option>
+                <option value="Cleared" className="bg-white dark:bg-[#121214]">Cleared Bills Only</option>
+                <option value="Pending" className="bg-white dark:bg-[#121214]">Outstanding / Pending</option>
               </select>
-              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 dark:text-amber-400/60 pointer-events-none" />
+              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 dark:text-zinc-500 pointer-events-none" />
             </div>
           </div>
         </div>
 
         {/* Numerical range sub-sliders */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-3 border-t border-slate-100 dark:border-amber-500/10">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 dark:bg-[#181818] px-4 py-2.5 rounded-xl border border-slate-200/50 dark:border-amber-500/20">
-            <span className="text-[10px] font-black text-gray-500 dark:text-amber-300/80 uppercase whitespace-nowrap">Quantity Threshold</span>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 dark:bg-[#18181b] px-4 py-2.5 rounded-xl border border-slate-200/50 dark:border-white/10">
+            <span className="text-[10px] font-black text-gray-500 dark:text-zinc-400 uppercase whitespace-nowrap">Quantity Threshold</span>
             <div className="flex items-center gap-2 w-full sm:w-auto">
               <input 
                 type="number" 
                 value={minQty} 
                 onChange={e => setMinQty(Math.max(0, parseInt(e.target.value) || 0))}
-                className="w-16 bg-white dark:bg-[#0f0f0f] border border-slate-200 dark:border-neutral-700 text-gray-800 dark:text-amber-100 text-center rounded-lg py-1 text-xs font-bold focus:outline-none focus:border-[#93000b] dark:focus:border-amber-400"
+                className="w-16 bg-white dark:bg-[#0f0f0f] border border-slate-200 dark:border-neutral-700 text-gray-800 dark:text-zinc-100 text-center rounded-lg py-1 text-xs font-bold focus:outline-none focus:border-[#dc2626] dark:focus:border-amber-400"
                 placeholder="Min Qty"
               />
-              <span className="text-gray-400 dark:text-amber-400/60 text-xs">to</span>
+              <span className="text-gray-400 dark:text-zinc-500 text-xs">to</span>
               <input 
                 type="number" 
                 value={maxQty} 
                 onChange={e => setMaxQty(Math.max(0, parseInt(e.target.value) || 0))}
-                className="w-20 bg-white dark:bg-[#0f0f0f] border border-slate-200 dark:border-neutral-700 text-gray-800 dark:text-amber-100 text-center rounded-lg py-1 text-xs font-bold focus:outline-none focus:border-[#93000b] dark:focus:border-amber-400"
+                className="w-20 bg-white dark:bg-[#0f0f0f] border border-slate-200 dark:border-neutral-700 text-gray-800 dark:text-zinc-100 text-center rounded-lg py-1 text-xs font-bold focus:outline-none focus:border-[#dc2626] dark:focus:border-amber-400"
                 placeholder="Max Qty"
               />
-              <span className="text-[10px] font-bold text-gray-400 dark:text-amber-400/60 uppercase">QTLS</span>
+              <span className="text-[10px] font-bold text-gray-400 dark:text-zinc-500 uppercase">QTLS</span>
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 dark:bg-[#181818] px-4 py-2.5 rounded-xl border border-slate-200/50 dark:border-amber-500/20">
-            <span className="text-[10px] font-black text-gray-500 dark:text-amber-300/80 uppercase whitespace-nowrap">Pricing Rate Filter</span>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 dark:bg-[#18181b] px-4 py-2.5 rounded-xl border border-slate-200/50 dark:border-white/10">
+            <span className="text-[10px] font-black text-gray-500 dark:text-zinc-400 uppercase whitespace-nowrap">Pricing Rate Filter</span>
             <div className="flex items-center gap-2 w-full sm:w-auto">
               <input 
                 type="number" 
                 value={minRate} 
                 onChange={e => setMinRate(Math.max(0, parseInt(e.target.value) || 0))}
-                className="w-20 bg-white dark:bg-[#0f0f0f] border border-slate-200 dark:border-neutral-700 text-gray-800 dark:text-amber-100 text-center rounded-lg py-1 text-xs font-bold focus:outline-none focus:border-[#93000b] dark:focus:border-amber-400"
+                className="w-20 bg-white dark:bg-[#0f0f0f] border border-slate-200 dark:border-neutral-700 text-gray-800 dark:text-zinc-100 text-center rounded-lg py-1 text-xs font-bold focus:outline-none focus:border-[#dc2626] dark:focus:border-amber-400"
                 placeholder="Min Price"
               />
-              <span className="text-gray-400 dark:text-amber-400/60 text-xs">to</span>
+              <span className="text-gray-400 dark:text-zinc-500 text-xs">to</span>
               <input 
                 type="number" 
                 value={maxRate} 
                 onChange={e => setMaxRate(Math.max(0, parseInt(e.target.value) || 0))}
-                className="w-24 bg-white dark:bg-[#0f0f0f] border border-slate-200 dark:border-neutral-700 text-gray-800 dark:text-amber-100 text-center rounded-lg py-1 text-xs font-bold focus:outline-none focus:border-[#93000b] dark:focus:border-amber-400"
+                className="w-24 bg-white dark:bg-[#0f0f0f] border border-slate-200 dark:border-neutral-700 text-gray-800 dark:text-zinc-100 text-center rounded-lg py-1 text-xs font-bold focus:outline-none focus:border-[#dc2626] dark:focus:border-amber-400"
                 placeholder="Max Price"
               />
-              <span className="text-[10px] font-bold text-gray-400 dark:text-amber-400/60 uppercase">₹/Qtl</span>
+              <span className="text-[10px] font-bold text-gray-400 dark:text-zinc-500 uppercase">₹/Qtl</span>
             </div>
           </div>
         </div>
       </div>
 
       {/* TABS WORKSPACE SELECTOR */}
-      <div className="flex overflow-x-auto gap-1 bg-slate-200/60 dark:bg-[#121212] p-1.5 rounded-2xl border border-slate-300/40 dark:border-amber-500/20">
+      <div className="flex overflow-x-auto gap-1 bg-slate-200/60 dark:bg-[#121214] p-1.5 rounded-2xl border border-slate-300/40 dark:border-white/10">
         <button
           onClick={() => setActiveTab('executive')}
           className={cn(
             "flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black tracking-wider uppercase whitespace-nowrap transition-all flex-1 justify-center cursor-pointer",
             activeTab === 'executive' 
-              ? "bg-white dark:bg-[#f2ca50] text-[#93000b] dark:text-black shadow-sm font-black" 
-              : "text-gray-600 dark:text-amber-200/70 hover:text-gray-900 dark:hover:text-amber-100 hover:bg-white/40 dark:hover:bg-neutral-800"
+              ? "bg-white dark:bg-[#f2ca50] text-[#dc2626] dark:text-black shadow-sm font-black" 
+              : "text-gray-600 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-amber-100 hover:bg-white/40 dark:hover:bg-neutral-800"
           )}
         >
           <BarChart3 className="w-4 h-4" />
@@ -958,8 +958,8 @@ export default function AnalyticsDashboard() {
           className={cn(
             "flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black tracking-wider uppercase whitespace-nowrap transition-all flex-1 justify-center cursor-pointer",
             activeTab === 'buyers' 
-              ? "bg-white dark:bg-[#f2ca50] text-[#93000b] dark:text-black shadow-sm font-black" 
-              : "text-gray-600 dark:text-amber-200/70 hover:text-gray-900 dark:hover:text-amber-100 hover:bg-white/40 dark:hover:bg-neutral-800"
+              ? "bg-white dark:bg-[#f2ca50] text-[#dc2626] dark:text-black shadow-sm font-black" 
+              : "text-gray-600 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-amber-100 hover:bg-white/40 dark:hover:bg-neutral-800"
           )}
         >
           <Users className="w-4 h-4" />
@@ -970,8 +970,8 @@ export default function AnalyticsDashboard() {
           className={cn(
             "flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black tracking-wider uppercase whitespace-nowrap transition-all flex-1 justify-center cursor-pointer",
             activeTab === 'millers' 
-              ? "bg-white dark:bg-[#f2ca50] text-[#93000b] dark:text-black shadow-sm font-black" 
-              : "text-gray-600 dark:text-amber-200/70 hover:text-gray-900 dark:hover:text-amber-100 hover:bg-white/40 dark:hover:bg-neutral-800"
+              ? "bg-white dark:bg-[#f2ca50] text-[#dc2626] dark:text-black shadow-sm font-black" 
+              : "text-gray-600 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-amber-100 hover:bg-white/40 dark:hover:bg-neutral-800"
           )}
         >
           <Building className="w-4 h-4" />
@@ -982,8 +982,8 @@ export default function AnalyticsDashboard() {
           className={cn(
             "flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black tracking-wider uppercase whitespace-nowrap transition-all flex-1 justify-center cursor-pointer",
             activeTab === 'pricing' 
-              ? "bg-white dark:bg-[#f2ca50] text-[#93000b] dark:text-black shadow-sm font-black" 
-              : "text-gray-600 dark:text-amber-200/70 hover:text-gray-900 dark:hover:text-amber-100 hover:bg-white/40 dark:hover:bg-neutral-800"
+              ? "bg-white dark:bg-[#f2ca50] text-[#dc2626] dark:text-black shadow-sm font-black" 
+              : "text-gray-600 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-amber-100 hover:bg-white/40 dark:hover:bg-neutral-800"
           )}
         >
           <Coins className="w-4 h-4" />
@@ -994,8 +994,8 @@ export default function AnalyticsDashboard() {
           className={cn(
             "flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black tracking-wider uppercase whitespace-nowrap transition-all flex-1 justify-center cursor-pointer",
             activeTab === 'forecasting' 
-              ? "bg-white dark:bg-[#f2ca50] text-[#93000b] dark:text-black shadow-sm font-black" 
-              : "text-gray-600 dark:text-amber-200/70 hover:text-gray-900 dark:hover:text-amber-100 hover:bg-white/40 dark:hover:bg-neutral-800"
+              ? "bg-white dark:bg-[#f2ca50] text-[#dc2626] dark:text-black shadow-sm font-black" 
+              : "text-gray-600 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-amber-100 hover:bg-white/40 dark:hover:bg-neutral-800"
           )}
         >
           <Sparkles className="w-4 h-4" />
@@ -1014,17 +1014,17 @@ export default function AnalyticsDashboard() {
           className="space-y-8"
         >
           {filteredTransactions.length === 0 ? (
-            <div className="bg-white dark:bg-[#121212] rounded-3xl border border-gray-200 dark:border-amber-500/20 p-12 text-center flex flex-col items-center justify-center gap-4">
+            <div className="bg-white dark:bg-[#121214] rounded-3xl border border-gray-200 dark:border-white/10 p-12 text-center flex flex-col items-center justify-center gap-4">
               <div className="p-4 bg-amber-50 dark:bg-amber-950/30 rounded-full border border-amber-100 dark:border-amber-900/40">
                 <AlertTriangle className="w-8 h-8 text-amber-500" />
               </div>
-              <h3 className="text-lg font-black text-gray-900 dark:text-amber-100 uppercase tracking-tight">No Matching Records Found</h3>
-              <p className="text-gray-500 dark:text-amber-200/70 text-sm max-w-md font-medium">
+              <h3 className="text-lg font-black text-gray-900 dark:text-zinc-100 uppercase tracking-tight">No Matching Records Found</h3>
+              <p className="text-gray-500 dark:text-zinc-400 text-sm max-w-md font-medium">
                 The current interactive filters have returned zero records. Clear or adjust your slider limits to populate the dashboard metrics.
               </p>
               <button 
                 onClick={handleResetFilters}
-                className="px-6 py-2.5 bg-[#93000b] dark:bg-amber-500 text-white dark:text-black rounded-xl text-xs font-black uppercase tracking-widest hover:opacity-95 transition-all shadow-md cursor-pointer"
+                className="px-6 py-2.5 bg-[#dc2626] dark:bg-red-600 text-white dark:text-black rounded-xl text-xs font-black uppercase tracking-widest hover:opacity-95 transition-all shadow-md cursor-pointer"
               >
                 Reset Dashboard Filters
               </button>
@@ -1045,8 +1045,8 @@ export default function AnalyticsDashboard() {
                       <h4 className="text-xs font-black text-amber-950 dark:text-amber-200 uppercase tracking-wider flex items-center gap-1.5">
                         💡 Simple Explanation: What does this screen show?
                       </h4>
-                      <p className="text-xs text-amber-900/85 dark:text-amber-100/90 leading-relaxed font-semibold">
-                        This is your business's main scorecard. It shows how much total money you made (<span className="text-[#93000b] dark:text-amber-400 font-black">Gross Sales</span>), the total amount of rice you sold (<span className="text-blue-600 dark:text-sky-400 font-black">Total Quantity</span>), the average rate you sold it for, and how much of your money is collected versus still pending (<span className="text-emerald-600 dark:text-emerald-400 font-black">Collection Efficiency</span>). The charts below show your sales over time, and the AI observations give you quick suggestions to grow your business.
+                      <p className="text-xs text-amber-900/85 dark:text-zinc-100/90 leading-relaxed font-semibold">
+                        This is your business's main scorecard. It shows how much total money you made (<span className="text-[#dc2626] dark:text-red-400 font-black">Gross Sales</span>), the total amount of rice you sold (<span className="text-blue-600 dark:text-sky-400 font-black">Total Quantity</span>), the average rate you sold it for, and how much of your money is collected versus still pending (<span className="text-emerald-600 dark:text-emerald-400 font-black">Collection Efficiency</span>). The charts below show your sales over time, and the AI observations give you quick suggestions to grow your business.
                       </p>
                     </div>
                   </div>
@@ -1062,13 +1062,13 @@ export default function AnalyticsDashboard() {
                       className="liquid-glass p-5 rounded-2xl premium-border shadow-sm space-y-2 relative overflow-hidden interactive-card"
                     >
                       <div className="flex justify-between items-start">
-                        <span className="text-[10px] font-black text-gray-400 dark:text-amber-400/80 uppercase tracking-wider">Gross Revenue (INR)</span>
-                        <div className="p-1.5 bg-rose-50 dark:bg-amber-500/10 rounded-lg text-[#93000b] dark:text-amber-400">
+                        <span className="text-[10px] font-black text-gray-400 dark:text-zinc-400 uppercase tracking-wider">Gross Revenue (INR)</span>
+                        <div className="p-1.5 bg-rose-50 dark:bg-red-500/10 rounded-lg text-[#dc2626] dark:text-red-400">
                           <TrendingUp className="w-4 h-4" />
                         </div>
                       </div>
                       <div className="space-y-1">
-                        <h3 className="text-2xl font-black text-gray-900 dark:text-amber-100">₹{formatINR(bi.totalSales)}</h3>
+                        <h3 className="text-2xl font-black text-gray-900 dark:text-zinc-100">₹{formatINR(bi.totalSales)}</h3>
                         <div className="flex items-center gap-1.5">
                           <span className={cn(
                             "text-[10px] font-bold px-1.5 py-0.5 rounded-md",
@@ -1076,7 +1076,7 @@ export default function AnalyticsDashboard() {
                           )}>
                             {bi.revenueGrowthMoM >= 0 ? '+' : ''}{bi.revenueGrowthMoM.toFixed(1)}% MoM
                           </span>
-                          <span className="text-[10px] font-bold text-gray-400 dark:text-amber-300/60">vs Previous Period</span>
+                          <span className="text-[10px] font-bold text-gray-400 dark:text-red-300/60">vs Previous Period</span>
                         </div>
                       </div>
                     </motion.div>
@@ -1090,13 +1090,13 @@ export default function AnalyticsDashboard() {
                       className="liquid-glass p-5 rounded-2xl premium-border shadow-sm space-y-2 relative overflow-hidden interactive-card"
                     >
                       <div className="flex justify-between items-start">
-                        <span className="text-[10px] font-black text-gray-400 dark:text-amber-400/80 uppercase tracking-wider">Total Quantity Sold</span>
-                        <div className="p-1.5 bg-blue-50 dark:bg-amber-500/10 rounded-lg text-blue-600 dark:text-amber-400">
+                        <span className="text-[10px] font-black text-gray-400 dark:text-zinc-400 uppercase tracking-wider">Total Quantity Sold</span>
+                        <div className="p-1.5 bg-blue-50 dark:bg-red-500/10 rounded-lg text-blue-600 dark:text-red-400">
                           <Package className="w-4 h-4" />
                         </div>
                       </div>
                       <div className="space-y-1">
-                        <h3 className="text-2xl font-black text-gray-900 dark:text-amber-100">{bi.totalQuantity.toLocaleString()} QTLS</h3>
+                        <h3 className="text-2xl font-black text-gray-900 dark:text-zinc-100">{bi.totalQuantity.toLocaleString()} QTLS</h3>
                         <div className="flex items-center gap-1.5">
                           <span className={cn(
                             "text-[10px] font-bold px-1.5 py-0.5 rounded-md",
@@ -1104,7 +1104,7 @@ export default function AnalyticsDashboard() {
                           )}>
                             {bi.quantityGrowthMoM >= 0 ? '+' : ''}{bi.quantityGrowthMoM.toFixed(1)}% Qty
                           </span>
-                          <span className="text-[10px] font-bold text-gray-400 dark:text-amber-300/60">aggregated volume</span>
+                          <span className="text-[10px] font-bold text-gray-400 dark:text-red-300/60">aggregated volume</span>
                         </div>
                       </div>
                     </motion.div>
@@ -1118,15 +1118,15 @@ export default function AnalyticsDashboard() {
                       className="liquid-glass p-5 rounded-2xl premium-border shadow-sm space-y-2 relative overflow-hidden interactive-card"
                     >
                       <div className="flex justify-between items-start">
-                        <span className="text-[10px] font-black text-gray-400 dark:text-amber-400/80 uppercase tracking-wider">Weighted Avg Price</span>
-                        <div className="p-1.5 bg-amber-50 dark:bg-amber-500/10 rounded-lg text-amber-600 dark:text-amber-400">
+                        <span className="text-[10px] font-black text-gray-400 dark:text-zinc-400 uppercase tracking-wider">Weighted Avg Price</span>
+                        <div className="p-1.5 bg-amber-50 dark:bg-red-500/10 rounded-lg text-amber-600 dark:text-red-400">
                           <Coins className="w-4 h-4" />
                         </div>
                       </div>
                       <div className="space-y-1">
-                        <h3 className="text-2xl font-black text-gray-900 dark:text-amber-100">₹{formatINR(bi.avgSellingPrice)} / QTL</h3>
+                        <h3 className="text-2xl font-black text-gray-900 dark:text-zinc-100">₹{formatINR(bi.avgSellingPrice)} / QTL</h3>
                         <div className="flex items-center gap-1.5 border-t border-slate-100 dark:border-amber-500/10 pt-1">
-                          <span className="text-[10px] font-bold text-gray-400 dark:text-amber-300/60">Across {bi.countBrands} distinct brand catalogs</span>
+                          <span className="text-[10px] font-bold text-gray-400 dark:text-red-300/60">Across {bi.countBrands} distinct brand catalogs</span>
                         </div>
                       </div>
                     </motion.div>
@@ -1140,13 +1140,13 @@ export default function AnalyticsDashboard() {
                       className="liquid-glass p-5 rounded-2xl premium-border shadow-sm space-y-2 relative overflow-hidden interactive-card"
                     >
                       <div className="flex justify-between items-start">
-                        <span className="text-[10px] font-black text-gray-400 dark:text-amber-400/80 uppercase tracking-wider">Collection Efficiency</span>
-                        <div className="p-1.5 bg-emerald-50 dark:bg-amber-500/10 rounded-lg text-emerald-600 dark:text-amber-400">
+                        <span className="text-[10px] font-black text-gray-400 dark:text-zinc-400 uppercase tracking-wider">Collection Efficiency</span>
+                        <div className="p-1.5 bg-emerald-50 dark:bg-red-500/10 rounded-lg text-emerald-600 dark:text-red-400">
                           <Landmark className="w-4 h-4" />
                         </div>
                       </div>
                       <div className="space-y-1">
-                        <h3 className="text-2xl font-black text-gray-900 dark:text-amber-100">{bi.collectionEfficiency.toFixed(1)}%</h3>
+                        <h3 className="text-2xl font-black text-gray-900 dark:text-zinc-100">{bi.collectionEfficiency.toFixed(1)}%</h3>
                         <div className="flex items-center gap-1">
                           <span className="text-[10px] font-black text-red-600 dark:text-rose-400">₹{formatINR(bi.outstandingPayments)} Pending</span>
                         </div>
@@ -1166,11 +1166,11 @@ export default function AnalyticsDashboard() {
                     >
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div>
-                          <h3 className="text-base font-black text-gray-900 dark:text-amber-100 uppercase tracking-tight">Market Revenue Timeline</h3>
-                          <p className="text-xs text-gray-400 dark:text-amber-200/70 font-medium italic">Gross sales volume calculated over the selected active filters.</p>
+                          <h3 className="text-base font-black text-gray-900 dark:text-zinc-100 uppercase tracking-tight">Market Revenue Timeline</h3>
+                          <p className="text-xs text-gray-400 dark:text-zinc-400 font-medium italic">Gross sales volume calculated over the selected active filters.</p>
                         </div>
-                        <div className="flex gap-4 text-[10px] font-black uppercase tracking-wider text-gray-500 dark:text-amber-300/80">
-                          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#93000b] dark:bg-amber-400" />Revenue (INR)</span>
+                        <div className="flex gap-4 text-[10px] font-black uppercase tracking-wider text-gray-500 dark:text-zinc-400">
+                          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#dc2626] dark:bg-red-500" />Revenue (INR)</span>
                         </div>
                       </div>
                       <div className="h-72 w-full min-w-0">
@@ -1200,8 +1200,8 @@ export default function AnalyticsDashboard() {
                       className="lg:col-span-4 liquid-glass p-6 rounded-3xl premium-border shadow-sm flex flex-col justify-between"
                     >
                       <div className="space-y-1">
-                        <h3 className="text-base font-black text-gray-900 dark:text-amber-100 uppercase tracking-tight">Brand Demand Index</h3>
-                        <p className="text-xs text-gray-400 dark:text-amber-200/70 font-medium">Percentage distribution of volume sold by catalog brand.</p>
+                        <h3 className="text-base font-black text-gray-900 dark:text-zinc-100 uppercase tracking-tight">Brand Demand Index</h3>
+                        <p className="text-xs text-gray-400 dark:text-zinc-400 font-medium">Percentage distribution of volume sold by catalog brand.</p>
                       </div>
                       <div className="h-44 my-4 flex items-center justify-center w-full min-w-0">
                         <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={100} initialDimension={{ width: 200, height: 180 }}>
@@ -1225,12 +1225,12 @@ export default function AnalyticsDashboard() {
                       </div>
                       <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
                         {bi.brandSales.slice(0, 4).map((b, idx) => (
-                          <div key={b.name} className="flex items-center justify-between text-xs bg-slate-50/50 dark:bg-[#181818] p-2 rounded-xl border border-slate-100 dark:border-amber-500/15">
+                          <div key={b.name} className="flex items-center justify-between text-xs bg-slate-50/50 dark:bg-[#18181b] p-2 rounded-xl border border-slate-100 dark:border-amber-500/15">
                             <div className="flex items-center gap-2">
                               <span className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[idx % COLORS.length] }} />
                               <span className="font-bold text-gray-700 dark:text-amber-200 truncate max-w-[120px]">{b.name}</span>
                             </div>
-                            <span className="font-black text-gray-900 dark:text-amber-100">{b.pct}%</span>
+                            <span className="font-black text-gray-900 dark:text-zinc-100">{b.pct}%</span>
                           </div>
                         ))}
                       </div>
@@ -1245,8 +1245,8 @@ export default function AnalyticsDashboard() {
                     className="liquid-glass rounded-3xl premium-border p-6 shadow-sm space-y-4"
                   >
                     <div className="flex items-center gap-2">
-                      <Sparkles className="w-5 h-5 text-[#93000b] dark:text-amber-400" />
-                      <h3 className="text-base font-black text-gray-950 dark:text-amber-100 uppercase tracking-tight">AI Executive Observations & Insights</h3>
+                      <Sparkles className="w-5 h-5 text-[#dc2626] dark:text-red-400" />
+                      <h3 className="text-base font-black text-gray-950 dark:text-zinc-100 uppercase tracking-tight">AI Executive Observations & Insights</h3>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -1260,27 +1260,27 @@ export default function AnalyticsDashboard() {
                           className={cn(
                             "liquid-glass p-4 rounded-2xl border flex flex-col justify-between gap-3 relative overflow-hidden interactive-card",
                             ins.status === 'critical' ? "border-rose-200 dark:border-rose-900/40 bg-rose-50/20 dark:bg-rose-950/20" :
-                            ins.status === 'warning' ? "border-amber-200 dark:border-amber-900/40 bg-amber-50/20 dark:bg-amber-950/20" : "border-emerald-200 dark:border-amber-500/30 bg-emerald-50/20 dark:bg-amber-500/10"
+                            ins.status === 'warning' ? "border-amber-200 dark:border-amber-900/40 bg-amber-50/20 dark:bg-amber-950/20" : "border-emerald-200 dark:border-amber-500/30 bg-emerald-50/20 dark:bg-red-500/10"
                           )}
                         >
                           <div className="space-y-1.5 z-10">
                             <div className="flex items-center justify-between">
                               <span className={cn(
                                 "text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border",
-                                ins.category === 'Opportunity' ? "bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-500/30" :
-                                ins.category === 'Risk' ? "bg-rose-50 dark:bg-rose-950 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800" : "bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800"
+                                ins.category === 'Opportunity' ? "bg-amber-50 dark:bg-red-500/10 text-amber-700 dark:text-red-300 border-amber-200 dark:border-amber-500/30" :
+                                ins.category === 'Risk' ? "bg-rose-50 dark:bg-rose-950 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800" : "bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-red-300 border-amber-200 dark:border-amber-800"
                               )}>
                                 {ins.category}
                               </span>
                             </div>
-                            <h4 className="text-xs font-black text-gray-900 dark:text-amber-100 leading-snug">{ins.title}</h4>
-                            <p className="text-[11px] text-gray-500 dark:text-amber-200/70 font-medium leading-relaxed">{ins.desc}</p>
+                            <h4 className="text-xs font-black text-gray-900 dark:text-zinc-100 leading-snug">{ins.title}</h4>
+                            <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-medium leading-relaxed">{ins.desc}</p>
                           </div>
-                          <div className="pt-2 border-t border-dashed border-gray-200 dark:border-amber-500/20 space-y-1 z-10">
-                            <span className="text-[9px] font-black uppercase tracking-wider text-[#93000b] dark:text-amber-400 flex items-center gap-1">
+                          <div className="pt-2 border-t border-dashed border-gray-200 dark:border-white/10 space-y-1 z-10">
+                            <span className="text-[9px] font-black uppercase tracking-wider text-[#dc2626] dark:text-red-400 flex items-center gap-1">
                               <ShieldCheck className="w-3 h-3" /> Actionable Strategy Directive
                             </span>
-                            <p className="text-[10px] text-gray-600 dark:text-amber-200/80 italic font-semibold leading-relaxed">"{ins.recommendation}"</p>
+                            <p className="text-[10px] text-gray-600 dark:text-zinc-400 italic font-semibold leading-relaxed">"{ins.recommendation}"</p>
                           </div>
                         </motion.div>
                       ))}
@@ -1303,8 +1303,8 @@ export default function AnalyticsDashboard() {
                       <h4 className="text-xs font-black text-amber-950 dark:text-amber-200 uppercase tracking-wider flex items-center gap-1.5">
                         💡 Simple Explanation: What does this screen show?
                       </h4>
-                      <p className="text-xs text-amber-900/85 dark:text-amber-100/90 leading-relaxed font-semibold">
-                        This screen lists your buyers (the customers buying rice from you). You can instantly see who is your biggest customer, who owes you money, and who has overdue bills. <span className="text-[#93000b] dark:text-amber-400 font-black">Click on any buyer name</span> in the list to open their interactive, automated report card on the right!
+                      <p className="text-xs text-amber-900/85 dark:text-zinc-100/90 leading-relaxed font-semibold">
+                        This screen lists your buyers (the customers buying rice from you). You can instantly see who is your biggest customer, who owes you money, and who has overdue bills. <span className="text-[#dc2626] dark:text-red-400 font-black">Click on any buyer name</span> in the list to open their interactive, automated report card on the right!
                       </p>
                     </div>
                   </div>
@@ -1312,26 +1312,26 @@ export default function AnalyticsDashboard() {
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                   
                   {/* LEFT: LEADERBOARD & LIST */}
-                  <div className="lg:col-span-7 bg-white dark:bg-[#121212] p-6 rounded-3xl border border-gray-200/80 dark:border-amber-500/20 shadow-sm space-y-6">
+                  <div className="lg:col-span-7 bg-white dark:bg-[#121214] p-6 rounded-3xl border border-gray-200/80 dark:border-white/10 shadow-sm space-y-6">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       <div>
-                        <h3 className="text-base font-black text-gray-950 dark:text-amber-100 uppercase tracking-tight">Buyer Performance Leaderboard</h3>
-                        <p className="text-xs text-gray-400 dark:text-amber-200/70 font-medium">Automatic sorting based on overall purchase volume value.</p>
+                        <h3 className="text-base font-black text-gray-950 dark:text-zinc-100 uppercase tracking-tight">Buyer Performance Leaderboard</h3>
+                        <p className="text-xs text-gray-400 dark:text-zinc-400 font-medium">Automatic sorting based on overall purchase volume value.</p>
                       </div>
                       <div className="relative w-full sm:w-48">
-                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 dark:text-amber-400/60" />
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 dark:text-zinc-500" />
                         <input
                           type="text"
                           value={buyerSearchTerm}
                           onChange={e => setBuyerSearchTerm(e.target.value)}
                           placeholder="Search counterparties..."
-                          className="w-full pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-[#181818] border border-slate-200 dark:border-amber-500/20 rounded-xl text-xs font-bold text-gray-700 dark:text-amber-100 focus:outline-none focus:border-[#93000b] dark:focus:border-amber-400"
+                          className="w-full pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-[#18181b] border border-slate-200 dark:border-white/10 rounded-xl text-xs font-bold text-gray-700 dark:text-zinc-100 focus:outline-none focus:border-[#dc2626] dark:focus:border-amber-400"
                         />
                       </div>
                     </div>
 
                     {/* SEGMENT QUICK FILTERS */}
-                    <div className="flex flex-wrap gap-1.5 pb-2 border-b border-slate-100 dark:border-amber-500/20">
+                    <div className="flex flex-wrap gap-1.5 pb-2 border-b border-slate-100 dark:border-white/10">
                       {['all', 'Loyal', 'Returning', 'New', 'High-Risk', 'Dormant'].map(seg => {
                         const count = bi.buyerLeaderboard.filter(b => seg === 'all' || b.segment === seg).length;
                         return (
@@ -1341,8 +1341,8 @@ export default function AnalyticsDashboard() {
                             className={cn(
                               "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer",
                               buyerSegmentFilter === seg 
-                                ? "bg-[#93000b] dark:bg-amber-500 text-white dark:text-black" 
-                                : "bg-slate-100 dark:bg-[#181818] text-gray-500 dark:text-amber-200/70 hover:bg-slate-200 dark:hover:bg-amber-500/20"
+                                ? "bg-[#dc2626] dark:bg-red-600 text-white dark:text-black" 
+                                : "bg-slate-100 dark:bg-[#18181b] text-gray-500 dark:text-zinc-400 hover:bg-slate-200 dark:hover:bg-amber-500/20"
                             )}
                           >
                             {seg === 'all' ? 'All Segments' : seg} ({count})
@@ -1355,7 +1355,7 @@ export default function AnalyticsDashboard() {
                     <div className="overflow-x-auto">
                       <table className="w-full text-left border-collapse">
                         <thead>
-                          <tr className="border-b border-slate-100 dark:border-amber-500/20 text-[10px] font-black uppercase text-gray-400 dark:text-amber-400/70">
+                          <tr className="border-b border-slate-100 dark:border-white/10 text-[10px] font-black uppercase text-gray-400 dark:text-red-400/70">
                             <th className="pb-3 pr-2">Rank</th>
                             <th className="pb-3">Counterparty</th>
                             <th className="pb-3 text-right">Gross Purchase</th>
@@ -1376,22 +1376,22 @@ export default function AnalyticsDashboard() {
                                   onClick={() => setSelectedScorecardBuyer(buyer.name)}
                                   className={cn(
                                     "hover:bg-slate-50/80 dark:hover:bg-amber-500/10 cursor-pointer transition-all",
-                                    isSelected && "bg-slate-50 dark:bg-amber-500/20 font-black border-l-4 border-l-[#93000b] dark:border-l-amber-400"
+                                    isSelected && "bg-slate-50 dark:bg-red-600/20 font-black border-l-4 border-l-[#dc2626] dark:border-l-amber-400"
                                   )}
                                 >
-                                  <td className="py-3.5 pl-2 text-xs font-black text-gray-400 dark:text-amber-400/60">#{idx + 1}</td>
+                                  <td className="py-3.5 pl-2 text-xs font-black text-gray-400 dark:text-zinc-500">#{idx + 1}</td>
                                   <td className="py-3.5">
                                     <div className="flex flex-col">
-                                      <span className="text-xs font-black text-gray-900 dark:text-amber-100">{buyer.name}</span>
-                                      <span className="text-[10px] font-semibold text-gray-400 dark:text-amber-300/60">{buyer.frequency} orders logged</span>
+                                      <span className="text-xs font-black text-gray-900 dark:text-zinc-100">{buyer.name}</span>
+                                      <span className="text-[10px] font-semibold text-gray-400 dark:text-red-300/60">{buyer.frequency} orders logged</span>
                                     </div>
                                   </td>
-                                  <td className="py-3.5 text-right text-xs font-black text-gray-900 dark:text-amber-100">₹{formatINR(buyer.totalPurchases)}</td>
-                                  <td className="py-3.5 text-right text-xs font-bold text-gray-600 dark:text-amber-200/80">{buyer.qty.toLocaleString()}</td>
+                                  <td className="py-3.5 text-right text-xs font-black text-gray-900 dark:text-zinc-100">₹{formatINR(buyer.totalPurchases)}</td>
+                                  <td className="py-3.5 text-right text-xs font-bold text-gray-600 dark:text-zinc-400">{buyer.qty.toLocaleString()}</td>
                                   <td className="py-3.5 text-center">
                                     <span className={cn(
                                       "text-[10px] font-bold px-2 py-0.5 rounded-full",
-                                      buyer.delay > 40 ? "bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400" : "bg-emerald-50 dark:bg-amber-500/10 text-emerald-600 dark:text-amber-400"
+                                      buyer.delay > 40 ? "bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400" : "bg-emerald-50 dark:bg-red-500/10 text-emerald-600 dark:text-red-400"
                                     )}>
                                       {buyer.delay} days
                                     </span>
@@ -1399,9 +1399,9 @@ export default function AnalyticsDashboard() {
                                   <td className="py-3.5">
                                     <span className={cn(
                                       "text-[9px] font-black uppercase px-2 py-0.5 rounded-md border",
-                                      buyer.segment === 'Loyal' ? "bg-emerald-50 dark:bg-amber-500/10 text-emerald-600 dark:text-amber-300 border-emerald-200 dark:border-amber-500/30" :
+                                      buyer.segment === 'Loyal' ? "bg-emerald-50 dark:bg-red-500/10 text-emerald-600 dark:text-red-300 border-emerald-200 dark:border-amber-500/30" :
                                       buyer.segment === 'High-Risk' ? "bg-rose-50 dark:bg-rose-950 text-rose-600 dark:text-rose-300 border-rose-200 dark:border-rose-800 animate-pulse" :
-                                      buyer.segment === 'New' ? "bg-blue-50 dark:bg-sky-950 text-blue-600 dark:text-sky-300 border-blue-200 dark:border-sky-800" : "bg-slate-100 dark:bg-[#181818] text-gray-600 dark:text-amber-300/80 border-slate-200 dark:border-amber-500/20"
+                                      buyer.segment === 'New' ? "bg-blue-50 dark:bg-sky-950 text-blue-600 dark:text-sky-300 border-blue-200 dark:border-sky-800" : "bg-slate-100 dark:bg-[#18181b] text-gray-600 dark:text-zinc-400 border-slate-200 dark:border-white/10"
                                     )}>
                                       {buyer.segment}
                                     </span>
@@ -1417,75 +1417,75 @@ export default function AnalyticsDashboard() {
                   {/* RIGHT: BUYER SCORECARD */}
                   <div className="lg:col-span-5 space-y-6">
                     {scorecardBuyerDetails ? (
-                      <div className="bg-white dark:bg-[#121212] p-6 rounded-3xl border border-gray-200/80 dark:border-amber-500/20 shadow-sm space-y-6 relative overflow-hidden">
-                        <div className="absolute top-0 right-0 w-24 h-24 bg-[#93000b]/[0.02] rounded-full blur-xl" />
+                      <div className="bg-white dark:bg-[#121214] p-6 rounded-3xl border border-gray-200/80 dark:border-white/10 shadow-sm space-y-6 relative overflow-hidden">
+                        <div className="absolute top-0 right-0 w-24 h-24 bg-[#dc2626]/[0.02] rounded-full blur-xl" />
                         
                         {/* Title header */}
                         <div className="space-y-2">
-                          <span className="text-[10px] font-black text-gray-400 dark:text-amber-400/80 uppercase tracking-widest block">Detailed Profile Scorecard</span>
-                          <h3 className="text-xl font-black text-gray-950 dark:text-amber-100 tracking-tight">{scorecardBuyerDetails.name}</h3>
+                          <span className="text-[10px] font-black text-gray-400 dark:text-zinc-400 uppercase tracking-widest block">Detailed Profile Scorecard</span>
+                          <h3 className="text-xl font-black text-gray-950 dark:text-zinc-100 tracking-tight">{scorecardBuyerDetails.name}</h3>
                           
                           <div className="flex flex-wrap gap-2 items-center">
                             <span className={cn(
                               "text-[9px] font-black uppercase px-2 py-0.5 rounded-md border",
-                              scorecardBuyerDetails.segment === 'Loyal' ? "bg-emerald-50 dark:bg-amber-500/10 text-emerald-600 dark:text-amber-300 border-emerald-200 dark:border-amber-500/30" :
-                              scorecardBuyerDetails.segment === 'High-Risk' ? "bg-rose-50 dark:bg-rose-950 text-rose-600 dark:text-rose-300 border-rose-200 dark:border-rose-800" : "bg-slate-100 dark:bg-[#181818] text-gray-600 dark:text-amber-300/80 border-slate-200 dark:border-amber-500/20"
+                              scorecardBuyerDetails.segment === 'Loyal' ? "bg-emerald-50 dark:bg-red-500/10 text-emerald-600 dark:text-red-300 border-emerald-200 dark:border-amber-500/30" :
+                              scorecardBuyerDetails.segment === 'High-Risk' ? "bg-rose-50 dark:bg-rose-950 text-rose-600 dark:text-rose-300 border-rose-200 dark:border-rose-800" : "bg-slate-100 dark:bg-[#18181b] text-gray-600 dark:text-zinc-400 border-slate-200 dark:border-white/10"
                             )}>
                               {scorecardBuyerDetails.segment} Account
                             </span>
-                            <span className="text-[10px] text-gray-400 dark:text-amber-300/80 font-bold">Reliability Index: {scorecardBuyerDetails.delay <= 30 ? 'HIGH' : scorecardBuyerDetails.delay <= 45 ? 'AVERAGE' : 'RISK'}</span>
+                            <span className="text-[10px] text-gray-400 dark:text-zinc-400 font-bold">Reliability Index: {scorecardBuyerDetails.delay <= 30 ? 'HIGH' : scorecardBuyerDetails.delay <= 45 ? 'AVERAGE' : 'RISK'}</span>
                           </div>
                         </div>
 
                         {/* Financial metrics block */}
-                        <div className="grid grid-cols-2 gap-4 bg-slate-50 dark:bg-[#181818] p-4 rounded-2xl border border-slate-100 dark:border-amber-500/20">
+                        <div className="grid grid-cols-2 gap-4 bg-slate-50 dark:bg-[#18181b] p-4 rounded-2xl border border-slate-100 dark:border-white/10">
                           <div className="space-y-0.5">
-                            <span className="text-[9px] font-black text-gray-400 dark:text-amber-400/80 uppercase">Gross Procurement</span>
-                            <h4 className="text-base font-black text-gray-900 dark:text-amber-100">₹{formatINR(scorecardBuyerDetails.totalPurchases)}</h4>
+                            <span className="text-[9px] font-black text-gray-400 dark:text-zinc-400 uppercase">Gross Procurement</span>
+                            <h4 className="text-base font-black text-gray-900 dark:text-zinc-100">₹{formatINR(scorecardBuyerDetails.totalPurchases)}</h4>
                           </div>
                           <div className="space-y-0.5">
-                            <span className="text-[9px] font-black text-gray-400 dark:text-amber-400/80 uppercase">Volume Canalized</span>
-                            <h4 className="text-base font-black text-gray-900 dark:text-amber-100">{scorecardBuyerDetails.qty.toLocaleString()} QTLS</h4>
+                            <span className="text-[9px] font-black text-gray-400 dark:text-zinc-400 uppercase">Volume Canalized</span>
+                            <h4 className="text-base font-black text-gray-900 dark:text-zinc-100">{scorecardBuyerDetails.qty.toLocaleString()} QTLS</h4>
                           </div>
                           <div className="space-y-0.5 pt-2 border-t border-slate-200/60 dark:border-amber-500/10">
-                            <span className="text-[9px] font-black text-gray-400 dark:text-amber-400/80 uppercase">Outstanding Balance</span>
-                            <h4 className={cn("text-base font-black", scorecardBuyerDetails.outstanding > 0 ? "text-red-600 dark:text-rose-400" : "text-gray-900 dark:text-amber-100")}>
+                            <span className="text-[9px] font-black text-gray-400 dark:text-zinc-400 uppercase">Outstanding Balance</span>
+                            <h4 className={cn("text-base font-black", scorecardBuyerDetails.outstanding > 0 ? "text-red-600 dark:text-rose-400" : "text-gray-900 dark:text-zinc-100")}>
                               ₹{formatINR(scorecardBuyerDetails.outstanding)}
                             </h4>
                           </div>
                           <div className="space-y-0.5 pt-2 border-t border-slate-200/60 dark:border-amber-500/10">
-                            <span className="text-[9px] font-black text-gray-400 dark:text-amber-400/80 uppercase">Avg Pay Timeline</span>
-                            <h4 className="text-base font-black text-gray-900 dark:text-amber-100">{scorecardBuyerDetails.delay} Days</h4>
+                            <span className="text-[9px] font-black text-gray-400 dark:text-zinc-400 uppercase">Avg Pay Timeline</span>
+                            <h4 className="text-base font-black text-gray-900 dark:text-zinc-100">{scorecardBuyerDetails.delay} Days</h4>
                           </div>
                         </div>
 
                         {/* Preferred variables analysis */}
                         <div className="space-y-3">
-                          <h4 className="text-xs font-black text-gray-900 dark:text-amber-100 uppercase tracking-wider">Trading Behavior Analysis</h4>
+                          <h4 className="text-xs font-black text-gray-900 dark:text-zinc-100 uppercase tracking-wider">Trading Behavior Analysis</h4>
                           
                           <div className="space-y-2">
-                            <div className="flex justify-between items-center text-xs text-gray-600 dark:text-amber-200/80 font-semibold">
+                            <div className="flex justify-between items-center text-xs text-gray-600 dark:text-zinc-400 font-semibold">
                               <span>Preferred Brand:</span>
-                              <span className="font-bold text-gray-900 dark:text-amber-100">{scorecardBuyerTransactions[0]?.brand || 'KK Brand'}</span>
+                              <span className="font-bold text-gray-900 dark:text-zinc-100">{scorecardBuyerTransactions[0]?.brand || 'KK Brand'}</span>
                             </div>
-                            <div className="flex justify-between items-center text-xs text-gray-600 dark:text-amber-200/80 font-semibold">
+                            <div className="flex justify-between items-center text-xs text-gray-600 dark:text-zinc-400 font-semibold">
                               <span>Primary Procuring Area:</span>
-                              <span className="font-bold text-gray-900 dark:text-amber-100">{scorecardBuyerTransactions[0]?.placeArea || 'Gadchiroli'}</span>
+                              <span className="font-bold text-gray-900 dark:text-zinc-100">{scorecardBuyerTransactions[0]?.placeArea || 'Gadchiroli'}</span>
                             </div>
-                            <div className="flex justify-between items-center text-xs text-gray-600 dark:text-amber-200/80 font-semibold">
+                            <div className="flex justify-between items-center text-xs text-gray-600 dark:text-zinc-400 font-semibold">
                               <span>Canvassed Miller Partner:</span>
-                              <span className="font-bold text-[#93000b] dark:text-amber-400">{scorecardBuyerTransactions[0]?.millerName || 'Sri Rama Rice Mill'}</span>
+                              <span className="font-bold text-[#dc2626] dark:text-red-400">{scorecardBuyerTransactions[0]?.millerName || 'Sri Rama Rice Mill'}</span>
                             </div>
                           </div>
                         </div>
 
                         {/* Custom action guideline */}
-                        <div className="p-4 bg-slate-50 dark:bg-[#181818] border border-slate-200 dark:border-amber-500/20 rounded-2xl space-y-1">
-                          <div className="flex items-center gap-1.5 text-xs font-black text-[#93000b] dark:text-amber-400 uppercase">
+                        <div className="p-4 bg-slate-50 dark:bg-[#18181b] border border-slate-200 dark:border-white/10 rounded-2xl space-y-1">
+                          <div className="flex items-center gap-1.5 text-xs font-black text-[#dc2626] dark:text-red-400 uppercase">
                             <Info className="w-3.5 h-3.5" />
                             Canvassing Strategy Directive
                           </div>
-                          <p className="text-[11px] text-gray-500 dark:text-amber-200/80 leading-relaxed font-semibold">
+                          <p className="text-[11px] text-gray-500 dark:text-zinc-400 leading-relaxed font-semibold">
                             {scorecardBuyerDetails.segment === 'Loyal' && `Maintain current credit terms at ${scorecardBuyerDetails.delay} days. Lock in pricing contracts directly for winter shipments.`}
                             {scorecardBuyerDetails.segment === 'High-Risk' && `Outstanding balance of ₹${formatINR(scorecardBuyerDetails.outstanding)} is critical. Require a 40% upfront deposit before approving subsequent truck dispatches.`}
                             {scorecardBuyerDetails.segment === 'New' && `Offer introductory credit threshold extension of up to ₹5L to stimulate purchase frequency.`}
@@ -1495,25 +1495,25 @@ export default function AnalyticsDashboard() {
 
                         {/* Recent transaction list inside scorecard */}
                         <div className="space-y-3 pt-3 border-t border-slate-100 dark:border-amber-500/10">
-                          <h4 className="text-xs font-black text-gray-900 dark:text-amber-100 uppercase tracking-wider">Recent Orders Log ({scorecardBuyerTransactions.length})</h4>
+                          <h4 className="text-xs font-black text-gray-900 dark:text-zinc-100 uppercase tracking-wider">Recent Orders Log ({scorecardBuyerTransactions.length})</h4>
                           <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
                             {scorecardBuyerTransactions.map(t => (
-                              <div key={t.id} className="flex justify-between items-center text-xs bg-slate-50/50 dark:bg-[#181818] p-2.5 rounded-xl border border-slate-100 dark:border-amber-500/15">
+                              <div key={t.id} className="flex justify-between items-center text-xs bg-slate-50/50 dark:bg-[#18181b] p-2.5 rounded-xl border border-slate-100 dark:border-amber-500/15">
                                 <div className="space-y-0.5">
                                   <div className="flex items-center gap-1.5">
-                                    <span className="font-black text-gray-900 dark:text-amber-100">{t.brand}</span>
-                                    <span className="text-[9px] text-gray-400 dark:text-amber-400/60 font-mono">#{t.billNumber}</span>
+                                    <span className="font-black text-gray-900 dark:text-zinc-100">{t.brand}</span>
+                                    <span className="text-[9px] text-gray-400 dark:text-zinc-500 font-mono">#{t.billNumber}</span>
                                   </div>
-                                  <span className="text-[10px] text-gray-400 dark:text-amber-400/60 font-bold">{t.date} | {t.quantity} QTLS</span>
+                                  <span className="text-[10px] text-gray-400 dark:text-zinc-500 font-bold">{t.date} | {t.quantity} QTLS</span>
                                 </div>
-                                <span className="font-black text-gray-900 dark:text-amber-100">₹{formatINR(t.amount)}</span>
+                                <span className="font-black text-gray-900 dark:text-zinc-100">₹{formatINR(t.amount)}</span>
                               </div>
                             ))}
                           </div>
                         </div>
                       </div>
                     ) : (
-                      <div className="bg-white dark:bg-[#121212] p-8 rounded-3xl border border-gray-200 dark:border-amber-500/20 text-center text-gray-400 dark:text-amber-400/60 font-bold text-xs">
+                      <div className="bg-white dark:bg-[#121214] p-8 rounded-3xl border border-gray-200 dark:border-white/10 text-center text-gray-400 dark:text-zinc-500 font-bold text-xs">
                         Select a buyer counterparty to load their BI scorecards.
                       </div>
                     )}
@@ -1536,7 +1536,7 @@ export default function AnalyticsDashboard() {
                       <h4 className="text-xs font-black text-amber-950 dark:text-amber-200 uppercase tracking-wider flex items-center gap-1.5">
                         💡 Simple Explanation: What does this screen show?
                       </h4>
-                      <p className="text-xs text-amber-900/85 dark:text-amber-100/90 leading-relaxed font-semibold">
+                      <p className="text-xs text-amber-900/85 dark:text-zinc-100/90 leading-relaxed font-semibold">
                         This screen shows where your rice comes from (your suppliers/millers) and which brands of rice are selling the most. It helps you see which miller provides the most rice and which varieties are your absolute best-sellers so you can buy more of them.
                       </p>
                     </div>
@@ -1546,36 +1546,36 @@ export default function AnalyticsDashboard() {
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                     
                     {/* Brand Leaderboard & Velocity */}
-                    <div className="lg:col-span-7 bg-white dark:bg-[#121212] p-6 rounded-3xl border border-gray-200/80 dark:border-amber-500/20 shadow-sm space-y-6">
+                    <div className="lg:col-span-7 bg-white dark:bg-[#121214] p-6 rounded-3xl border border-gray-200/80 dark:border-white/10 shadow-sm space-y-6">
                       <div>
-                        <h3 className="text-base font-black text-gray-950 dark:text-amber-100 uppercase tracking-tight">Commodity Brand Analytics Matrix</h3>
-                        <p className="text-xs text-gray-400 dark:text-amber-200/70 font-medium">Automatic sorting based on overall purchase volume value.</p>
+                        <h3 className="text-base font-black text-gray-950 dark:text-zinc-100 uppercase tracking-tight">Commodity Brand Analytics Matrix</h3>
+                        <p className="text-xs text-gray-400 dark:text-zinc-400 font-medium">Automatic sorting based on overall purchase volume value.</p>
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <div className="bg-slate-50 dark:bg-[#181818] p-4 rounded-2xl border border-slate-100 dark:border-amber-500/20 space-y-1">
-                          <span className="text-[9px] font-black text-gray-400 dark:text-amber-400/80 uppercase">Fastest Growing Brand</span>
-                          <h4 className="text-sm font-black text-[#93000b] dark:text-amber-400">{bi.brandSales[0]?.name || 'KK Brand'}</h4>
-                          <span className="text-[10px] font-bold text-gray-400 dark:text-amber-300/60">Leading Sales Share</span>
+                        <div className="bg-slate-50 dark:bg-[#18181b] p-4 rounded-2xl border border-slate-100 dark:border-white/10 space-y-1">
+                          <span className="text-[9px] font-black text-gray-400 dark:text-zinc-400 uppercase">Fastest Growing Brand</span>
+                          <h4 className="text-sm font-black text-[#dc2626] dark:text-red-400">{bi.brandSales[0]?.name || 'KK Brand'}</h4>
+                          <span className="text-[10px] font-bold text-gray-400 dark:text-red-300/60">Leading Sales Share</span>
                         </div>
-                        <div className="bg-slate-50 dark:bg-[#181818] p-4 rounded-2xl border border-slate-100 dark:border-amber-500/20 space-y-1">
-                          <span className="text-[9px] font-black text-gray-400 dark:text-amber-400/80 uppercase">Highest Price Corridor</span>
-                          <h4 className="text-sm font-black text-gray-900 dark:text-amber-100">
+                        <div className="bg-slate-50 dark:bg-[#18181b] p-4 rounded-2xl border border-slate-100 dark:border-white/10 space-y-1">
+                          <span className="text-[9px] font-black text-gray-400 dark:text-zinc-400 uppercase">Highest Price Corridor</span>
+                          <h4 className="text-sm font-black text-gray-900 dark:text-zinc-100">
                             {(bi.brandSales.reduce((prev: any, current: any) => ((prev?.avgRate || 0) > (current?.avgRate || 0)) ? prev : current, bi.brandSales[0] || {}) as any)?.name || 'Royal Basmati'}
                           </h4>
-                          <span className="text-[10px] font-bold text-gray-400 dark:text-amber-300/60">Premium Rate Profile</span>
+                          <span className="text-[10px] font-bold text-gray-400 dark:text-red-300/60">Premium Rate Profile</span>
                         </div>
-                        <div className="bg-slate-50 dark:bg-[#181818] p-4 rounded-2xl border border-slate-100 dark:border-amber-500/20 space-y-1">
-                          <span className="text-[9px] font-black text-gray-400 dark:text-amber-400/80 uppercase">Most Consistent Grade</span>
-                          <h4 className="text-sm font-black text-gray-900 dark:text-amber-100">HMT Sona</h4>
-                          <span className="text-[10px] font-bold text-gray-400 dark:text-amber-300/60">Steady volume inflow</span>
+                        <div className="bg-slate-50 dark:bg-[#18181b] p-4 rounded-2xl border border-slate-100 dark:border-white/10 space-y-1">
+                          <span className="text-[9px] font-black text-gray-400 dark:text-zinc-400 uppercase">Most Consistent Grade</span>
+                          <h4 className="text-sm font-black text-gray-900 dark:text-zinc-100">HMT Sona</h4>
+                          <span className="text-[10px] font-bold text-gray-400 dark:text-red-300/60">Steady volume inflow</span>
                         </div>
                       </div>
 
                       <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse">
                           <thead>
-                            <tr className="border-b border-slate-100 dark:border-amber-500/20 text-[10px] font-black uppercase text-gray-400 dark:text-amber-400/80">
+                            <tr className="border-b border-slate-100 dark:border-white/10 text-[10px] font-black uppercase text-gray-400 dark:text-zinc-400">
                               <th className="pb-3 pr-2">Brand Catalog</th>
                               <th className="pb-3 text-right">Gross Sales (INR)</th>
                               <th className="pb-3 text-right">Volume (QTLS)</th>
@@ -1589,13 +1589,13 @@ export default function AnalyticsDashboard() {
                                 <td className="py-3.5">
                                   <div className="flex items-center gap-2">
                                     <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLORS[idx % COLORS.length] }} />
-                                    <span className="text-xs font-black text-gray-900 dark:text-amber-100">{brand.name}</span>
+                                    <span className="text-xs font-black text-gray-900 dark:text-zinc-100">{brand.name}</span>
                                   </div>
                                 </td>
-                                <td className="py-3.5 text-right text-xs font-black text-gray-900 dark:text-amber-100">₹{formatINR(brand.revenue)}</td>
-                                <td className="py-3.5 text-right text-xs font-bold text-gray-600 dark:text-amber-200/80">{brand.qty.toLocaleString()} QTLS</td>
-                                <td className="py-3.5 text-right text-xs font-bold text-gray-600 dark:text-amber-200/80">₹{formatINR(brand.avgRate)}</td>
-                                <td className="py-3.5 text-right text-xs font-black text-[#93000b] dark:text-amber-400">{brand.pct}%</td>
+                                <td className="py-3.5 text-right text-xs font-black text-gray-900 dark:text-zinc-100">₹{formatINR(brand.revenue)}</td>
+                                <td className="py-3.5 text-right text-xs font-bold text-gray-600 dark:text-zinc-400">{brand.qty.toLocaleString()} QTLS</td>
+                                <td className="py-3.5 text-right text-xs font-bold text-gray-600 dark:text-zinc-400">₹{formatINR(brand.avgRate)}</td>
+                                <td className="py-3.5 text-right text-xs font-black text-[#dc2626] dark:text-red-400">{brand.pct}%</td>
                               </tr>
                             ))}
                           </tbody>
@@ -1604,37 +1604,37 @@ export default function AnalyticsDashboard() {
                     </div>
 
                     {/* Miller Performance Matrix */}
-                    <div className="lg:col-span-5 bg-white dark:bg-[#121212] p-6 rounded-3xl border border-gray-200/80 dark:border-amber-500/20 shadow-sm space-y-6">
+                    <div className="lg:col-span-5 bg-white dark:bg-[#121214] p-6 rounded-3xl border border-gray-200/80 dark:border-white/10 shadow-sm space-y-6">
                       <div>
-                        <h3 className="text-base font-black text-gray-950 dark:text-amber-100 uppercase tracking-tight">Miller Performance Matrix</h3>
-                        <p className="text-xs text-gray-400 dark:text-amber-200/70 font-medium">Rankings by volume dispatch capacity and active buyer count.</p>
+                        <h3 className="text-base font-black text-gray-950 dark:text-zinc-100 uppercase tracking-tight">Miller Performance Matrix</h3>
+                        <p className="text-xs text-gray-400 dark:text-zinc-400 font-medium">Rankings by volume dispatch capacity and active buyer count.</p>
                       </div>
 
                       <div className="space-y-3">
                         {bi.millerPerformance.map((miller, idx) => (
-                          <div key={miller.name} className="p-4 bg-slate-50/60 dark:bg-[#181818] rounded-2xl border border-slate-100 dark:border-amber-500/20 space-y-2 hover:bg-slate-50 dark:hover:bg-amber-500/10 transition-all">
+                          <div key={miller.name} className="p-4 bg-slate-50/60 dark:bg-[#18181b] rounded-2xl border border-slate-100 dark:border-white/10 space-y-2 hover:bg-slate-50 dark:hover:bg-amber-500/10 transition-all">
                             <div className="flex justify-between items-center">
                               <div className="flex items-center gap-2">
-                                <span className="text-xs font-black text-gray-400 dark:text-amber-400/60">#{idx + 1}</span>
-                                <span className="text-xs font-black text-gray-900 dark:text-amber-100">{miller.name}</span>
+                                <span className="text-xs font-black text-gray-400 dark:text-zinc-500">#{idx + 1}</span>
+                                <span className="text-xs font-black text-gray-900 dark:text-zinc-100">{miller.name}</span>
                               </div>
-                              <span className="text-[10px] font-black text-[#93000b] dark:text-amber-400 bg-[#93000b]/5 dark:bg-amber-500/10 px-2 py-0.5 rounded">
+                              <span className="text-[10px] font-black text-[#dc2626] dark:text-red-400 bg-[#dc2626]/5 dark:bg-red-500/10 px-2 py-0.5 rounded">
                                 {miller.repeatBuyers} Buyer Accounts
                               </span>
                             </div>
 
                             <div className="grid grid-cols-3 gap-2 text-center pt-2 border-t border-slate-200/50 dark:border-amber-500/10">
                               <div className="space-y-0.5">
-                                <span className="text-[9px] font-bold text-gray-400 dark:text-amber-400/80 uppercase">Gross Sales</span>
-                                <p className="text-xs font-black text-gray-900 dark:text-amber-100">₹{formatINR(miller.revenue)}</p>
+                                <span className="text-[9px] font-bold text-gray-400 dark:text-zinc-400 uppercase">Gross Sales</span>
+                                <p className="text-xs font-black text-gray-900 dark:text-zinc-100">₹{formatINR(miller.revenue)}</p>
                               </div>
                               <div className="space-y-0.5">
-                                <span className="text-[9px] font-bold text-gray-400 dark:text-amber-400/80 uppercase">Dispatched</span>
-                                <p className="text-xs font-bold text-gray-600 dark:text-amber-200/80">{miller.qty.toLocaleString()} QTL</p>
+                                <span className="text-[9px] font-bold text-gray-400 dark:text-zinc-400 uppercase">Dispatched</span>
+                                <p className="text-xs font-bold text-gray-600 dark:text-zinc-400">{miller.qty.toLocaleString()} QTL</p>
                               </div>
                               <div className="space-y-0.5">
-                                <span className="text-[9px] font-bold text-gray-400 dark:text-amber-400/80 uppercase">Avg rate</span>
-                                <p className="text-xs font-bold text-gray-600 dark:text-amber-200/80">₹{formatINR(miller.avgRate)}</p>
+                                <span className="text-[9px] font-bold text-gray-400 dark:text-zinc-400 uppercase">Avg rate</span>
+                                <p className="text-xs font-bold text-gray-600 dark:text-zinc-400">₹{formatINR(miller.avgRate)}</p>
                               </div>
                             </div>
                           </div>
@@ -1659,7 +1659,7 @@ export default function AnalyticsDashboard() {
                       <h4 className="text-xs font-black text-amber-950 dark:text-amber-200 uppercase tracking-wider flex items-center gap-1.5">
                         💡 Simple Explanation: What does this screen show?
                       </h4>
-                      <p className="text-xs text-amber-900/85 dark:text-amber-100/90 leading-relaxed font-semibold">
+                      <p className="text-xs text-amber-900/85 dark:text-zinc-100/90 leading-relaxed font-semibold">
                         This screen shows how cash is flowing through your business. You can see the cash that is cleared and ready to use versus the money that is still pending or delayed. The charts group your orders by their selling rates and show which regional areas consume the most rice.
                       </p>
                     </div>
@@ -1669,10 +1669,10 @@ export default function AnalyticsDashboard() {
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                     
                     {/* Price Range Distribution */}
-                    <div className="lg:col-span-8 bg-white dark:bg-[#121212] p-6 rounded-3xl border border-gray-200/80 dark:border-amber-500/20 shadow-sm space-y-6">
+                    <div className="lg:col-span-8 bg-white dark:bg-[#121214] p-6 rounded-3xl border border-gray-200/80 dark:border-white/10 shadow-sm space-y-6">
                       <div>
-                        <h3 className="text-base font-black text-gray-950 dark:text-amber-100 uppercase tracking-tight">Rate Corridor & Order Frequency</h3>
-                        <p className="text-xs text-gray-400 dark:text-amber-200/70 font-medium">Number of major billing arrivals grouped by rate corridors (₹/Qtl).</p>
+                        <h3 className="text-base font-black text-gray-950 dark:text-zinc-100 uppercase tracking-tight">Rate Corridor & Order Frequency</h3>
+                        <p className="text-xs text-gray-400 dark:text-zinc-400 font-medium">Number of major billing arrivals grouped by rate corridors (₹/Qtl).</p>
                       </div>
 
                       <div className="h-64 w-full min-w-0">
@@ -1689,29 +1689,29 @@ export default function AnalyticsDashboard() {
                     </div>
 
                     {/* Price Volatility & Place Analysis */}
-                    <div className="lg:col-span-4 bg-white dark:bg-[#121212] p-6 rounded-3xl border border-gray-200/80 dark:border-amber-500/20 shadow-sm space-y-6">
+                    <div className="lg:col-span-4 bg-white dark:bg-[#121214] p-6 rounded-3xl border border-gray-200/80 dark:border-white/10 shadow-sm space-y-6">
                       <div className="space-y-1">
-                        <h3 className="text-base font-black text-gray-950 dark:text-amber-100 uppercase tracking-tight">Pricing Intelligence</h3>
-                        <p className="text-xs text-gray-400 dark:text-amber-200/70 font-medium">Statistical variance and market volatility indicators.</p>
+                        <h3 className="text-base font-black text-gray-950 dark:text-zinc-100 uppercase tracking-tight">Pricing Intelligence</h3>
+                        <p className="text-xs text-gray-400 dark:text-zinc-400 font-medium">Statistical variance and market volatility indicators.</p>
                       </div>
 
-                      <div className="bg-slate-50 dark:bg-[#181818] p-5 rounded-2xl border border-slate-100 dark:border-amber-500/20 space-y-3">
+                      <div className="bg-slate-50 dark:bg-[#18181b] p-5 rounded-2xl border border-slate-100 dark:border-white/10 space-y-3">
                         <div className="flex justify-between items-center">
-                          <span className="text-xs font-bold text-gray-500 dark:text-amber-200/70">Volatility Index:</span>
-                          <span className="text-xs font-black text-[#93000b] dark:text-amber-400 bg-[#93000b]/5 dark:bg-amber-500/10 px-2.5 py-0.5 rounded-full">
+                          <span className="text-xs font-bold text-gray-500 dark:text-zinc-400">Volatility Index:</span>
+                          <span className="text-xs font-black text-[#dc2626] dark:text-red-400 bg-[#dc2626]/5 dark:bg-red-500/10 px-2.5 py-0.5 rounded-full">
                             ±₹{bi.priceVolatility} / QTL
                           </span>
                         </div>
                         <div className="flex justify-between items-center">
-                          <span className="text-xs font-bold text-gray-500 dark:text-amber-200/70">Average Rate:</span>
-                          <span className="text-xs font-black text-gray-900 dark:text-amber-100">₹{formatINR(bi.avgSellingPrice)}</span>
+                          <span className="text-xs font-bold text-gray-500 dark:text-zinc-400">Average Rate:</span>
+                          <span className="text-xs font-black text-gray-900 dark:text-zinc-100">₹{formatINR(bi.avgSellingPrice)}</span>
                         </div>
                         <div className="flex justify-between items-center">
-                          <span className="text-xs font-bold text-gray-500 dark:text-amber-200/70">Fastest Settlement:</span>
-                          <span className="text-xs font-black text-emerald-600 dark:text-amber-400">{bi.paymentStats.fastestPaying}</span>
+                          <span className="text-xs font-bold text-gray-500 dark:text-zinc-400">Fastest Settlement:</span>
+                          <span className="text-xs font-black text-emerald-600 dark:text-red-400">{bi.paymentStats.fastestPaying}</span>
                         </div>
                         <div className="flex justify-between items-center">
-                          <span className="text-xs font-bold text-gray-500 dark:text-amber-200/70">Longest Settlement Delay:</span>
+                          <span className="text-xs font-bold text-gray-500 dark:text-zinc-400">Longest Settlement Delay:</span>
                           <span className="text-xs font-black text-rose-600 dark:text-rose-400 truncate max-w-[150px]">{bi.paymentStats.slowestPaying}</span>
                         </div>
                       </div>
@@ -1720,7 +1720,7 @@ export default function AnalyticsDashboard() {
                         <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
                         <div className="space-y-1">
                           <span className="text-xs font-black text-amber-800 dark:text-amber-200 uppercase tracking-wider block">Margin Volatility Warning</span>
-                          <p className="text-[11px] text-amber-700 dark:text-amber-100/90 leading-relaxed font-semibold">
+                          <p className="text-[11px] text-amber-700 dark:text-zinc-100/90 leading-relaxed font-semibold">
                             With volatility index at ₹{bi.priceVolatility}, rate spreads across direct mill purchase are wide. Pre-sell orders only when mill backing rates are locked.
                           </p>
                         </div>
@@ -1729,36 +1729,36 @@ export default function AnalyticsDashboard() {
                   </div>
 
                   {/* REGIONAL MARKET CONCENTRATION */}
-                  <div className="bg-white dark:bg-[#121212] p-6 rounded-3xl border border-gray-200/80 dark:border-amber-500/20 shadow-sm space-y-4">
+                  <div className="bg-white dark:bg-[#121214] p-6 rounded-3xl border border-gray-200/80 dark:border-white/10 shadow-sm space-y-4">
                     <div>
-                      <h3 className="text-base font-black text-gray-950 dark:text-amber-100 uppercase tracking-tight">Regional Market Concentration (Place / Area)</h3>
-                      <p className="text-xs text-gray-400 dark:text-amber-200/70 font-medium">Bento performance rankings across regional rice consumption areas.</p>
+                      <h3 className="text-base font-black text-gray-950 dark:text-zinc-100 uppercase tracking-tight">Regional Market Concentration (Place / Area)</h3>
+                      <p className="text-xs text-gray-400 dark:text-zinc-400 font-medium">Bento performance rankings across regional rice consumption areas.</p>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                       {bi.regionalAnalysis.map((reg, idx) => (
-                        <div key={reg.area} className="p-4 bg-slate-50 dark:bg-[#181818] hover:bg-slate-100/50 dark:hover:bg-amber-500/10 rounded-2xl border border-slate-200/60 dark:border-amber-500/20 flex flex-col justify-between gap-4 transition-all">
+                        <div key={reg.area} className="p-4 bg-slate-50 dark:bg-[#18181b] hover:bg-slate-100/50 dark:hover:bg-amber-500/10 rounded-2xl border border-slate-200/60 dark:border-white/10 flex flex-col justify-between gap-4 transition-all">
                           <div className="flex items-center justify-between">
-                            <span className="text-xs font-black text-gray-900 dark:text-amber-100 flex items-center gap-1">
-                              <MapPin className="w-3.5 h-3.5 text-[#93000b] dark:text-amber-400" /> {reg.area}
+                            <span className="text-xs font-black text-gray-900 dark:text-zinc-100 flex items-center gap-1">
+                              <MapPin className="w-3.5 h-3.5 text-[#dc2626] dark:text-red-400" /> {reg.area}
                             </span>
-                            <span className="text-[10px] text-gray-400 dark:text-amber-400/60 font-bold">Rank #{idx+1}</span>
+                            <span className="text-[10px] text-gray-400 dark:text-zinc-500 font-bold">Rank #{idx+1}</span>
                           </div>
 
                           <div className="space-y-1">
-                            <span className="text-[9px] font-black text-gray-400 dark:text-amber-400/80 uppercase">Gross Sales Invoiced</span>
-                            <h4 className="text-lg font-black text-gray-950 dark:text-amber-100">₹{formatINR(reg.revenue)}</h4>
-                            <div className="flex justify-between items-center text-[10px] text-gray-400 dark:text-amber-300/80 font-bold pt-1 border-t border-slate-200/40 dark:border-amber-500/10">
+                            <span className="text-[9px] font-black text-gray-400 dark:text-zinc-400 uppercase">Gross Sales Invoiced</span>
+                            <h4 className="text-lg font-black text-gray-950 dark:text-zinc-100">₹{formatINR(reg.revenue)}</h4>
+                            <div className="flex justify-between items-center text-[10px] text-gray-400 dark:text-zinc-400 font-bold pt-1 border-t border-slate-200/40 dark:border-amber-500/10">
                               <span>Volume Sold:</span>
                               <span className="font-semibold text-gray-700 dark:text-amber-200">{reg.qty.toLocaleString()} QTLS</span>
                             </div>
-                            <div className="flex justify-between items-center text-[10px] text-gray-400 dark:text-amber-300/80 font-bold">
+                            <div className="flex justify-between items-center text-[10px] text-gray-400 dark:text-zinc-400 font-bold">
                               <span>Avg Pricing Rate:</span>
                               <span className="font-semibold text-gray-700 dark:text-amber-200">₹{formatINR(reg.avgRate)}</span>
                             </div>
-                            <div className="flex justify-between items-center text-[10px] text-gray-400 dark:text-amber-300/80 font-bold">
+                            <div className="flex justify-between items-center text-[10px] text-gray-400 dark:text-zinc-400 font-bold">
                               <span>Active Buyer Accounts:</span>
-                              <span className="font-semibold text-[#93000b] dark:text-amber-400">{reg.buyersCount}</span>
+                              <span className="font-semibold text-[#dc2626] dark:text-red-400">{reg.buyersCount}</span>
                             </div>
                           </div>
                         </div>
@@ -1782,7 +1782,7 @@ export default function AnalyticsDashboard() {
                       <h4 className="text-xs font-black text-amber-950 dark:text-amber-200 uppercase tracking-wider flex items-center gap-1.5">
                         💡 Simple Explanation: What does this screen show?
                       </h4>
-                      <p className="text-xs text-amber-900/85 dark:text-amber-100/90 leading-relaxed font-semibold">
+                      <p className="text-xs text-amber-900/85 dark:text-zinc-100/90 leading-relaxed font-semibold">
                         This screen estimates your future sales and highlights any credit risks (like late payments). It predicts what your sales might look like next month based on past trends, and flags which bills are past their due dates so you can contact those buyers.
                       </p>
                     </div>
@@ -1792,13 +1792,13 @@ export default function AnalyticsDashboard() {
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                     
                     {/* Timeline forecast line graph */}
-                    <div className="lg:col-span-8 bg-white dark:bg-[#121212] p-6 rounded-3xl border border-gray-200/80 dark:border-amber-500/20 shadow-sm space-y-6">
+                    <div className="lg:col-span-8 bg-white dark:bg-[#121214] p-6 rounded-3xl border border-gray-200/80 dark:border-white/10 shadow-sm space-y-6">
                       <div className="flex items-center justify-between">
                         <div>
-                          <h3 className="text-base font-black text-gray-950 dark:text-amber-100 uppercase tracking-tight">Revenue Timeline & August Projection</h3>
-                          <p className="text-xs text-gray-400 dark:text-amber-200/70 font-medium italic">Predictive projection using seasonal linear-weighted calculations.</p>
+                          <h3 className="text-base font-black text-gray-950 dark:text-zinc-100 uppercase tracking-tight">Revenue Timeline & August Projection</h3>
+                          <p className="text-xs text-gray-400 dark:text-zinc-400 font-medium italic">Predictive projection using seasonal linear-weighted calculations.</p>
                         </div>
-                        <span className="text-[10px] font-black text-[#93000b] dark:text-amber-400 bg-[#93000b]/5 dark:bg-amber-500/10 px-3 py-1 rounded-full uppercase border border-[#93000b]/10 dark:border-amber-500/20 animate-pulse">
+                        <span className="text-[10px] font-black text-[#dc2626] dark:text-red-400 bg-[#dc2626]/5 dark:bg-red-500/10 px-3 py-1 rounded-full uppercase border border-[#dc2626]/10 dark:border-white/10 animate-pulse">
                           Predictive Model Active
                         </span>
                       </div>
@@ -1823,74 +1823,74 @@ export default function AnalyticsDashboard() {
                     </div>
 
                     {/* Forecast KPI cards */}
-                    <div className="lg:col-span-4 bg-white dark:bg-[#121212] p-6 rounded-3xl border border-gray-200/80 dark:border-amber-500/20 shadow-sm space-y-4">
-                      <h3 className="text-base font-black text-gray-950 dark:text-amber-100 uppercase tracking-tight">{bi.forecast.nextMonthName} Metrics Projections</h3>
+                    <div className="lg:col-span-4 bg-white dark:bg-[#121214] p-6 rounded-3xl border border-gray-200/80 dark:border-white/10 shadow-sm space-y-4">
+                      <h3 className="text-base font-black text-gray-950 dark:text-zinc-100 uppercase tracking-tight">{bi.forecast.nextMonthName} Metrics Projections</h3>
                       
                       <div className="space-y-3">
                         {/* Expected Sales */}
-                        <div className="p-3.5 bg-slate-50 dark:bg-[#181818] rounded-2xl border border-slate-100 dark:border-amber-500/20 space-y-1">
-                          <span className="text-[9px] font-black text-gray-400 dark:text-amber-400/80 uppercase">Projected Sales Volume</span>
-                          <h4 className="text-base font-black text-gray-900 dark:text-amber-100">₹{formatINR(bi.forecast.expectedRevenue)}</h4>
-                          <span className="text-[10px] text-gray-400 dark:text-amber-300/60 font-bold">Confidence interval: ₹{formatINR(bi.forecast.expectedRevenueConfidence[0])} - ₹{formatINR(bi.forecast.expectedRevenueConfidence[1])}</span>
+                        <div className="p-3.5 bg-slate-50 dark:bg-[#18181b] rounded-2xl border border-slate-100 dark:border-white/10 space-y-1">
+                          <span className="text-[9px] font-black text-gray-400 dark:text-zinc-400 uppercase">Projected Sales Volume</span>
+                          <h4 className="text-base font-black text-gray-900 dark:text-zinc-100">₹{formatINR(bi.forecast.expectedRevenue)}</h4>
+                          <span className="text-[10px] text-gray-400 dark:text-red-300/60 font-bold">Confidence interval: ₹{formatINR(bi.forecast.expectedRevenueConfidence[0])} - ₹{formatINR(bi.forecast.expectedRevenueConfidence[1])}</span>
                         </div>
 
                         {/* Expected Quantity */}
-                        <div className="p-3.5 bg-slate-50 dark:bg-[#181818] rounded-2xl border border-slate-100 dark:border-amber-500/20 space-y-1">
-                          <span className="text-[9px] font-black text-gray-400 dark:text-amber-400/80 uppercase">Projected Quantity QTLS</span>
-                          <h4 className="text-base font-black text-gray-900 dark:text-amber-100">{bi.forecast.expectedQuantity.toLocaleString()} QTLS</h4>
-                          <span className="text-[10px] text-gray-400 dark:text-amber-300/60 font-bold">Confidence interval: {bi.forecast.expectedQuantityConfidence[0]} - {bi.forecast.expectedQuantityConfidence[1]} QTLS</span>
+                        <div className="p-3.5 bg-slate-50 dark:bg-[#18181b] rounded-2xl border border-slate-100 dark:border-white/10 space-y-1">
+                          <span className="text-[9px] font-black text-gray-400 dark:text-zinc-400 uppercase">Projected Quantity QTLS</span>
+                          <h4 className="text-base font-black text-gray-900 dark:text-zinc-100">{bi.forecast.expectedQuantity.toLocaleString()} QTLS</h4>
+                          <span className="text-[10px] text-gray-400 dark:text-red-300/60 font-bold">Confidence interval: {bi.forecast.expectedQuantityConfidence[0]} - {bi.forecast.expectedQuantityConfidence[1]} QTLS</span>
                         </div>
 
                         {/* Expected Rate */}
-                        <div className="p-3.5 bg-slate-50 dark:bg-[#181818] rounded-2xl border border-slate-100 dark:border-amber-500/20 space-y-1">
-                          <span className="text-[9px] font-black text-gray-400 dark:text-amber-400/80 uppercase">Projected Weighted Rate</span>
-                          <h4 className="text-base font-black text-gray-900 dark:text-amber-100">₹{formatINR(bi.forecast.expectedRate)} / QTL</h4>
-                          <span className="text-[10px] text-gray-400 dark:text-amber-300/60 font-bold">Confidence interval: ₹{bi.forecast.expectedRateConfidence[0]} - ₹{bi.forecast.expectedRateConfidence[1]}</span>
+                        <div className="p-3.5 bg-slate-50 dark:bg-[#18181b] rounded-2xl border border-slate-100 dark:border-white/10 space-y-1">
+                          <span className="text-[9px] font-black text-gray-400 dark:text-zinc-400 uppercase">Projected Weighted Rate</span>
+                          <h4 className="text-base font-black text-gray-900 dark:text-zinc-100">₹{formatINR(bi.forecast.expectedRate)} / QTL</h4>
+                          <span className="text-[10px] text-gray-400 dark:text-red-300/60 font-bold">Confidence interval: ₹{bi.forecast.expectedRateConfidence[0]} - ₹{bi.forecast.expectedRateConfidence[1]}</span>
                         </div>
                       </div>
                     </div>
                   </div>
 
                   {/* RISK MONITOR PANEL */}
-                  <div className="bg-white dark:bg-[#121212] rounded-3xl border border-gray-200 dark:border-amber-500/20 p-6 shadow-sm space-y-4">
+                  <div className="bg-white dark:bg-[#121214] rounded-3xl border border-gray-200 dark:border-white/10 p-6 shadow-sm space-y-4">
                     <div className="flex items-center gap-2">
                       <ShieldAlert className="w-5 h-5 text-red-600 dark:text-rose-400 animate-pulse" />
-                      <h3 className="text-base font-black text-gray-950 dark:text-amber-100 uppercase tracking-tight">Active Enterprise Risk Radar</h3>
+                      <h3 className="text-base font-black text-gray-950 dark:text-zinc-100 uppercase tracking-tight">Active Enterprise Risk Radar</h3>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                       {/* Risk 1 */}
                       <div className="p-4 bg-rose-50/20 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/40 rounded-2xl space-y-3">
                         <span className="text-[9px] font-black uppercase text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950 px-2 py-0.5 rounded border border-rose-200 dark:border-rose-800">Payment default risk</span>
-                        <h4 className="text-xs font-black text-gray-900 dark:text-amber-100">High Credit Aging Delay Detected</h4>
-                        <p className="text-[11px] text-gray-500 dark:text-amber-200/70 font-semibold leading-relaxed">
+                        <h4 className="text-xs font-black text-gray-900 dark:text-zinc-100">High Credit Aging Delay Detected</h4>
+                        <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold leading-relaxed">
                           Consolidated cash flow shows that slow paying counterparties are average delaying payment dates to {bi.avgPaymentCollectionTime} days. This puts operational capital at risk.
                         </p>
-                        <p className="text-[10px] text-[#93000b] dark:text-amber-400 italic font-semibold pt-1 border-t border-rose-100 dark:border-rose-900/30">
+                        <p className="text-[10px] text-[#dc2626] dark:text-red-400 italic font-semibold pt-1 border-t border-rose-100 dark:border-rose-900/30">
                           Rec: Set maximum credit limits at 30 days and enforce check payments.
                         </p>
                       </div>
 
                       {/* Risk 2 */}
                       <div className="p-4 bg-amber-50/20 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-2xl space-y-3">
-                        <span className="text-[9px] font-black uppercase text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950 px-2 py-0.5 rounded border border-amber-200 dark:border-amber-800">Revenue Concentration Risk</span>
-                        <h4 className="text-xs font-black text-gray-900 dark:text-amber-100">Single Brand Domination Warning</h4>
-                        <p className="text-[11px] text-gray-500 dark:text-amber-200/70 font-semibold leading-relaxed">
+                        <span className="text-[9px] font-black uppercase text-amber-700 dark:text-red-300 bg-amber-50 dark:bg-amber-950 px-2 py-0.5 rounded border border-amber-200 dark:border-amber-800">Revenue Concentration Risk</span>
+                        <h4 className="text-xs font-black text-gray-900 dark:text-zinc-100">Single Brand Domination Warning</h4>
+                        <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold leading-relaxed">
                           {bi.brandSales[0]?.name || 'KK Brand'} catalog accounts for {bi.brandSales[0]?.pct || 40}% of net procurement revenue, creating heavy reliance on single miller dispatches.
                         </p>
-                        <p className="text-[10px] text-[#93000b] dark:text-amber-400 italic font-semibold pt-1 border-t border-amber-100 dark:border-amber-900/30">
+                        <p className="text-[10px] text-[#dc2626] dark:text-red-400 italic font-semibold pt-1 border-t border-amber-100 dark:border-amber-900/30">
                           Rec: Increase canvassing efforts for HMT Sona and Royal Basmati catalogs.
                         </p>
                       </div>
 
                       {/* Risk 3 */}
-                      <div className="p-4 bg-slate-50 dark:bg-[#181818] border border-slate-200 dark:border-amber-500/20 rounded-2xl space-y-3">
-                        <span className="text-[9px] font-black uppercase text-gray-700 dark:text-amber-300 bg-slate-100 dark:bg-amber-500/10 px-2 py-0.5 rounded border border-slate-300 dark:border-amber-500/20">Price Volatility Risk</span>
-                        <h4 className="text-xs font-black text-gray-900 dark:text-amber-100">Regional Rate Corridor Spread Wide</h4>
-                        <p className="text-[11px] text-gray-500 dark:text-amber-200/70 font-semibold leading-relaxed">
+                      <div className="p-4 bg-slate-50 dark:bg-[#18181b] border border-slate-200 dark:border-white/10 rounded-2xl space-y-3">
+                        <span className="text-[9px] font-black uppercase text-gray-700 dark:text-red-300 bg-slate-100 dark:bg-red-500/10 px-2 py-0.5 rounded border border-slate-300 dark:border-white/10">Price Volatility Risk</span>
+                        <h4 className="text-xs font-black text-gray-900 dark:text-zinc-100">Regional Rate Corridor Spread Wide</h4>
+                        <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold leading-relaxed">
                           Rate corridor spreads span up to ₹{bi.priceVolatility} per QTL between northern Gondia millers and local Nagpur warehouses, compressing net broker margins.
                         </p>
-                        <p className="text-[10px] text-gray-600 dark:text-amber-300 italic font-semibold pt-1 border-t border-slate-200 dark:border-amber-500/20">
+                        <p className="text-[10px] text-gray-600 dark:text-red-300 italic font-semibold pt-1 border-t border-slate-200 dark:border-white/10">
                           Rec: Establish forward dispatch rate locking with key suppliers.
                         </p>
                       </div>

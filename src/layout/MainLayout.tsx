@@ -850,7 +850,7 @@ function MainLayoutContent({ onSearchClick }: { onSearchClick: () => void }) {
     <div 
       data-admin-portal="true" 
       className={cn(
-        "bg-[#fbfbfa] dark:bg-[#07110c] text-slate-900 dark:text-slate-100 admin-font font-sf antialiased relative selection:bg-amber-500/20 selection:text-amber-900 dark:selection:text-amber-300",
+        "bg-[#f8fafc] dark:bg-[#09090b] text-slate-900 dark:text-slate-100 admin-font font-sf antialiased relative selection:bg-red-500/20 selection:text-red-900 dark:selection:text-red-300",
         location.pathname === '/arrival-entry' 
           ? "h-screen max-h-screen overflow-hidden flex flex-col" 
           : "min-h-screen"
@@ -858,8 +858,8 @@ function MainLayoutContent({ onSearchClick }: { onSearchClick: () => void }) {
     >
       {/* Subtle Ambient Translucent Glow for Light & Dark Mode Depth */}
       <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
-        <div className="absolute -top-40 -right-40 w-[600px] h-[600px] rounded-full bg-gradient-to-br from-amber-400/10 to-emerald-400/5 dark:from-amber-400/5 dark:to-emerald-500/5 blur-3xl opacity-70" />
-        <div className="absolute top-1/3 -left-40 w-[500px] h-[500px] rounded-full bg-gradient-to-tr from-emerald-500/8 to-amber-300/5 dark:from-emerald-500/5 dark:to-transparent blur-3xl opacity-60" />
+        <div className="absolute -top-40 -right-40 w-[600px] h-[600px] rounded-full bg-gradient-to-br from-red-500/8 via-slate-500/5 to-transparent dark:from-red-600/10 dark:via-zinc-800/10 dark:to-transparent blur-3xl opacity-60" />
+        <div className="absolute top-1/3 -left-40 w-[500px] h-[500px] rounded-full bg-gradient-to-tr from-slate-500/5 via-red-500/5 to-transparent dark:from-zinc-800/10 dark:via-red-950/20 dark:to-transparent blur-3xl opacity-50" />
       </div>
 
       <Sidebar isCollapsed={isSidebarCollapsed} setIsCollapsed={handleToggleSidebar} />

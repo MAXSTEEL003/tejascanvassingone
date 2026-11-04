@@ -90,7 +90,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
 
   return (
     <aside className={cn(
-      "border-r border-slate-200/80 dark:border-white/10 bg-white/75 dark:bg-[#07130d]/80 backdrop-blur-2xl shadow-[4px_0_24px_rgba(0,0,0,0.02)] flex flex-col h-full py-4 fixed left-0 top-0 bottom-0 transition-all duration-300 admin-font font-sf",
+      "border-r border-slate-200/80 dark:border-white/10 bg-white/75 dark:bg-[#0c0d0e]/90 backdrop-blur-2xl shadow-[4px_0_24px_rgba(0,0,0,0.02)] flex flex-col h-full py-4 fixed left-0 top-0 bottom-0 transition-all duration-300 admin-font font-sf",
       "z-50 md:translate-x-0",
       "max-md:z-[60] max-md:w-64",
       isCollapsed ? "max-md:-translate-x-full w-20" : "max-md:translate-x-0 w-64"
@@ -98,7 +98,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
       {/* Floating Collapse Toggle */}
       <button
         onClick={() => setIsCollapsed(!isCollapsed)}
-        className="absolute top-6 -right-3 w-6 h-6 rounded-full bg-white dark:bg-surface-container-high border border-slate-200 dark:border-outline-variant shadow-md hidden md:flex items-center justify-center text-slate-500 hover:text-amber-600 dark:text-secondary dark:hover:text-primary transition-all hover:scale-110 z-50 cursor-pointer"
+        className="absolute top-6 -right-3 w-6 h-6 rounded-full bg-white dark:bg-surface-container-high border border-slate-200 dark:border-outline-variant shadow-md hidden md:flex items-center justify-center text-slate-500 hover:text-red-600 dark:text-secondary dark:hover:text-primary transition-all hover:scale-110 z-50 cursor-pointer"
         title={isCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
       >
         {isCollapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}
@@ -121,8 +121,8 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
         </div>
         {!isCollapsed && (
           <div className="whitespace-nowrap transition-all duration-300">
-            <h2 className="text-base font-bold text-slate-900 dark:text-primary tracking-tight leading-tight">Tejas Canvassing</h2>
-            <p className="text-[10px] uppercase tracking-widest text-slate-500 dark:text-secondary font-bold">MGMT</p>
+            <h2 className="text-base font-bold text-slate-900 dark:text-white tracking-tight leading-tight">Tejas Canvassing</h2>
+            <p className="text-[10px] uppercase tracking-widest text-red-600 dark:text-red-400 font-bold">MGMT</p>
           </div>
         )}
       </div>
@@ -144,7 +144,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
                 "btn-tactile flex items-center rounded-xl transition-all duration-200 relative group overflow-hidden text-xs font-semibold cursor-pointer",
                 isCollapsed ? "justify-center px-0 py-3" : "gap-3 px-3.5 py-2.5",
                 isItemActive(item.path, isActive)
-                  ? "bg-amber-500/15 text-amber-900 dark:text-amber-400 font-bold border border-amber-500/30 shadow-sm nav-active-glow" 
+                  ? "bg-red-500/10 text-red-700 dark:text-red-400 font-bold border border-red-500/25 shadow-sm nav-active-glow" 
                   : "text-slate-600 dark:text-secondary hover:bg-slate-100/80 dark:hover:bg-white/[0.05] hover:text-slate-900 dark:hover:text-on-surface"
               )}
             >

@@ -454,7 +454,7 @@ export default function PattiBookView() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50/70 dark:bg-[#07130d] text-slate-900 dark:text-slate-100 p-3 sm:p-6 lg:p-8 space-y-6 admin-font font-sf">
+    <div className="min-h-screen bg-slate-50/70 dark:bg-[#09090b] text-slate-900 dark:text-slate-100 p-3 sm:p-6 lg:p-8 space-y-6 admin-font font-sf">
       {/* Feedback Alert Toast */}
       <AnimatePresence>
         {exportSuccessMessage && (
@@ -773,7 +773,7 @@ export default function PattiBookView() {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search by Miller, Party, Bill No, Cheque No..."
-                  className="w-full pl-10 pr-4 py-2 rounded-xl text-xs border border-slate-200 dark:border-white/10 bg-slate-50/50 dark:bg-white/[0.03] outline-none focus:border-amber-500"
+                  className="w-full pl-10 pr-4 py-2 rounded-xl text-xs border border-slate-200 dark:border-white/10 bg-slate-50/50 dark:bg-white/[0.03] outline-none focus:border-red-500"
                 />
                 {searchQuery && (
                   <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer">
@@ -787,7 +787,7 @@ export default function PattiBookView() {
                 <select
                   value={selectedMiller}
                   onChange={(e) => setSelectedMiller(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl text-xs border border-slate-200 dark:border-white/10 bg-slate-50/50 dark:bg-[#07130d] outline-none focus:border-amber-500 font-semibold cursor-pointer"
+                  className="w-full px-3 py-2 rounded-xl text-xs border border-slate-200 dark:border-white/10 bg-slate-50/50 dark:bg-[#09090b] outline-none focus:border-red-500 font-semibold cursor-pointer"
                 >
                   <option value="all">All Millers ({uniqueMillers.length})</option>
                   {uniqueMillers.map((m) => (
@@ -801,7 +801,7 @@ export default function PattiBookView() {
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value as any)}
-                  className="w-full px-3 py-2 rounded-xl text-xs border border-slate-200 dark:border-white/10 bg-slate-50/50 dark:bg-[#07130d] outline-none focus:border-amber-500 font-semibold cursor-pointer"
+                  className="w-full px-3 py-2 rounded-xl text-xs border border-slate-200 dark:border-white/10 bg-slate-50/50 dark:bg-[#09090b] outline-none focus:border-red-500 font-semibold cursor-pointer"
                 >
                   <option value="all">All Statuses</option>
                   <option value="pending">Awaiting Export</option>
@@ -814,7 +814,7 @@ export default function PattiBookView() {
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value as any)}
-                  className="w-full px-3 py-2 rounded-xl text-xs border border-slate-200 dark:border-white/10 bg-slate-50/50 dark:bg-[#07130d] outline-none focus:border-amber-500 font-semibold cursor-pointer"
+                  className="w-full px-3 py-2 rounded-xl text-xs border border-slate-200 dark:border-white/10 bg-slate-50/50 dark:bg-[#09090b] outline-none focus:border-red-500 font-semibold cursor-pointer"
                 >
                   <option value="miller_asc">Miller (A to Z)</option>
                   <option value="miller_desc">Miller (Z to A)</option>
@@ -1138,7 +1138,7 @@ export default function PattiBookView() {
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white dark:bg-[#07130d] border border-slate-200 dark:border-white/10 rounded-3xl w-full max-w-5xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden"
+              className="bg-white dark:bg-[#09090b] border border-slate-200 dark:border-white/10 rounded-3xl w-full max-w-5xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden"
             >
               {/* Modal Header */}
               <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-white/10 flex flex-col md:flex-row md:items-center justify-between gap-4">

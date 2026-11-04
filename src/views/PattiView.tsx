@@ -214,14 +214,14 @@ export default function PattiView() {
       border: 'border-neutral-300 dark:border-neutral-800',
       textMain: 'text-neutral-900 dark:text-neutral-100',
       labelBg: 'bg-neutral-100 dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400',
-      primaryText: 'text-amber-600 dark:text-amber-400',
+      primaryText: 'text-red-600 dark:text-red-400',
       netBg: 'bg-emerald-500/[0.04] text-emerald-600 dark:text-emerald-400 font-black',
       dedBg: 'bg-rose-500/[0.03] text-rose-600 dark:text-rose-400 font-bold',
       accentBg: 'bg-blue-500/[0.02] text-blue-600 dark:text-blue-400',
       borderExact: '#d4d4d4',
       badgeBorder: 'border-emerald-500/25',
       badgeText: 'text-emerald-600',
-      logoBg: 'bg-gradient-to-br from-amber-500 to-amber-600 text-white'
+      logoBg: 'bg-gradient-to-br from-red-600 to-red-700 text-white'
     },
     sapphire: {
       border: 'border-slate-300 dark:border-slate-800',
@@ -764,7 +764,7 @@ Generated via TEJAS CANVASSING Terminal.`;
                 if (classList.contains('text-sky-600') || classList.contains('text-sky-500')) clonedNode.style.color = '#0284c7';
                 if (classList.contains('text-blue-600') || classList.contains('text-blue-500')) clonedNode.style.color = '#2563eb';
                 if (classList.contains('text-indigo-600')) clonedNode.style.color = '#4f46e5';
-                if (classList.contains('text-amber-600') || classList.contains('text-amber-500')) clonedNode.style.color = '#d97706';
+                if (classList.contains('text-red-600') || classList.contains('text-red-500') || classList.contains('text-amber-600')) clonedNode.style.color = '#dc2626';
                 
                 if (classList.contains('bg-rose-500/[0.03]') || classList.contains('bg-rose-50')) {
                   clonedNode.style.backgroundColor = '#fff1f2';
@@ -1233,7 +1233,7 @@ Generated via TEJAS CANVASSING Terminal.`;
         {/* Ribbon */}
         <div className="flex justify-between items-center mb-4 text-left">
           <div className="flex items-center gap-2">
-            <span className={cn("w-2.5 h-2.5 rounded-full animate-pulse", printColorMode === 'mono' ? 'bg-black' : 'bg-amber-500')} />
+            <span className={cn("w-2.5 h-2.5 rounded-full animate-pulse", printColorMode === 'mono' ? 'bg-black' : 'bg-red-600')} />
             <span className={cn("text-[9px] font-black tracking-widest uppercase", colors.primaryText)}>
               Physical Patti verification statement & weightment ledger
             </span>
@@ -1557,7 +1557,7 @@ Generated via TEJAS CANVASSING Terminal.`;
               "fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-6 py-3.5 rounded-2xl shadow-2xl border text-xs sm:text-sm font-black backdrop-blur-xl select-none",
               copyNotification.type === 'success' 
                 ? "bg-neutral-900/95 dark:bg-neutral-100/95 text-white dark:text-neutral-900 border-emerald-500/50 shadow-emerald-500/20"
-                : "bg-neutral-900/95 dark:bg-neutral-100/95 text-white dark:text-neutral-900 border-amber-500/50 shadow-amber-500/20"
+                : "bg-neutral-900/95 dark:bg-neutral-100/95 text-white dark:text-neutral-900 border-red-500/50 shadow-red-500/20"
             )}
           >
             <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />

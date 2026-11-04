@@ -84,8 +84,8 @@ export default function RoleSwitcher({ className }: { className?: string }) {
       label: 'Admin (Broker/Owner)',
       sub: 'Full Dashboard, Ledgers & Approvals (No Store)',
       icon: Briefcase,
-      color: 'text-amber-700 dark:text-amber-400',
-      bgColor: 'bg-amber-500/10'
+      color: 'text-red-700 dark:text-red-400',
+      bgColor: 'bg-red-500/10'
     },
     {
       id: 'employee',
@@ -110,7 +110,7 @@ export default function RoleSwitcher({ className }: { className?: string }) {
             ? "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500/25 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100/50"
             : role === 'employee'
             ? "bg-blue-50 dark:bg-blue-950/40 border-blue-500/25 text-blue-800 dark:text-blue-300 hover:bg-blue-100/50"
-            : "bg-amber-50 dark:bg-amber-950/40 border-amber-500/25 text-amber-800 dark:text-amber-300 hover:bg-amber-100/50"
+            : "bg-red-50 dark:bg-red-950/40 border-red-500/25 text-red-800 dark:text-red-300 hover:bg-red-100/50"
         )}
         title="Switch user role"
       >
@@ -134,7 +134,7 @@ export default function RoleSwitcher({ className }: { className?: string }) {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 6, scale: 0.96 }}
               transition={{ duration: 0.15 }}
-              className="absolute right-0 mt-2 w-[min(18rem,calc(100vw-2rem))] rounded-2xl bg-white dark:bg-[#151310] border border-amber-900/15 dark:border-amber-950/40 shadow-2xl z-50 p-2 text-stone-900 dark:text-stone-100"
+              className="absolute right-0 mt-2 w-[min(18rem,calc(100vw-2rem))] rounded-2xl bg-white dark:bg-[#121214] border border-slate-200 dark:border-white/10 shadow-2xl z-50 p-2 text-stone-900 dark:text-stone-100"
             >
               <div className="px-3 py-2 border-b border-stone-100 dark:border-stone-800">
                 <p className="text-[10px] font-black uppercase tracking-widest text-stone-400 dark:text-stone-500">
