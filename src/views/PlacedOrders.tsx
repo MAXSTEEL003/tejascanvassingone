@@ -44,7 +44,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { cn, formatINR, getRegisteredSuppliers, sanitizeSupplierName, getDeletedPlacedOrderIds, addDeletedPlacedOrderIds, removeDeletedPlacedOrderId, addDeletedProcurementIds, resolveBuyerProfile } from '../lib/utils';
+import { cn, formatINR, getRegisteredSuppliers, sanitizeSupplierName, getDeletedPlacedOrderIds, addDeletedPlacedOrderIds, removeDeletedPlacedOrderId, addDeletedProcurementIds, resolveBuyerProfile as resolveActiveBuyerProfile } from '../lib/utils';
 import { getCollectionDocs, setCollectionDoc, deleteCollectionDoc, markLedgerEntriesAsArrived, autoCreateArrivalEntryForIncomingLog, updateLedgersForLifting, db } from '../lib/firebase';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { verifyActionWithServer } from '../lib/auth';
@@ -1055,7 +1055,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
     const normEmail = (merchantEmail || '').trim().toLowerCase();
     const normUid = (merchantUserId || '').trim().toLowerCase();
 
-    const activeBuyer = resolveBuyerProfile();
+    const activeBuyer = resolveActiveBuyerProfile();
     const activeBuyerName = (activeBuyer?.name || '').trim().toLowerCase();
     const activeBuyerUser = (activeBuyer?.username || '').trim().toLowerCase();
     const activeBuyerPhone = (activeBuyer?.phone || localStorage.getItem('userPhone') || '').replace(/\D/g, '');
