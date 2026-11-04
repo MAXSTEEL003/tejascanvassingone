@@ -42,7 +42,7 @@ export default function LedgerManagement() {
       if (cached) {
         const arr = JSON.parse(cached);
         if (Array.isArray(arr)) {
-          return arr.filter((o: any) => !isDateBeforeNov3(o?.dateTimestamp || o?.date));
+          return arr;
         }
       }
     } catch {}
@@ -53,7 +53,7 @@ export default function LedgerManagement() {
       const cached = localStorage.getItem('cached_operational_orders');
       if (cached) {
         const arr = JSON.parse(cached);
-        if (Array.isArray(arr) && arr.filter((o: any) => !isDateBeforeNov3(o?.dateTimestamp || o?.date)).length > 0) return false;
+        if (Array.isArray(arr) && arr.length > 0) return false;
       }
     } catch {}
     return true;
@@ -98,8 +98,6 @@ export default function LedgerManagement() {
   };
 
   useEffect(() => {
-    // Purge legacy pre-Nov 3 orders once silently in background
-    purgeRecordsBeforeNov3().catch(() => {});
     loadOrdersData(true);
   }, []);
 

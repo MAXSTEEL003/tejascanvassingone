@@ -105,36 +105,33 @@ export default function BuyerLedgerModal({
         const combinedOrders = [...localRequests, ...cloudRequests, ...localPlaced, ...cloudPlaced];
         const uniqueOrders = Array.from(new Map(combinedOrders.filter(o => o && o.id && !isDeleted(o.id) && !isDeleted(o.purchaseOrderNo)).map(item => [item.id, item])).values());
 
-        merchantOrders = uniqueOrders.filter(o => {
-          if (!o) return false;
+        merchantOrders = uniqueOrders.flatMap(o => {
+          if (!o) return [];
           const directMatch = o.buyer && String(o.buyer).trim().toUpperCase() === normBuyer;
-          if (directMatch) return true;
           if (o.originalOrders && Array.isArray(o.originalOrders)) {
-            return o.originalOrders.some((sub: any) => sub && sub.buyer && String(sub.buyer).trim().toUpperCase() === normBuyer);
-          }
-          return false;
-        }).map(o => {
-          // If this is a grouped order with suborders, extract suborder details for this buyer
-          if (o.originalOrders && Array.isArray(o.originalOrders)) {
-            const sub = o.originalOrders.find((s: any) => s && s.buyer && String(s.buyer).trim().toUpperCase() === normBuyer);
-            if (sub) {
-              return {
+            const matchingSubs = o.originalOrders.filter((sub: any) => sub && sub.buyer && String(sub.buyer).trim().toUpperCase() === normBuyer);
+            if (matchingSubs.length > 0) {
+              return matchingSubs.map((sub: any, sIdx: number) => ({
                 ...o,
-                id: sub.id || o.id,
-                qty: Number(sub.qty || o.qty || 0),
+                id: sub.id || `${o.id}-sub-${sIdx}`,
+                subOrderId: sub.supplierSubOrderNo || sub.orderNo || sub.subOrderId,
+                qty: Number(sub.qty || 0),
                 rate: Number(sub.rate || o.rate || 0),
                 product: sub.product || sub.brand || o.product || o.brand || 'Premium Rice',
                 supplier: sub.supplier || o.supplier || 'Direct Mill'
-              };
+              }));
             }
           }
-          return {
-            ...o,
-            qty: Number(o.qty || 0),
-            rate: Number(o.rate || 0),
-            product: o.product || o.brand || o.items || 'Premium Rice',
-            supplier: o.supplier || 'Direct Mill'
-          };
+          if (directMatch) {
+            return [{
+              ...o,
+              qty: Number(o.qty || 0),
+              rate: Number(o.rate || 0),
+              product: o.product || o.brand || o.items || 'Premium Rice',
+              supplier: o.supplier || 'Direct Mill'
+            }];
+          }
+          return [];
         });
       } catch (e) {
         console.warn("Failed to load orders for buyer history:", e);
@@ -191,46 +188,55 @@ export default function BuyerLedgerModal({
           };
         });
 
-        // Also include trade orders from placed_orders for this buyer that haven't arrived yet (strictly on or after Nov 3)
-        const tradeOrders = uniquePlaced.filter(p => {
-          if (!p) return false;
-          if (isDateBeforeNov3(p.date || p.purchaseOrderSentAt || p.createdAt)) return false;
+        // Also include trade orders from placed_orders for this buyer that haven't arrived yet
+        const tradeOrders = uniquePlaced.flatMap(p => {
+          if (!p) return [];
           const directMatch = p.buyer && String(p.buyer).trim().toUpperCase() === normBuyer;
-          if (directMatch) return true;
           if (p.originalOrders && Array.isArray(p.originalOrders)) {
-            return p.originalOrders.some((sub: any) => sub && sub.buyer && String(sub.buyer).trim().toUpperCase() === normBuyer);
-          }
-          return false;
-        }).map((p, idx) => {
-          let pQty = Number(p.qty || 0);
-          let pRate = Number(p.rate || 0);
-          let pProduct = p.product || p.brand || 'Premium Rice';
-          let pId = p.id;
+            const matchingSubs = p.originalOrders.filter((sub: any) => sub && sub.buyer && String(sub.buyer).trim().toUpperCase() === normBuyer);
+            if (matchingSubs.length > 0) {
+              return matchingSubs.map((sub: any, sIdx: number) => {
+                const pQty = Number(sub.qty || 0);
+                const pRate = Number(sub.rate || p.rate || 0);
+                const pProduct = sub.product || sub.brand || p.product || p.brand || 'Premium Rice';
+                const pId = sub.id ? `${p.id} (${sub.id})` : `${p.id}-${sIdx + 1}`;
+                const isCleared = p.paymentStatus === 'Received' || p.paymentStatus === 'Settled' || p.status === 'Settled';
+                const calculatedNet = pQty * pRate;
 
-          if (p.originalOrders && Array.isArray(p.originalOrders)) {
-            const sub = p.originalOrders.find((s: any) => s && s.buyer && String(s.buyer).trim().toUpperCase() === normBuyer);
-            if (sub) {
-              pQty = Number(sub.qty || pQty);
-              pRate = Number(sub.rate || pRate);
-              pProduct = sub.product || sub.brand || pProduct;
-              if (sub.id) pId = `${p.id} (${sub.id})`;
+                return {
+                  id: pId,
+                  date: sub.date || p.date || p.purchaseOrderSentAt || 'Recent',
+                  product: pProduct,
+                  qty: pQty,
+                  rate: pRate,
+                  amount: calculatedNet,
+                  status: isCleared ? 'Cleared' : 'Pending Settlement',
+                  type: 'Trade Order',
+                  daysOld: 0
+                };
+              });
             }
           }
+          if (directMatch) {
+            const pQty = Number(p.qty || 0);
+            const pRate = Number(p.rate || 0);
+            const pProduct = p.product || p.brand || 'Premium Rice';
+            const isCleared = p.paymentStatus === 'Received' || p.paymentStatus === 'Settled' || p.status === 'Settled';
+            const calculatedNet = pQty * pRate;
 
-          const isCleared = p.paymentStatus === 'Received' || p.paymentStatus === 'Settled' || p.status === 'Settled';
-          const calculatedNet = pQty * pRate;
-
-          return {
-            id: pId,
-            date: p.date || p.purchaseOrderSentAt || 'Recent',
-            product: pProduct,
-            qty: pQty,
-            rate: pRate,
-            amount: calculatedNet,
-            status: isCleared ? 'Cleared' : 'Pending Settlement',
-            type: 'Trade Order',
-            daysOld: 0
-          };
+            return [{
+              id: p.id,
+              date: p.date || p.purchaseOrderSentAt || 'Recent',
+              product: pProduct,
+              qty: pQty,
+              rate: pRate,
+              amount: calculatedNet,
+              status: isCleared ? 'Cleared' : 'Pending Settlement',
+              type: 'Trade Order',
+              daysOld: 0
+            }];
+          }
+          return [];
         });
 
         merchantPaymentsList = [...tradeOrders, ...arrivalEntries];

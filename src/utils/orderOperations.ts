@@ -185,10 +185,9 @@ export const CUTOFF_NOV_3_2026 = new Date(2026, 10, 3, 0, 0, 0, 0).getTime();
 /**
  * Checks if a date is strictly before November 3, 2026
  */
-export function isDateBeforeNov3(val: any): boolean {
-  if (!val) return false;
-  const parsed = parseOperationalDate(val);
-  return parsed.timestamp < CUTOFF_NOV_3_2026;
+export function isDateBeforeNov3(_val: any): boolean {
+  // Deprecated: Never filter or hide valid user orders/ledgers by date
+  return false;
 }
 
 /**
@@ -687,83 +686,8 @@ let hasPurgedNov3 = false;
  * Purges all orders and ledger records dated before November 3, 2026 across LocalStorage and Cloud Firestore
  */
 export async function purgeRecordsBeforeNov3(): Promise<void> {
-  if (isPurgingNov3 || hasPurgedNov3) return;
-  isPurgingNov3 = true;
-  try {
-    // 1. Clean localStorage 'ledgers'
-    try {
-      const rawLedgers = localStorage.getItem('ledgers');
-      if (rawLedgers) {
-        const ledgers = JSON.parse(rawLedgers);
-        if (Array.isArray(ledgers)) {
-          const remaining = ledgers.filter((l: any) => !isDateBeforeNov3(l?.date));
-          localStorage.setItem('ledgers', JSON.stringify(remaining));
-        }
-      }
-    } catch (e) {}
-
-    // 2. Clean localStorage 'cached_operational_orders'
-    try {
-      const cached = localStorage.getItem('cached_operational_orders');
-      if (cached) {
-        const all: any[] = JSON.parse(cached);
-        if (Array.isArray(all)) {
-          const remaining = all.filter((po: any) => !isDateBeforeNov3(po?.dateTimestamp || po?.date));
-          localStorage.setItem('cached_operational_orders', JSON.stringify(remaining));
-        }
-      }
-    } catch (e) {}
-
-    // 3. Clean localStorage 'placed_orders'
-    try {
-      const rawPlaced = localStorage.getItem('placed_orders');
-      if (rawPlaced) {
-        const placed = JSON.parse(rawPlaced);
-        if (Array.isArray(placed)) {
-          const remaining = placed.filter((p: any) => !isDateBeforeNov3(p?.date || p?.purchaseOrderSentAt || p?.createdAt));
-          localStorage.setItem('placed_orders', JSON.stringify(remaining));
-        }
-      }
-    } catch (e) {}
-
-    // 4. Invalidate memory cache
-    invalidateOperationalOrdersCache();
-
-    // 5. Clean Firestore 'ledgers' and 'placed_orders' in background
-    try {
-      const cloudLedgers = await getCollectionDocs('ledgers').catch(() => []);
-      if (Array.isArray(cloudLedgers) && cloudLedgers.length > 0) {
-        const deletePromises: Promise<any>[] = [];
-        cloudLedgers.forEach((l: any) => {
-          if (l?.id && isDateBeforeNov3(l.date)) {
-            deletePromises.push(deleteCollectionDoc('ledgers', l.id).catch(() => {}));
-          }
-        });
-        if (deletePromises.length > 0) await Promise.allSettled(deletePromises);
-      }
-    } catch (e) {}
-
-    try {
-      const cloudPlaced = await getCollectionDocs('placed_orders').catch(() => []);
-      if (Array.isArray(cloudPlaced) && cloudPlaced.length > 0) {
-        const deletePromises: Promise<any>[] = [];
-        cloudPlaced.forEach((p: any) => {
-          if (p?.id && isDateBeforeNov3(p.date || p.purchaseOrderSentAt || p.createdAt)) {
-            deletePromises.push(deleteCollectionDoc('placed_orders', p.id).catch(() => {}));
-          }
-        });
-        if (deletePromises.length > 0) await Promise.allSettled(deletePromises);
-      }
-    } catch (e) {}
-
-    hasPurgedNov3 = true;
-    // NOTE: Intentionally do NOT dispatch operational-orders-updated or ledgers-updated here,
-    // to avoid triggering recursive infinite event loops with open views.
-  } catch (err) {
-    console.warn('Error during purgeRecordsBeforeNov3:', err);
-  } finally {
-    isPurgingNov3 = false;
-  }
+  // Deprecated: No-op to prevent deleting legitimate orders or ledger records
+  return;
 }
 
 let operationalOrdersMemCache: { data: OperationalPO[]; timestamp: number } | null = null;
@@ -1055,11 +979,11 @@ export async function fetchOperationalOrders(forceFresh = false): Promise<Operat
           // Confidential Grouped PO reference (e.g. TC-K8M492)
           const poNumber = resolveGroupedPoNumber(ord);
 
-          const rowKey = `${normParentPo}_${normSubId}`;
+          const subUniqueRef = String(sub.id || sub.subOrderId || sub.subOrderNo || sub.orderNo || `${normSubId}_${sIdx}`).trim().toUpperCase();
+          const rowKey = `${normParentPo}_${subUniqueRef}`;
 
-          if (processedPoKeys.has(rowKey) || (normSubId && processedPoKeys.has(normSubId) && ord.originalOrders.length > 1)) return;
+          if (processedPoKeys.has(rowKey)) return;
           processedPoKeys.add(rowKey);
-          if (normSubId) processedPoKeys.add(normSubId);
           if (normSubPo) processedPoKeys.add(normSubPo);
           if (poNumber) processedPoKeys.add(normalizePo(poNumber));
 
@@ -1087,7 +1011,7 @@ export async function fetchOperationalOrders(forceFresh = false): Promise<Operat
           }
 
           // Link Arrival Entry
-          const arrData = arrivedMap.get(normSubId) || arrivedMap.get(normParentPo) || { totalQty: 0, billNos: new Set(), rows: [] };
+          const arrData = arrivedMap.get(normSubId) || (subUniqueRef ? arrivedMap.get(normalizePo(subUniqueRef)) : null) || arrivedMap.get(normParentPo) || { totalQty: 0, billNos: new Set(), rows: [] };
           const arrivalQtl = arrData.totalQty;
           const difference = arrivalQtl - poQtl;
 
@@ -1256,17 +1180,15 @@ export async function fetchOperationalOrders(forceFresh = false): Promise<Operat
       const normSubId = po.subOrderId ? normalizePo(po.subOrderId) : '';
       const normBuyer = normalizeParty(po.buyer);
 
-      // Composite deduplication keys
-      const poBuyerKey = `${normPo}__${normBuyer}`;
-      const subBuyerKey = normSubId ? `${normSubId}__${normBuyer}` : '';
+      const normBrand = normalizeParty(po.brand);
+      // Unique deduplication key: preserves distinct suborders/brands for the same buyer while preventing exact duplicate rows
+      const uniqueKey = po.id || `${normPo}__${normSubId}__${normBuyer}__${normBrand}__${po.poQtl}`;
 
-      if (seenOrderKeys.has(poBuyerKey) || (subBuyerKey && seenOrderKeys.has(subBuyerKey))) {
-        // Skip duplicate row for the same order and buyer
+      if (seenOrderKeys.has(uniqueKey)) {
         continue;
       }
 
-      seenOrderKeys.add(poBuyerKey);
-      if (subBuyerKey) seenOrderKeys.add(subBuyerKey);
+      seenOrderKeys.add(uniqueKey);
       dedupedResults.push(po);
     }
 
