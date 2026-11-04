@@ -23,7 +23,6 @@ import {
   ChevronDown,
   ShoppingBag,
   SlidersHorizontal,
-  Share2,
   Filter
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -545,13 +544,6 @@ export default function StoreManagement() {
 
   const [qtyModalProduct, setQtyModalProduct] = useState<any | null>(null);
   const [modalQtyValue, setModalQtyValue] = useState<number>(10);
-  const [selectedProductDetails, setSelectedProductDetails] = useState<any | null>(null);
-  const [detailQtyValue, setDetailQtyValue] = useState<number>(25);
-
-  const openProductDetails = (product: any) => {
-    setSelectedProductDetails(product);
-    setDetailQtyValue(getProductQty(product.id) || 25);
-  };
 
   const getProductQty = (productId: string): number => {
     return productQuantities[productId] ?? 10;
@@ -1366,10 +1358,7 @@ export default function StoreManagement() {
                           Today&apos;s Featured Harvest
                         </span>
                       </div>
-                      <h3 
-                        onClick={() => openProductDetails(heroProd)}
-                        className="text-xs sm:text-sm font-black text-neutral-900 dark:text-white truncate cursor-pointer hover:text-[#C22424]"
-                      >
+                      <h3 className="text-xs sm:text-sm font-black text-neutral-900 dark:text-white truncate">
                         {heroProd.name}
                       </h3>
                       <p className="text-[10px] text-neutral-500 dark:text-neutral-400 truncate">
@@ -1385,13 +1374,6 @@ export default function StoreManagement() {
                   </div>
 
                   <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-                    <button
-                      type="button"
-                      onClick={() => openProductDetails(heroProd)}
-                      className="px-2.5 py-1 rounded-xl border border-neutral-300 dark:border-neutral-700 text-[10.5px] font-bold text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
-                    >
-                      Details
-                    </button>
                     {inCartItem ? (
                       <button
                         type="button"
@@ -1483,10 +1465,9 @@ export default function StoreManagement() {
                       key={product.id}
                       className="bg-white dark:bg-[#141414] rounded-xl sm:rounded-2xl border border-[#E5E7EB] dark:border-[#262626] shadow-2xs hover:shadow-xs transition-all duration-200 flex flex-col justify-between overflow-hidden relative group"
                     >
-                      {/* Top Image Graphic Area - Click to open product details */}
+                      {/* Top Image Graphic Area */}
                       <div 
-                        onClick={() => openProductDetails(product)}
-                        className="relative w-full aspect-[4/3] sm:aspect-square overflow-hidden bg-neutral-50 dark:bg-neutral-800/60 cursor-pointer flex items-center justify-center"
+                        className="relative w-full aspect-[4/3] sm:aspect-square overflow-hidden bg-neutral-50 dark:bg-neutral-800/60 flex items-center justify-center"
                       >
                         {/* Best Seller or Promo Pill Badge */}
                         {(product.promoBadge || product.isBestSeller) && (
@@ -1519,8 +1500,7 @@ export default function StoreManagement() {
                       <div className="p-2 sm:p-2.5 flex-1 flex flex-col justify-between space-y-1">
                         <div>
                           <h3 
-                            onClick={() => openProductDetails(product)}
-                            className="font-bold text-xs text-neutral-900 dark:text-white line-clamp-1 leading-snug cursor-pointer hover:text-[#C22424] transition-colors text-left"
+                            className="font-bold text-xs text-neutral-900 dark:text-white line-clamp-1 leading-snug text-left"
                             title={product.name}
                           >
                             {product.name}
@@ -1906,219 +1886,6 @@ export default function StoreManagement() {
             </motion.div>
           </div>
         )}
-
-        {/* ============================================================== */}
-        {/* SCREEN 3: PRODUCT DETAILS MODAL (Matching Reference Screen 3)   */}
-        {/* ============================================================== */}
-        <AnimatePresence>
-          {selectedProductDetails && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                onClick={() => setSelectedProductDetails(null)}
-                className="absolute inset-0 bg-black/60 backdrop-blur-xs cursor-pointer"
-              />
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95, y: 16 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: 16 }}
-                transition={{ type: "spring", stiffness: 350, damping: 28 }}
-                className="relative w-full max-w-md bg-white dark:bg-[#141414] border border-[#E5E7EB] dark:border-[#262626] rounded-3xl p-4 sm:p-5 shadow-2xl space-y-3.5 font-sans z-10 text-left max-h-[92vh] overflow-y-auto no-scrollbar"
-              >
-                {/* Modal Top Action Bar */}
-                <div className="flex items-center justify-between">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedProductDetails(null)}
-                    className="w-8 h-8 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 flex items-center justify-center hover:bg-neutral-200 transition-colors cursor-pointer"
-                    title="Back"
-                  >
-                    <ChevronLeft className="w-5 h-5" />
-                  </button>
-
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (navigator.share) {
-                          navigator.share({
-                            title: selectedProductDetails.name,
-                            text: `Wholesale Rice: ${selectedProductDetails.name} at ₹${selectedProductDetails.price || 3850}/QTL`,
-                            url: window.location.href,
-                          }).catch(() => {});
-                        } else {
-                          navigator.clipboard.writeText(window.location.href);
-                          alert('Product link copied to clipboard!');
-                        }
-                      }}
-                      className="w-8 h-8 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 flex items-center justify-center hover:bg-neutral-200 transition-colors cursor-pointer"
-                      title="Share product"
-                    >
-                      <Share2 className="w-4 h-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => toggleWishlist(selectedProductDetails.id)}
-                      className="w-8 h-8 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 flex items-center justify-center hover:bg-neutral-200 transition-colors cursor-pointer"
-                      title="Wishlist"
-                    >
-                      <Heart className={cn("w-4 h-4 transition-transform active:scale-125", wishlist.includes(selectedProductDetails.id) ? "fill-rose-500 text-rose-500" : "")} />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Hero Product Image with Carousel Dots */}
-                <div className="w-full flex flex-col items-center">
-                  <div className="w-full h-44 sm:h-52 rounded-2xl bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-200/80 dark:border-neutral-700 flex items-center justify-center overflow-hidden p-2 relative">
-                    <ProductCardMedia product={selectedProductDetails} />
-                  </div>
-                  {/* Dot Indicators */}
-                  <div className="flex items-center gap-1.5 mt-2">
-                    <span className="w-4 h-1.5 rounded-full bg-[#C22424]" />
-                    <span className="w-1.5 h-1.5 rounded-full bg-neutral-300 dark:bg-neutral-700" />
-                    <span className="w-1.5 h-1.5 rounded-full bg-neutral-300 dark:bg-neutral-700" />
-                  </div>
-                </div>
-
-                {/* Title & Pill Badge & Price */}
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <h2 className="text-base sm:text-lg font-black text-neutral-900 dark:text-white leading-tight">
-                      {selectedProductDetails.name}
-                    </h2>
-                    {(selectedProductDetails.promoBadge || selectedProductDetails.isBestSeller) && (
-                      <span className={cn(
-                        "text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0",
-                        selectedProductDetails.promoBadge ? "bg-amber-50 text-amber-700 border border-amber-200" : "bg-red-50 text-[#C22424] border border-red-200"
-                      )}>
-                        {selectedProductDetails.promoBadge || 'Best Seller'}
-                      </span>
-                    )}
-                  </div>
-
-                  <p className="text-xs text-neutral-500 dark:text-neutral-400 font-medium">
-                    {selectedProductDetails.variant ? `Grade A • ${selectedProductDetails.variant}` : selectedProductDetails.category || 'Sortex Milling'}
-                  </p>
-
-                  <div className="pt-1">
-                    <span className="text-base sm:text-lg font-black text-neutral-900 dark:text-white">
-                      ₹{formatINR(selectedProductDetails.price || 11200)}
-                    </span>
-                    <span className="text-xs text-neutral-500 dark:text-neutral-400 ml-1 font-medium">
-                      / QTL (100 kg)
-                    </span>
-                  </div>
-                </div>
-
-                {/* Specifications 2x2 Grid */}
-                <div className="space-y-1.5 pt-1">
-                  <h3 className="text-xs font-black uppercase tracking-wider text-neutral-900 dark:text-white">
-                    Specifications
-                  </h3>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div className="p-2.5 bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-200/80 dark:border-neutral-700 rounded-xl">
-                      <span className="text-[9.5px] uppercase font-bold text-neutral-400 block">Origin</span>
-                      <span className="font-bold text-neutral-900 dark:text-white mt-0.5 block">
-                        {selectedProductDetails.origin || 'Punjab / APMC Yard'}
-                      </span>
-                    </div>
-
-                    <div className="p-2.5 bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-200/80 dark:border-neutral-700 rounded-xl">
-                      <span className="text-[9.5px] uppercase font-bold text-neutral-400 block">Grain Length</span>
-                      <span className="font-bold text-neutral-900 dark:text-white mt-0.5 block">
-                        {selectedProductDetails.variant === 'basmati' ? '8.35 mm' : '6.40 mm'}
-                      </span>
-                    </div>
-
-                    <div className="p-2.5 bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-200/80 dark:border-neutral-700 rounded-xl">
-                      <span className="text-[9.5px] uppercase font-bold text-neutral-400 block">Purity</span>
-                      <span className="font-bold text-neutral-900 dark:text-white mt-0.5 block">
-                        95% Sortex Clean
-                      </span>
-                    </div>
-
-                    <div className="p-2.5 bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-200/80 dark:border-neutral-700 rounded-xl">
-                      <span className="text-[9.5px] uppercase font-bold text-neutral-400 block">Moisture</span>
-                      <span className="font-bold text-neutral-900 dark:text-white mt-0.5 block">
-                        &lt; 12% Max
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Description */}
-                <div className="space-y-1 pt-1">
-                  <h3 className="text-xs font-black uppercase tracking-wider text-neutral-900 dark:text-white">
-                    Description
-                  </h3>
-                  <p className="text-xs text-neutral-600 dark:text-neutral-300 leading-relaxed font-normal">
-                    {selectedProductDetails.about || "Premium aged 1121 Basmati Rice with exceptional grain elongation, exquisite aroma, and fluffy non-sticky texture after cooking. Sourced directly from verified milling hubs."}
-                  </p>
-                </div>
-
-                {/* Sticky Bottom Actions: Stepper and Red Add to Cart Button */}
-                <div className="pt-2 border-t border-neutral-200/80 dark:border-neutral-800 flex items-center gap-3">
-                  {/* Stepper with direct custom quantity input */}
-                  <div className="flex items-center bg-neutral-100 dark:bg-neutral-800 rounded-xl p-1 gap-1 border border-neutral-200 dark:border-neutral-700">
-                    <button
-                      type="button"
-                      onClick={() => setDetailQtyValue(prev => Math.max(1, prev - 1))}
-                      className="w-8 h-8 rounded-lg bg-white dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 font-black text-sm flex items-center justify-center hover:bg-neutral-50 active:scale-95 cursor-pointer shadow-xs select-none"
-                      title="Decrease by 1"
-                    >
-                      -
-                    </button>
-                    <div className="flex items-center px-1">
-                      <input
-                        type="number"
-                        min={1}
-                        max={99999}
-                        value={detailQtyValue}
-                        onFocus={(e) => e.target.select()}
-                        onChange={(e) => {
-                          const v = parseInt(e.target.value, 10);
-                          setDetailQtyValue(isNaN(v) ? 1 : Math.max(1, v));
-                        }}
-                        className="w-12 text-center font-mono font-black text-xs text-neutral-900 dark:text-white bg-transparent outline-none p-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                        title="Type custom quantity"
-                      />
-                      <span className="text-[10px] font-bold text-neutral-400 font-mono -ml-0.5 select-none">QTL</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setDetailQtyValue(prev => prev + 1)}
-                      className="w-8 h-8 rounded-lg bg-white dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 font-black text-sm flex items-center justify-center hover:bg-neutral-50 active:scale-95 cursor-pointer shadow-xs select-none"
-                      title="Increase by 1"
-                    >
-                      +
-                    </button>
-                  </div>
-
-                  {/* Add to Cart Button */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setProductQty(selectedProductDetails.id, detailQtyValue);
-                      const inCart = items.find(i => i.id === selectedProductDetails.id);
-                      if (inCart) {
-                        updateQty(selectedProductDetails.id, detailQtyValue);
-                      } else {
-                        handleAddToCartProduct(selectedProductDetails, detailQtyValue);
-                      }
-                      setSelectedProductDetails(null);
-                    }}
-                    className="flex-1 py-3 bg-[#C22424] hover:bg-[#A81C1C] text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-md cursor-pointer active:scale-98 transition-all"
-                  >
-                    <ShoppingBag className="w-4 h-4" />
-                    <span>Add to Cart</span>
-                  </button>
-                </div>
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
 
         {/* Old Rates vs New Rates Comparison Modal */}
         {showRateChartModal && (
