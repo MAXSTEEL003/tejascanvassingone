@@ -873,11 +873,11 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
     }
   }, []);
 
-  // Automatic Self-Healing Cleanup for accidentally cascaded sub-orders (e.g. BRI-0006, BRI-0007 inheriting bill 1300)
+  // Automatic Self-Healing Cleanup for accidentally cascaded sub-orders (e.g. BRI-0007 inheriting bill 1300 from BRI-0006)
   useEffect(() => {
     const cleanupGhostSubOrders = async () => {
       try {
-        const cleanupKey = 'cleanup_ghost_1300_suborders_done_v2';
+        const cleanupKey = 'cleanup_duplicate_1300_suborders_done_v4';
         if (sessionStorage.getItem(cleanupKey)) return;
 
         const rawPlaced = localStorage.getItem('placed_orders');
@@ -891,44 +891,45 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
             return order;
           }
 
-          // Check if BRI-0006, BRI-0007, or unentered sub-orders inherited bill 1300
-          const ghostSubs = order.originalOrders.filter((sub: any) => {
-            const bill = (sub.billNo || sub.actualSupplierBillNo || '').trim();
-            const isTargetBuyer = sub.buyer === 'S.R TRADERS' || sub.buyer === 'SLNM TRADING CO';
-            const isTargetPo = sub.supplierSubOrderNo === 'BRI-0006' || sub.supplierSubOrderNo === 'BRI-0007';
-            return bill === '1300' && (isTargetBuyer || isTargetPo);
+          // Check if multiple sub-orders in the same batch duplicate the exact same bill number (e.g. 1300)
+          const billCounts: { [b: string]: number } = {};
+          order.originalOrders.forEach((sub: any) => {
+            const b = (sub.billNo || sub.actualSupplierBillNo || '').trim();
+            if (b) billCounts[b] = (billCounts[b] || 0) + 1;
           });
 
-          if (ghostSubs.length > 0) {
-            hadModifications = true;
-            const cleanedSubs = order.originalOrders.map((sub: any, sIdx: number) => {
-              const bill = (sub.billNo || sub.actualSupplierBillNo || '').trim();
-              const isTargetBuyer = sub.buyer === 'S.R TRADERS' || sub.buyer === 'SLNM TRADING CO';
-              const isTargetPo = sub.supplierSubOrderNo === 'BRI-0006' || sub.supplierSubOrderNo === 'BRI-0007';
-              const isGhost = bill === '1300' && (isTargetBuyer || isTargetPo);
+          const duplicatedBills = Object.keys(billCounts).filter(b => billCounts[b] > 1);
+          if (duplicatedBills.length === 0) return order;
 
-              if (isGhost) {
-                // Purge matching arrival row from sheets and Firestore
-                removeArrivalEntryForSubOrder(order.id, sub.id || `sub-${sIdx}`, '1300', sub.buyer);
-                const { actualSupplierBillNo, billNo, arrivedAt, arrivedQty, settledRate, lh, lhPerQtl, lhAccepted, ...rest } = sub;
-                return {
-                  ...rest,
-                  isArrived: false,
-                  status: 'Approved'
-                };
-              }
+          hadModifications = true;
+          const seenBills = new Set<string>();
+          const cleanedSubs = order.originalOrders.map((sub: any, sIdx: number) => {
+            const bill = (sub.billNo || sub.actualSupplierBillNo || '').trim();
+            if (!bill || !duplicatedBills.includes(bill)) return sub;
+
+            if (!seenBills.has(bill)) {
+              // Keep the first sub-order that received the bill
+              seenBills.add(bill);
               return sub;
-            });
+            }
 
-            const remainingArrived = cleanedSubs.filter((s: any) => s.isArrived === true || s.status === 'Arrived').length;
+            // Subsequent sub-orders sharing this same bill are accidental cascades! Revert them!
+            removeArrivalEntryForSubOrder(order.id, sub.id || sub.supplierSubOrderNo || `sub-${sIdx}`, bill, sub.buyer);
+            const { actualSupplierBillNo, billNo, arrivedAt, arrivedQty, settledRate, lh, lhPerQtl, lhAccepted, ...rest } = sub;
             return {
-              ...order,
-              status: remainingArrived === cleanedSubs.length ? 'Arrived' : (remainingArrived > 0 ? 'In Transit' : 'Approved'),
-              progress: remainingArrived === 0 ? 50 : Math.round((remainingArrived / cleanedSubs.length) * 100),
-              originalOrders: cleanedSubs
+              ...rest,
+              isArrived: false,
+              status: 'Approved'
             };
-          }
-          return order;
+          });
+
+          const remainingArrived = cleanedSubs.filter((s: any) => s.isArrived === true || s.status === 'Arrived').length;
+          return {
+            ...order,
+            status: remainingArrived === cleanedSubs.length ? 'Arrived' : (remainingArrived > 0 ? 'In Transit' : 'Approved'),
+            progress: remainingArrived === 0 ? 50 : Math.round((remainingArrived / cleanedSubs.length) * 100),
+            originalOrders: cleanedSubs
+          };
         });
 
         if (hadModifications) {
@@ -1713,7 +1714,39 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
         return deletedPlacedSet.has(norm);
       };
 
-      const cloudPlaced = (cloudPlacedRaw || []).filter((o: any) => o && o.id && !isDeleted(o.id));
+      const cloudPlaced = (cloudPlacedRaw || []).filter((o: any) => o && o.id && !isDeleted(o.id)).map((order: any) => {
+        if (!order || !Array.isArray(order.originalOrders) || order.originalOrders.length <= 1) return order;
+        const billCounts: { [b: string]: number } = {};
+        order.originalOrders.forEach((sub: any) => {
+          const b = (sub.billNo || sub.actualSupplierBillNo || '').trim();
+          if (b) billCounts[b] = (billCounts[b] || 0) + 1;
+        });
+        const dupes = Object.keys(billCounts).filter(b => billCounts[b] > 1);
+        if (dupes.length === 0) return order;
+
+        const seen = new Set<string>();
+        const cleanedSubs = order.originalOrders.map((sub: any, sIdx: number) => {
+          const b = (sub.billNo || sub.actualSupplierBillNo || '').trim();
+          if (!b || !dupes.includes(b)) return sub;
+          if (!seen.has(b)) {
+            seen.add(b);
+            return sub;
+          }
+          const { actualSupplierBillNo, billNo, arrivedAt, arrivedQty, settledRate, lh, lhPerQtl, lhAccepted, ...rest } = sub;
+          return {
+            ...rest,
+            isArrived: false,
+            status: 'Approved'
+          };
+        });
+        const remaining = cleanedSubs.filter((s: any) => s.isArrived === true || s.status === 'Arrived').length;
+        return {
+          ...order,
+          status: remaining === cleanedSubs.length ? 'Arrived' : (remaining > 0 ? 'In Transit' : 'Approved'),
+          progress: remaining === 0 ? 50 : Math.round((remaining / cleanedSubs.length) * 100),
+          originalOrders: cleanedSubs
+        };
+      });
       const cloudProcurements = (cloudProcurementsRaw || []).filter((o: any) => o && o.id && !isDeleted(o.id));
 
       if (cloudPlaced.length > 0) {
@@ -2196,21 +2229,30 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
 
       if (targetOrder.originalOrders && targetOrder.originalOrders.length > 0) {
         updatedOriginalOrders = targetOrder.originalOrders.map((sub: any, sIdx: number) => {
-          const subId = sub.id || `sub-${sIdx}`;
+          const subId = sub.id || sub.supplierSubOrderNo || `sub-${sIdx}`;
           // Target only the specific sub-order if targetSubId is specified; otherwise check inclusion map
           const isTarget = targetSubId 
-            ? (subId === targetSubId || sub.id === targetSubId)
-            : Boolean(arrivalIncludedSubIds[subId] ?? false);
+            ? (subId === targetSubId || sub.id === targetSubId || sub.supplierSubOrderNo === targetSubId || `sub-${sIdx}` === targetSubId)
+            : Boolean(arrivalIncludedSubIds[subId] ?? arrivalIncludedSubIds[sub.id] ?? arrivalIncludedSubIds[sub.supplierSubOrderNo] ?? arrivalIncludedSubIds[`sub-${sIdx}`] ?? false);
 
           if (isTarget) {
-            const q = (customQtys && customQtys[subId] !== undefined) ? customQtys[subId] : (parseFloat(sub.qty) || parseFloat(sub.totalQty) || 0);
+            const q = (customQtys && (customQtys[subId] !== undefined || (sub.id && customQtys[sub.id] !== undefined) || (sub.supplierSubOrderNo && customQtys[sub.supplierSubOrderNo] !== undefined) || customQtys[`sub-${sIdx}`] !== undefined))
+              ? (customQtys[subId] ?? customQtys[sub.id] ?? customQtys[sub.supplierSubOrderNo] ?? customQtys[`sub-${sIdx}`])
+              : (parseFloat(sub.qty) || parseFloat(sub.totalQty) || 0);
             const subLh = Math.round(q * lhRateToUse);
             totalVehicleLh += subLh;
-            // CRITICAL FIX: Sub-order uses its own entered bill number; NEVER inherits parent order's bill!
-            const subBill = (billMapToUse[subId] !== undefined && billMapToUse[subId].trim())
-              ? billMapToUse[subId].trim()
-              : (sub.actualSupplierBillNo || sub.billNo || '').trim() || `BIL-${Math.floor(1000 + Math.random() * 9000)}`;
-            const settledR = (customRates && customRates[subId] !== undefined) ? customRates[subId] : (parseFloat(sub.rate) || 4200);
+            // CRITICAL FIX: Sub-order uses its own entered bill number; NEVER auto-generate BIL-XXXX!
+            const enteredBill = (
+              billMapToUse[subId] || 
+              (sub.id && billMapToUse[sub.id]) || 
+              (sub.supplierSubOrderNo && billMapToUse[sub.supplierSubOrderNo]) || 
+              billMapToUse[`sub-${sIdx}`] || 
+              ''
+            ).trim();
+            const subBill = enteredBill || (sub.actualSupplierBillNo || sub.billNo || '').trim();
+            const settledR = (customRates && (customRates[subId] !== undefined || (sub.id && customRates[sub.id] !== undefined) || (sub.supplierSubOrderNo && customRates[sub.supplierSubOrderNo] !== undefined) || customRates[`sub-${sIdx}`] !== undefined))
+              ? (customRates[subId] ?? customRates[sub.id] ?? customRates[sub.supplierSubOrderNo] ?? customRates[`sub-${sIdx}`])
+              : (parseFloat(sub.rate) || 4200);
             return {
               ...sub,
               isArrived: true,
@@ -2247,7 +2289,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
         : true;
 
       const singleBill = (billMapToUse[orderId] || fallbackBillNo).trim();
-      const primaryBillNo = singleBill || fallbackBillNo || targetOrder.billNo;
+      const primaryBillNo = singleBill || fallbackBillNo || targetOrder.billNo || '';
 
       const arrivedSubCount = (updatedOriginalOrders && updatedOriginalOrders.length > 0)
         ? updatedOriginalOrders.filter((s: any) => s.isArrived === true || s.status === 'Arrived').length
@@ -2261,8 +2303,8 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
         ...targetOrder,
         status: isFullyArrived ? 'Arrived' : (arrivedSubCount > 0 ? 'In Transit' : targetOrder.status || 'Approved'),
         progress: calculatedProgress,
-        billNo: primaryBillNo,
-        actualSupplierBillNo: primaryBillNo,
+        billNo: isFullyArrived ? primaryBillNo : (targetOrder.billNo || primaryBillNo),
+        actualSupplierBillNo: isFullyArrived ? primaryBillNo : (targetOrder.actualSupplierBillNo || primaryBillNo),
         supplierBillNos: billMapToUse,
         originalOrders: updatedOriginalOrders,
         lhPerQtl: lhRateToUse,
@@ -2312,14 +2354,18 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
     e.stopPropagation();
     try {
       const orderId = order.id;
-      const subId = sub.id || `sub-${sIdx}`;
+      const subId = sub.id || sub.supplierSubOrderNo || `sub-${sIdx}`;
       const subParty = sub.buyer || 'Sub-Order';
       const subBill = (sub.actualSupplierBillNo || sub.billNo || '').trim();
 
       // 1. Update sub-order inside originalOrders
       const updatedOriginalOrders = (order.originalOrders || []).map((s: any, idx: number) => {
-        const thisSubId = s.id || `sub-${idx}`;
-        if (thisSubId === subId || s.id === sub.id) {
+        const thisSubId = s.id || s.supplierSubOrderNo || `sub-${idx}`;
+        const isMatch = thisSubId === subId || 
+                        s.id === sub.id || 
+                        (s.supplierSubOrderNo && sub.supplierSubOrderNo && s.supplierSubOrderNo === sub.supplierSubOrderNo) || 
+                        idx === sIdx;
+        if (isMatch) {
           const { actualSupplierBillNo, billNo, arrivedAt, arrivedQty, settledRate, lh, lhPerQtl, lhAccepted, ...rest } = s;
           return {
             ...rest,
@@ -2340,6 +2386,8 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
       const remainingBills: {[k: string]: string} = { ...(order.supplierBillNos || {}) };
       delete remainingBills[subId];
       if (sub.id) delete remainingBills[sub.id];
+      if (sub.supplierSubOrderNo) delete remainingBills[sub.supplierSubOrderNo];
+      delete remainingBills[`sub-${sIdx}`];
 
       const updatedOrder = {
         ...order,
@@ -3322,9 +3370,8 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                           if (!isMerchant) {
                             return (
                               <button 
-                                onClick={async (e) => {
+                                onClick={(e) => {
                                   e.stopPropagation();
-                                  await autoCreateArrivalEntryForIncomingLog(order.id, order);
                                   navigate('/arrival-entry');
                                 }}
                                 className="btn-tactile flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/20 dark:hover:bg-emerald-950/40 text-emerald-700 hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300 rounded-lg text-[10px] font-black uppercase tracking-wider border border-emerald-200/50 transition-all cursor-pointer"
@@ -4327,28 +4374,43 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                       const isTargetingSub = Boolean(arrivalTargetSubId);
                       const subOrdersToRender = (arrivalConfirmOrder.originalOrders && arrivalConfirmOrder.originalOrders.length > 0)
                         ? (isTargetingSub 
-                            ? arrivalConfirmOrder.originalOrders.filter((sub: any, sIdx: number) => (sub.id || `sub-${sIdx}`) === arrivalTargetSubId)
+                            ? arrivalConfirmOrder.originalOrders.filter((sub: any, sIdx: number) => {
+                                const origIdx = arrivalConfirmOrder.originalOrders.indexOf(sub);
+                                const subId = sub.id || sub.supplierSubOrderNo || (origIdx !== -1 ? `sub-${origIdx}` : `sub-${sIdx}`);
+                                return subId === arrivalTargetSubId || 
+                                       sub.id === arrivalTargetSubId || 
+                                       sub.supplierSubOrderNo === arrivalTargetSubId || 
+                                       `sub-${origIdx !== -1 ? origIdx : sIdx}` === arrivalTargetSubId;
+                              })
                             : arrivalConfirmOrder.originalOrders)
                         : [];
 
                       if (subOrdersToRender.length > 0) {
-                        return subOrdersToRender.map((sub: any, sIdx: number) => {
-                          const subId = sub.id || `sub-${sIdx}`;
+                        return subOrdersToRender.map((sub: any, renderIdx: number) => {
+                          const origIdx = arrivalConfirmOrder.originalOrders.indexOf(sub);
+                          const sIdx = origIdx !== -1 ? origIdx : renderIdx;
+                          const subId = sub.id || sub.supplierSubOrderNo || `sub-${sIdx}`;
                           const origQty = parseFloat(sub.qty) || parseFloat(sub.totalQty) || 0;
                           const origRate = parseFloat(sub.rate) || 4200;
                           const subProduct = sub.product || "Premium Rice";
-                          const currentQty = arrivalQuantities[subId] !== undefined ? arrivalQuantities[subId] : origQty;
-                          const currentRate = arrivalRates[subId] !== undefined ? arrivalRates[subId] : origRate;
+                          const currentQty = (arrivalQuantities[subId] !== undefined || (sub.id && arrivalQuantities[sub.id] !== undefined) || (sub.supplierSubOrderNo && arrivalQuantities[sub.supplierSubOrderNo] !== undefined) || arrivalQuantities[`sub-${sIdx}`] !== undefined)
+                            ? (arrivalQuantities[subId] ?? arrivalQuantities[sub.id] ?? arrivalQuantities[sub.supplierSubOrderNo] ?? arrivalQuantities[`sub-${sIdx}`])
+                            : origQty;
+                          const currentRate = (arrivalRates[subId] !== undefined || (sub.id && arrivalRates[sub.id] !== undefined) || (sub.supplierSubOrderNo && arrivalRates[sub.supplierSubOrderNo] !== undefined) || arrivalRates[`sub-${sIdx}`] !== undefined)
+                            ? (arrivalRates[subId] ?? arrivalRates[sub.id] ?? arrivalRates[sub.supplierSubOrderNo] ?? arrivalRates[`sub-${sIdx}`])
+                            : origRate;
                           const lhRateNum = parseFloat(vehicleLhRate) || 0;
                           const subGross = Math.round(currentQty * currentRate);
                           const subTotalLh = Math.round(currentQty * lhRateNum);
                           const subNetAmt = Math.max(0, subGross - subTotalLh);
-                          const subBillNo = arrivalSupplierBillNos[subId] || '';
+                          const subBillNo = (arrivalSupplierBillNos[subId] !== undefined || (sub.id && arrivalSupplierBillNos[sub.id] !== undefined) || (sub.supplierSubOrderNo && arrivalSupplierBillNos[sub.supplierSubOrderNo] !== undefined) || arrivalSupplierBillNos[`sub-${sIdx}`] !== undefined)
+                            ? (arrivalSupplierBillNos[subId] ?? arrivalSupplierBillNos[sub.id] ?? arrivalSupplierBillNos[sub.supplierSubOrderNo] ?? arrivalSupplierBillNos[`sub-${sIdx}`])
+                            : '';
 
                           const subSupplier = sub.supplier || arrivalConfirmOrder.supplier || "Supplier";
                           const subOrderNo = sub.supplierSubOrderNo || resolveSubOrderNumber(sub, sIdx, subSupplier);
                           const isAlreadyArrived = Boolean(sub.isArrived === true || sub.status === 'Arrived');
-                          const isIncluded = isTargetingSub || Boolean(arrivalIncludedSubIds[subId] ?? !isAlreadyArrived);
+                          const isIncluded = isTargetingSub || Boolean(arrivalIncludedSubIds[subId] ?? arrivalIncludedSubIds[sub.id] ?? arrivalIncludedSubIds[sub.supplierSubOrderNo] ?? arrivalIncludedSubIds[`sub-${sIdx}`] ?? !isAlreadyArrived);
 
                           return (
                             <div key={subId} className={`p-4 rounded-xl border transition-all space-y-3.5 ${
@@ -4379,7 +4441,13 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                                         checked={isIncluded}
                                         onChange={(e) => {
                                           const val = e.target.checked;
-                                          setArrivalIncludedSubIds(prev => ({ ...prev, [subId]: val }));
+                                          setArrivalIncludedSubIds(prev => ({ 
+                                            ...prev, 
+                                            [subId]: val,
+                                            ...(sub.id ? { [sub.id]: val } : {}),
+                                            ...(sub.supplierSubOrderNo ? { [sub.supplierSubOrderNo]: val } : {}),
+                                            [`sub-${sIdx}`]: val
+                                          }));
                                         }}
                                         className="w-3.5 h-3.5 text-emerald-600 rounded border-outline-variant focus:ring-emerald-500 cursor-pointer"
                                       />
@@ -4415,7 +4483,14 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                                       value={currentQty}
                                       onChange={(e) => {
                                         const val = parseFloat(e.target.value);
-                                        setArrivalQuantities(prev => ({ ...prev, [subId]: isNaN(val) ? 0 : val }));
+                                        const finalVal = isNaN(val) ? 0 : val;
+                                        setArrivalQuantities(prev => ({ 
+                                          ...prev, 
+                                          [subId]: finalVal,
+                                          ...(sub.id ? { [sub.id]: finalVal } : {}),
+                                          ...(sub.supplierSubOrderNo ? { [sub.supplierSubOrderNo]: finalVal } : {}),
+                                          [`sub-${sIdx}`]: finalVal
+                                        }));
                                       }}
                                       className="w-full px-3 py-2 bg-surface border border-outline-variant rounded-lg text-xs font-mono font-bold outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10 text-on-surface"
                                     />
@@ -4430,7 +4505,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                                   <div className="space-y-1">
                                     <div className="flex items-center justify-between">
                                       <label className="text-[9px] font-black uppercase tracking-widest text-primary">
-                                        Actual Supplier Bill No (Received in Billing)
+                                        Actual Supplier Bill No (Optional)
                                       </label>
                                       {sIdx === 0 && !isTargetingSub && arrivalConfirmOrder.originalOrders && arrivalConfirmOrder.originalOrders.length > 1 && (
                                         <button
@@ -4440,8 +4515,11 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                                             if (!firstBill.trim()) return;
                                             const updated: {[k: string]: string} = {};
                                             arrivalConfirmOrder.originalOrders.forEach((so: any, idx: number) => {
-                                              const id = so.id || `sub-${idx}`;
+                                              const id = so.id || so.supplierSubOrderNo || `sub-${idx}`;
                                               updated[id] = firstBill;
+                                              if (so.id) updated[so.id] = firstBill;
+                                              if (so.supplierSubOrderNo) updated[so.supplierSubOrderNo] = firstBill;
+                                              updated[`sub-${idx}`] = firstBill;
                                             });
                                             setArrivalSupplierBillNos(prev => ({ ...prev, ...updated }));
                                           }}
@@ -4457,13 +4535,19 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                                       value={arrivalSupplierBillNos[subId] !== undefined ? arrivalSupplierBillNos[subId] : ''}
                                       onChange={(e) => {
                                         const val = e.target.value;
-                                        setArrivalSupplierBillNos(prev => ({ ...prev, [subId]: val }));
+                                        setArrivalSupplierBillNos(prev => ({ 
+                                          ...prev, 
+                                          [subId]: val,
+                                          ...(sub.id ? { [sub.id]: val } : {}),
+                                          ...(sub.supplierSubOrderNo ? { [sub.supplierSubOrderNo]: val } : {}),
+                                          [`sub-${sIdx}`]: val
+                                        }));
                                       }}
-                                      placeholder="e.g. BIL-9842 / INV-2026-001"
+                                      placeholder="e.g. BIL-9842 / INV-2026-001 (leave blank if no bill yet)"
                                       className="w-full px-3 py-2 bg-surface border border-outline-variant rounded-lg text-xs font-mono font-bold outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10 text-on-surface"
                                     />
                                     <p className="text-[9px] text-secondary">
-                                      Recorded directly into Arrival Entry for this sub-order
+                                      Recorded into Arrival Entry (remains blank if left empty)
                                     </p>
                                   </div>
                                 </div>
@@ -4481,7 +4565,14 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                                     value={currentRate}
                                     onChange={(e) => {
                                       const val = parseFloat(e.target.value);
-                                      setArrivalRates(prev => ({ ...prev, [subId]: isNaN(val) ? 0 : val }));
+                                      const finalVal = isNaN(val) ? 0 : val;
+                                      setArrivalRates(prev => ({ 
+                                        ...prev, 
+                                        [subId]: finalVal,
+                                        ...(sub.id ? { [sub.id]: finalVal } : {}),
+                                        ...(sub.supplierSubOrderNo ? { [sub.supplierSubOrderNo]: finalVal } : {}),
+                                        [`sub-${sIdx}`]: finalVal
+                                      }));
                                     }}
                                     className="w-full px-3 py-2 bg-surface border border-outline-variant rounded-lg text-xs font-mono font-bold outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10 text-on-surface"
                                   />
@@ -4697,11 +4788,13 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                         vehicleLhAccepted,
                         arrivalTargetSubId || undefined
                       );
-                      const targetBill = (arrivalTargetSubId && arrivalSupplierBillNos[arrivalTargetSubId]) 
-                        ? arrivalSupplierBillNos[arrivalTargetSubId] 
-                        : (Object.values(arrivalSupplierBillNos).find(b => b && b.trim()) || arrivalConfirmOrder.billNo || arrivalConfirmOrder.id);
+                      const targetBill = (arrivalTargetSubId && (arrivalSupplierBillNos[arrivalTargetSubId] || ''))
+                        ? arrivalSupplierBillNos[arrivalTargetSubId].trim()
+                        : (Object.values(arrivalSupplierBillNos).find(b => b && b.trim()) || '').trim();
                       if (targetBill) {
                         sessionStorage.setItem('goto_arrival_bill', targetBill);
+                      } else {
+                        sessionStorage.removeItem('goto_arrival_bill');
                       }
                       setArrivalConfirmOrder(null);
                       setArrivalTargetSubId(null);

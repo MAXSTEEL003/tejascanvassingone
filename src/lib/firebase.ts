@@ -1049,10 +1049,14 @@ export async function autoCreateArrivalEntryForIncomingLog(
 
     if (targetOrder.originalOrders && targetOrder.originalOrders.length > 0) {
       targetOrder.originalOrders.forEach((sub: any, sIdx: number) => {
-        const subId = sub.id || `sub-${sIdx}`;
+        const subId = sub.id || sub.supplierSubOrderNo || `sub-${sIdx}`;
         // If an individual sub-order was targeted, skip non-matching sub-orders
-        if (targetSubId && subId !== targetSubId && sub.id !== targetSubId) {
-          return;
+        if (targetSubId) {
+          const isMatch = subId === targetSubId || 
+                          sub.id === targetSubId || 
+                          sub.supplierSubOrderNo === targetSubId || 
+                          `sub-${sIdx}` === targetSubId;
+          if (!isMatch) return;
         }
 
         // CRITICAL FIX: In whole-order mode, ONLY process sub-orders that are actually marked arrived!
@@ -1062,16 +1066,20 @@ export async function autoCreateArrivalEntryForIncomingLog(
           return;
         }
 
-        const qty = (customQtys && customQtys[subId] !== undefined) ? customQtys[subId] : (parseFloat(sub.arrivedQty) || parseFloat(sub.qty) || parseFloat(sub.totalQty) || 10);
-        const rate = (customRates && customRates[subId] !== undefined) ? customRates[subId] : (parseFloat(sub.settledRate) || parseFloat(sub.rate) || 4200);
+        const qty = (customQtys && (customQtys[subId] !== undefined || (sub.id && customQtys[sub.id] !== undefined) || (sub.supplierSubOrderNo && customQtys[sub.supplierSubOrderNo] !== undefined) || customQtys[`sub-${sIdx}`] !== undefined))
+          ? (customQtys[subId] ?? customQtys[sub.id] ?? customQtys[sub.supplierSubOrderNo] ?? customQtys[`sub-${sIdx}`])
+          : (parseFloat(sub.arrivedQty) || parseFloat(sub.qty) || parseFloat(sub.totalQty) || 10);
+        const rate = (customRates && (customRates[subId] !== undefined || (sub.id && customRates[sub.id] !== undefined) || (sub.supplierSubOrderNo && customRates[sub.supplierSubOrderNo] !== undefined) || customRates[`sub-${sIdx}`] !== undefined))
+          ? (customRates[subId] ?? customRates[sub.id] ?? customRates[sub.supplierSubOrderNo] ?? customRates[`sub-${sIdx}`])
+          : (parseFloat(sub.settledRate) || parseFloat(sub.rate) || 4200);
         const amount = qty * rate;
         const normPo = String(orderId).trim().toUpperCase().replace(/^#/, '');
         
         const subCustomBill = (typeof customBillNo === 'object' && customBillNo !== null)
-          ? (customBillNo[subId] || customBillNo[orderId] || '')
+          ? (customBillNo[subId] || (sub.id && customBillNo[sub.id]) || (sub.supplierSubOrderNo && customBillNo[sub.supplierSubOrderNo]) || customBillNo[`sub-${sIdx}`] || '')
           : (typeof customBillNo === 'string' ? customBillNo : '');
-        // CRITICAL FIX: Sub-order must never inherit parent order's billNo or another sub-order's billNo!
-        const bNo = subCustomBill.trim() || (sub.actualSupplierBillNo || sub.billNo || '').trim() || `BIL-${Math.floor(1000 + Math.random() * 9000)}`;
+        // CRITICAL FIX: Sub-order uses its own entered bill. If empty, leave blank - NEVER auto-generate BIL-XXXX!
+        const bNo = subCustomBill.trim() || (sub.actualSupplierBillNo || sub.billNo || '').trim() || '';
 
         const partyName = sub.redirectedTo || (sub.isLifted ? targetOrder.currentShop : null) || sub.buyer || targetOrder.currentShop || targetOrder.redirectedShop || targetOrder.buyer || targetOrder.partyName || "General Merchant";
         const isLifted = !!(sub.redirectedTo || sub.isLifted || targetOrder.currentShop || targetOrder.redirectedShop || (targetOrder.liftingRecords && targetOrder.liftingRecords.length > 0));
@@ -1135,7 +1143,8 @@ export async function autoCreateArrivalEntryForIncomingLog(
       const singleCustomBill = (typeof customBillNo === 'object' && customBillNo !== null)
         ? (customBillNo[orderId] || '')
         : (typeof customBillNo === 'string' ? customBillNo : '');
-      const bNo = singleCustomBill.trim() || targetOrder.actualSupplierBillNo || targetOrder.billNo || `BIL-${Math.floor(1000 + Math.random() * 9000)}`;
+      // CRITICAL FIX: If bill is not provided, leave blank - NEVER auto-generate BIL-XXXX!
+      const bNo = singleCustomBill.trim() || (targetOrder.actualSupplierBillNo || targetOrder.billNo || '').trim() || '';
 
       const partyName = targetOrder.currentShop || targetOrder.redirectedShop || targetOrder.buyer || targetOrder.partyName || "General Merchant";
       const isLifted = !!(targetOrder.currentShop || targetOrder.redirectedShop || (targetOrder.liftingRecords && targetOrder.liftingRecords.length > 0));

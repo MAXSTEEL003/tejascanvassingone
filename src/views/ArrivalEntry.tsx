@@ -2274,6 +2274,56 @@ export default function ArrivalEntry() {
     }
   };
 
+  const handleInsertRow = useCallback((filteredRowIdx?: number, position: 'above' | 'below' = 'below') => {
+    saveToHistory();
+    const defaultDate = getDefaultDateForSheet(currentSheet.name);
+    const newId = `row-${currentSheetId}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const newRow = {
+      id: newId,
+      date: defaultDate,
+      sheetId: currentSheetId,
+      sheetName: currentSheet.name
+    };
+
+    const newData = [...data];
+    let insertDataIdx = newData.length;
+
+    const refIdx = filteredRowIdx !== undefined ? filteredRowIdx : (activeCell ? activeCell.r : -1);
+
+    if (refIdx >= 0 && filteredData[refIdx]) {
+      const targetRow = filteredData[refIdx];
+      const realIdx = newData.findIndex(r => r && r.id === targetRow.id);
+      if (realIdx !== -1) {
+        insertDataIdx = position === 'above' ? realIdx : realIdx + 1;
+      }
+    }
+
+    newData.splice(insertDataIdx, 0, newRow);
+    setData(newData);
+    dirtyRowIds.current.add(newId);
+
+    const targetViewIdx = Math.min(newData.length - 1, Math.max(0, insertDataIdx));
+    const targetCol = activeCell ? activeCell.c : 0;
+    setActiveCell({ r: targetViewIdx, c: targetCol });
+    setSelectionRange({ startR: targetViewIdx, startC: 0, endR: targetViewIdx, endC: visibleColumns.length - 1 });
+    setGridKey(k => k + 1);
+
+    setHighlightRowId(newId);
+    setTimeout(() => setHighlightRowId(null), 2500);
+
+    setExcelToast(`Row inserted at #${targetViewIdx + 1}`);
+    setTimeout(() => setExcelToast(null), 2500);
+
+    setTimeout(() => {
+      if (gridContainerRef.current) {
+        gridContainerRef.current.scrollTo({
+          top: Math.max(0, targetViewIdx * ROW_HEIGHT - 120),
+          behavior: 'smooth'
+        });
+      }
+    }, 50);
+  }, [currentSheet.name, currentSheetId, data, activeCell, filteredData, saveToHistory, setData, visibleColumns]);
+
   // Global Keyboard shortcuts & Clipboard listeners for Excel operations
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
@@ -2346,56 +2396,6 @@ export default function ArrivalEntry() {
       window.removeEventListener('paste', handleGlobalPaste);
     };
   }, [activeCell, isEditing, handleCopySelection, handlePasteSelection, applyPasteText, handleFillDown, handleUndo, handleRedo, handleInsertRow]);
-
-  const handleInsertRow = useCallback((filteredRowIdx?: number, position: 'above' | 'below' = 'below') => {
-    saveToHistory();
-    const defaultDate = getDefaultDateForSheet(currentSheet.name);
-    const newId = `row-${currentSheetId}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-    const newRow = {
-      id: newId,
-      date: defaultDate,
-      sheetId: currentSheetId,
-      sheetName: currentSheet.name
-    };
-
-    const newData = [...data];
-    let insertDataIdx = newData.length;
-
-    const refIdx = filteredRowIdx !== undefined ? filteredRowIdx : (activeCell ? activeCell.r : -1);
-
-    if (refIdx >= 0 && filteredData[refIdx]) {
-      const targetRow = filteredData[refIdx];
-      const realIdx = newData.findIndex(r => r && r.id === targetRow.id);
-      if (realIdx !== -1) {
-        insertDataIdx = position === 'above' ? realIdx : realIdx + 1;
-      }
-    }
-
-    newData.splice(insertDataIdx, 0, newRow);
-    setData(newData);
-    dirtyRowIds.current.add(newId);
-
-    const targetViewIdx = Math.min(newData.length - 1, Math.max(0, insertDataIdx));
-    const targetCol = activeCell ? activeCell.c : 0;
-    setActiveCell({ r: targetViewIdx, c: targetCol });
-    setSelectionRange({ startR: targetViewIdx, startC: 0, endR: targetViewIdx, endC: visibleColumns.length - 1 });
-    setGridKey(k => k + 1);
-
-    setHighlightRowId(newId);
-    setTimeout(() => setHighlightRowId(null), 2500);
-
-    setExcelToast(`Row inserted at #${targetViewIdx + 1}`);
-    setTimeout(() => setExcelToast(null), 2500);
-
-    setTimeout(() => {
-      if (gridContainerRef.current) {
-        gridContainerRef.current.scrollTo({
-          top: Math.max(0, targetViewIdx * ROW_HEIGHT - 120),
-          behavior: 'smooth'
-        });
-      }
-    }, 50);
-  }, [currentSheet.name, currentSheetId, data, activeCell, filteredData, saveToHistory, setData, visibleColumns]);
 
   const handleDeleteSingleRow = useCallback((filteredRowIdx: number) => {
     saveToHistory();
