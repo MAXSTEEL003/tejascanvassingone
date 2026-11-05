@@ -176,6 +176,14 @@ export function normalizeParty(name: string | undefined | null): string {
 }
 
 /**
+ * Strict alphanumeric normalization for robust party name matching
+ */
+export function normalizePartyStrict(name: string | undefined | null): string {
+  if (!name) return '';
+  return String(name).trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+/**
  * Fallback seed orders strictly matching operational examples when database is completely empty
  */
 const SEED_OPERATIONAL_POS: OperationalPO[] = [];
@@ -695,6 +703,12 @@ const OP_CACHE_TTL_MS = 60000;
 
 export function invalidateOperationalOrdersCache() {
   operationalOrdersMemCache = null;
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.removeItem('cached_operational_orders');
+      window.dispatchEvent(new CustomEvent('operational-orders-updated'));
+    } catch (e) {}
+  }
 }
 
 /**
@@ -886,18 +900,28 @@ export async function fetchOperationalOrders(forceFresh = false): Promise<Operat
       }
     } catch {}
 
-    // Build Arrival Map keyed by normalized PO number
-    const arrivedMap = new Map<string, { totalQty: number; billNos: Set<string>; rows: any[] }>();
-    [...cloudArrivals, ...localArrivals].forEach(arr => {
+    // 1. Deduplicate arrival entries from cloud and local
+    const arrivalEntriesMap = new Map<string, any>();
+    [...cloudArrivals, ...localArrivals].forEach((arr, idx) => {
       if (!arr) return;
-      const poKey = normalizePo(arr.purchaseOrderNo || arr.poNo);
+      const rowKey = arr.id || `${arr.purchaseOrderNo || arr.poNo || ''}_${arr.subOrderId || ''}_${arr.partyName || ''}_${arr.qty || 0}_${idx}`;
+      if (!arrivalEntriesMap.has(rowKey)) {
+        arrivalEntriesMap.set(rowKey, arr);
+      }
+    });
+    const uniqueArrivals = Array.from(arrivalEntriesMap.values());
+
+    // 2. Build Arrival Map keyed by normalized PO number (used strictly for single-PO orders and historical ledgers)
+    const arrivedPoMap = new Map<string, { totalQty: number; billNos: Set<string>; rows: any[] }>();
+    uniqueArrivals.forEach(arr => {
+      const poKey = normalizePo(arr.purchaseOrderNo || arr.poNo || arr.mainPoNo);
       if (!poKey) return;
 
       const qty = Number(arr.qty) || 0;
-      if (!arrivedMap.has(poKey)) {
-        arrivedMap.set(poKey, { totalQty: 0, billNos: new Set(), rows: [] });
+      if (!arrivedPoMap.has(poKey)) {
+        arrivedPoMap.set(poKey, { totalQty: 0, billNos: new Set(), rows: [] });
       }
-      const entry = arrivedMap.get(poKey)!;
+      const entry = arrivedPoMap.get(poKey)!;
       entry.totalQty += qty;
       if (arr.billNo && String(arr.billNo).trim()) {
         entry.billNos.add(String(arr.billNo).trim());
@@ -1010,9 +1034,86 @@ export async function fetchOperationalOrders(forceFresh = false): Promise<Operat
             rate = Math.round(Number(ord.totalAmount) / Number(ord.qty));
           }
 
-          // Link Arrival Entry
-          const arrData = arrivedMap.get(normSubId) || (subUniqueRef ? arrivedMap.get(normalizePo(subUniqueRef)) : null) || arrivedMap.get(normParentPo) || { totalQty: 0, billNos: new Set(), rows: [] };
-          const arrivalQtl = arrData.totalQty;
+          // Link Arrival Entry SPECIFICALLY for this individual sub-order.
+          // CRITICAL: NEVER fall back to arrivedPoMap.get(normParentPo) because that holds the entire truck total!
+          const normPartyStrict = normalizePartyStrict(buyer);
+          const normSubRawId = sub.id ? normalizePo(sub.id) : '';
+          const normSubUniqueRef = subUniqueRef ? normalizePo(subUniqueRef) : '';
+          const normSubOrderNo = (sub.supplierSubOrderNo || sub.subOrderId || sub.orderNo) ? normalizePo(sub.supplierSubOrderNo || sub.subOrderId || sub.orderNo) : '';
+          const normIdxKey = normalizePo(`sub-${sIdx}`);
+
+          const matchedArrivalRows: any[] = [];
+          const seenArrivalIds = new Set<string>();
+
+          uniqueArrivals.forEach((arr, arrIdx) => {
+            if (!arr) return;
+            const rowId = arr.id || `arr-${arr.purchaseOrderNo || ''}-${arr.partyName || ''}-${arr.qty || 0}-${arrIdx}`;
+            if (seenArrivalIds.has(rowId)) return;
+
+            const arrPo = normalizePo(arr.purchaseOrderNo || arr.poNo || arr.mainPoNo);
+            const arrSubId = arr.subOrderId ? normalizePo(arr.subOrderId) : '';
+            const arrSubNo = arr.subOrderNo ? normalizePo(arr.subOrderNo) : '';
+            const arrPartyStrict = normalizePartyStrict(arr.partyName || arr.originalBuyer || arr.buyer);
+
+            let isMatch = false;
+
+            // 1. Direct Sub-order identifier match
+            if (arrSubId && (
+              arrSubId === normSubId || 
+              arrSubId === normSubRawId || 
+              arrSubId === normSubOrderNo || 
+              arrSubId === normIdxKey || 
+              arrSubId === normSubUniqueRef
+            )) {
+              isMatch = true;
+            } else if (arrSubNo && (
+              arrSubNo === normSubId || 
+              arrSubNo === normSubRawId || 
+              arrSubNo === normSubOrderNo || 
+              arrSubNo === normIdxKey || 
+              arrSubNo === normSubUniqueRef
+            )) {
+              isMatch = true;
+            }
+            // 2. Parent PO match + Buyer Name match (strictly excluding multi-buyer summary labels like "& 7 others")
+            else if (
+              (arrPo === normParentPo || (poNumber && arrPo === normalizePo(poNumber))) &&
+              arrPartyStrict && 
+              normPartyStrict && 
+              !arrPartyStrict.includes('other')
+            ) {
+              if (arrPartyStrict === normPartyStrict) {
+                isMatch = true;
+              } else if (arrPartyStrict.length >= 5 && normPartyStrict.length >= 5) {
+                if (arrPartyStrict.includes(normPartyStrict) || normPartyStrict.includes(arrPartyStrict)) {
+                  isMatch = true;
+                }
+              }
+            }
+
+            if (isMatch) {
+              seenArrivalIds.add(rowId);
+              matchedArrivalRows.push(arr);
+            }
+          });
+
+          let arrivalQtl = 0;
+          let billNo: string | undefined = undefined;
+
+          if (matchedArrivalRows.length > 0) {
+            arrivalQtl = matchedArrivalRows.reduce((sum, r) => sum + (Number(r.qty) || 0), 0);
+            billNo = matchedArrivalRows.map(r => String(r.billNo || '').trim()).find(Boolean) || (sub.actualSupplierBillNo || sub.billNo || '').trim() || undefined;
+          } else if (uniqueArrivals.length === 0 && (sub.isArrived === true || sub.status === 'Arrived')) {
+            // Cold start fallback if arrivals could not be loaded from storage
+            const recQty = Number(sub.arrivedQty);
+            arrivalQtl = (!isNaN(recQty) && recQty > 0 && recQty <= poQtl * 2) ? recQty : poQtl;
+            billNo = (sub.actualSupplierBillNo || sub.billNo || '').trim() || undefined;
+          } else {
+            // Sub-order has NOT been entried in Arrival Entry -> 0 QTL arrived, strictly Pending Loading
+            arrivalQtl = 0;
+            billNo = (sub.actualSupplierBillNo || sub.billNo || '').trim() || undefined;
+          }
+
           const difference = arrivalQtl - poQtl;
 
           let status: 'Arrived' | 'Pending Loading' | 'Partial Arrival' = 'Pending Loading';
@@ -1020,9 +1121,9 @@ export async function fetchOperationalOrders(forceFresh = false): Promise<Operat
             status = 'Arrived';
           } else if (arrivalQtl > 0) {
             status = 'Partial Arrival';
+          } else {
+            status = 'Pending Loading';
           }
-
-          const billNo = Array.from(arrData.billNos)[0] || sub.billNo || ord.billNo || undefined;
 
           results.push({
             id: `po-${rowKey}`,
@@ -1081,9 +1182,12 @@ export async function fetchOperationalOrders(forceFresh = false): Promise<Operat
         const subId = resolveSubOrderNumber(ord, 0, supplier);
         const normSubId = normalizePo(subId);
 
-        // Link Arrival Entry
-        const arrData = arrivedMap.get(normSubId) || arrivedMap.get(normParentPo) || { totalQty: 0, billNos: new Set(), rows: [] };
-        const arrivalQtl = arrData.totalQty;
+        // Link Arrival Entry for Single PO Order
+        const arrData = arrivedPoMap.get(normParentPo) || (normSubId ? arrivedPoMap.get(normSubId) : null) || { totalQty: 0, billNos: new Set(), rows: [] };
+        let arrivalQtl = arrData.totalQty;
+        if (arrivalQtl <= 0 && (ord.isArrived === true || ord.status === 'Arrived')) {
+          arrivalQtl = Number(ord.arrivedQty) || poQtl;
+        }
         const difference = arrivalQtl - poQtl;
 
         let status: 'Arrived' | 'Pending Loading' | 'Partial Arrival' = 'Pending Loading';
@@ -1091,9 +1195,11 @@ export async function fetchOperationalOrders(forceFresh = false): Promise<Operat
           status = 'Arrived';
         } else if (arrivalQtl > 0) {
           status = 'Partial Arrival';
+        } else {
+          status = 'Pending Loading';
         }
 
-        const billNo = Array.from(arrData.billNos)[0] || ord.billNo || undefined;
+        const billNo = Array.from(arrData.billNos)[0] || ord.actualSupplierBillNo || ord.billNo || undefined;
 
         const poNumber = resolveGroupedPoNumber(ord);
 
@@ -1138,7 +1244,7 @@ export async function fetchOperationalOrders(forceFresh = false): Promise<Operat
       }
 
       // Check arrival entry for brand and arrival qty
-      const arrData = arrivedMap.get(poKey) || { totalQty: 0, billNos: new Set(), rows: [] };
+      const arrData = arrivedPoMap.get(poKey) || { totalQty: 0, billNos: new Set(), rows: [] };
       const arrivalQtl = arrData.totalQty;
       const difference = arrivalQtl - poQtl;
       const brand = String(arrData.rows[0]?.brand || rec.brand || rec.product || 'Standard Rice').trim();
@@ -1148,6 +1254,8 @@ export async function fetchOperationalOrders(forceFresh = false): Promise<Operat
         status = 'Arrived';
       } else if (arrivalQtl > 0) {
         status = 'Partial Arrival';
+      } else {
+        status = 'Pending Loading';
       }
 
       const billNo = Array.from(arrData.billNos)[0] || undefined;

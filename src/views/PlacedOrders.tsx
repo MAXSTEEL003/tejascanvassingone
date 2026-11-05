@@ -55,7 +55,7 @@ import { generateSupplierPOEmailHtml, generateSupplierPOA4PrintHtml, printPoDocu
 import { buildPoPdfDocument, getPoPdfFileName } from '../utils/poPdfGenerator';
 import EmailTrackingModal, { getStatusBadgeConfig } from '../components/EmailTrackingModal';
 import BuyerLedgerModal from '../components/BuyerLedgerModal';
-import { purgeOperationalAndLedgerRecords, purgeAllOperationalAndLedgerRecords, resolveSubOrderNumber, resolveGroupedPoNumber, normalizePlacedOrdersSequential } from '../utils/orderOperations';
+import { purgeOperationalAndLedgerRecords, purgeAllOperationalAndLedgerRecords, resolveSubOrderNumber, resolveGroupedPoNumber, normalizePlacedOrdersSequential, invalidateOperationalOrdersCache } from '../utils/orderOperations';
 
 const BUYER_PROFILES: Record<string, { address: string; gstin: string; phone: string; email: string }> = {};
 
@@ -2329,6 +2329,9 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
         console.error("Arrival Registry automatic auto-creation error:", err);
       });
 
+      // Invalidate operational orders cache and notify ledger views
+      invalidateOperationalOrdersCache();
+
       // 4. Fire-and-forget background cloud updates
       (async () => {
         try {
@@ -2407,6 +2410,9 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
 
       // 5. Remove the arrival row from sheets and Firestore
       await removeArrivalEntryForSubOrder(orderId, subId, subBill, subParty);
+
+      // Invalidate operational orders cache and notify ledger views
+      invalidateOperationalOrdersCache();
 
       // 6. Dual-write to Firestore
       setCollectionDoc('placed_orders', orderId, updatedOrder).catch(err => {

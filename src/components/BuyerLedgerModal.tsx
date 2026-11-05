@@ -111,15 +111,21 @@ export default function BuyerLedgerModal({
           if (o.originalOrders && Array.isArray(o.originalOrders)) {
             const matchingSubs = o.originalOrders.filter((sub: any) => sub && sub.buyer && String(sub.buyer).trim().toUpperCase() === normBuyer);
             if (matchingSubs.length > 0) {
-              return matchingSubs.map((sub: any, sIdx: number) => ({
-                ...o,
-                id: sub.id || `${o.id}-sub-${sIdx}`,
-                subOrderId: sub.supplierSubOrderNo || sub.orderNo || sub.subOrderId,
-                qty: Number(sub.qty || 0),
-                rate: Number(sub.rate || o.rate || 0),
-                product: sub.product || sub.brand || o.product || o.brand || 'Premium Rice',
-                supplier: sub.supplier || o.supplier || 'Direct Mill'
-              }));
+              return matchingSubs.map((sub: any, sIdx: number) => {
+                const isSubArrived = Boolean(sub.isArrived === true || sub.status === 'Arrived');
+                return {
+                  ...o,
+                  status: isSubArrived ? 'Arrived' : (sub.status || 'Pending Loading'),
+                  isArrived: isSubArrived,
+                  id: sub.id || `${o.id}-sub-${sIdx}`,
+                  subOrderId: sub.supplierSubOrderNo || sub.orderNo || sub.subOrderId,
+                  qty: Number(sub.qty || 0),
+                  arrivedQty: isSubArrived ? (Number(sub.arrivedQty) || Number(sub.qty) || 0) : 0,
+                  rate: Number(sub.rate || o.rate || 0),
+                  product: sub.product || sub.brand || o.product || o.brand || 'Premium Rice',
+                  supplier: sub.supplier || o.supplier || 'Direct Mill'
+                };
+              });
             }
           }
           if (directMatch) {
