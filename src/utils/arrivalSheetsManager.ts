@@ -166,25 +166,39 @@ export function organizeArrivalSheetsByMonth(
         });
       }
     } else {
-      // Regular Month + Year or Custom sheet: PRESERVE ALL ITS ROWS DIRECTLY IN THIS SHEET!
+      // Regular Month + Year or Custom sheet
       const sheetName = s.name.trim();
-      if (!sheetRowMaps.has(sheetName)) {
-        sheetRowMaps.set(sheetName, new Map());
-      }
-      const sheetMap = sheetRowMaps.get(sheetName)!;
+      const isMonth = isMonthYearName(sheetName);
 
       if (Array.isArray(s.data)) {
         s.data.forEach((row, idx) => {
           if (!isMeaningfulRow(row)) return;
+
+          // CRITICAL FIX: If this is a Month + Year sheet, route rows according to their date!
+          // This immediately rescues rows with November dates that were mistakenly placed in September or October!
+          let targetSheetName = sheetName;
+          if (row.date) {
+            const dateMonthYear = getMonthYearFromDate(row.date);
+            if (dateMonthYear && isMonthYearName(dateMonthYear)) {
+              if (isMonth) {
+                targetSheetName = dateMonthYear;
+              }
+            }
+          }
+
+          if (!sheetRowMaps.has(targetSheetName)) {
+            sheetRowMaps.set(targetSheetName, new Map());
+          }
+          const sheetMap = sheetRowMaps.get(targetSheetName)!;
           const rowId = row.id && !String(row.id).startsWith('row-empty-') ? String(row.id).replace(/^#/, '') : `row-${s.id}-${idx}`;
           const existing = sheetMap.get(rowId);
           if (!existing) {
-            sheetMap.set(rowId, { ...row, id: rowId });
+            sheetMap.set(rowId, { ...row, id: rowId, sheetName: targetSheetName });
           } else {
             const t1 = row.lastUpdated || 0;
             const t2 = existing.lastUpdated || 0;
             if (t1 >= t2) {
-              sheetMap.set(rowId, { ...existing, ...row, id: rowId });
+              sheetMap.set(rowId, { ...existing, ...row, id: rowId, sheetName: targetSheetName });
             }
           }
         });
@@ -197,23 +211,34 @@ export function organizeArrivalSheetsByMonth(
     if (!isMeaningfulRow(row)) return;
 
     let targetSheetName = '';
-    if (row.sheetName && !/all\s*arrivals/i.test(row.sheetName)) {
-      targetSheetName = row.sheetName.trim();
-    } else if (row.sheetId) {
-      const matchingSheet = existingSheets.find(s => s.id === row.sheetId) ||
-                            (extraSheetMetadata || []).find(s => s.id === row.sheetId);
-      if (matchingSheet && !/all\s*arrivals/i.test(matchingSheet.name)) {
-        targetSheetName = matchingSheet.name.trim();
-      } else {
-        const parsedFromId = parseSheetNameFromId(row.sheetId);
-        if (parsedFromId && !/all\s*arrivals/i.test(parsedFromId)) {
-          targetSheetName = parsedFromId;
+    // Priority 1: If row has a valid date, the date's Month + Year determines which month sheet it belongs to!
+    if (row.date) {
+      const dateMonthYear = getMonthYearFromDate(row.date);
+      if (dateMonthYear && isMonthYearName(dateMonthYear)) {
+        targetSheetName = dateMonthYear;
+      }
+    }
+
+    // Priority 2: Use explicitly assigned sheetName or sheetId (for custom sheets or when date is unparseable)
+    if (!targetSheetName) {
+      if (row.sheetName && !/all\s*arrivals/i.test(row.sheetName)) {
+        targetSheetName = row.sheetName.trim();
+      } else if (row.sheetId) {
+        const matchingSheet = existingSheets.find(s => s.id === row.sheetId) ||
+                              (extraSheetMetadata || []).find(s => s.id === row.sheetId);
+        if (matchingSheet && !/all\s*arrivals/i.test(matchingSheet.name)) {
+          targetSheetName = matchingSheet.name.trim();
+        } else {
+          const parsedFromId = parseSheetNameFromId(row.sheetId);
+          if (parsedFromId && !/all\s*arrivals/i.test(parsedFromId)) {
+            targetSheetName = parsedFromId;
+          }
         }
       }
     }
 
     if (!targetSheetName) {
-      targetSheetName = getMonthYearFromDate(row.date) || currentMonthYear;
+      targetSheetName = currentMonthYear;
     }
 
     if (!sheetRowMaps.has(targetSheetName)) {
@@ -224,12 +249,12 @@ export function organizeArrivalSheetsByMonth(
     const rowId = row.id && !String(row.id).startsWith('row-empty-') ? String(row.id).replace(/^#/, '') : `cloud-${targetSheetName}-${idx}`;
     const existing = sheetMap.get(rowId);
     if (!existing) {
-      sheetMap.set(rowId, { ...row, id: rowId });
+      sheetMap.set(rowId, { ...row, id: rowId, sheetName: targetSheetName });
     } else {
       const t1 = row.lastUpdated || 0;
       const t2 = existing.lastUpdated || 0;
       if (t1 >= t2) {
-        sheetMap.set(rowId, { ...existing, ...row, id: rowId });
+        sheetMap.set(rowId, { ...existing, ...row, id: rowId, sheetName: targetSheetName });
       }
     }
   });

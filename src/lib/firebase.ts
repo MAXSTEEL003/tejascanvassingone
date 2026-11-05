@@ -20,6 +20,8 @@ import {
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { sanitizeSupplierName } from './utils';
+import { getMonthYearFromDate, normalizeDate } from '../utils/dateUtils';
+import { getCurrentMonthYearSheetName } from '../utils/arrivalSheetsManager';
 
 // Initialize Firebase App safely (singleton)
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
@@ -996,7 +998,10 @@ export async function autoCreateArrivalEntryForIncomingLog(
   try {
     if (!targetOrder) return orderId;
 
-    const dateStr = new Date().toISOString().split('T')[0];
+    const rawOrderDate = targetOrder.arrivedAt || targetOrder.date;
+    const dateStr = rawOrderDate ? (normalizeDate(rawOrderDate) || new Date().toISOString().split('T')[0]) : new Date().toISOString().split('T')[0];
+    const targetMonthYear = getMonthYearFromDate(dateStr) || getCurrentMonthYearSheetName();
+    const expectedSheetId = `sheet-${targetMonthYear.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
 
     // 1. Read local sheets and local single data
     const rawSheets = localStorage.getItem('arrival_entry_sheets_v4');
@@ -1011,15 +1016,28 @@ export async function autoCreateArrivalEntryForIncomingLog(
 
     if (!Array.isArray(sheets) || sheets.length === 0) {
       const localSingle = JSON.parse(localStorage.getItem('arrival_entry_data_v4') || '[]');
-      sheets = [{ id: 'sheet-1', name: 'All Arrivals (Main)', data: Array.isArray(localSingle) && localSingle.length > 0 ? localSingle : [] }];
+      sheets = [{ id: expectedSheetId, name: targetMonthYear, data: Array.isArray(localSingle) && localSingle.length > 0 ? localSingle : [] }];
     }
 
-    // Main sheet data grid
-    const mainSheetIndex = sheets.findIndex(s => s.id === 'sheet-1' || s.name?.includes('Main')) !== -1 
-      ? sheets.findIndex(s => s.id === 'sheet-1' || s.name?.includes('Main')) 
-      : 0;
+    // Target the specific Month+Year sheet for this arrival date
+    let targetSheetIndex = sheets.findIndex(s => 
+      s && (
+        s.name?.toLowerCase() === targetMonthYear.toLowerCase() || 
+        s.id === expectedSheetId
+      )
+    );
+
+    if (targetSheetIndex === -1) {
+      const newSheet = {
+        id: expectedSheetId,
+        name: targetMonthYear,
+        data: []
+      };
+      sheets.push(newSheet);
+      targetSheetIndex = sheets.length - 1;
+    }
     
-    let currentGrid: any[] = Array.isArray(sheets[mainSheetIndex]?.data) ? [...sheets[mainSheetIndex].data] : [];
+    let currentGrid: any[] = Array.isArray(sheets[targetSheetIndex]?.data) ? [...sheets[targetSheetIndex].data] : [];
 
     // Ensure grid has at least 30 rows
     while (currentGrid.length < 30) {
@@ -1241,9 +1259,9 @@ export async function autoCreateArrivalEntryForIncomingLog(
       }
     });
 
-    // 4. Save back to localStorage synchronously
-    sheets[mainSheetIndex] = {
-      ...sheets[mainSheetIndex],
+    // 4. Save back to localStorage synchronously in the correct Month+Year sheet
+    sheets[targetSheetIndex] = {
+      ...sheets[targetSheetIndex],
       data: currentGrid
     };
     localStorage.setItem('arrival_entry_sheets_v4', JSON.stringify(sheets));
@@ -1253,8 +1271,8 @@ export async function autoCreateArrivalEntryForIncomingLog(
     sessionStorage.setItem('goto_arrival_bill', firstBillNo);
 
     // 5. Dual-write only the newly injected items to Cloud Firestore asynchronously
-    const targetSheetId = sheets[mainSheetIndex]?.id || 'sheet-1';
-    const targetSheetName = sheets[mainSheetIndex]?.name || 'All Arrivals (Main)';
+    const targetSheetId = sheets[targetSheetIndex]?.id || expectedSheetId;
+    const targetSheetName = sheets[targetSheetIndex]?.name || targetMonthYear;
     const cloudFormatted = newItemsToInject.map((row, idx) => {
       const existingId = row.id && !String(row.id).startsWith('row-empty-') ? String(row.id).replace(/^#/, '') : null;
       const cleanBill = row.billNo ? String(row.billNo).trim().replace(/[^a-zA-Z0-9_-]/g, '') : '';

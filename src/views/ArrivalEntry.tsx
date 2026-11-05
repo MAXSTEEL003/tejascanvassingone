@@ -46,7 +46,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { getVerifiedUserRole } from '../lib/auth';
 import { cn, formatINR, getRegisteredSuppliers, getRegisteredBuyerNames, getRegisteredBuyers, sanitizeSupplierName } from '../lib/utils';
-import { getCollectionDocs, setCollectionDoc, deleteCollectionDoc, db, invalidateCollectionCache } from '../lib/firebase';
+import { getCollectionDocs, setCollectionDoc, deleteCollectionDoc, db, invalidateCollectionCache, autoCreateArrivalEntryForIncomingLog } from '../lib/firebase';
 import { doc, writeBatch, collection, query, where, getDocs } from 'firebase/firestore';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
@@ -641,6 +641,52 @@ export default function ArrivalEntry() {
             }
           });
 
+          // Reconcile any arrived orders from placed_orders that might be missing from the sheets
+          try {
+            const rawPlaced = localStorage.getItem('placed_orders');
+            const placedList: any[] = rawPlaced ? JSON.parse(rawPlaced) : [];
+            if (Array.isArray(placedList) && placedList.length > 0) {
+              placedList.forEach((order: any) => {
+                if (!order) return;
+                const hasSubs = Array.isArray(order.originalOrders) && order.originalOrders.length > 0;
+                if (hasSubs) {
+                  order.originalOrders.forEach((sub: any, sIdx: number) => {
+                    const isSubArrived = Boolean(sub.isArrived === true || sub.status === 'Arrived');
+                    const subBill = (sub.actualSupplierBillNo || sub.billNo || '').trim();
+                    if (isSubArrived && subBill) {
+                      const exists = organized.sheets.some(s => 
+                        Array.isArray(s.data) && s.data.some(r => 
+                          isMeaningfulRow(r) && (
+                            (r.subOrderId && (r.subOrderId === sub.id || r.subOrderId === `sub-${sIdx}`)) ||
+                            (r.billNo && String(r.billNo).trim().toLowerCase() === subBill.toLowerCase())
+                          )
+                        )
+                      );
+                      if (!exists) {
+                        autoCreateArrivalEntryForIncomingLog(order.id, order, undefined, undefined, { [sub.id || `sub-${sIdx}`]: subBill }, undefined, sub.id || `sub-${sIdx}`).catch(() => {});
+                      }
+                    }
+                  });
+                } else if (order.status === 'Arrived' && (order.actualSupplierBillNo || order.billNo)) {
+                  const bill = (order.actualSupplierBillNo || order.billNo).trim();
+                  const exists = organized.sheets.some(s => 
+                    Array.isArray(s.data) && s.data.some(r => 
+                      isMeaningfulRow(r) && (
+                        (r.purchaseOrderNo && String(r.purchaseOrderNo).trim().toUpperCase() === String(order.id).trim().toUpperCase().replace(/^#/, '')) ||
+                        (r.billNo && String(r.billNo).trim().toLowerCase() === bill.toLowerCase())
+                      )
+                    )
+                  );
+                  if (!exists) {
+                    autoCreateArrivalEntryForIncomingLog(order.id, order, undefined, undefined, bill).catch(() => {});
+                  }
+                }
+              });
+            }
+          } catch (reconcileErr) {
+            console.warn("Error reconciling arrived orders:", reconcileErr);
+          }
+
           return organized.sheets;
         });
       } catch (e) {
@@ -651,6 +697,31 @@ export default function ArrivalEntry() {
     loadSheetData();
     return () => { isMounted = false; };
   }, []);
+
+  // Automatically navigate to the sheet and highlight the bill when coming from Placed Orders
+  useEffect(() => {
+    const targetBill = sessionStorage.getItem('goto_arrival_bill');
+    if (!targetBill) return;
+
+    const norm = targetBill.trim().toLowerCase();
+
+    // Check if the bill is in any sheet
+    const matchingSheet = sheets.find(s => 
+      Array.isArray(s.data) && s.data.some(r => 
+        isMeaningfulRow(r) && (
+          String(r.billNo || '').trim().toLowerCase() === norm ||
+          String(r.purchaseOrderNo || '').trim().toLowerCase() === norm
+        )
+      )
+    );
+
+    if (matchingSheet && matchingSheet.id !== currentSheetId) {
+      setCurrentSheetId(matchingSheet.id);
+    }
+
+    setQuickSearch(targetBill.trim());
+    sessionStorage.removeItem('goto_arrival_bill');
+  }, [sheets, currentSheetId]);
 
   // Set Data Helper (updates local state & marks dirty)
   const setData = useCallback((newDataOrFn: any[] | ((prev: any[]) => any[])) => {
