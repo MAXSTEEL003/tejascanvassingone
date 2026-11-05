@@ -3148,14 +3148,6 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                               Grouped PO ({order.originalOrders.length} Sub-Orders)
                             </span>
                           )}
-                          <span className={cn(
-                            "text-[10px] px-2 py-0.5 rounded-full uppercase tracking-widest font-black",
-                            order.status === 'In Transit' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
-                            (order.status === 'Pending Approval' || order.status === 'Awaiting Settlement') ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
-                            'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400'
-                          )}>
-                            {order.status}
-                          </span>
                           {(() => {
                             const trk = trackingRecordMap[order.id];
                             const status = (order.purchaseOrderSent || trk?.status === 'Sent') ? 'Sent' : (trk?.status || 'Sent');
@@ -3205,8 +3197,6 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                         </h3>
                         <div className="flex items-center gap-2 text-xs text-secondary font-medium">
                           <span>{order.items}</span>
-                          <span className="opacity-40">•</span>
-                          <span className="font-mono font-bold text-primary">PO: {resolveGroupedPoNumber(order)}</span>
                         </div>
                       </div>
                       <div className="md:text-right">
@@ -3218,14 +3208,9 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                     {/* Supplier & Consignee Buyers Info Panel (Replacing Progress Bar) */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-surface-container-low/60 dark:bg-neutral-900/40 p-4 rounded-xl border border-outline-variant/30">
                       <div className="space-y-1">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-[9px] font-black tracking-widest text-secondary uppercase block">
-                            🌾 Primary Supplier Channel
-                          </span>
-                          <span className="text-[10px] font-mono font-black text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded border border-blue-200 dark:border-blue-800">
-                            PO: {resolveGroupedPoNumber(order)}
-                          </span>
-                        </div>
+                        <span className="text-[9px] font-black tracking-widest text-secondary uppercase block">
+                          🌾 Primary Supplier Channel
+                        </span>
                         <p className="text-xs font-black text-on-surface uppercase flex items-center gap-1.5">
                           <span className="w-1.5 h-1.5 rounded-full bg-amber-550" />
                           {sanitizeSupplierName(order.supplier || (order.originalOrders && order.originalOrders[0]?.supplier), 'Direct Mill')}
@@ -3284,39 +3269,16 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                       </div>
                     )}
 
-                    <div className="flex flex-wrap items-center justify-between gap-4 pt-1 border-t border-outline-variant/10">
-                      <div className="flex items-center gap-4 text-[11px] font-black">
-                        <div className="flex items-center gap-1 text-secondary">
-                          <MapPin className="w-3 h-3 text-secondary/70" />
-                          {order.origin || 'Punjab, PB'}
-                        </div>
-                        <div className="w-4 h-px bg-outline-variant/40" />
-                        <div className="flex items-center gap-1 text-primary">
-                          <MapPin className="w-3 h-3 text-primary/70" />
-                          {order.destination || 'Consolidated Hub'}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {/* View / Edit PO button */}
-                        <button 
-                          onClick={(e) => handleOpenPO(order, e)}
-                          className="btn-tactile flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 hover:bg-primary text-primary hover:text-on-primary rounded-lg text-[10px] font-black uppercase tracking-wider transition-all border border-primary/25 cursor-pointer shadow-xs hover:scale-105"
-                          title="Open Purchase Order to edit loading days, unloading point, and dispatch to supplier"
-                        >
-                          <FileText className="w-3.5 h-3.5" />
-                          View / Edit PO
-                        </button>
-
-                        {/* Share summary button */}
-                        <button 
-                          onClick={(e) => handleOpenShare(order, e)}
-                          className="btn-tactile flex items-center gap-1.5 px-3 py-1.5 bg-secondary/[0.06] hover:bg-secondary/[0.12] rounded-lg text-[10px] font-black uppercase tracking-wider transition-all text-secondary border border-secondary/15 cursor-pointer"
-                          title="Share order summary to customer"
-                        >
-                          <Share2 className="w-3.5 h-3.5" />
-                          Share Summary
-                        </button>
+                    <div className="flex flex-wrap items-center justify-end gap-2 pt-1 border-t border-outline-variant/10">
+                      {/* View / Edit PO button */}
+                      <button 
+                        onClick={(e) => handleOpenPO(order, e)}
+                        className="btn-tactile flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 hover:bg-primary text-primary hover:text-on-primary rounded-lg text-[10px] font-black uppercase tracking-wider transition-all border border-primary/25 cursor-pointer shadow-xs hover:scale-105"
+                        title="Open Purchase Order to edit loading days, unloading point, and dispatch to supplier"
+                      >
+                        <FileText className="w-3.5 h-3.5" />
+                        View / Edit PO
+                      </button>
                         
                         {/* PO Email Tracking Modal trigger */}
                         <button 
@@ -3418,7 +3380,6 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                       </div>
                     </div>
                   </div>
-                </div>
 
                 {expandedId === order.id && (
                   <motion.div 
