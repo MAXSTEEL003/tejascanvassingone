@@ -3247,14 +3247,14 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                     </div>
 
                     {/* Automated Dispatch Indicators */}
-                    <div className="flex flex-col sm:flex-row gap-2 p-2.5 bg-emerald-550/[0.03] dark:bg-emerald-500/[0.01] rounded-xl border border-emerald-500/10 text-[10px] text-emerald-800 dark:text-emerald-400 font-bold tracking-tight uppercase">
-                      <div className="flex items-center gap-1.5 flex-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                        <span>Email auto-sent to supplier: <strong className="text-on-surface font-black ml-1">{sanitizeSupplierName(order.supplier || (order.originalOrders && order.originalOrders[0]?.supplier), 'Direct Mill')}</strong></span>
+                    <div className="flex flex-col sm:flex-row gap-2 py-1 px-2.5 bg-emerald-500/[0.03] dark:bg-emerald-500/[0.02] rounded-lg border border-emerald-500/10 text-[9px] text-emerald-800 dark:text-emerald-400 font-semibold tracking-tight uppercase">
+                      <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                        <span className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                        <span className="truncate">Email auto-sent to supplier: <strong className="text-on-surface font-bold ml-0.5">{sanitizeSupplierName(order.supplier || (order.originalOrders && order.originalOrders[0]?.supplier), 'Direct Mill')}</strong></span>
                       </div>
-                      <div className="flex items-center gap-1.5 flex-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                        <span>WhatsApp auto-sent to buyer: <strong className="text-on-surface font-black ml-1">{order.buyer || 'Multiple Buyers'}</strong></span>
+                      <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                        <span className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                        <span className="truncate">WhatsApp auto-sent to buyer: <strong className="text-on-surface font-bold ml-0.5">{order.buyer || 'Multiple Buyers'}</strong></span>
                       </div>
                     </div>
 
