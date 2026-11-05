@@ -294,6 +294,41 @@ export function removeDeletedPlacedOrderId(id: string): void {
   } catch (e) {}
 }
 
+// Persistently deleted arrival entries
+export function getDeletedArrivalIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem('deleted_arrival_entry_ids');
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    if (Array.isArray(arr)) {
+      return new Set(arr.map((id: string) => String(id).trim().toLowerCase().replace(/^(bill[-.\s]*|bil[-.\s]*|tc[-.\s]*)/i, '').replace(/^#/, '')));
+    }
+  } catch (e) {}
+  return new Set();
+}
+
+export function addDeletedArrivalIds(ids: string[]): void {
+  try {
+    const current = getDeletedArrivalIds();
+    ids.forEach(id => {
+      const norm = String(id).trim().toLowerCase().replace(/^(bill[-.\s]*|bil[-.\s]*|tc[-.\s]*)/i, '').replace(/^#/, '');
+      if (norm) current.add(norm);
+    });
+    localStorage.setItem('deleted_arrival_entry_ids', JSON.stringify(Array.from(current)));
+  } catch (e) {}
+}
+
+export function removeDeletedArrivalId(id: string): void {
+  try {
+    const current = getDeletedArrivalIds();
+    const norm = String(id).trim().toLowerCase().replace(/^(bill[-.\s]*|bil[-.\s]*|tc[-.\s]*)/i, '').replace(/^#/, '');
+    if (current.has(norm)) {
+      current.delete(norm);
+      localStorage.setItem('deleted_arrival_entry_ids', JSON.stringify(Array.from(current)));
+    }
+  } catch (e) {}
+}
+
 export interface ResolvedBuyerProfile {
   id: string;
   name: string;

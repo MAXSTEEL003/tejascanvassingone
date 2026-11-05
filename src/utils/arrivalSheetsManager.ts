@@ -15,6 +15,7 @@ import {
   normalizeDate, 
   MONTH_NAMES_LONG 
 } from './dateUtils';
+import { getDeletedArrivalIds } from '../lib/utils';
 
 export { getMonthYearFromDate };
 
@@ -131,6 +132,21 @@ export function organizeArrivalSheetsByMonth(
   const isMonthYearName = (name: string) => 
     /^(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4}$/i.test(name.trim());
 
+  const deletedArrivalIds = getDeletedArrivalIds();
+  const isRowPermanentlyDeleted = (r: any) => {
+    if (!r) return true;
+    const rId = r.id ? String(r.id).trim().toLowerCase().replace(/^#/, '') : '';
+    const rBill = r.billNo ? String(r.billNo).trim().toLowerCase().replace(/^(bill[-.\s]*|bil[-.\s]*|tc[-.\s]*)/i, '') : '';
+    const rPo = String(r.purchaseOrderNo || r.mainPoNo || '').trim().toLowerCase().replace(/^#/, '');
+    const rParty = String(r.partyName || r.buyer || '').trim().toLowerCase();
+
+    if (rId && deletedArrivalIds.has(rId)) return true;
+    if (rBill && deletedArrivalIds.has(rBill)) return true;
+    if (rPo && rBill && deletedArrivalIds.has(`${rPo}_${rBill}`)) return true;
+    if (rPo && rParty && deletedArrivalIds.has(`${rPo}_${rParty}`)) return true;
+    return false;
+  };
+
   // 0. Register any sheets defined in extraSheetMetadata (from Cloud arrival_sheets)
   if (Array.isArray(extraSheetMetadata)) {
     extraSheetMetadata.forEach(meta => {
@@ -152,7 +168,7 @@ export function organizeArrivalSheetsByMonth(
       // Legacy "All Arrivals" rows get distributed by date to their respective Month + Year
       if (Array.isArray(s.data)) {
         s.data.forEach((row, idx) => {
-          if (!isMeaningfulRow(row)) return;
+          if (!isMeaningfulRow(row) || isRowPermanentlyDeleted(row)) return;
           const targetSheetName = getMonthYearFromDate(row.date) || currentMonthYear;
           if (!sheetRowMaps.has(targetSheetName)) {
             sheetRowMaps.set(targetSheetName, new Map());
@@ -172,7 +188,7 @@ export function organizeArrivalSheetsByMonth(
 
       if (Array.isArray(s.data)) {
         s.data.forEach((row, idx) => {
-          if (!isMeaningfulRow(row)) return;
+          if (!isMeaningfulRow(row) || isRowPermanentlyDeleted(row)) return;
 
           // CRITICAL FIX: If this is a Month + Year sheet, route rows according to their date!
           // This immediately rescues rows with November dates that were mistakenly placed in September or October!
@@ -208,7 +224,7 @@ export function organizeArrivalSheetsByMonth(
 
   // 2. Merge Cloud Records into their corresponding sheets
   cloudRecords.forEach((row, idx) => {
-    if (!isMeaningfulRow(row)) return;
+    if (!isMeaningfulRow(row) || isRowPermanentlyDeleted(row)) return;
 
     let targetSheetName = '';
     // Priority 1: If row has a valid date, the date's Month + Year determines which month sheet it belongs to!

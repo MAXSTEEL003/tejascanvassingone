@@ -7,7 +7,7 @@
  */
 
 import { getCollectionDocs, deleteCollectionDoc } from '../lib/firebase';
-import { sanitizeSupplierName, getDeletedPlacedOrderIds, getDeletedProcurementIds, getRegisteredSuppliers } from '../lib/utils';
+import { sanitizeSupplierName, getDeletedPlacedOrderIds, getDeletedProcurementIds, getRegisteredSuppliers, getDeletedArrivalIds } from '../lib/utils';
 
 export interface OperationalPO {
   id: string;                // Unique row key
@@ -885,9 +885,9 @@ export async function fetchOperationalOrders(forceFresh = false): Promise<Operat
       localArrivals = JSON.parse(localStorage.getItem('arrival_entry_data_v4') || '[]');
     } catch {}
 
-    // Also extract rows from sheet tabs if present
+    // Also extract rows from sheet tabs if present (support both arrival_sheets and legacy arrival_entry_sheets_v4)
     try {
-      const sheetsRaw = localStorage.getItem('arrival_entry_sheets_v4');
+      const sheetsRaw = localStorage.getItem('arrival_sheets') || localStorage.getItem('arrival_entry_sheets_v4');
       if (sheetsRaw) {
         const sheets = JSON.parse(sheetsRaw);
         if (Array.isArray(sheets)) {
@@ -900,10 +900,25 @@ export async function fetchOperationalOrders(forceFresh = false): Promise<Operat
       }
     } catch {}
 
-    // 1. Deduplicate arrival entries from cloud and local
+    // 1. Deduplicate arrival entries from cloud and local, strictly filtering out deleted arrivals
+    const deletedArrivals = getDeletedArrivalIds();
+    const isArrivalDeleted = (arr: any) => {
+      if (!arr) return true;
+      const rId = arr.id ? String(arr.id).trim().toLowerCase().replace(/^#/, '') : '';
+      const rBill = arr.billNo ? String(arr.billNo).trim().toLowerCase().replace(/^(bill[-.\s]*|bil[-.\s]*|tc[-.\s]*)/i, '') : '';
+      const rPo = String(arr.purchaseOrderNo || arr.poNo || arr.mainPoNo || '').trim().toLowerCase().replace(/^#/, '');
+      const rParty = String(arr.partyName || arr.buyer || '').trim().toLowerCase();
+
+      if (rId && deletedArrivals.has(rId)) return true;
+      if (rBill && deletedArrivals.has(rBill)) return true;
+      if (rPo && rBill && deletedArrivals.has(`${rPo}_${rBill}`)) return true;
+      if (rPo && rParty && deletedArrivals.has(`${rPo}_${rParty}`)) return true;
+      return false;
+    };
+
     const arrivalEntriesMap = new Map<string, any>();
     [...cloudArrivals, ...localArrivals].forEach((arr, idx) => {
-      if (!arr) return;
+      if (!arr || isArrivalDeleted(arr)) return;
       const rowKey = arr.id || `${arr.purchaseOrderNo || arr.poNo || ''}_${arr.subOrderId || ''}_${arr.partyName || ''}_${arr.qty || 0}_${idx}`;
       if (!arrivalEntriesMap.has(rowKey)) {
         arrivalEntriesMap.set(rowKey, arr);
@@ -1184,8 +1199,26 @@ export async function fetchOperationalOrders(forceFresh = false): Promise<Operat
 
         // Link Arrival Entry for Single PO Order
         const arrData = arrivedPoMap.get(normParentPo) || (normSubId ? arrivedPoMap.get(normSubId) : null) || { totalQty: 0, billNos: new Set(), rows: [] };
-        let arrivalQtl = arrData.totalQty;
-        if (arrivalQtl <= 0 && (ord.isArrived === true || ord.status === 'Arrived')) {
+        const normParty = normalizePartyStrict(buyer);
+        let arrivalQtl = 0;
+        let billNo = Array.from(arrData.billNos)[0] || ord.actualSupplierBillNo || ord.billNo || undefined;
+
+        if (arrData.rows.length > 0) {
+          const matchingRows = arrData.rows.filter(r => {
+            const rParty = normalizePartyStrict(r.partyName || r.originalBuyer || r.buyer);
+            if (normParty && rParty) {
+              if (normParty === rParty) return true;
+              if (normParty.length >= 5 && rParty.length >= 5 && (normParty.includes(rParty) || rParty.includes(normParty))) return true;
+            }
+            return !r.partyName;
+          });
+          if (matchingRows.length > 0) {
+            arrivalQtl = matchingRows.reduce((sum, r) => sum + (Number(r.qty) || 0), 0);
+            billNo = matchingRows.map(r => String(r.billNo || '').trim()).find(Boolean) || billNo;
+          } else {
+            arrivalQtl = Math.min(poQtl, arrData.totalQty);
+          }
+        } else if (ord.isArrived === true || ord.status === 'Arrived') {
           arrivalQtl = Number(ord.arrivedQty) || poQtl;
         }
         const difference = arrivalQtl - poQtl;
@@ -1198,8 +1231,6 @@ export async function fetchOperationalOrders(forceFresh = false): Promise<Operat
         } else {
           status = 'Pending Loading';
         }
-
-        const billNo = Array.from(arrData.billNos)[0] || ord.actualSupplierBillNo || ord.billNo || undefined;
 
         const poNumber = resolveGroupedPoNumber(ord);
 
@@ -1243,11 +1274,34 @@ export async function fetchOperationalOrders(forceFresh = false): Promise<Operat
         rate = Math.round(Number(rec.amount) / poQtl);
       }
 
-      // Check arrival entry for brand and arrival qty
+      // Check arrival entry for brand and arrival qty SPECIFICALLY for this party
       const arrData = arrivedPoMap.get(poKey) || { totalQty: 0, billNos: new Set(), rows: [] };
-      const arrivalQtl = arrData.totalQty;
+      const normParty = normalizePartyStrict(buyer);
+      const partyArrivalRows = arrData.rows.filter(r => {
+        const rParty = normalizePartyStrict(r.partyName || r.originalBuyer || r.buyer);
+        if (normParty && rParty) {
+          if (normParty === rParty) return true;
+          if (normParty.length >= 5 && rParty.length >= 5 && (normParty.includes(rParty) || rParty.includes(normParty))) return true;
+        }
+        return false;
+      });
+
+      let arrivalQtl = 0;
+      let billNo: string | undefined = undefined;
+
+      if (partyArrivalRows.length > 0) {
+        arrivalQtl = partyArrivalRows.reduce((sum, r) => sum + (Number(r.qty) || 0), 0);
+        billNo = partyArrivalRows.map(r => String(r.billNo || '').trim()).find(Boolean) || undefined;
+      } else if (arrData.rows.length === 1 && (!arrData.rows[0].partyName || arrData.rows[0].partyName === 'General Merchant')) {
+        arrivalQtl = Math.min(poQtl, arrData.totalQty);
+        billNo = Array.from(arrData.billNos)[0] || undefined;
+      } else {
+        // No arrival record for this specific buyer -> 0 arrived!
+        arrivalQtl = 0;
+      }
+
       const difference = arrivalQtl - poQtl;
-      const brand = String(arrData.rows[0]?.brand || rec.brand || rec.product || 'Standard Rice').trim();
+      const brand = String(partyArrivalRows[0]?.brand || arrData.rows[0]?.brand || rec.brand || rec.product || 'Standard Rice').trim();
 
       let status: 'Arrived' | 'Pending Loading' | 'Partial Arrival' = 'Pending Loading';
       if (arrivalQtl >= poQtl && poQtl > 0) {
@@ -1257,8 +1311,6 @@ export async function fetchOperationalOrders(forceFresh = false): Promise<Operat
       } else {
         status = 'Pending Loading';
       }
-
-      const billNo = Array.from(arrData.billNos)[0] || undefined;
 
       results.push({
         id: `po-hist-${poKey}`,

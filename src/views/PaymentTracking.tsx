@@ -34,12 +34,13 @@ import {
   FileText,
   Calculator,
   MessageSquare,
-  Truck
+  Truck,
+  Trash2
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { cn, formatINR, formatDateToDDMMYYYY } from '../lib/utils';
-import { getCollectionDocs, syncCollection, setCollectionDoc } from '../lib/firebase';
+import { cn, formatINR, formatDateToDDMMYYYY, getDeletedArrivalIds, addDeletedArrivalIds } from '../lib/utils';
+import { getCollectionDocs, syncCollection, setCollectionDoc, deleteCollectionDoc, invalidateCollectionCache } from '../lib/firebase';
 import { recordPaymentClearedForPatti, unmarkPaymentClearedForPatti } from '../utils/pattiBookManager';
 import { PRELOADED_TRANSACTIONS } from '../lib/analyticsEngine';
 import InlinePattiSlip from '../components/InlinePattiSlip';
@@ -224,6 +225,7 @@ interface PaymentRowProps {
   onOpenPayment: (txn: any) => void;
   onReversePayment: (txn: any) => void;
   onGeneratePatti: (txn: any) => void;
+  onDeleteTransaction?: (txn: any) => void;
 }
 
 const PaymentRow = memo(function PaymentRow({
@@ -232,7 +234,8 @@ const PaymentRow = memo(function PaymentRow({
   onSelect,
   onOpenPayment,
   onReversePayment,
-  onGeneratePatti
+  onGeneratePatti,
+  onDeleteTransaction
 }: PaymentRowProps) {
 
   const isCleared = txn.status === 'Cleared';
@@ -284,13 +287,13 @@ const PaymentRow = memo(function PaymentRow({
               <span className="text-xs font-black text-neutral-800 dark:text-neutral-200">
                 {txn.buyer}
               </span>
-              {txn.isLifted && (
+              {txn.isLifted && txn.originalBuyer && txn.buyer.toLowerCase().trim() !== txn.originalBuyer.toLowerCase().trim() && (
                 <span
                   className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-purple-500/10 text-purple-700 dark:text-purple-300 border border-purple-500/20 text-[8px] font-black tracking-widest uppercase"
-                  title={`Redirected Load${txn.originalBuyer ? ` from ${txn.originalBuyer}` : ''}`}
+                  title={`Redirected Load from ${txn.originalBuyer}`}
                 >
                   <Truck className="w-3 h-3 text-purple-600 shrink-0" />
-                  LIFTED {txn.originalBuyer ? `(ex: ${txn.originalBuyer})` : ''}
+                  LIFTED (ex: {txn.originalBuyer})
                 </span>
               )}
               {txn.isDiscrepancy && (
@@ -450,6 +453,18 @@ const PaymentRow = memo(function PaymentRow({
               <Calculator className="w-3.5 h-3.5" />
               {isSelected ? "Hide Patti" : "Patti"}
             </button>
+            {onDeleteTransaction && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDeleteTransaction(txn);
+                }}
+                className="btn-tactile p-1.5 text-neutral-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20 rounded-xl transition-all border border-transparent hover:border-rose-200 dark:hover:border-rose-900/40 cursor-pointer"
+                title="Delete this arrival transaction from payment tracking and arrival records"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
         </td>
       </tr>
@@ -789,10 +804,21 @@ export default function PaymentTracking() {
     }
 
     const rows: any[] = [];
+    const deletedArrivalIds = getDeletedArrivalIds();
     targetSheets.forEach(sheet => {
       if (Array.isArray(sheet.data)) {
         sheet.data.forEach((row, idx) => {
           if (isMeaningfulRow(row)) {
+            const rId = row.id ? String(row.id).trim().toLowerCase().replace(/^#/, '') : '';
+            const rBill = row.billNo ? String(row.billNo).trim().toLowerCase().replace(/^(bill[-.\s]*|bil[-.\s]*|tc[-.\s]*)/i, '') : '';
+            const rPo = String(row.purchaseOrderNo || row.mainPoNo || '').trim().toLowerCase().replace(/^#/, '');
+            const rParty = String(row.partyName || row.buyer || '').trim().toLowerCase();
+
+            if (rId && deletedArrivalIds.has(rId)) return;
+            if (rBill && deletedArrivalIds.has(rBill)) return;
+            if (rPo && rBill && deletedArrivalIds.has(`${rPo}_${rBill}`)) return;
+            if (rPo && rParty && deletedArrivalIds.has(`${rPo}_${rParty}`)) return;
+
             rows.push({
               ...row,
               sheetId: sheet.id,
@@ -817,12 +843,23 @@ export default function PaymentTracking() {
       if (p.billNo) orderByBillMap.set(String(p.billNo).trim().toLowerCase(), p);
     });
 
+    const deletedArrivalIds = getDeletedArrivalIds();
     return arrivalRows
       .map((row, index) => {
         // Filter out empty Excel spacer lines
         if (!row || (!row.partyName && !row.millerName && !row.billNo && !row.qty)) {
           return null;
         }
+
+        const rId = row.id ? String(row.id).trim().toLowerCase().replace(/^#/, '') : '';
+        const rBill = row.billNo ? String(row.billNo).trim().toLowerCase().replace(/^(bill[-.\s]*|bil[-.\s]*|tc[-.\s]*)/i, '') : '';
+        const rPo = String(row.purchaseOrderNo || row.mainPoNo || '').trim().toLowerCase().replace(/^#/, '');
+        const rParty = String(row.partyName || row.buyer || '').trim().toLowerCase();
+
+        if (rId && deletedArrivalIds.has(rId)) return null;
+        if (rBill && deletedArrivalIds.has(rBill)) return null;
+        if (rPo && rBill && deletedArrivalIds.has(`${rPo}_${rBill}`)) return null;
+        if (rPo && rParty && deletedArrivalIds.has(`${rPo}_${rParty}`)) return null;
 
         // Fast lookup for matching placed order
         let matchingOrder: any = null;
@@ -902,22 +939,78 @@ export default function PaymentTracking() {
           }
         }
 
-        const rowBillStr = String(row?.billNo ?? '');
-        const isLifted = !!(
-          (matchingOrder && matchingOrder.liftingRecords && matchingOrder.liftingRecords.length > 0) ||
-          (matchingOrder && (matchingOrder.currentShop || matchingOrder.redirectedShop)) ||
-          (row && (rowBillStr.includes('-LFT') || rowBillStr.startsWith('LFT-') || row.isLifted || row.redirectedTo))
-        );
-        const liftingRecord = matchingOrder?.liftingRecords?.[0] || null;
+        const rowBillStr = String(row?.billNo ?? '').trim();
+        const rowParty = String(row?.partyName || matchingOrder?.buyer || '').trim();
+        const hasLftInBill = rowBillStr.includes('-LFT') || rowBillStr.startsWith('LFT-');
 
-        // Redirected shop / new buyer name
-        const redirectedShop = liftingRecord?.shopName || matchingOrder?.currentShop || matchingOrder?.redirectedShop || row?.redirectedTo || (row?.isLifted && row?.partyName ? row.partyName : null);
+        // Check if there is an explicit redirection to a DIFFERENT party
+        let isLifted = false;
+        let originalBuyer = '';
+        let redirectedShop = '';
 
-        // Original buyer before lifting
-        const originalBuyer = liftingRecord?.originalBuyer || row?.originalBuyer || (matchingOrder?.buyer && matchingOrder.buyer !== redirectedShop ? matchingOrder.buyer : (row?.partyName !== redirectedShop ? row?.partyName : ''));
+        // 1. Direct sub-order lifting on matchingOrder
+        if (matchingOrder?.originalOrders && Array.isArray(matchingOrder.originalOrders)) {
+          const matchedSub = matchingOrder.originalOrders.find((so: any) => 
+            String(so.buyer || '').trim().toLowerCase() === rowParty.toLowerCase() ||
+            (so.redirectedTo && String(so.redirectedTo).trim().toLowerCase() === rowParty.toLowerCase())
+          );
+          if (matchedSub && (matchedSub.isLifted || matchedSub.redirectedTo)) {
+            const subRedirect = String(matchedSub.redirectedTo || '').trim();
+            const subOriginal = String(matchedSub.buyer || '').trim();
+            if (subRedirect && subOriginal && subRedirect.toLowerCase() !== subOriginal.toLowerCase()) {
+              isLifted = true;
+              redirectedShop = subRedirect;
+              originalBuyer = subOriginal;
+            }
+          }
+        }
+
+        // 2. Row level explicit lifted metadata
+        if (!isLifted && row) {
+          const rRedirect = String(row.redirectedTo || '').trim();
+          const rOriginal = String(row.originalBuyer || '').trim();
+          if (row.isLifted && rOriginal && rRedirect && rOriginal.toLowerCase() !== rRedirect.toLowerCase()) {
+            isLifted = true;
+            originalBuyer = rOriginal;
+            redirectedShop = rRedirect;
+          } else if (row.isLifted && rOriginal && rowParty && rOriginal.toLowerCase() !== rowParty.toLowerCase()) {
+            isLifted = true;
+            originalBuyer = rOriginal;
+            redirectedShop = rowParty;
+          } else if (hasLftInBill) {
+            isLifted = true;
+            redirectedShop = rowParty;
+            originalBuyer = rOriginal || (matchingOrder?.buyer && matchingOrder.buyer.toLowerCase() !== rowParty.toLowerCase() ? matchingOrder.buyer : '');
+          }
+        }
+
+        // 3. Parent order lifting record (ONLY for single orders, or if redirectedShop matches rowParty)
+        if (!isLifted && matchingOrder && !matchingOrder.originalOrders?.length) {
+          const liftingRecord = matchingOrder.liftingRecords?.[0] || null;
+          const recShop = String(liftingRecord?.shopName || matchingOrder.currentShop || matchingOrder.redirectedShop || '').trim();
+          const recOrig = String(liftingRecord?.originalBuyer || matchingOrder.buyer || '').trim();
+          if (recShop && recOrig && recShop.toLowerCase() !== recOrig.toLowerCase()) {
+            if (rowParty.toLowerCase() === recShop.toLowerCase()) {
+              isLifted = true;
+              redirectedShop = recShop;
+              originalBuyer = recOrig;
+            }
+          }
+        }
+
+        // Sanity Check: If buyer and originalBuyer are the same, it is NOT lifted!
+        if (originalBuyer && redirectedShop && originalBuyer.toLowerCase() === redirectedShop.toLowerCase()) {
+          isLifted = false;
+          originalBuyer = '';
+          redirectedShop = '';
+        }
 
         // Primary buyer name to collect payment from
-        const resolvedBuyer = isLifted && redirectedShop ? redirectedShop : (row?.partyName || matchingOrder?.buyer || 'Not Assigned');
+        const resolvedBuyer = isLifted && redirectedShop ? redirectedShop : (rowParty || 'Not Assigned');
+        if (originalBuyer && resolvedBuyer && originalBuyer.toLowerCase() === resolvedBuyer.toLowerCase()) {
+          isLifted = false;
+          originalBuyer = '';
+        }
 
         return {
           id: matchingOrder?.id || (row.purchaseOrderNo ? String(row.purchaseOrderNo) : null) || (cleanedBill ? cleanedBill : `ARR-${index + 1001}`),
@@ -1590,6 +1683,86 @@ export default function PaymentTracking() {
     setSelectedTxn((prev: any) => (prev?.id === txn.id ? null : txn));
   }, []);
 
+  const handleDeleteTransaction = useCallback(async (txn: any) => {
+    if (!txn) return;
+    const partyName = txn.buyer || 'this party';
+    const billStr = txn.billNo ? ` (Bill: ${txn.billNo})` : '';
+    const confirmMsg = `Are you sure you want to delete the arrival transaction for ${partyName}${billStr}? This will permanently remove it from Payment Tracking and Arrival Entry.`;
+    if (!window.confirm(confirmMsg)) return;
+
+    const rawRow = txn.matchingArrival || txn.rawRow || {};
+    const rowId = rawRow.id || txn.id;
+    const cleanBill = String(txn.billNo || rawRow.billNo || '').trim();
+    const po = String(rawRow.purchaseOrderNo || rawRow.mainPoNo || txn.rawOrder?.purchaseOrderNo || '').trim();
+    const party = String(txn.buyer || rawRow.partyName || '').trim();
+
+    const idsToDelete: string[] = [];
+    if (rowId) idsToDelete.push(rowId);
+    if (cleanBill) idsToDelete.push(cleanBill);
+    if (po && cleanBill) idsToDelete.push(`${po}_${cleanBill}`);
+    if (po && party) idsToDelete.push(`${po}_${party}`);
+
+    // 1. Add to persistent tombstones
+    addDeletedArrivalIds(idsToDelete);
+
+    // 2. Remove from local sheets state & localStorage
+    setAllSheets(prevSheets => {
+      const updated = prevSheets.map(sheet => {
+        if (!Array.isArray(sheet.data)) return sheet;
+        const filtered = sheet.data.filter((r: any) => {
+          if (!r) return false;
+          if (rowId && r.id === rowId) return false;
+          const rBill = String(r.billNo || '').trim();
+          const rPo = String(r.purchaseOrderNo || r.mainPoNo || '').trim();
+          const rParty = String(r.partyName || r.buyer || '').trim();
+          if (cleanBill && rBill.toLowerCase() === cleanBill.toLowerCase()) return false;
+          if (po && cleanBill && rPo.toLowerCase() === po.toLowerCase() && rBill.toLowerCase() === cleanBill.toLowerCase()) return false;
+          if (po && party && rPo.toLowerCase() === po.toLowerCase() && rParty.toLowerCase() === party.toLowerCase()) return false;
+          return true;
+        });
+        return { ...sheet, data: filtered };
+      });
+      try {
+        localStorage.setItem('arrival_sheets', JSON.stringify(updated));
+        localStorage.setItem('arrival_entry_sheets_v4', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+
+    // 3. Purge matching documents in Cloud Firestore
+    try {
+      if (rowId && !String(rowId).startsWith('row-empty-')) {
+        await deleteCollectionDoc('arrival_entries', rowId).catch(() => {});
+      }
+      const cloudArrivals = await getCollectionDocs('arrival_entries', true).catch(() => []);
+      const matchingDocs = cloudArrivals.filter((d: any) => {
+        if (!d) return false;
+        if (d.id === rowId) return true;
+        const dBill = String(d.billNo || '').trim().toLowerCase();
+        const dPo = String(d.purchaseOrderNo || d.mainPoNo || '').trim().toLowerCase();
+        const dParty = String(d.partyName || d.buyer || '').trim().toLowerCase();
+        if (cleanBill && dBill === cleanBill.toLowerCase()) return true;
+        if (po && cleanBill && dPo === po.toLowerCase() && dBill === cleanBill.toLowerCase()) return true;
+        if (po && party && dPo === po.toLowerCase() && dParty === party.toLowerCase()) return true;
+        return false;
+      });
+
+      for (const d of matchingDocs) {
+        if (d.id) {
+          await deleteCollectionDoc('arrival_entries', d.id).catch(() => {});
+        }
+      }
+      invalidateCollectionCache('arrival_entries');
+    } catch (e) {
+      console.error('Error deleting arrival entry from cloud:', e);
+    }
+
+    // 4. Invalidate selection & notify components
+    if (selectedTxn?.id === txn.id) setSelectedTxn(null);
+    window.dispatchEvent(new Event('arrival-entry-updated'));
+    window.dispatchEvent(new Event('storage'));
+  }, [selectedTxn]);
+
   const exportCurrentPipeline = () => {
     const headers = [
       "DATE",
@@ -2261,6 +2434,7 @@ export default function PaymentTracking() {
                     onOpenPayment={handleOpenPaymentModal}
                     onReversePayment={handleReversePayment}
                     onGeneratePatti={handleGeneratePatti}
+                    onDeleteTransaction={handleDeleteTransaction}
                   />
                 ))}
               </tbody>

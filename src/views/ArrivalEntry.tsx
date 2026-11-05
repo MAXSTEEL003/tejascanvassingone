@@ -45,7 +45,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { getVerifiedUserRole } from '../lib/auth';
-import { cn, formatINR, getRegisteredSuppliers, getRegisteredBuyerNames, getRegisteredBuyers, sanitizeSupplierName } from '../lib/utils';
+import { cn, formatINR, getRegisteredSuppliers, getRegisteredBuyerNames, getRegisteredBuyers, sanitizeSupplierName, addDeletedArrivalIds } from '../lib/utils';
 import { getCollectionDocs, setCollectionDoc, deleteCollectionDoc, db, invalidateCollectionCache, autoCreateArrivalEntryForIncomingLog } from '../lib/firebase';
 import { doc, writeBatch, collection, query, where, getDocs } from 'firebase/firestore';
 import * as XLSX from 'xlsx';
@@ -2402,9 +2402,22 @@ export default function ArrivalEntry() {
     const targetRow = filteredData[filteredRowIdx];
     if (!targetRow) return;
 
-    if (targetRow.id && !String(targetRow.id).startsWith('row-empty-')) {
-      deletedDocIdsRef.current.add(String(targetRow.id));
+    const rowId = targetRow.id ? String(targetRow.id).trim() : '';
+    const cleanBill = targetRow.billNo ? String(targetRow.billNo).trim() : '';
+    const targetPo = String(targetRow.purchaseOrderNo || targetRow.mainPoNo || '').trim();
+    const targetParty = String(targetRow.partyName || targetRow.buyer || '').trim();
+
+    if (rowId && !rowId.startsWith('row-empty-')) {
+      deletedDocIdsRef.current.add(rowId);
     }
+
+    // Persist tombstones so this row is never resurrected in Payment Tracking, Sheets, or Cloud sync
+    const idsToDelete: string[] = [];
+    if (rowId) idsToDelete.push(rowId);
+    if (cleanBill) idsToDelete.push(cleanBill);
+    if (targetPo && cleanBill) idsToDelete.push(`${targetPo}_${cleanBill}`);
+    if (targetPo && targetParty) idsToDelete.push(`${targetPo}_${targetParty}`);
+    addDeletedArrivalIds(idsToDelete);
 
     const defaultDate = getDefaultDateForSheet(currentSheet.name);
     const replacementEmptyRow = {
@@ -2421,6 +2434,38 @@ export default function ArrivalEntry() {
 
     setData(nextData);
     setGridKey(k => k + 1);
+
+    // Asynchronously delete all matching docs from Firestore arrival_entries
+    (async () => {
+      try {
+        if (rowId && !rowId.startsWith('row-empty-')) {
+          await deleteCollectionDoc('arrival_entries', rowId).catch(() => {});
+        }
+        const cloudArrivals = await getCollectionDocs('arrival_entries', true).catch(() => []);
+        const matchingDocs = cloudArrivals.filter((d: any) => {
+          if (!d) return false;
+          if (d.id === rowId) return true;
+          const dBill = String(d.billNo || '').trim().toLowerCase();
+          const dPo = String(d.purchaseOrderNo || d.mainPoNo || '').trim().toLowerCase();
+          const dParty = String(d.partyName || d.buyer || '').trim().toLowerCase();
+          if (cleanBill && dBill === cleanBill.toLowerCase()) return true;
+          if (targetPo && cleanBill && dPo === targetPo.toLowerCase() && dBill === cleanBill.toLowerCase()) return true;
+          if (targetPo && targetParty && dPo === targetPo.toLowerCase() && dParty === targetParty.toLowerCase()) return true;
+          return false;
+        });
+
+        for (const d of matchingDocs) {
+          if (d.id) {
+            await deleteCollectionDoc('arrival_entries', d.id).catch(() => {});
+          }
+        }
+        invalidateCollectionCache('arrival_entries');
+        window.dispatchEvent(new Event('arrival-entry-updated'));
+        window.dispatchEvent(new Event('storage'));
+      } catch (err) {
+        console.error("Cloud purge failed for deleted arrival row:", err);
+      }
+    })();
   }, [data, filteredData, currentSheetId, currentSheet.name, saveToHistory, setData]);
 
   const addRow = useCallback(() => {

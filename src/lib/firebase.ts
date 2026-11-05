@@ -1081,8 +1081,17 @@ export async function autoCreateArrivalEntryForIncomingLog(
         // CRITICAL FIX: Sub-order uses its own entered bill. If empty, leave blank - NEVER auto-generate BIL-XXXX!
         const bNo = subCustomBill.trim() || (sub.actualSupplierBillNo || sub.billNo || '').trim() || '';
 
-        const partyName = sub.redirectedTo || (sub.isLifted ? targetOrder.currentShop : null) || sub.buyer || targetOrder.currentShop || targetOrder.redirectedShop || targetOrder.buyer || targetOrder.partyName || "General Merchant";
-        const isLifted = !!(sub.redirectedTo || sub.isLifted || targetOrder.currentShop || targetOrder.redirectedShop || (targetOrder.liftingRecords && targetOrder.liftingRecords.length > 0));
+        const isSubExplicitlyLifted = Boolean(
+          (sub.isLifted || sub.redirectedTo) &&
+          sub.redirectedTo &&
+          String(sub.redirectedTo).trim().toLowerCase() !== String(sub.buyer || '').trim().toLowerCase()
+        );
+        const partyName = isSubExplicitlyLifted 
+          ? (sub.redirectedTo || sub.buyer) 
+          : (sub.buyer || targetOrder.buyer || "General Merchant");
+        const isLifted = isSubExplicitlyLifted;
+        const originalBuyer = isSubExplicitlyLifted ? (sub.buyer || '') : '';
+        const redirectedTo = isSubExplicitlyLifted ? partyName : '';
 
         const subMiller = sanitizeSupplierName(sub.supplier || sub.seller || targetOrder.origin || targetOrder.supplier, "DIRECT MILL");
 
@@ -1125,8 +1134,8 @@ export async function autoCreateArrivalEntryForIncomingLog(
           purchaseOrderNo: normPo,
           mainPoNo: normPo,
           isLifted,
-          originalBuyer: sub.buyer || targetOrder.originalBuyer || targetOrder.buyer || '',
-          redirectedTo: partyName,
+          originalBuyer,
+          redirectedTo,
           lastUpdated: new Date().toISOString()
         });
       });
@@ -1146,8 +1155,17 @@ export async function autoCreateArrivalEntryForIncomingLog(
       // CRITICAL FIX: If bill is not provided, leave blank - NEVER auto-generate BIL-XXXX!
       const bNo = singleCustomBill.trim() || (targetOrder.actualSupplierBillNo || targetOrder.billNo || '').trim() || '';
 
-      const partyName = targetOrder.currentShop || targetOrder.redirectedShop || targetOrder.buyer || targetOrder.partyName || "General Merchant";
-      const isLifted = !!(targetOrder.currentShop || targetOrder.redirectedShop || (targetOrder.liftingRecords && targetOrder.liftingRecords.length > 0));
+      const isOrderExplicitlyLifted = Boolean(
+        (targetOrder.isLifted || targetOrder.redirectedShop || targetOrder.currentShop) &&
+        (targetOrder.redirectedShop || targetOrder.currentShop) &&
+        String(targetOrder.redirectedShop || targetOrder.currentShop).trim().toLowerCase() !== String(targetOrder.originalBuyer || targetOrder.buyer || '').trim().toLowerCase()
+      );
+      const partyName = isOrderExplicitlyLifted
+        ? (targetOrder.currentShop || targetOrder.redirectedShop || targetOrder.buyer)
+        : (targetOrder.buyer || "General Merchant");
+      const isLifted = isOrderExplicitlyLifted;
+      const originalBuyer = isOrderExplicitlyLifted ? (targetOrder.originalBuyer || targetOrder.buyer || '') : '';
+      const redirectedTo = isOrderExplicitlyLifted ? partyName : '';
 
       const orderMiller = sanitizeSupplierName(targetOrder.supplier || targetOrder.seller || targetOrder.origin, "DIRECT MILL");
 
@@ -1188,8 +1206,8 @@ export async function autoCreateArrivalEntryForIncomingLog(
         purchaseOrderNo: normPo,
         mainPoNo: normPo,
         isLifted,
-        originalBuyer: targetOrder.originalBuyer || targetOrder.buyer || '',
-        redirectedTo: partyName,
+        originalBuyer,
+        redirectedTo,
         lastUpdated: new Date().toISOString()
       });
     }
@@ -1198,8 +1216,15 @@ export async function autoCreateArrivalEntryForIncomingLog(
 
     // 3. Insert or update items in currentGrid without overwriting sibling sub-orders
     const usedIndices = new Set<number>();
+    const targetSheetId = sheets[targetSheetIndex]?.id || expectedSheetId;
+    const targetSheetName = sheets[targetSheetIndex]?.name || targetMonthYear;
 
-    newItemsToInject.forEach(newItem => {
+    newItemsToInject.forEach((newItem, idx) => {
+      const cleanBill = newItem.billNo ? String(newItem.billNo).trim().replace(/[^a-zA-Z0-9_-]/g, '') : '';
+      const subSuffix = newItem.subOrderId ? `-${newItem.subOrderId}` : `-${idx + 1}`;
+      const canonicalDocId = cleanBill ? `row-${targetSheetId}-${cleanBill}${subSuffix}` : `row-${targetSheetId}-${Date.now()}${subSuffix}`;
+      newItem.id = canonicalDocId;
+
       const targetBill = newItem.billNo ? String(newItem.billNo).trim().toUpperCase() : '';
       const targetPo = newItem.purchaseOrderNo ? String(newItem.purchaseOrderNo).trim().toUpperCase().replace(/^#/, '') : '';
       const targetMainPo = newItem.mainPoNo ? String(newItem.mainPoNo).trim().toUpperCase().replace(/^#/, '') : '';
@@ -1207,8 +1232,8 @@ export async function autoCreateArrivalEntryForIncomingLog(
       const targetParty = newItem.partyName ? String(newItem.partyName).trim().toUpperCase() : '';
 
       // Look for existing row with matching billNo, or matching purchaseOrderNo + sub-order identity
-      const existingIdx = currentGrid.findIndex((r: any, idx: number) => {
-        if (!r || usedIndices.has(idx)) return false;
+      const existingIdx = currentGrid.findIndex((r: any, rIdx: number) => {
+        if (!r || usedIndices.has(rIdx)) return false;
 
         const rBill = r.billNo ? String(r.billNo).trim().toUpperCase() : '';
         const rPo = r.purchaseOrderNo ? String(r.purchaseOrderNo).trim().toUpperCase().replace(/^#/, '') : '';
@@ -1250,20 +1275,19 @@ export async function autoCreateArrivalEntryForIncomingLog(
         currentGrid[existingIdx] = {
           ...currentGrid[existingIdx],
           ...newItem,
-          id: currentGrid[existingIdx].id || `row-${existingIdx}`
+          id: canonicalDocId
         };
       } else {
         // Find first blank row that has not been claimed in this run
-        let blankIdx = currentGrid.findIndex((r: any, idx: number) => 
-          !usedIndices.has(idx) && (!r || (!r.purchaseOrderNo && !r.partyName && !r.millerName && (!r.qty || parseFloat(r.qty) === 0)))
+        let blankIdx = currentGrid.findIndex((r: any, bIdx: number) => 
+          !usedIndices.has(bIdx) && (!r || (!r.purchaseOrderNo && !r.partyName && !r.millerName && (!r.qty || parseFloat(r.qty) === 0)))
         );
         if (blankIdx !== -1) {
           usedIndices.add(blankIdx);
-          currentGrid[blankIdx] = { ...newItem, id: `row-${blankIdx}` };
+          currentGrid[blankIdx] = { ...newItem, id: canonicalDocId };
         } else {
-          const newIdx = currentGrid.length;
-          usedIndices.add(newIdx);
-          currentGrid.push({ ...newItem, id: `row-${newIdx}` });
+          usedIndices.add(currentGrid.length);
+          currentGrid.push({ ...newItem, id: canonicalDocId });
         }
       }
     });
@@ -1280,8 +1304,6 @@ export async function autoCreateArrivalEntryForIncomingLog(
     sessionStorage.setItem('goto_arrival_bill', firstBillNo);
 
     // 5. Dual-write only the newly injected items to Cloud Firestore asynchronously
-    const targetSheetId = sheets[targetSheetIndex]?.id || expectedSheetId;
-    const targetSheetName = sheets[targetSheetIndex]?.name || targetMonthYear;
     const cloudFormatted = newItemsToInject.map((row, idx) => {
       const existingId = row.id && !String(row.id).startsWith('row-empty-') ? String(row.id).replace(/^#/, '') : null;
       const cleanBill = row.billNo ? String(row.billNo).trim().replace(/[^a-zA-Z0-9_-]/g, '') : '';
