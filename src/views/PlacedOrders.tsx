@@ -3222,26 +3222,32 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                           👥 Registered Buyers (Consignees)
                         </span>
                         <div className="flex flex-wrap gap-1.5">
-                          {(order.buyer 
-                            ? [order.buyer]
-                            : (order.originalOrders && Array.isArray(order.originalOrders))
-                              ? Array.from(new Set(order.originalOrders.map((sub: any) => sub.buyer).filter(Boolean)))
-                              : ['Unassigned Buyer']
-                          ).map((buyerName: string, bIdx) => (
-                            <button 
-                              key={bIdx} 
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedBuyerForLedger(buyerName);
-                              }}
-                              className="px-2.5 py-1 rounded bg-[#faf8f5] dark:bg-black border border-outline-variant text-[10px] font-bold text-neutral-800 dark:text-neutral-200 uppercase tracking-wide hover:border-primary hover:text-primary transition-colors cursor-pointer flex items-center gap-1"
-                              title={`Click to view Commercial Ledger for ${buyerName}`}
-                            >
-                              <span>{buyerName}</span>
-                              <ExternalLink className="w-2.5 h-2.5 opacity-50" />
-                            </button>
-                          ))}
+                          {(() => {
+                            const buyersList = (() => {
+                              if (order.originalOrders && Array.isArray(order.originalOrders) && order.originalOrders.length > 0) {
+                                const list = Array.from(new Set(
+                                  order.originalOrders
+                                    .map((sub: any) => (sub.buyer || sub.customerName || sub.shopName || '').trim())
+                                    .filter(Boolean)
+                                ));
+                                if (list.length > 0) return list;
+                              }
+                              if (order.buyer) {
+                                return [order.buyer];
+                              }
+                              return ['Unassigned Buyer'];
+                            })();
+
+                            return buyersList.map((buyerName: string, bIdx: number) => (
+                              <span 
+                                key={bIdx} 
+                                className="px-2 py-0.5 rounded-md bg-[#faf8f5] dark:bg-neutral-900 border border-outline-variant/40 text-[10px] font-bold text-neutral-800 dark:text-neutral-200 uppercase tracking-wide flex items-center gap-1 shadow-2xs"
+                              >
+                                <span className="w-1 h-1 rounded-full bg-primary/60 shrink-0" />
+                                <span>{buyerName}</span>
+                              </span>
+                            ));
+                          })()}
                         </div>
                       </div>
                     </div>
