@@ -1017,6 +1017,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
   const [a4PreviewOrder, setA4PreviewOrder] = useState<any | null>(null);
   const [a4PreviewSubOrders, setA4PreviewSubOrders] = useState<any[]>([]);
   const [arrivalConfirmOrder, setArrivalConfirmOrder] = useState<any | null>(null);
+  const [arrivalTargetSubId, setArrivalTargetSubId] = useState<string | null>(null);
   const [arrivalQuantities, setArrivalQuantities] = useState<{[subId: string]: number}>({});
   const [arrivalRates, setArrivalRates] = useState<{[subId: string]: number}>({});
   const [actualSupplierBillNo, setActualSupplierBillNo] = useState<string>('');
@@ -2088,7 +2089,8 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
     customRates?: {[subId: string]: number},
     billNoToUse?: string | {[subId: string]: string},
     customLhRate?: number,
-    customLhAccepted?: boolean
+    customLhAccepted?: boolean,
+    targetSubId?: string
   ) => {
     try {
       const targetOrder = currentPlacedOrders.find(o => o.id === orderId);
@@ -2111,23 +2113,43 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
         : vehicleLhAccepted;
 
       let totalVehicleLh = 0;
+      let allSubOrdersArrived = true;
       let updatedOriginalOrders = targetOrder.originalOrders;
 
       if (targetOrder.originalOrders && targetOrder.originalOrders.length > 0) {
         updatedOriginalOrders = targetOrder.originalOrders.map((sub: any, sIdx: number) => {
           const subId = sub.id || `sub-${sIdx}`;
-          const q = (customQtys && customQtys[subId] !== undefined) ? customQtys[subId] : (parseFloat(sub.qty) || parseFloat(sub.totalQty) || 0);
-          const subLh = Math.round(q * lhRateToUse);
-          totalVehicleLh += subLh;
-          const subBill = (billMapToUse[subId] !== undefined ? billMapToUse[subId] : (sub.actualSupplierBillNo || sub.billNo || fallbackBillNo || '')).trim();
-          return {
-            ...sub,
-            actualSupplierBillNo: subBill || sub.actualSupplierBillNo || fallbackBillNo,
-            billNo: subBill || sub.billNo || fallbackBillNo,
-            lhPerQtl: lhRateToUse,
-            lh: subLh,
-            lhAccepted: isLhAccepted
-          };
+          const isTarget = !targetSubId || subId === targetSubId || sub.id === targetSubId;
+
+          if (isTarget) {
+            const q = (customQtys && customQtys[subId] !== undefined) ? customQtys[subId] : (parseFloat(sub.qty) || parseFloat(sub.totalQty) || 0);
+            const subLh = Math.round(q * lhRateToUse);
+            totalVehicleLh += subLh;
+            const subBill = (billMapToUse[subId] !== undefined ? billMapToUse[subId] : (sub.actualSupplierBillNo || sub.billNo || fallbackBillNo || '')).trim();
+            const settledR = (customRates && customRates[subId] !== undefined) ? customRates[subId] : (parseFloat(sub.rate) || 4200);
+            return {
+              ...sub,
+              isArrived: true,
+              status: 'Arrived',
+              arrivedAt: new Date().toISOString(),
+              arrivedQty: q,
+              settledRate: settledR,
+              actualSupplierBillNo: subBill || sub.actualSupplierBillNo || fallbackBillNo,
+              billNo: subBill || sub.billNo || fallbackBillNo,
+              lhPerQtl: lhRateToUse,
+              lh: subLh,
+              lhAccepted: isLhAccepted
+            };
+          } else {
+            const alreadyArrived = sub.isArrived === true || sub.status === 'Arrived';
+            if (!alreadyArrived) {
+              allSubOrdersArrived = false;
+            }
+            if (sub.lh) {
+              totalVehicleLh += Number(sub.lh) || 0;
+            }
+            return sub;
+          }
         });
       } else {
         const totalQty = (customQtys && customQtys[orderId] !== undefined)
@@ -2136,13 +2158,25 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
         totalVehicleLh = Math.round(totalQty * lhRateToUse);
       }
 
+      const isFullyArrived = (updatedOriginalOrders && updatedOriginalOrders.length > 0)
+        ? allSubOrdersArrived
+        : true;
+
       const singleBill = (billMapToUse[orderId] || fallbackBillNo).trim();
       const primaryBillNo = singleBill || fallbackBillNo || targetOrder.billNo;
 
+      const arrivedSubCount = (updatedOriginalOrders && updatedOriginalOrders.length > 0)
+        ? updatedOriginalOrders.filter((s: any) => s.isArrived || s.status === 'Arrived').length
+        : 1;
+      const totalSubCount = (updatedOriginalOrders && updatedOriginalOrders.length > 0) ? updatedOriginalOrders.length : 1;
+      const calculatedProgress = isFullyArrived 
+        ? 100 
+        : Math.max(50, Math.round((arrivedSubCount / totalSubCount) * 100));
+
       const updatedOrder = {
         ...targetOrder,
-        status: 'Arrived',
-        progress: 100,
+        status: isFullyArrived ? 'Arrived' : (targetOrder.status === 'Approved' ? 'In Transit' : targetOrder.status || 'In Transit'),
+        progress: calculatedProgress,
         billNo: primaryBillNo,
         actualSupplierBillNo: primaryBillNo,
         supplierBillNos: billMapToUse,
@@ -2150,7 +2184,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
         lhPerQtl: lhRateToUse,
         totalLh: totalVehicleLh,
         lhAccepted: isLhAccepted,
-        arrivedAt: new Date().toISOString()
+        arrivedAt: isFullyArrived ? new Date().toISOString() : (targetOrder.arrivedAt || new Date().toISOString())
       };
 
       // 1. Update React state IMMEDIATELY (0ms latency)
@@ -2165,7 +2199,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
       localStorage.setItem('placed_orders', JSON.stringify(updatedSaved));
 
       // 3. Ensure local Arrival Entry logs and sheets are updated FIRST with calculated L.H and sub-order bill numbers
-      await autoCreateArrivalEntryForIncomingLog(orderId, updatedOrder, customQtys, customRates, billMapToUse, lhRateToUse).catch(err => {
+      await autoCreateArrivalEntryForIncomingLog(orderId, updatedOrder, customQtys, customRates, billMapToUse, lhRateToUse, targetSubId).catch(err => {
         console.error("Arrival Registry automatic auto-creation error:", err);
       });
 
@@ -2173,7 +2207,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
       (async () => {
         try {
           await setCollectionDoc('placed_orders', orderId, updatedOrder);
-          await markLedgerEntriesAsArrived(orderId, updatedOrder, customQtys, customRates).catch(err => {
+          await markLedgerEntriesAsArrived(orderId, updatedOrder, customQtys, customRates, targetSubId).catch(err => {
             console.error("Ledger automatic arrival sync error:", err);
           });
         } catch (err) {
@@ -2185,9 +2219,10 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
     }
   };
 
-  const handleOpenArrivalConfirm = (order: any, e: React.MouseEvent) => {
+  const handleOpenArrivalConfirm = (order: any, e: React.MouseEvent, targetSubId?: string) => {
     e.stopPropagation();
     setArrivalConfirmOrder(order);
+    setArrivalTargetSubId(targetSubId || null);
     
     const qtyMap: {[key: string]: number} = {};
     const rateMap: {[key: string]: number} = {};
@@ -2202,8 +2237,8 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
     if (order.originalOrders && order.originalOrders.length > 0) {
       order.originalOrders.forEach((sub: any, sIdx: number) => {
         const subId = sub.id || `sub-${sIdx}`;
-        qtyMap[subId] = parseFloat(sub.qty) || parseFloat(sub.totalQty) || 0;
-        rateMap[subId] = parseFloat(sub.rate) || 4200;
+        qtyMap[subId] = parseFloat(sub.arrivedQty || sub.qty) || parseFloat(sub.totalQty) || 0;
+        rateMap[subId] = parseFloat(sub.settledRate || sub.rate) || 4200;
         billMap[subId] = sub.actualSupplierBillNo || sub.billNo || order.actualSupplierBillNo || order.billNo || '';
       });
     } else {
@@ -3090,35 +3125,56 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                         </button>
 
                         {/* Mark as arrived button */}
-                        {order.status !== 'Arrived' ? (
-                          <button 
-                            onClick={(e) => handleOpenArrivalConfirm(order, e)}
-                            className="btn-tactile flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600/[0.1] hover:bg-emerald-600 text-emerald-600 hover:text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition-all border border-emerald-600/20 cursor-pointer"
-                            title="Mark order as Arrived and complete logistics pipeline"
-                          >
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                            Mark Arrived
-                          </button>
-                        ) : !isMerchant ? (
-                          <button 
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              await autoCreateArrivalEntryForIncomingLog(order.id, order);
-                              navigate('/arrival-entry');
-                            }}
-                            className="btn-tactile flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/20 dark:hover:bg-emerald-950/40 text-emerald-700 hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300 rounded-lg text-[10px] font-black uppercase tracking-wider border border-emerald-200/50 transition-all cursor-pointer"
-                            title="This order is marked as arrived. Click to view or edit details in the Arrival Entry spreadsheet."
-                          >
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                            Arrived • Go to Arrival Entry
-                            <ChevronRight className="w-3 h-3 ml-0.5 text-emerald-500" />
-                          </button>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 rounded-lg text-[10px] font-bold uppercase tracking-wider border border-emerald-200/50">
-                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                            Arrived
-                          </span>
-                        )}
+                        {(() => {
+                          const hasSubs = order.originalOrders && Array.isArray(order.originalOrders) && order.originalOrders.length > 0;
+                          const arrivedSubs = hasSubs ? order.originalOrders.filter((s: any) => s.isArrived || s.status === 'Arrived').length : (order.status === 'Arrived' ? 1 : 0);
+                          const totalSubs = hasSubs ? order.originalOrders.length : 1;
+                          const isFullyArrived = hasSubs ? arrivedSubs === totalSubs : (order.status === 'Arrived');
+                          const isPartial = hasSubs && arrivedSubs > 0 && arrivedSubs < totalSubs;
+
+                          if (!isFullyArrived) {
+                            return (
+                              <button 
+                                onClick={(e) => handleOpenArrivalConfirm(order, e)}
+                                className={cn(
+                                  "btn-tactile flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all border cursor-pointer",
+                                  isPartial 
+                                    ? "bg-amber-500/15 hover:bg-amber-500/25 text-amber-800 dark:text-amber-300 border-amber-500/40"
+                                    : "bg-emerald-600/[0.1] hover:bg-emerald-600 text-emerald-600 hover:text-white border-emerald-600/20"
+                                )}
+                                title={isPartial ? `Arrive Remaining sub-orders (${arrivedSubs}/${totalSubs} arrived)` : "Mark order as Arrived and complete logistics pipeline"}
+                              >
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                {isPartial ? `Arrive Remaining (${arrivedSubs}/${totalSubs})` : 'Mark Arrived'}
+                              </button>
+                            );
+                          }
+
+                          if (!isMerchant) {
+                            return (
+                              <button 
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  await autoCreateArrivalEntryForIncomingLog(order.id, order);
+                                  navigate('/arrival-entry');
+                                }}
+                                className="btn-tactile flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/20 dark:hover:bg-emerald-950/40 text-emerald-700 hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300 rounded-lg text-[10px] font-black uppercase tracking-wider border border-emerald-200/50 transition-all cursor-pointer"
+                                title="This order is marked as arrived. Click to view or edit details in the Arrival Entry spreadsheet."
+                              >
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                                Arrived • Go to Arrival Entry
+                                <ChevronRight className="w-3 h-3 ml-0.5 text-emerald-500" />
+                              </button>
+                            );
+                          }
+
+                          return (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 rounded-lg text-[10px] font-bold uppercase tracking-wider border border-emerald-200/50">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                              Arrived
+                            </span>
+                          );
+                        })()}
 
                         {/* Lifting To button */}
                         <button 
@@ -3231,7 +3287,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                                         )}
                                      </div>
                                   </div>
-                                  <div className="flex items-center justify-between sm:justify-end gap-6 border-t sm:border-t-0 border-outline-variant/10 pt-3 sm:pt-0">
+                                  <div className="flex items-center justify-between sm:justify-end gap-4 sm:gap-6 border-t sm:border-t-0 border-outline-variant/10 pt-3 sm:pt-0 flex-wrap">
                                      <div className="text-left sm:text-right">
                                         <p className="text-[8px] font-black text-secondary uppercase tracking-widest mb-1">Subtotal Amount</p>
                                         <p className="text-sm font-black text-on-surface font-mono">₹ {formatINR(subAmount)}</p>
@@ -3245,6 +3301,49 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                                           {sub.status || sub.paymentStatus || 'Awaiting Proof'}
                                         </span>
                                       </div>
+
+                                     {/* Individual Sub-order Arrival Action */}
+                                     {(() => {
+                                       const isSubArrived = Boolean(sub.isArrived || sub.status === 'Arrived' || order.status === 'Arrived');
+                                       const subBill = sub.actualSupplierBillNo || sub.billNo || (order.status === 'Arrived' ? order.billNo : '');
+
+                                       return (
+                                         <div className="flex flex-col items-end gap-1 shrink-0">
+                                           <p className="text-[8px] font-black text-secondary uppercase tracking-tighter mb-0.5">Arrival Log</p>
+                                           {isSubArrived ? (
+                                             <button
+                                               type="button"
+                                               onClick={(e) => {
+                                                 e.stopPropagation();
+                                                 if (subBill) sessionStorage.setItem('goto_arrival_bill', subBill);
+                                                 navigate('/arrival-entry');
+                                               }}
+                                               className="btn-tactile inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all border border-emerald-500/30 cursor-pointer shadow-2xs"
+                                               title={`Sub-order Arrived (${subBill || 'View in Sheet'}). Click to view in Arrival Entry.`}
+                                             >
+                                               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                                               <span>Arrived</span>
+                                               {subBill && (
+                                                 <span className="font-mono text-[9px] opacity-80 max-w-[80px] truncate">
+                                                   • {subBill}
+                                                 </span>
+                                               )}
+                                               <ChevronRight className="w-3 h-3 text-emerald-500 opacity-60" />
+                                             </button>
+                                           ) : (
+                                             <button
+                                               type="button"
+                                               onClick={(e) => handleOpenArrivalConfirm(order, e, sub.id || `sub-${sIdx}`)}
+                                               className="btn-tactile inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition-all shadow-xs cursor-pointer hover:shadow"
+                                               title="Record Arrival Entry for this specific sub-order (arriving separately)"
+                                             >
+                                               <Truck className="w-3.5 h-3.5" />
+                                               <span>Arrival Entry</span>
+                                             </button>
+                                           )}
+                                         </div>
+                                       );
+                                     })()}
                                   </div>
                                 </div>
                               );
@@ -3899,16 +3998,39 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
               className="bg-surface border border-outline-variant w-full max-w-xl rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
             >
               <div className="p-6 border-b border-outline-variant flex items-center justify-between shrink-0">
-                <div className="flex items-center gap-2 text-emerald-600">
-                  <CheckCircle2 className="w-5 h-5" />
-                  <h3 className="font-black text-lg">Confirm Arrival Details</h3>
-                </div>
-                <button 
-                  onClick={() => setArrivalConfirmOrder(null)}
-                  className="p-1 hover:bg-surface-container rounded-lg transition-colors text-secondary hover:text-on-surface"
-                >
-                  <X className="w-5 h-5" />
-                </button>
+                {(() => {
+                  const isTargetingSub = Boolean(arrivalTargetSubId);
+                  const targetSub = isTargetingSub && arrivalConfirmOrder.originalOrders 
+                    ? arrivalConfirmOrder.originalOrders.find((s: any, idx: number) => (s.id || `sub-${idx}`) === arrivalTargetSubId)
+                    : null;
+
+                  return (
+                    <>
+                      <div className="flex items-center gap-2 text-emerald-600">
+                        <CheckCircle2 className="w-5 h-5" />
+                        <div>
+                          <h3 className="font-black text-lg">
+                            {isTargetingSub ? `Sub-Order Arrival: ${targetSub?.buyer || 'Buyer'}` : 'Confirm Arrival Details'}
+                          </h3>
+                          {isTargetingSub && (
+                            <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-500/15 px-2 py-0.5 rounded-full inline-block mt-0.5 uppercase tracking-wider">
+                              Individual Sub-Order Mode
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <button 
+                        onClick={() => {
+                          setArrivalConfirmOrder(null);
+                          setArrivalTargetSubId(null);
+                        }}
+                        className="p-1 hover:bg-surface-container rounded-lg transition-colors text-secondary hover:text-on-surface cursor-pointer"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </>
+                  );
+                })()}
               </div>
 
               <div className="p-6 space-y-6 overflow-y-auto flex-1">
@@ -3923,22 +4045,30 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
 
                 <div className="space-y-4">
                   <div className="flex justify-between items-center pb-2 border-b border-outline-variant/30">
-                    <span className="text-[10px] font-black uppercase tracking-widest text-secondary">Target Dispatch Item / Batch</span>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-secondary">
+                      {arrivalTargetSubId ? "Target Sub-Order" : "Target Dispatch Item / Batch"}
+                    </span>
                     <span className="text-xs font-mono font-bold text-primary">ID: {arrivalConfirmOrder.billNo || arrivalConfirmOrder.id}</span>
                   </div>
 
-                  {/* Whole Vehicle L.H Section (Applied to entire order/truck) */}
+                  {/* Whole Vehicle L.H Section (Applied to entire order/truck or sub-order portion) */}
                   {(() => {
+                    const isTargetingSub = Boolean(arrivalTargetSubId);
+                    const targetSub = isTargetingSub && arrivalConfirmOrder.originalOrders 
+                      ? arrivalConfirmOrder.originalOrders.find((s: any, idx: number) => (s.id || `sub-${idx}`) === arrivalTargetSubId)
+                      : null;
                     const isBatch = arrivalConfirmOrder.originalOrders && arrivalConfirmOrder.originalOrders.length > 0;
-                    const totalVehicleArrivedQty = isBatch
-                      ? arrivalConfirmOrder.originalOrders.reduce((sum: number, sub: any, sIdx: number) => {
-                          const subId = sub.id || `sub-${sIdx}`;
-                          const q = arrivalQuantities[subId] !== undefined ? arrivalQuantities[subId] : (parseFloat(sub.qty) || parseFloat(sub.totalQty) || 0);
-                          return sum + q;
-                        }, 0)
-                      : (arrivalQuantities[arrivalConfirmOrder.id] !== undefined 
-                          ? arrivalQuantities[arrivalConfirmOrder.id] 
-                          : parseFloat(arrivalConfirmOrder.items?.match(/\d+(\.\d+)?/)?.[0] || arrivalConfirmOrder.totalQty || "10"));
+                    const totalVehicleArrivedQty = isTargetingSub && targetSub
+                      ? (arrivalQuantities[arrivalTargetSubId!] !== undefined ? arrivalQuantities[arrivalTargetSubId!] : (parseFloat(targetSub.qty) || parseFloat(targetSub.totalQty) || 0))
+                      : (isBatch
+                          ? arrivalConfirmOrder.originalOrders.reduce((sum: number, sub: any, sIdx: number) => {
+                              const subId = sub.id || `sub-${sIdx}`;
+                              const q = arrivalQuantities[subId] !== undefined ? arrivalQuantities[subId] : (parseFloat(sub.qty) || parseFloat(sub.totalQty) || 0);
+                              return sum + q;
+                            }, 0)
+                          : (arrivalQuantities[arrivalConfirmOrder.id] !== undefined 
+                              ? arrivalQuantities[arrivalConfirmOrder.id] 
+                              : parseFloat(arrivalConfirmOrder.items?.match(/\d+(\.\d+)?/)?.[0] || arrivalConfirmOrder.totalQty || "10")));
                     const lhRateNum = parseFloat(vehicleLhRate) || 0;
                     const totalVehicleLhCalc = Math.round(totalVehicleArrivedQty * lhRateNum);
 
@@ -3948,10 +4078,12 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                           <div>
                             <span className="text-[10px] font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
                               <Truck className="w-3.5 h-3.5" />
-                              Vehicle L.H (Loading / Hamali) • Whole Order
+                              {isTargetingSub ? "Vehicle L.H (Loading / Hamali) • Sub-Order Portion" : "Vehicle L.H (Loading / Hamali) • Whole Order"}
                             </span>
                             <p className="text-[10px] text-secondary font-medium">
-                              Applied once to the whole vehicle dispatch ({totalVehicleArrivedQty.toFixed(2)} QTLS total arrived)
+                              {isTargetingSub 
+                                ? `Calculated on this sub-order (${totalVehicleArrivedQty.toFixed(2)} QTLS arrived)`
+                                : `Applied once to the whole vehicle dispatch (${totalVehicleArrivedQty.toFixed(2)} QTLS total arrived)`}
                             </p>
                           </div>
                           {lhRateNum > 0 && (
@@ -4007,107 +4139,115 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                   })()}
 
                   <div className="space-y-4">
-                    {arrivalConfirmOrder.originalOrders && arrivalConfirmOrder.originalOrders.length > 0 ? (
-                      arrivalConfirmOrder.originalOrders.map((sub: any, sIdx: number) => {
-                        const subId = sub.id || `sub-${sIdx}`;
-                        const origQty = parseFloat(sub.qty) || parseFloat(sub.totalQty) || 0;
-                        const origRate = parseFloat(sub.rate) || 4200;
-                        const subProduct = sub.product || "Premium Rice";
-                        const currentQty = arrivalQuantities[subId] !== undefined ? arrivalQuantities[subId] : origQty;
-                        const currentRate = arrivalRates[subId] !== undefined ? arrivalRates[subId] : origRate;
-                        const lhRateNum = parseFloat(vehicleLhRate) || 0;
-                        const subGross = Math.round(currentQty * currentRate);
-                        const subTotalLh = Math.round(currentQty * lhRateNum);
-                        const subNetAmt = Math.max(0, subGross - subTotalLh);
-                        const subBillNo = arrivalSupplierBillNos[subId] || '';
+                    {(() => {
+                      const isTargetingSub = Boolean(arrivalTargetSubId);
+                      const subOrdersToRender = (arrivalConfirmOrder.originalOrders && arrivalConfirmOrder.originalOrders.length > 0)
+                        ? (isTargetingSub 
+                            ? arrivalConfirmOrder.originalOrders.filter((sub: any, sIdx: number) => (sub.id || `sub-${sIdx}`) === arrivalTargetSubId)
+                            : arrivalConfirmOrder.originalOrders)
+                        : [];
 
-                        const subSupplier = sub.supplier || arrivalConfirmOrder.supplier || "Supplier";
-                        const subOrderNo = sub.supplierSubOrderNo || resolveSubOrderNumber(sub, sIdx, subSupplier);
+                      if (subOrdersToRender.length > 0) {
+                        return subOrdersToRender.map((sub: any, sIdx: number) => {
+                          const subId = sub.id || `sub-${sIdx}`;
+                          const origQty = parseFloat(sub.qty) || parseFloat(sub.totalQty) || 0;
+                          const origRate = parseFloat(sub.rate) || 4200;
+                          const subProduct = sub.product || "Premium Rice";
+                          const currentQty = arrivalQuantities[subId] !== undefined ? arrivalQuantities[subId] : origQty;
+                          const currentRate = arrivalRates[subId] !== undefined ? arrivalRates[subId] : origRate;
+                          const lhRateNum = parseFloat(vehicleLhRate) || 0;
+                          const subGross = Math.round(currentQty * currentRate);
+                          const subTotalLh = Math.round(currentQty * lhRateNum);
+                          const subNetAmt = Math.max(0, subGross - subTotalLh);
+                          const subBillNo = arrivalSupplierBillNos[subId] || '';
 
-                        return (
-                          <div key={subId} className="p-4 bg-surface-container/40 rounded-xl border border-outline-variant/30 space-y-3.5">
-                            <div className="flex justify-between items-start">
-                              <div className="space-y-0.5">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-[10px] font-black font-mono text-primary bg-primary/10 border border-primary/25 px-1.5 py-0.5 rounded">
-                                    {subOrderNo}
-                                  </span>
-                                  <h4 className="text-xs font-black text-on-surface uppercase">{sub.buyer}</h4>
+                          const subSupplier = sub.supplier || arrivalConfirmOrder.supplier || "Supplier";
+                          const subOrderNo = sub.supplierSubOrderNo || resolveSubOrderNumber(sub, sIdx, subSupplier);
+
+                          return (
+                            <div key={subId} className="p-4 bg-surface-container/40 rounded-xl border border-outline-variant/30 space-y-3.5">
+                              <div className="flex justify-between items-start">
+                                <div className="space-y-0.5">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-black font-mono text-primary bg-primary/10 border border-primary/25 px-1.5 py-0.5 rounded">
+                                      {subOrderNo}
+                                    </span>
+                                    <h4 className="text-xs font-black text-on-surface uppercase">{sub.buyer}</h4>
+                                  </div>
+                                  <p className="text-[10px] text-secondary font-semibold">{subProduct} • {subSupplier}</p>
                                 </div>
-                                <p className="text-[10px] text-secondary font-semibold">{subProduct} • {subSupplier}</p>
+                                <span className="text-[10px] font-mono bg-surface-container px-2 py-0.5 rounded text-secondary border border-outline-variant/30">
+                                  Original: {origQty} QTLS @ ₹{origRate}
+                                </span>
                               </div>
-                              <span className="text-[10px] font-mono bg-surface-container px-2 py-0.5 rounded text-secondary border border-outline-variant/30">
-                                Original: {origQty} QTLS @ ₹{origRate}
-                              </span>
-                            </div>
 
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                              {/* Left: Arrived Qty & Actual Supplier Bill No directly under it */}
-                              <div className="space-y-3">
-                                <div className="space-y-1">
-                                  <label className="text-[9px] font-black uppercase tracking-widest text-secondary">
-                                    Arrived Qty (QTLS)
-                                  </label>
-                                  <input 
-                                    type="number"
-                                    step="any"
-                                    min="0"
-                                    max={origQty}
-                                    value={currentQty}
-                                    onChange={(e) => {
-                                      const val = parseFloat(e.target.value);
-                                      setArrivalQuantities(prev => ({ ...prev, [subId]: isNaN(val) ? 0 : val }));
-                                    }}
-                                    className="w-full px-3 py-2 bg-surface border border-outline-variant rounded-lg text-xs font-mono font-bold outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10 text-on-surface"
-                                  />
-                                  {currentQty < origQty && (
-                                    <p className="text-[9px] font-black text-amber-600 uppercase tracking-wide">
-                                      Balance Pending: {(origQty - currentQty).toFixed(2)} QTLS
-                                    </p>
-                                  )}
-                                </div>
-
-                                {/* Actual Supplier Bill No placed directly under Arrived Qty */}
-                                <div className="space-y-1">
-                                  <div className="flex items-center justify-between">
-                                    <label className="text-[9px] font-black uppercase tracking-widest text-primary">
-                                      Actual Supplier Bill No (Received in Billing)
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                                {/* Left: Arrived Qty & Actual Supplier Bill No directly under it */}
+                                <div className="space-y-3">
+                                  <div className="space-y-1">
+                                    <label className="text-[9px] font-black uppercase tracking-widest text-secondary">
+                                      Arrived Qty (QTLS)
                                     </label>
-                                    {sIdx === 0 && arrivalConfirmOrder.originalOrders && arrivalConfirmOrder.originalOrders.length > 1 && (
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          const firstBill = arrivalSupplierBillNos[subId] || '';
-                                          if (!firstBill.trim()) return;
-                                          const updated: {[k: string]: string} = {};
-                                          arrivalConfirmOrder.originalOrders.forEach((so: any, idx: number) => {
-                                            const id = so.id || `sub-${idx}`;
-                                            updated[id] = firstBill;
-                                          });
-                                          setArrivalSupplierBillNos(prev => ({ ...prev, ...updated }));
-                                        }}
-                                        className="text-[9px] font-bold text-primary hover:underline cursor-pointer"
-                                        title="Copy this bill number to all other sub-orders in this batch"
-                                      >
-                                        Apply to all
-                                      </button>
+                                    <input 
+                                      type="number"
+                                      step="any"
+                                      min="0"
+                                      max={origQty}
+                                      value={currentQty}
+                                      onChange={(e) => {
+                                        const val = parseFloat(e.target.value);
+                                        setArrivalQuantities(prev => ({ ...prev, [subId]: isNaN(val) ? 0 : val }));
+                                      }}
+                                      className="w-full px-3 py-2 bg-surface border border-outline-variant rounded-lg text-xs font-mono font-bold outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10 text-on-surface"
+                                    />
+                                    {currentQty < origQty && (
+                                      <p className="text-[9px] font-black text-amber-600 uppercase tracking-wide">
+                                        Balance Pending: {(origQty - currentQty).toFixed(2)} QTLS
+                                      </p>
                                     )}
                                   </div>
-                                  <input 
-                                    type="text"
-                                    value={arrivalSupplierBillNos[subId] !== undefined ? arrivalSupplierBillNos[subId] : ''}
-                                    onChange={(e) => {
-                                      const val = e.target.value;
-                                      setArrivalSupplierBillNos(prev => ({ ...prev, [subId]: val }));
-                                    }}
-                                    placeholder="e.g. BIL-9842 / INV-2026-001"
-                                    className="w-full px-3 py-2 bg-surface border border-outline-variant rounded-lg text-xs font-mono font-bold outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10 text-on-surface"
-                                  />
-                                  <p className="text-[9px] text-secondary">
-                                    Recorded directly into Arrival Entry for this order
-                                  </p>
+
+                                  {/* Actual Supplier Bill No placed directly under Arrived Qty */}
+                                  <div className="space-y-1">
+                                    <div className="flex items-center justify-between">
+                                      <label className="text-[9px] font-black uppercase tracking-widest text-primary">
+                                        Actual Supplier Bill No (Received in Billing)
+                                      </label>
+                                      {sIdx === 0 && !isTargetingSub && arrivalConfirmOrder.originalOrders && arrivalConfirmOrder.originalOrders.length > 1 && (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const firstBill = arrivalSupplierBillNos[subId] || '';
+                                            if (!firstBill.trim()) return;
+                                            const updated: {[k: string]: string} = {};
+                                            arrivalConfirmOrder.originalOrders.forEach((so: any, idx: number) => {
+                                              const id = so.id || `sub-${idx}`;
+                                              updated[id] = firstBill;
+                                            });
+                                            setArrivalSupplierBillNos(prev => ({ ...prev, ...updated }));
+                                          }}
+                                          className="text-[9px] font-bold text-primary hover:underline cursor-pointer"
+                                          title="Copy this bill number to all other sub-orders in this batch"
+                                        >
+                                          Apply to all
+                                        </button>
+                                      )}
+                                    </div>
+                                    <input 
+                                      type="text"
+                                      value={arrivalSupplierBillNos[subId] !== undefined ? arrivalSupplierBillNos[subId] : ''}
+                                      onChange={(e) => {
+                                        const val = e.target.value;
+                                        setArrivalSupplierBillNos(prev => ({ ...prev, [subId]: val }));
+                                      }}
+                                      placeholder="e.g. BIL-9842 / INV-2026-001"
+                                      className="w-full px-3 py-2 bg-surface border border-outline-variant rounded-lg text-xs font-mono font-bold outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10 text-on-surface"
+                                    />
+                                    <p className="text-[9px] text-secondary">
+                                      Recorded directly into Arrival Entry for this sub-order
+                                    </p>
+                                  </div>
                                 </div>
-                              </div>
 
                               {/* Right: Settlement Rate & Financial Breakdown */}
                               <div className="space-y-3">
@@ -4159,11 +4299,11 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                             </div>
                           </div>
                         );
-                      })
-                    ) : (
-                      // Fallback for single order without sub-orders
-                      (() => {
-                        const origQty = parseFloat(arrivalConfirmOrder.items?.match(/\d+(\.\d+)?/)?.[0] || arrivalConfirmOrder.totalQty || "10");
+                      });
+                    }
+
+                    // Fallback for single order without sub-orders
+                    const origQty = parseFloat(arrivalConfirmOrder.items?.match(/\d+(\.\d+)?/)?.[0] || arrivalConfirmOrder.totalQty || "10");
                         const origRate = parseFloat(arrivalConfirmOrder.rate) || 4200;
                         const currentQty = arrivalQuantities[arrivalConfirmOrder.id] !== undefined ? arrivalQuantities[arrivalConfirmOrder.id] : origQty;
                         const currentRate = arrivalRates[arrivalConfirmOrder.id] !== undefined ? arrivalRates[arrivalConfirmOrder.id] : origRate;
@@ -4277,8 +4417,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                             </div>
                           </div>
                         );
-                      })()
-                    )}
+                      })()}
                   </div>
                 </div>
               </div>
@@ -4286,8 +4425,11 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
               <div className="p-6 bg-surface-container border-t border-outline-variant shrink-0 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
                 <button
                   type="button"
-                  onClick={() => setArrivalConfirmOrder(null)}
-                  className="px-4 py-2.5 bg-surface hover:bg-surface-container rounded-xl text-xs font-black uppercase tracking-wider transition-all border border-outline-variant text-on-surface text-center"
+                  onClick={() => {
+                    setArrivalConfirmOrder(null);
+                    setArrivalTargetSubId(null);
+                  }}
+                  className="px-4 py-2.5 bg-surface hover:bg-surface-container rounded-xl text-xs font-black uppercase tracking-wider transition-all border border-outline-variant text-on-surface text-center cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -4305,9 +4447,11 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                         arrivalRates, 
                         arrivalSupplierBillNos,
                         lhRate,
-                        vehicleLhAccepted
+                        vehicleLhAccepted,
+                        arrivalTargetSubId || undefined
                       );
                       setArrivalConfirmOrder(null);
+                      setArrivalTargetSubId(null);
                     }}
                     className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 border ${
                       vehicleLhAccepted 
@@ -4331,9 +4475,17 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                         arrivalRates, 
                         arrivalSupplierBillNos,
                         lhRate,
-                        vehicleLhAccepted
+                        vehicleLhAccepted,
+                        arrivalTargetSubId || undefined
                       );
+                      const targetBill = (arrivalTargetSubId && arrivalSupplierBillNos[arrivalTargetSubId]) 
+                        ? arrivalSupplierBillNos[arrivalTargetSubId] 
+                        : (Object.values(arrivalSupplierBillNos).find(b => b && b.trim()) || arrivalConfirmOrder.billNo || arrivalConfirmOrder.id);
+                      if (targetBill) {
+                        sessionStorage.setItem('goto_arrival_bill', targetBill);
+                      }
                       setArrivalConfirmOrder(null);
+                      setArrivalTargetSubId(null);
                       navigate('/arrival-entry');
                     }}
                     className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-2 ${

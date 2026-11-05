@@ -872,7 +872,8 @@ export async function markLedgerEntriesAsArrived(
   poNo: string, 
   targetOrder?: any,
   customQtys?: {[subId: string]: number}, 
-  customRates?: {[subId: string]: number}
+  customRates?: {[subId: string]: number},
+  targetSubId?: string
 ): Promise<void> {
   try {
     const cloudLedgers = await getCollectionDocs('ledgers').catch(() => []);
@@ -893,13 +894,22 @@ export async function markLedgerEntriesAsArrived(
       let arrivedRate = originalRate;
 
       if (targetOrder && targetOrder.originalOrders && targetOrder.originalOrders.length > 0) {
-        const matchingSub = targetOrder.originalOrders.find((sub: any) => {
+        const matchingSub = targetOrder.originalOrders.find((sub: any, sIdx: number) => {
+          const sId = sub.id || `sub-${sIdx}`;
+          if (targetSubId && sId !== targetSubId && sub.id !== targetSubId) {
+            return false;
+          }
           if (l.partyType === 'Buyer') {
             return sub.buyer === l.partyName;
           } else {
             return (sub.supplier || sub.seller || targetOrder.origin) === l.partyName;
           }
         });
+
+        // If an individual sub-order was targeted and this ledger entry does not belong to it, skip
+        if (targetSubId && !matchingSub) {
+          return;
+        }
 
         if (matchingSub) {
           const subId = matchingSub.id || '';
@@ -972,7 +982,8 @@ export async function autoCreateArrivalEntryForIncomingLog(
   customQtys?: {[subId: string]: number}, 
   customRates?: {[subId: string]: number},
   customBillNo?: string | {[subId: string]: string},
-  lhPerQtl?: number | {[subId: string]: number}
+  lhPerQtl?: number | {[subId: string]: number},
+  targetSubId?: string
 ): Promise<string> {
   try {
     if (!targetOrder) return orderId;
@@ -1013,6 +1024,11 @@ export async function autoCreateArrivalEntryForIncomingLog(
     if (targetOrder.originalOrders && targetOrder.originalOrders.length > 0) {
       targetOrder.originalOrders.forEach((sub: any, sIdx: number) => {
         const subId = sub.id || `sub-${sIdx}`;
+        // If an individual sub-order was targeted, skip non-matching sub-orders
+        if (targetSubId && subId !== targetSubId && sub.id !== targetSubId) {
+          return;
+        }
+
         const qty = (customQtys && customQtys[subId] !== undefined) ? customQtys[subId] : (parseFloat(sub.qty) || parseFloat(sub.totalQty) || 10);
         const rate = (customRates && customRates[subId] !== undefined) ? customRates[subId] : (parseFloat(sub.rate) || 4200);
         const amount = qty * rate;
@@ -1039,6 +1055,8 @@ export async function autoCreateArrivalEntryForIncomingLog(
 
         newItemsToInject.push({
           date: dateStr,
+          subOrderId: subId,
+          subIndex: sIdx,
           millerName: subMiller,
           place: sub.location || targetOrder.location || "MIRYALGUDA",
           brand: sub.brand || targetOrder.brand || targetOrder.product || "1121 Sella Rice",
@@ -1063,6 +1081,7 @@ export async function autoCreateArrivalEntryForIncomingLog(
           chqDt: '',
           bank: '',
           purchaseOrderNo: normPo,
+          mainPoNo: normPo,
           isLifted,
           originalBuyer: sub.buyer || targetOrder.originalBuyer || targetOrder.buyer || '',
           redirectedTo: partyName,
@@ -1124,6 +1143,7 @@ export async function autoCreateArrivalEntryForIncomingLog(
         chqDt: '',
         bank: '',
         purchaseOrderNo: normPo,
+        mainPoNo: normPo,
         isLifted,
         originalBuyer: targetOrder.originalBuyer || targetOrder.buyer || '',
         redirectedTo: partyName,
@@ -1133,29 +1153,74 @@ export async function autoCreateArrivalEntryForIncomingLog(
 
     const firstBillNo = newItemsToInject[0]?.billNo || orderId;
 
-    // 3. Insert or update items in currentGrid
+    // 3. Insert or update items in currentGrid without overwriting sibling sub-orders
+    const usedIndices = new Set<number>();
+
     newItemsToInject.forEach(newItem => {
-      // Look for existing row with matching purchaseOrderNo or billNo
-      const existingIdx = currentGrid.findIndex((r: any) => 
-        r && (
-          (r.purchaseOrderNo && String(r.purchaseOrderNo).trim().toUpperCase().replace(/^#/, '') === String(newItem.purchaseOrderNo).trim().toUpperCase().replace(/^#/, '')) ||
-          (r.billNo && String(r.billNo).trim().toUpperCase() === String(newItem.billNo).trim().toUpperCase())
-        )
-      );
+      const targetBill = newItem.billNo ? String(newItem.billNo).trim().toUpperCase() : '';
+      const targetPo = newItem.purchaseOrderNo ? String(newItem.purchaseOrderNo).trim().toUpperCase().replace(/^#/, '') : '';
+      const targetMainPo = newItem.mainPoNo ? String(newItem.mainPoNo).trim().toUpperCase().replace(/^#/, '') : '';
+      const targetSubId = newItem.subOrderId;
+      const targetParty = newItem.partyName ? String(newItem.partyName).trim().toUpperCase() : '';
+
+      // Look for existing row with matching billNo, or matching purchaseOrderNo + sub-order identity
+      const existingIdx = currentGrid.findIndex((r: any, idx: number) => {
+        if (!r || usedIndices.has(idx)) return false;
+
+        const rBill = r.billNo ? String(r.billNo).trim().toUpperCase() : '';
+        const rPo = r.purchaseOrderNo ? String(r.purchaseOrderNo).trim().toUpperCase().replace(/^#/, '') : '';
+        const rParty = r.partyName ? String(r.partyName).trim().toUpperCase() : '';
+        const rSubId = r.subOrderId;
+
+        // 1. Exact non-empty Bill No match
+        if (targetBill && rBill && targetBill === rBill) {
+          return true;
+        }
+
+        // 2. Sub-order ID match
+        if (targetSubId && rSubId && targetSubId === rSubId) {
+          return true;
+        }
+
+        // 3. Purchase Order match with sub-order disambiguation
+        if ((targetPo && rPo && targetPo === rPo) || (targetMainPo && rPo && targetMainPo === rPo)) {
+          if (targetSubId && rSubId) {
+            return targetSubId === rSubId;
+          }
+          if (newItem.subIndex !== undefined && r.subIndex !== undefined) {
+            return newItem.subIndex === r.subIndex;
+          }
+          if (targetParty && rParty && targetParty === rParty) {
+            return true;
+          }
+          // If neither has subOrderId or party info, only match if it's an unfilled placeholder
+          if (!targetSubId && !rSubId && !rParty && (!r.qty || parseFloat(r.qty) === 0)) {
+            return true;
+          }
+        }
+
+        return false;
+      });
 
       if (existingIdx !== -1) {
+        usedIndices.add(existingIdx);
         currentGrid[existingIdx] = {
           ...currentGrid[existingIdx],
           ...newItem,
           id: currentGrid[existingIdx].id || `row-${existingIdx}`
         };
       } else {
-        // Find first blank row
-        let blankIdx = currentGrid.findIndex((r: any) => !r || (!r.purchaseOrderNo && !r.partyName && !r.millerName && (!r.qty || parseFloat(r.qty) === 0)));
+        // Find first blank row that has not been claimed in this run
+        let blankIdx = currentGrid.findIndex((r: any, idx: number) => 
+          !usedIndices.has(idx) && (!r || (!r.purchaseOrderNo && !r.partyName && !r.millerName && (!r.qty || parseFloat(r.qty) === 0)))
+        );
         if (blankIdx !== -1) {
+          usedIndices.add(blankIdx);
           currentGrid[blankIdx] = { ...newItem, id: `row-${blankIdx}` };
         } else {
-          currentGrid.push({ ...newItem, id: `row-${currentGrid.length}` });
+          const newIdx = currentGrid.length;
+          usedIndices.add(newIdx);
+          currentGrid.push({ ...newItem, id: `row-${newIdx}` });
         }
       }
     });
@@ -1177,7 +1242,8 @@ export async function autoCreateArrivalEntryForIncomingLog(
     const cloudFormatted = newItemsToInject.map((row, idx) => {
       const existingId = row.id && !String(row.id).startsWith('row-empty-') ? String(row.id).replace(/^#/, '') : null;
       const cleanBill = row.billNo ? String(row.billNo).trim().replace(/[^a-zA-Z0-9_-]/g, '') : '';
-      const docId = existingId || (cleanBill ? `row-${targetSheetId}-${cleanBill}-${idx + 1}` : `row-${targetSheetId}-${idx + 1}-${Date.now()}`);
+      const subSuffix = row.subOrderId ? `-${row.subOrderId}` : `-${idx + 1}`;
+      const docId = existingId || (cleanBill ? `row-${targetSheetId}-${cleanBill}${subSuffix}` : `row-${targetSheetId}-${Date.now()}${subSuffix}`);
       return {
         ...row,
         id: docId,
