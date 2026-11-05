@@ -3252,17 +3252,63 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                       </div>
                     </div>
 
-                    {/* Automated Dispatch Indicators */}
-                    <div className="flex flex-col sm:flex-row gap-2 py-1 px-2.5 bg-emerald-500/[0.03] dark:bg-emerald-500/[0.02] rounded-lg border border-emerald-500/10 text-[9px] text-emerald-800 dark:text-emerald-400 font-semibold tracking-tight uppercase">
-                      <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                        <span className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-                        <span className="truncate">Email auto-sent to supplier: <strong className="text-on-surface font-bold ml-0.5">{sanitizeSupplierName(order.supplier || (order.originalOrders && order.originalOrders[0]?.supplier), 'Direct Mill')}</strong></span>
-                      </div>
-                      <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                        <span className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-                        <span className="truncate">WhatsApp auto-sent to buyer: <strong className="text-on-surface font-bold ml-0.5">{order.buyer || 'Multiple Buyers'}</strong></span>
-                      </div>
-                    </div>
+                    {/* Dispatch Notification Status Icons (Mail & WhatsApp) */}
+                    {(() => {
+                      const trk = trackingRecordMap[order.id];
+                      const isEmailSent = Boolean(
+                        order.purchaseOrderSent || 
+                        trk?.status === 'Sent' || 
+                        trk?.acknowledgedAt || 
+                        order.purchaseOrderSentAt
+                      );
+                      const isWhatsAppSent = Boolean(
+                        order.whatsappSent || 
+                        order.whatsappSentAt || 
+                        order.whatsappMessageId ||
+                        order.purchaseOrderSent || 
+                        order.purchaseOrderSentAt ||
+                        (order.originalOrders && order.originalOrders.some((s: any) => s.whatsappSent || s.purchaseOrderSent))
+                      );
+
+                      return (
+                        <div className="flex items-center gap-2 py-0.5">
+                          {/* Mail Icon badge */}
+                          <div 
+                            className={cn(
+                              "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border transition-all select-none",
+                              isEmailSent 
+                                ? "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30 shadow-2xs" 
+                                : "bg-neutral-100 dark:bg-neutral-800/40 text-neutral-400 dark:text-neutral-500 border-neutral-200 dark:border-neutral-800 opacity-50"
+                            )}
+                            title={isEmailSent ? "PO Email sent to supplier" : "PO Email not sent"}
+                          >
+                            <Mail className={cn("w-3.5 h-3.5", isEmailSent ? "text-blue-600 dark:text-blue-400" : "text-neutral-400 dark:text-neutral-500")} />
+                            <span>Mail</span>
+                            {isEmailSent && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />}
+                          </div>
+
+                          {/* WhatsApp Icon badge */}
+                          <div 
+                            className={cn(
+                              "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border transition-all select-none",
+                              isWhatsAppSent 
+                                ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 shadow-2xs" 
+                                : "bg-neutral-100 dark:bg-neutral-800/40 text-neutral-400 dark:text-neutral-500 border-neutral-200 dark:border-neutral-800 opacity-50"
+                            )}
+                            title={isWhatsAppSent ? "WhatsApp notification sent to buyer" : "WhatsApp notification not sent"}
+                          >
+                            <svg 
+                              className={cn("w-3.5 h-3.5 fill-current", isWhatsAppSent ? "text-emerald-600 dark:text-emerald-400" : "text-neutral-400 dark:text-neutral-500")} 
+                              viewBox="0 0 24 24"
+                            >
+                              <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/>
+                            </svg>
+                            <span>WhatsApp</span>
+                            {isWhatsAppSent && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />}
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                     {order.liftingRecords && order.liftingRecords.length > 0 && (
                       <div className="flex items-center gap-2 px-3 py-2 bg-purple-500/10 border border-purple-500/20 rounded-xl text-purple-700 dark:text-purple-300 text-xs font-bold">
