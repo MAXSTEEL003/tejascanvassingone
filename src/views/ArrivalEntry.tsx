@@ -302,10 +302,25 @@ export default function ArrivalEntry() {
   const currentSheet = useMemo(() => {
     const found = sheets.find(s => s.id === currentSheetId) || sheets[0];
     const defaultDate = found ? getDefaultDateForSheetName(found.name) : new Date().toISOString().split('T')[0];
+    const rawData = Array.isArray(found?.data) ? [...found.data] : [];
+
+    // Ensure every sheet always has at least INITIAL_ROWS (40) rows for manual spreadsheet editing
+    if (rawData.length < INITIAL_ROWS) {
+      const paddingNeeded = INITIAL_ROWS - rawData.length;
+      for (let i = 0; i < paddingNeeded; i++) {
+        rawData.push({
+          id: `row-empty-${Date.now()}-${rawData.length}-${Math.random().toString(36).substring(2, 6)}`,
+          date: defaultDate,
+          sheetId: found?.id || 'sheet-current',
+          sheetName: found?.name || getCurrentMonthYearSheetName()
+        });
+      }
+    }
+
     return {
       id: found?.id || 'sheet-current',
       name: found?.name || getCurrentMonthYearSheetName(),
-      data: Array.isArray(found?.data) ? found.data : generateEmptyArrivalRows(INITIAL_ROWS, defaultDate)
+      data: rawData
     };
   }, [sheets, currentSheetId]);
 
@@ -405,6 +420,8 @@ export default function ArrivalEntry() {
   const [quickDaysOp, setQuickDaysOp] = useState<'all' | '>' | '<' | '=' | '>=' | '<=' | 'between'>('all');
   const [quickDaysVal, setQuickDaysVal] = useState<string>('');
   const [quickDaysVal2, setQuickDaysVal2] = useState<string>('');
+  // Row flash highlight state for deep navigation
+  const [highlightRowId, setHighlightRowId] = useState<string | null>(null);
 
   // Due List PDF Options Modal state
   const [isDueListModalOpen, setIsDueListModalOpen] = useState(false);
@@ -715,13 +732,41 @@ export default function ArrivalEntry() {
       )
     );
 
+    const sheetToUse = matchingSheet || sheets.find(s => s.id === currentSheetId) || sheets[0];
+
     if (matchingSheet && matchingSheet.id !== currentSheetId) {
       setCurrentSheetId(matchingSheet.id);
     }
 
-    setQuickSearch(targetBill.trim());
+    // CRITICAL: NEVER filter quickSearch on deep-navigation so all normal 40 rows and all entries remain visible!
+    // Clear any leftover search text to guarantee the full spreadsheet grid is shown
+    setQuickSearch('');
+
+    // Locate the row inside the target sheet's data
+    if (sheetToUse && Array.isArray(sheetToUse.data)) {
+      const rowIdx = sheetToUse.data.findIndex(r => 
+        isMeaningfulRow(r) && (
+          String(r.billNo || '').trim().toLowerCase() === norm ||
+          String(r.purchaseOrderNo || '').trim().toLowerCase() === norm
+        )
+      );
+
+      if (rowIdx !== -1) {
+        const foundRow = sheetToUse.data[rowIdx];
+        if (foundRow?.id) {
+          setHighlightRowId(foundRow.id);
+          setTimeout(() => setHighlightRowId(null), 3500);
+        }
+
+        const billColIdx = Math.max(0, visibleColumns.findIndex(c => c.id === 'billNo'));
+        const colIdx = billColIdx !== -1 ? billColIdx : 5;
+        setActiveCell({ r: rowIdx, c: colIdx });
+        setSelectionRange({ startR: rowIdx, startC: 0, endR: rowIdx, endC: visibleColumns.length - 1 });
+      }
+    }
+
     sessionStorage.removeItem('goto_arrival_bill');
-  }, [sheets, currentSheetId]);
+  }, [sheets, currentSheetId, visibleColumns]);
 
   // Set Data Helper (updates local state & marks dirty)
   const setData = useCallback((newDataOrFn: any[] | ((prev: any[]) => any[])) => {
@@ -3591,7 +3636,10 @@ export default function ArrivalEntry() {
               <div
                 key={row.id || rIdx}
                 style={{ height: `${ROW_HEIGHT}px` }}
-                className="flex border-b border-outline-variant/20 hover:bg-surface-container-low/40 transition-colors"
+                className={cn(
+                  "flex border-b border-outline-variant/20 hover:bg-surface-container-low/40 transition-colors",
+                  highlightRowId && row?.id === highlightRowId && "bg-amber-500/20 ring-2 ring-inset ring-amber-500/70"
+                )}
               >
                 {/* Row Number Header */}
                 <div
@@ -4062,7 +4110,10 @@ export default function ArrivalEntry() {
           {sheets.map(sheet => (
             <div key={sheet.id} className="relative group flex items-center">
               <button
-                onClick={() => setCurrentSheetId(sheet.id)}
+                onClick={() => {
+                  setCurrentSheetId(sheet.id);
+                  if (quickSearch) setQuickSearch('');
+                }}
                 className={cn(
                   "px-3 py-1.5 rounded-xl font-black text-xs transition-all whitespace-nowrap cursor-pointer",
                   sheet.id === currentSheetId
