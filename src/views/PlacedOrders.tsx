@@ -4278,15 +4278,6 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
               </div>
 
               <div className="p-6 space-y-6 overflow-y-auto flex-1">
-                <div className="bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-500/20 p-4 rounded-xl space-y-2">
-                  <p className="text-xs font-bold text-emerald-800 dark:text-emerald-400">
-                    Verify actual arrival quantities and settlement rates.
-                  </p>
-                  <p className="text-[11px] text-emerald-700/80 dark:text-emerald-400/80 leading-relaxed font-medium">
-                    If any buyer/supplier order has arrived with less quantity than originally placed, the ledger will automatically be updated to show the <strong>arrived portion</strong>, and a <strong>pending balance ledger entry</strong> will be kept of the remaining quantity of the buyer & supplier at the original rate to track balance pending to be loaded.
-                  </p>
-                </div>
-
                 <div className="space-y-4">
                   <div className="flex justify-between items-center pb-2 border-b border-outline-variant/30">
                     <span className="text-[10px] font-black uppercase tracking-widest text-secondary">
@@ -4426,29 +4417,41 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                           const isIncluded = isTargetingSub || Boolean(arrivalIncludedSubIds[subId] ?? arrivalIncludedSubIds[sub.id] ?? arrivalIncludedSubIds[sub.supplierSubOrderNo] ?? arrivalIncludedSubIds[`sub-${sIdx}`] ?? !isAlreadyArrived);
 
                           return (
-                            <div key={subId} className={`p-4 rounded-xl border transition-all space-y-3.5 ${
-                              isIncluded 
-                                ? 'bg-surface-container/40 border-outline-variant/30' 
-                                : 'bg-surface-container-low/20 border-dashed border-outline-variant/40 opacity-60'
-                            }`}>
-                              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                            <div 
+                              key={subId} 
+                              className={cn(
+                                "p-4 rounded-xl border transition-all space-y-3 shadow-2xs",
+                                isIncluded 
+                                  ? 'bg-surface-container-low/40 dark:bg-neutral-900/40 border-outline-variant/30' 
+                                  : 'bg-neutral-50 dark:bg-neutral-900/20 border-dashed border-outline-variant/40 opacity-60'
+                              )}
+                            >
+                              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pb-2 border-b border-outline-variant/20">
                                 <div className="space-y-0.5">
                                   <div className="flex items-center gap-2">
                                     <span className="text-[10px] font-black font-mono text-primary bg-primary/10 border border-primary/25 px-1.5 py-0.5 rounded">
                                       {subOrderNo}
                                     </span>
-                                    <h4 className="text-xs font-black text-on-surface uppercase">{sub.buyer}</h4>
+                                    <h4 className="text-xs font-black text-on-surface uppercase tracking-tight">{sub.buyer}</h4>
                                   </div>
-                                  <p className="text-[10px] text-secondary font-semibold">{subProduct} • {subSupplier}</p>
+                                  <p className="text-[10px] text-secondary font-medium">{subProduct} • {subSupplier}</p>
                                 </div>
                                 <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-[10px] font-mono font-bold bg-surface-container px-2.5 py-1 rounded-lg text-secondary border border-outline-variant/30">
+                                    Original: {origQty} QTLS @ ₹{origRate}
+                                  </span>
                                   {isAlreadyArrived ? (
-                                    <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
-                                      <CheckCircle2 className="w-3 h-3" />
+                                    <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-1 rounded-lg inline-flex items-center gap-1">
+                                      <CheckCircle2 className="w-3.5 h-3.5" />
                                       Already Arrived
                                     </span>
                                   ) : (!isTargetingSub && (
-                                    <label className="flex items-center gap-1.5 cursor-pointer select-none bg-surface px-2.5 py-1 rounded-lg border border-outline-variant/40 hover:border-emerald-500/50 transition-colors">
+                                    <label className={cn(
+                                      "flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer select-none",
+                                      isIncluded 
+                                        ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400" 
+                                        : "bg-surface border-outline-variant/40 text-secondary"
+                                    )}>
                                       <input 
                                         type="checkbox"
                                         checked={isIncluded}
@@ -4464,14 +4467,9 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                                         }}
                                         className="w-3.5 h-3.5 text-emerald-600 rounded border-outline-variant focus:ring-emerald-500 cursor-pointer"
                                       />
-                                      <span className={`text-[10px] font-black uppercase tracking-wider ${isIncluded ? 'text-emerald-700 dark:text-emerald-400' : 'text-secondary'}`}>
-                                        {isIncluded ? 'Arrive this sub-order' : 'Skip (Arrives Later)'}
-                                      </span>
+                                      <span>{isIncluded ? 'Arrive Sub-Order' : 'Skip (Later)'}</span>
                                     </label>
                                   ))}
-                                  <span className="text-[10px] font-mono bg-surface-container px-2 py-0.5 rounded text-secondary border border-outline-variant/30">
-                                    Original: {origQty} QTLS @ ₹{origRate}
-                                  </span>
                                 </div>
                               </div>
 
@@ -4481,94 +4479,42 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                                 </p>
                               )}
 
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                                {/* Left: Arrived Qty & Actual Supplier Bill No directly under it */}
-                                <div className="space-y-3">
-                                  <div className="space-y-1">
-                                    <label className="text-[9px] font-black uppercase tracking-widest text-secondary">
-                                      Arrived Qty (QTLS)
-                                    </label>
-                                    <input 
-                                      type="number"
-                                      step="any"
-                                      min="0"
-                                      max={origQty}
-                                      value={currentQty}
-                                      onChange={(e) => {
-                                        const val = parseFloat(e.target.value);
-                                        const finalVal = isNaN(val) ? 0 : val;
-                                        setArrivalQuantities(prev => ({ 
-                                          ...prev, 
-                                          [subId]: finalVal,
-                                          ...(sub.id ? { [sub.id]: finalVal } : {}),
-                                          ...(sub.supplierSubOrderNo ? { [sub.supplierSubOrderNo]: finalVal } : {}),
-                                          [`sub-${sIdx}`]: finalVal
-                                        }));
-                                      }}
-                                      className="w-full px-3 py-2 bg-surface border border-outline-variant rounded-lg text-xs font-mono font-bold outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10 text-on-surface"
-                                    />
-                                    {currentQty < origQty && (
-                                      <p className="text-[9px] font-black text-amber-600 uppercase tracking-wide">
-                                        Balance Pending: {(origQty - currentQty).toFixed(2)} QTLS
-                                      </p>
-                                    )}
-                                  </div>
-
-                                  {/* Actual Supplier Bill No placed directly under Arrived Qty */}
-                                  <div className="space-y-1">
-                                    <div className="flex items-center justify-between">
-                                      <label className="text-[9px] font-black uppercase tracking-widest text-primary">
-                                        Actual Supplier Bill No (Optional)
-                                      </label>
-                                      {sIdx === 0 && !isTargetingSub && arrivalConfirmOrder.originalOrders && arrivalConfirmOrder.originalOrders.length > 1 && (
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            const firstBill = arrivalSupplierBillNos[subId] || '';
-                                            if (!firstBill.trim()) return;
-                                            const updated: {[k: string]: string} = {};
-                                            arrivalConfirmOrder.originalOrders.forEach((so: any, idx: number) => {
-                                              const id = so.id || so.supplierSubOrderNo || `sub-${idx}`;
-                                              updated[id] = firstBill;
-                                              if (so.id) updated[so.id] = firstBill;
-                                              if (so.supplierSubOrderNo) updated[so.supplierSubOrderNo] = firstBill;
-                                              updated[`sub-${idx}`] = firstBill;
-                                            });
-                                            setArrivalSupplierBillNos(prev => ({ ...prev, ...updated }));
-                                          }}
-                                          className="text-[9px] font-bold text-primary hover:underline cursor-pointer"
-                                          title="Copy this bill number to all other sub-orders in this batch"
-                                        >
-                                          Apply to all
-                                        </button>
-                                      )}
-                                    </div>
-                                    <input 
-                                      type="text"
-                                      value={arrivalSupplierBillNos[subId] !== undefined ? arrivalSupplierBillNos[subId] : ''}
-                                      onChange={(e) => {
-                                        const val = e.target.value;
-                                        setArrivalSupplierBillNos(prev => ({ 
-                                          ...prev, 
-                                          [subId]: val,
-                                          ...(sub.id ? { [sub.id]: val } : {}),
-                                          ...(sub.supplierSubOrderNo ? { [sub.supplierSubOrderNo]: val } : {}),
-                                          [`sub-${sIdx}`]: val
-                                        }));
-                                      }}
-                                      placeholder="e.g. BIL-9842 / INV-2026-001 (leave blank if no bill yet)"
-                                      className="w-full px-3 py-2 bg-surface border border-outline-variant rounded-lg text-xs font-mono font-bold outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10 text-on-surface"
-                                    />
-                                    <p className="text-[9px] text-secondary">
-                                      Recorded into Arrival Entry (remains blank if left empty)
+                              {/* Clean 3-Column Input Grid */}
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                {/* Arrived Qty */}
+                                <div className="space-y-1">
+                                  <label className="text-[9px] font-black uppercase tracking-widest text-secondary block">
+                                    Arrived Qty (QTLS)
+                                  </label>
+                                  <input 
+                                    type="number"
+                                    step="any"
+                                    min="0"
+                                    max={origQty}
+                                    value={currentQty}
+                                    onChange={(e) => {
+                                      const val = parseFloat(e.target.value);
+                                      const finalVal = isNaN(val) ? 0 : val;
+                                      setArrivalQuantities(prev => ({ 
+                                        ...prev, 
+                                        [subId]: finalVal,
+                                        ...(sub.id ? { [sub.id]: finalVal } : {}),
+                                        ...(sub.supplierSubOrderNo ? { [sub.supplierSubOrderNo]: finalVal } : {}),
+                                        [`sub-${sIdx}`]: finalVal
+                                      }));
+                                    }}
+                                    className="w-full px-3 py-2 bg-surface border border-outline-variant rounded-lg text-xs font-mono font-bold outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10 text-on-surface"
+                                  />
+                                  {currentQty < origQty && (
+                                    <p className="text-[9px] font-black text-amber-600 uppercase tracking-wide">
+                                      Pending: {(origQty - currentQty).toFixed(2)} QTLS
                                     </p>
-                                  </div>
+                                  )}
                                 </div>
 
-                              {/* Right: Settlement Rate & Financial Breakdown */}
-                              <div className="space-y-3">
+                                {/* Settlement Rate */}
                                 <div className="space-y-1">
-                                  <label className="text-[9px] font-black uppercase tracking-widest text-secondary">
+                                  <label className="text-[9px] font-black uppercase tracking-widest text-secondary block">
                                     Settlement Rate (₹/QTL)
                                   </label>
                                   <input 
@@ -4591,155 +4537,174 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                                   />
                                 </div>
 
-                                <div className="p-2.5 bg-surface-container/60 rounded-lg border border-outline-variant/30 space-y-1.5 text-[10px]">
-                                  <div className="flex justify-between items-center text-secondary">
-                                    <span>Gross Value:</span>
-                                    <span className="font-mono font-semibold text-on-surface">₹{formatINR(subGross)}</span>
+                                {/* Supplier Bill No */}
+                                <div className="space-y-1">
+                                  <div className="flex items-center justify-between">
+                                    <label className="text-[9px] font-black uppercase tracking-widest text-secondary">
+                                      Bill No <span className="text-[8px] font-normal lowercase opacity-70">(optional)</span>
+                                    </label>
+                                    {sIdx === 0 && !isTargetingSub && arrivalConfirmOrder.originalOrders && arrivalConfirmOrder.originalOrders.length > 1 && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const firstBill = arrivalSupplierBillNos[subId] || '';
+                                          if (!firstBill.trim()) return;
+                                          const updated: {[k: string]: string} = {};
+                                          arrivalConfirmOrder.originalOrders.forEach((so: any, idx: number) => {
+                                            const id = so.id || so.supplierSubOrderNo || `sub-${idx}`;
+                                            updated[id] = firstBill;
+                                            if (so.id) updated[so.id] = firstBill;
+                                            if (so.supplierSubOrderNo) updated[so.supplierSubOrderNo] = firstBill;
+                                            updated[`sub-${idx}`] = firstBill;
+                                          });
+                                          setArrivalSupplierBillNos(prev => ({ ...prev, ...updated }));
+                                        }}
+                                        className="text-[9px] font-bold text-primary hover:underline cursor-pointer"
+                                        title="Copy this bill number to all other sub-orders in this batch"
+                                      >
+                                        Apply to all
+                                      </button>
+                                    )}
                                   </div>
-                                  <div className="flex justify-between items-center text-secondary">
-                                    <span>Vehicle L.H Share (@ ₹{lhRateNum}/QTL):</span>
-                                    <span className="font-mono font-semibold text-emerald-600 dark:text-emerald-400">
-                                      {subTotalLh > 0 ? `-₹${formatINR(subTotalLh)}` : '₹0'}
-                                    </span>
-                                  </div>
-                                  <div className="pt-1.5 border-t border-outline-variant/30 flex justify-between items-center font-bold text-on-surface">
-                                    <span>Net Sub-order Amount:</span>
-                                    <span className="font-mono text-emerald-600 dark:text-emerald-400">₹{formatINR(subNetAmt)}</span>
-                                  </div>
+                                  <input 
+                                    type="text"
+                                    value={arrivalSupplierBillNos[subId] !== undefined ? arrivalSupplierBillNos[subId] : ''}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      setArrivalSupplierBillNos(prev => ({ 
+                                        ...prev, 
+                                        [subId]: val,
+                                        ...(sub.id ? { [sub.id]: val } : {}),
+                                        ...(sub.supplierSubOrderNo ? { [sub.supplierSubOrderNo]: val } : {}),
+                                        [`sub-${sIdx}`]: val
+                                      }));
+                                    }}
+                                    placeholder="e.g. BIL-9842 (or blank)"
+                                    className="w-full px-3 py-2 bg-surface border border-outline-variant rounded-lg text-xs font-mono font-bold outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10 text-on-surface"
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Sleek Horizontal Financial Strip */}
+                              <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-2 bg-surface-container/60 dark:bg-neutral-800/40 rounded-lg border border-outline-variant/30 text-xs">
+                                <div className="flex items-center gap-4 text-[11px] text-secondary">
+                                  <span>Gross: <strong className="font-mono text-on-surface">₹{formatINR(subGross)}</strong></span>
+                                  {subTotalLh > 0 && (
+                                    <span>L.H (@ ₹{lhRateNum}): <strong className="font-mono text-rose-600">-₹{formatINR(subTotalLh)}</strong></span>
+                                  )}
+                                  {subBillNo && (
+                                    <span>Bill #: <strong className="font-mono text-primary">{subBillNo}</strong></span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-1.5 ml-auto">
+                                  <span className="text-[10px] font-black uppercase tracking-wider text-secondary">Net Sub-order:</span>
+                                  <span className="font-mono font-black text-sm text-emerald-600 dark:text-emerald-400">₹{formatINR(subNetAmt)}</span>
                                 </div>
                               </div>
                             </div>
-
-                            {/* Calculated Summary Footer for this sub-order */}
-                            <div className="pt-2 border-t border-outline-variant/30 flex justify-between items-center text-[10px]">
-                              <span className="text-secondary font-mono truncate max-w-[60%]">
-                                Bill No: <strong className="text-primary">{subBillNo || 'Pending'}</strong>
-                                {subTotalLh > 0 && <span className="text-secondary"> • L.H: ₹{formatINR(subTotalLh)}</span>}
-                              </span>
-                              <span className="font-mono font-bold text-on-surface">
-                                Net Amt: ₹{formatINR(subNetAmt)}
-                              </span>
-                            </div>
-                          </div>
-                        );
+                          );
                       });
                     }
 
                     // Fallback for single order without sub-orders
                     const origQty = parseFloat(arrivalConfirmOrder.items?.match(/\d+(\.\d+)?/)?.[0] || arrivalConfirmOrder.totalQty || "10");
-                        const origRate = parseFloat(arrivalConfirmOrder.rate) || 4200;
-                        const currentQty = arrivalQuantities[arrivalConfirmOrder.id] !== undefined ? arrivalQuantities[arrivalConfirmOrder.id] : origQty;
-                        const currentRate = arrivalRates[arrivalConfirmOrder.id] !== undefined ? arrivalRates[arrivalConfirmOrder.id] : origRate;
-                        const lhRateNum = parseFloat(vehicleLhRate) || 0;
-                        const gross = Math.round(currentQty * currentRate);
-                        const totalLh = Math.round(currentQty * lhRateNum);
-                        const netAmt = Math.max(0, gross - totalLh);
-                        const singleBillNo = arrivalSupplierBillNos[arrivalConfirmOrder.id] || '';
+                    const origRate = parseFloat(arrivalConfirmOrder.rate) || 4200;
+                    const currentQty = arrivalQuantities[arrivalConfirmOrder.id] !== undefined ? arrivalQuantities[arrivalConfirmOrder.id] : origQty;
+                    const currentRate = arrivalRates[arrivalConfirmOrder.id] !== undefined ? arrivalRates[arrivalConfirmOrder.id] : origRate;
+                    const lhRateNum = parseFloat(vehicleLhRate) || 0;
+                    const gross = Math.round(currentQty * currentRate);
+                    const totalLh = Math.round(currentQty * lhRateNum);
+                    const netAmt = Math.max(0, gross - totalLh);
+                    const singleBillNo = arrivalSupplierBillNos[arrivalConfirmOrder.id] || '';
 
-                        return (
-                          <div className="p-4 bg-surface-container/40 rounded-xl border border-outline-variant/30 space-y-3.5">
-                            <div className="flex justify-between items-start">
-                              <div>
-                                <h4 className="text-xs font-black text-on-surface uppercase">{arrivalConfirmOrder.buyer || "Standard Buyer"}</h4>
-                                <p className="text-[10px] text-secondary font-semibold">{arrivalConfirmOrder.product || "Premium Grains"}</p>
-                              </div>
-                              <span className="text-[10px] font-mono bg-surface-container px-2 py-0.5 rounded text-secondary border border-outline-variant/30">
-                                Original: {origQty} QTLS @ ₹{origRate}
-                              </span>
-                            </div>
-
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                              {/* Left: Arrived Qty & Actual Supplier Bill No directly under it */}
-                              <div className="space-y-3">
-                                <div className="space-y-1">
-                                  <label className="text-[9px] font-black uppercase tracking-widest text-secondary">Arrived Qty (QTLS)</label>
-                                  <input 
-                                    type="number"
-                                    step="any"
-                                    min="0"
-                                    max={origQty}
-                                    value={currentQty}
-                                    onChange={(e) => {
-                                      const val = parseFloat(e.target.value);
-                                      setArrivalQuantities(prev => ({ ...prev, [arrivalConfirmOrder.id]: isNaN(val) ? 0 : val }));
-                                    }}
-                                    className="w-full px-3 py-2 bg-surface border border-outline-variant rounded-lg text-xs font-mono font-bold outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10 text-on-surface"
-                                  />
-                                  {currentQty < origQty && (
-                                    <p className="text-[9px] font-black text-amber-600 uppercase tracking-wide">
-                                      Balance Pending: {(origQty - currentQty).toFixed(2)} QTLS
-                                    </p>
-                                  )}
-                                </div>
-
-                                {/* Actual Supplier Bill No placed directly under Arrived Qty */}
-                                <div className="space-y-1">
-                                  <label className="text-[9px] font-black uppercase tracking-widest text-primary">
-                                    Actual Supplier Bill No (Received in Billing)
-                                  </label>
-                                  <input 
-                                    type="text"
-                                    value={arrivalSupplierBillNos[arrivalConfirmOrder.id] !== undefined ? arrivalSupplierBillNos[arrivalConfirmOrder.id] : ''}
-                                    onChange={(e) => {
-                                      const val = e.target.value;
-                                      setArrivalSupplierBillNos(prev => ({ ...prev, [arrivalConfirmOrder.id]: val }));
-                                    }}
-                                    placeholder="e.g. BIL-9842 / INV-2026-001"
-                                    className="w-full px-3 py-2 bg-surface border border-outline-variant rounded-lg text-xs font-mono font-bold outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10 text-on-surface"
-                                  />
-                                  <p className="text-[9px] text-secondary">
-                                    Recorded directly into Arrival Entry for this order
-                                  </p>
-                                </div>
-                              </div>
-
-                              {/* Right: Settlement Rate & Breakdown */}
-                              <div className="space-y-3">
-                                <div className="space-y-1">
-                                  <label className="text-[9px] font-black uppercase tracking-widest text-secondary">Settlement Rate (₹/QTL)</label>
-                                  <input 
-                                    type="number"
-                                    step="any"
-                                    min="0"
-                                    value={currentRate}
-                                    onChange={(e) => {
-                                      const val = parseFloat(e.target.value);
-                                      setArrivalRates(prev => ({ ...prev, [arrivalConfirmOrder.id]: isNaN(val) ? 0 : val }));
-                                    }}
-                                    className="w-full px-3 py-2 bg-surface border border-outline-variant rounded-lg text-xs font-mono font-bold outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10 text-on-surface"
-                                  />
-                                </div>
-
-                                <div className="p-2.5 bg-surface-container/60 rounded-lg border border-outline-variant/30 space-y-1.5 text-[10px]">
-                                  <div className="flex justify-between items-center text-secondary">
-                                    <span>Gross Value:</span>
-                                    <span className="font-mono font-semibold text-on-surface">₹{formatINR(gross)}</span>
-                                  </div>
-                                  <div className="flex justify-between items-center text-secondary">
-                                    <span>Vehicle L.H Share (@ ₹{lhRateNum}/QTL):</span>
-                                    <span className="font-mono font-semibold text-emerald-600 dark:text-emerald-400">
-                                      {totalLh > 0 ? `-₹${formatINR(totalLh)}` : '₹0'}
-                                    </span>
-                                  </div>
-                                  <div className="pt-1.5 border-t border-outline-variant/30 flex justify-between items-center font-bold text-on-surface">
-                                    <span>Net Amount:</span>
-                                    <span className="font-mono text-emerald-600 dark:text-emerald-400">₹{formatINR(netAmt)}</span>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="pt-2 border-t border-outline-variant/30 flex justify-between items-center text-[10px]">
-                              <span className="text-secondary font-mono truncate max-w-[60%]">
-                                Bill No: <strong className="text-primary">{singleBillNo || 'Pending'}</strong>
-                                {totalLh > 0 && <span className="text-secondary"> • L.H: ₹{formatINR(totalLh)}</span>}
-                              </span>
-                              <span className="font-mono font-bold text-on-surface">
-                                Net Amt: ₹{formatINR(netAmt)}
-                              </span>
-                            </div>
+                    return (
+                      <div className="p-4 bg-surface-container-low/40 dark:bg-neutral-900/40 rounded-xl border border-outline-variant/30 space-y-3 shadow-2xs">
+                        <div className="flex justify-between items-start pb-2 border-b border-outline-variant/20">
+                          <div>
+                            <h4 className="text-xs font-black text-on-surface uppercase tracking-tight">{arrivalConfirmOrder.buyer || "Standard Buyer"}</h4>
+                            <p className="text-[10px] text-secondary font-medium">{arrivalConfirmOrder.product || "Premium Grains"}</p>
                           </div>
-                        );
+                          <span className="text-[10px] font-mono font-bold bg-surface-container px-2.5 py-1 rounded-lg text-secondary border border-outline-variant/30">
+                            Original: {origQty} QTLS @ ₹{origRate}
+                          </span>
+                        </div>
+
+                        {/* Clean 3-Column Input Grid */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          {/* Arrived Qty */}
+                          <div className="space-y-1">
+                            <label className="text-[9px] font-black uppercase tracking-widest text-secondary block">Arrived Qty (QTLS)</label>
+                            <input 
+                              type="number"
+                              step="any"
+                              min="0"
+                              max={origQty}
+                              value={currentQty}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value);
+                                setArrivalQuantities(prev => ({ ...prev, [arrivalConfirmOrder.id]: isNaN(val) ? 0 : val }));
+                              }}
+                              className="w-full px-3 py-2 bg-surface border border-outline-variant rounded-lg text-xs font-mono font-bold outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10 text-on-surface"
+                            />
+                            {currentQty < origQty && (
+                              <p className="text-[9px] font-black text-amber-600 uppercase tracking-wide">
+                                Pending: {(origQty - currentQty).toFixed(2)} QTLS
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Settlement Rate */}
+                          <div className="space-y-1">
+                            <label className="text-[9px] font-black uppercase tracking-widest text-secondary block">Settlement Rate (₹/QTL)</label>
+                            <input 
+                              type="number"
+                              step="any"
+                              min="0"
+                              value={currentRate}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value);
+                                setArrivalRates(prev => ({ ...prev, [arrivalConfirmOrder.id]: isNaN(val) ? 0 : val }));
+                              }}
+                              className="w-full px-3 py-2 bg-surface border border-outline-variant rounded-lg text-xs font-mono font-bold outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10 text-on-surface"
+                            />
+                          </div>
+
+                          {/* Actual Supplier Bill No */}
+                          <div className="space-y-1">
+                            <label className="text-[9px] font-black uppercase tracking-widest text-secondary block">
+                              Bill No <span className="text-[8px] font-normal lowercase opacity-70">(optional)</span>
+                            </label>
+                            <input 
+                              type="text"
+                              value={arrivalSupplierBillNos[arrivalConfirmOrder.id] !== undefined ? arrivalSupplierBillNos[arrivalConfirmOrder.id] : ''}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setArrivalSupplierBillNos(prev => ({ ...prev, [arrivalConfirmOrder.id]: val }));
+                              }}
+                              placeholder="e.g. BIL-9842 (or blank)"
+                              className="w-full px-3 py-2 bg-surface border border-outline-variant rounded-lg text-xs font-mono font-bold outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10 text-on-surface"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Sleek Horizontal Financial Strip */}
+                        <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-2 bg-surface-container/60 dark:bg-neutral-800/40 rounded-lg border border-outline-variant/30 text-xs">
+                          <div className="flex items-center gap-4 text-[11px] text-secondary">
+                            <span>Gross: <strong className="font-mono text-on-surface">₹{formatINR(gross)}</strong></span>
+                            {totalLh > 0 && (
+                              <span>L.H (@ ₹{lhRateNum}): <strong className="font-mono text-rose-600">-₹{formatINR(totalLh)}</strong></span>
+                            )}
+                            {singleBillNo && (
+                              <span>Bill #: <strong className="font-mono text-primary">{singleBillNo}</strong></span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1.5 ml-auto">
+                            <span className="text-[10px] font-black uppercase tracking-wider text-secondary">Net:</span>
+                            <span className="font-mono font-black text-sm text-emerald-600 dark:text-emerald-400">₹{formatINR(netAmt)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
                       })()}
                   </div>
                 </div>
