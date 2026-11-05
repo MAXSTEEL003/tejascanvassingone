@@ -911,6 +911,14 @@ export async function markLedgerEntriesAsArrived(
           return;
         }
 
+        // If in batch mode, only process ledger entries for sub-orders that are actually marked arrived
+        if (!targetSubId && matchingSub) {
+          const isArrived = Boolean(matchingSub.isArrived === true || matchingSub.status === 'Arrived');
+          if (!isArrived) {
+            return;
+          }
+        }
+
         if (matchingSub) {
           const subId = matchingSub.id || '';
           originalQty = parseFloat(matchingSub.qty) || parseFloat(matchingSub.totalQty) || originalQty;
@@ -1029,15 +1037,23 @@ export async function autoCreateArrivalEntryForIncomingLog(
           return;
         }
 
-        const qty = (customQtys && customQtys[subId] !== undefined) ? customQtys[subId] : (parseFloat(sub.qty) || parseFloat(sub.totalQty) || 10);
-        const rate = (customRates && customRates[subId] !== undefined) ? customRates[subId] : (parseFloat(sub.rate) || 4200);
+        // CRITICAL FIX: In whole-order mode, ONLY process sub-orders that are actually marked arrived!
+        // Unarrived sub-orders must NEVER be auto-injected into Arrival Entry!
+        const isSubMarkedArrived = Boolean(sub.isArrived === true || sub.status === 'Arrived');
+        if (!targetSubId && !isSubMarkedArrived) {
+          return;
+        }
+
+        const qty = (customQtys && customQtys[subId] !== undefined) ? customQtys[subId] : (parseFloat(sub.arrivedQty) || parseFloat(sub.qty) || parseFloat(sub.totalQty) || 10);
+        const rate = (customRates && customRates[subId] !== undefined) ? customRates[subId] : (parseFloat(sub.settledRate) || parseFloat(sub.rate) || 4200);
         const amount = qty * rate;
         const normPo = String(orderId).trim().toUpperCase().replace(/^#/, '');
         
         const subCustomBill = (typeof customBillNo === 'object' && customBillNo !== null)
           ? (customBillNo[subId] || customBillNo[orderId] || '')
           : (typeof customBillNo === 'string' ? customBillNo : '');
-        const bNo = subCustomBill.trim() || sub.actualSupplierBillNo || sub.billNo || targetOrder.actualSupplierBillNo || targetOrder.billNo || `BIL-${Math.floor(1000 + Math.random() * 9000)}`;
+        // CRITICAL FIX: Sub-order must never inherit parent order's billNo or another sub-order's billNo!
+        const bNo = subCustomBill.trim() || (sub.actualSupplierBillNo || sub.billNo || '').trim() || `BIL-${Math.floor(1000 + Math.random() * 9000)}`;
 
         const partyName = sub.redirectedTo || (sub.isLifted ? targetOrder.currentShop : null) || sub.buyer || targetOrder.currentShop || targetOrder.redirectedShop || targetOrder.buyer || targetOrder.partyName || "General Merchant";
         const isLifted = !!(sub.redirectedTo || sub.isLifted || targetOrder.currentShop || targetOrder.redirectedShop || (targetOrder.liftingRecords && targetOrder.liftingRecords.length > 0));
@@ -1306,4 +1322,144 @@ export async function updateLedgersForLifting(
     console.error("Error updating ledgers for lifting:", err);
   }
 }
+
+/**
+ * Removes an arrival entry row for a specific sub-order or order from both
+ * localStorage ('arrival_entry_sheets_v4', 'arrival_entry_data_v4') and Cloud Firestore ('arrival_entries').
+ */
+export async function removeArrivalEntryForSubOrder(
+  orderId: string,
+  subOrderId?: string,
+  billNo?: string,
+  partyName?: string
+): Promise<boolean> {
+  if (typeof window === 'undefined') return false;
+
+  try {
+    const normPo = String(orderId || '').trim().toUpperCase().replace(/^#/, '');
+    const normSub = String(subOrderId || '').trim().toLowerCase();
+    const normBill = String(billNo || '').trim().toLowerCase();
+    const normParty = String(partyName || '').trim().toLowerCase();
+
+    // 1. Clean localStorage sheets
+    const rawSheets = localStorage.getItem('arrival_entry_sheets_v4');
+    let sheets: any[] = [];
+    if (rawSheets) {
+      try { sheets = JSON.parse(rawSheets); } catch (e) { sheets = []; }
+    }
+
+    let modified = false;
+    const removedDocIds: string[] = [];
+
+    sheets.forEach((sheet: any) => {
+      if (!sheet || !Array.isArray(sheet.data)) return;
+      sheet.data = sheet.data.map((row: any, idx: number) => {
+        if (!row) return row;
+        const rPo = String(row.purchaseOrderNo || row.mainPoNo || '').trim().toUpperCase().replace(/^#/, '');
+        const rSub = String(row.subOrderId || '').trim().toLowerCase();
+        const rBill = String(row.billNo || '').trim().toLowerCase();
+        const rParty = String(row.partyName || row.buyer || '').trim().toLowerCase();
+
+        let match = false;
+        if (normSub && rSub && normSub === rSub) {
+          match = true;
+        } else if (normPo && rPo && normPo === rPo) {
+          if (normParty && rParty && normParty === rParty) match = true;
+          else if (normBill && rBill && normBill === rBill && normParty && rParty === normParty) match = true;
+        } else if (normParty && rParty && normParty === rParty && normBill && rBill && normBill === rBill) {
+          match = true;
+        }
+
+        if (match) {
+          modified = true;
+          if (row.id) removedDocIds.push(row.id);
+          // Preserve grid structure by replacing with empty row placeholder
+          return { id: `row-empty-${Date.now()}-${idx}`, date: row.date || '' };
+        }
+        return row;
+      });
+    });
+
+    if (modified) {
+      localStorage.setItem('arrival_entry_sheets_v4', JSON.stringify(sheets));
+      if (sheets[0]?.data) {
+        localStorage.setItem('arrival_entry_data_v4', JSON.stringify(sheets[0].data));
+      }
+    }
+
+    // Also clean standalone arrival_entry_data_v4
+    const rawData = localStorage.getItem('arrival_entry_data_v4');
+    if (rawData) {
+      try {
+        const grid = JSON.parse(rawData);
+        if (Array.isArray(grid)) {
+          let gMod = false;
+          const cleanedGrid = grid.map((row: any, idx: number) => {
+            if (!row) return row;
+            const rPo = String(row.purchaseOrderNo || row.mainPoNo || '').trim().toUpperCase().replace(/^#/, '');
+            const rSub = String(row.subOrderId || '').trim().toLowerCase();
+            const rBill = String(row.billNo || '').trim().toLowerCase();
+            const rParty = String(row.partyName || row.buyer || '').trim().toLowerCase();
+
+            let match = false;
+            if (normSub && rSub && normSub === rSub) match = true;
+            else if (normPo && rPo && normPo === rPo && normParty && rParty === normParty) match = true;
+            else if (normParty && rParty && normParty === rParty && normBill && rBill && normBill === rBill) match = true;
+
+            if (match) {
+              gMod = true;
+              return { id: `row-empty-${Date.now()}-${idx}`, date: row.date || '' };
+            }
+            return row;
+          });
+          if (gMod) {
+            localStorage.setItem('arrival_entry_data_v4', JSON.stringify(cleanedGrid));
+          }
+        }
+      } catch (e) {}
+    }
+
+    // 2. Remove from Firestore 'arrival_entries' collection asynchronously
+    (async () => {
+      try {
+        const docs = await getCollectionDocs('arrival_entries').catch(() => []);
+        if (Array.isArray(docs) && docs.length > 0) {
+          const deletePromises: Promise<any>[] = [];
+          docs.forEach((doc: any) => {
+            if (!doc || !doc.id) return;
+            const dPo = String(doc.purchaseOrderNo || doc.mainPoNo || '').trim().toUpperCase().replace(/^#/, '');
+            const dSub = String(doc.subOrderId || '').trim().toLowerCase();
+            const dBill = String(doc.billNo || '').trim().toLowerCase();
+            const dParty = String(doc.partyName || doc.buyer || '').trim().toLowerCase();
+
+            let match = false;
+            if (normSub && dSub && normSub === dSub) match = true;
+            else if (normPo && dPo && normPo === dPo && normParty && dParty && normParty === dParty) match = true;
+            else if (normParty && dParty && normParty === dParty && normBill && dBill && normBill === dBill) match = true;
+            else if (removedDocIds.includes(doc.id)) match = true;
+
+            if (match) {
+              deletePromises.push(deleteCollectionDoc('arrival_entries', doc.id).catch(() => {}));
+            }
+          });
+          if (deletePromises.length > 0) {
+            await Promise.allSettled(deletePromises);
+          }
+        }
+      } catch (err) {
+        console.warn("Error removing cloud arrival entry:", err);
+      }
+    })();
+
+    // 3. Dispatch events so other tabs and views update immediately
+    window.dispatchEvent(new Event('storage'));
+    window.dispatchEvent(new CustomEvent('arrival-entry-updated', { detail: { orderId, subOrderId, billNo, partyName } }));
+
+    return true;
+  } catch (error) {
+    console.error("Failed to remove arrival entry:", error);
+    return false;
+  }
+}
+
 
