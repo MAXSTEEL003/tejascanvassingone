@@ -423,6 +423,29 @@ export default function ArrivalEntry() {
   // Row flash highlight state for deep navigation
   const [highlightRowId, setHighlightRowId] = useState<string | null>(null);
 
+  // Context Menu for Row Operations
+  const [rowContextMenu, setRowContextMenu] = useState<{
+    x: number;
+    y: number;
+    rowIndex: number;
+  } | null>(null);
+
+  // Auto-dismiss context menu on outside click, scroll, or escape
+  useEffect(() => {
+    const handleDismiss = () => setRowContextMenu(null);
+    const handleKeyDismiss = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setRowContextMenu(null);
+    };
+    window.addEventListener('click', handleDismiss);
+    window.addEventListener('scroll', handleDismiss, true);
+    window.addEventListener('keydown', handleKeyDismiss);
+    return () => {
+      window.removeEventListener('click', handleDismiss);
+      window.removeEventListener('scroll', handleDismiss, true);
+      window.removeEventListener('keydown', handleKeyDismiss);
+    };
+  }, []);
+
   // Due List PDF Options Modal state
   const [isDueListModalOpen, setIsDueListModalOpen] = useState(false);
   const [selectedDueListRoads, setSelectedDueListRoads] = useState<string[]>([]);
@@ -2293,6 +2316,11 @@ export default function ArrivalEntry() {
           handleRedo();
           return;
         }
+        if (k === 'insert' || ((e.key === '+' || e.key === '=') && e.shiftKey)) {
+          e.preventDefault();
+          handleInsertRow(activeCell?.r, e.shiftKey && k === 'insert' ? 'above' : 'below');
+          return;
+        }
       }
     };
 
@@ -2317,7 +2345,57 @@ export default function ArrivalEntry() {
       window.removeEventListener('keydown', handleGlobalKeyDown);
       window.removeEventListener('paste', handleGlobalPaste);
     };
-  }, [activeCell, isEditing, handleCopySelection, handlePasteSelection, applyPasteText, handleFillDown, handleUndo, handleRedo]);
+  }, [activeCell, isEditing, handleCopySelection, handlePasteSelection, applyPasteText, handleFillDown, handleUndo, handleRedo, handleInsertRow]);
+
+  const handleInsertRow = useCallback((filteredRowIdx?: number, position: 'above' | 'below' = 'below') => {
+    saveToHistory();
+    const defaultDate = getDefaultDateForSheet(currentSheet.name);
+    const newId = `row-${currentSheetId}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const newRow = {
+      id: newId,
+      date: defaultDate,
+      sheetId: currentSheetId,
+      sheetName: currentSheet.name
+    };
+
+    const newData = [...data];
+    let insertDataIdx = newData.length;
+
+    const refIdx = filteredRowIdx !== undefined ? filteredRowIdx : (activeCell ? activeCell.r : -1);
+
+    if (refIdx >= 0 && filteredData[refIdx]) {
+      const targetRow = filteredData[refIdx];
+      const realIdx = newData.findIndex(r => r && r.id === targetRow.id);
+      if (realIdx !== -1) {
+        insertDataIdx = position === 'above' ? realIdx : realIdx + 1;
+      }
+    }
+
+    newData.splice(insertDataIdx, 0, newRow);
+    setData(newData);
+    dirtyRowIds.current.add(newId);
+
+    const targetViewIdx = Math.min(newData.length - 1, Math.max(0, insertDataIdx));
+    const targetCol = activeCell ? activeCell.c : 0;
+    setActiveCell({ r: targetViewIdx, c: targetCol });
+    setSelectionRange({ startR: targetViewIdx, startC: 0, endR: targetViewIdx, endC: visibleColumns.length - 1 });
+    setGridKey(k => k + 1);
+
+    setHighlightRowId(newId);
+    setTimeout(() => setHighlightRowId(null), 2500);
+
+    setExcelToast(`Row inserted at #${targetViewIdx + 1}`);
+    setTimeout(() => setExcelToast(null), 2500);
+
+    setTimeout(() => {
+      if (gridContainerRef.current) {
+        gridContainerRef.current.scrollTo({
+          top: Math.max(0, targetViewIdx * ROW_HEIGHT - 120),
+          behavior: 'smooth'
+        });
+      }
+    }, 50);
+  }, [currentSheet.name, currentSheetId, data, activeCell, filteredData, saveToHistory, setData, visibleColumns]);
 
   const handleDeleteSingleRow = useCallback((filteredRowIdx: number) => {
     saveToHistory();
@@ -2345,14 +2423,9 @@ export default function ArrivalEntry() {
     setGridKey(k => k + 1);
   }, [data, filteredData, currentSheetId, currentSheet.name, saveToHistory, setData]);
 
-  const addRow = () => {
-    saveToHistory();
-    const defaultDate = getDefaultDateForSheet(currentSheet.name);
-    const newId = `row-${currentSheetId}-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
-    const newRow = { id: newId, date: defaultDate };
-    dirtyRowIds.current.add(newId);
-    setData([...data, newRow]);
-  };
+  const addRow = useCallback(() => {
+    handleInsertRow(undefined, 'below');
+  }, [handleInsertRow]);
 
   // Scroll Sync between top header scrollbar and grid
   const handleTopScroll = (e: React.UIEvent<HTMLDivElement>) => {
@@ -3396,6 +3469,17 @@ export default function ArrivalEntry() {
             <span>Due List PDF</span>
           </button>
 
+          {/* + Insert Row Button */}
+          <button
+            type="button"
+            onClick={() => handleInsertRow(activeCell?.r, 'below')}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-surface border border-outline-variant hover:border-primary/50 text-secondary hover:text-primary rounded-xl text-xs font-bold shadow-2xs transition-all cursor-pointer btn-tactile"
+            title="Insert a new row below current selection (or at bottom)"
+          >
+            <Plus className="w-3.5 h-3.5 text-primary" />
+            <span>Insert Row</span>
+          </button>
+
           {/* + Add Sheet Trigger */}
           <button
             onClick={() => setIsAddSheetModalOpen(true)}
@@ -3469,6 +3553,28 @@ export default function ArrivalEntry() {
               }
             }}
           />
+        </div>
+
+        {/* Quick Row Insert Actions */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            type="button"
+            onClick={() => handleInsertRow(activeCell?.r, 'above')}
+            className="flex items-center gap-1 px-2.5 py-1.5 bg-surface border border-outline-variant hover:border-primary/50 text-secondary hover:text-on-surface rounded-xl text-xs font-bold transition-all cursor-pointer btn-tactile shadow-2xs"
+            title={activeCell ? `Insert new row above row ${activeCell.r + 1}` : "Insert row above"}
+          >
+            <ArrowUp className="w-3 h-3 text-primary" />
+            <span className="hidden sm:inline">Insert Above</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleInsertRow(activeCell?.r, 'below')}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30 rounded-xl text-xs font-bold transition-all cursor-pointer btn-tactile shadow-2xs"
+            title={activeCell ? `Insert new row below row ${activeCell.r + 1}` : "Insert row below"}
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Insert Row</span>
+          </button>
         </div>
         {excelToast && (
           <div className="px-2.5 py-1 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 rounded-lg text-xs font-bold animate-pulse flex items-center gap-1.5 shrink-0">
@@ -3636,6 +3742,10 @@ export default function ArrivalEntry() {
               <div
                 key={row.id || rIdx}
                 style={{ height: `${ROW_HEIGHT}px` }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setRowContextMenu({ x: e.clientX, y: e.clientY, rowIndex: rIdx });
+                }}
                 className={cn(
                   "flex border-b border-outline-variant/20 hover:bg-surface-container-low/40 transition-colors",
                   highlightRowId && row?.id === highlightRowId && "bg-amber-500/20 ring-2 ring-inset ring-amber-500/70"
@@ -3647,23 +3757,40 @@ export default function ArrivalEntry() {
                     setActiveCell({ r: rIdx, c: 0 });
                     setSelectionRange({ startR: rIdx, startC: 0, endR: rIdx, endC: visibleColumns.length - 1 });
                   }}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setRowContextMenu({ x: e.clientX, y: e.clientY, rowIndex: rIdx });
+                  }}
                   className={cn(
                     "w-12 h-full border-r border-outline-variant/60 text-[10px] font-mono font-black flex items-center justify-center sticky left-0 z-20 cursor-pointer select-none group/row",
                     activeCell?.r === rIdx ? "bg-primary text-on-primary" : "bg-surface-container-high text-secondary"
                   )}
                 >
                   <span className="group-hover/row:hidden">{rIdx + 1}</span>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteSingleRow(rIdx);
-                    }}
-                    className="hidden group-hover/row:flex items-center justify-center text-rose-500 hover:text-rose-700 hover:bg-rose-500/15 p-1 rounded cursor-pointer transition-colors"
-                    title={`Delete row ${rIdx + 1}`}
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  <div className="hidden group-hover/row:flex items-center justify-center gap-0.5 px-0.5">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleInsertRow(rIdx, 'below');
+                      }}
+                      className="p-1 text-primary hover:text-primary-hover hover:bg-primary/20 rounded cursor-pointer transition-colors"
+                      title={`Insert row below ${rIdx + 1}`}
+                    >
+                      <Plus className="w-3 h-3" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteSingleRow(rIdx);
+                      }}
+                      className="p-1 text-rose-500 hover:text-rose-700 hover:bg-rose-500/20 rounded cursor-pointer transition-colors"
+                      title={`Delete row ${rIdx + 1}`}
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
                 </div>
 
                 {/* Cells */}
@@ -5202,6 +5329,71 @@ export default function ArrivalEntry() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Right-Click Context Menu for Row Operations */}
+      {rowContextMenu && (
+        <div
+          style={{
+            position: 'fixed',
+            left: `${Math.min(window.innerWidth - 220, rowContextMenu.x)}px`,
+            top: `${Math.min(window.innerHeight - 200, rowContextMenu.y)}px`,
+            zIndex: 9999
+          }}
+          onClick={(e) => e.stopPropagation()}
+          className="w-52 bg-surface/95 backdrop-blur-md border border-outline-variant rounded-2xl shadow-2xl p-1.5 flex flex-col text-xs font-semibold text-on-surface animate-in fade-in zoom-in-95 duration-100"
+        >
+          <div className="px-3 py-1.5 text-[10px] uppercase font-black tracking-wider text-secondary border-b border-outline-variant/40 mb-1">
+            Row {rowContextMenu.rowIndex + 1} Actions
+          </div>
+          
+          <button
+            type="button"
+            onClick={() => {
+              const idx = rowContextMenu.rowIndex;
+              setRowContextMenu(null);
+              handleInsertRow(idx, 'above');
+            }}
+            className="w-full px-3 py-2 text-left rounded-xl hover:bg-surface-container flex items-center gap-2.5 transition-colors cursor-pointer text-on-surface group"
+          >
+            <div className="w-5 h-5 rounded-lg bg-primary/10 text-primary flex items-center justify-center group-hover:scale-110 transition-transform">
+              <ArrowUp className="w-3.5 h-3.5" />
+            </div>
+            <span>Insert 1 row above</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              const idx = rowContextMenu.rowIndex;
+              setRowContextMenu(null);
+              handleInsertRow(idx, 'below');
+            }}
+            className="w-full px-3 py-2 text-left rounded-xl hover:bg-surface-container flex items-center gap-2.5 transition-colors cursor-pointer text-on-surface group"
+          >
+            <div className="w-5 h-5 rounded-lg bg-primary/10 text-primary flex items-center justify-center group-hover:scale-110 transition-transform">
+              <ArrowDown className="w-3.5 h-3.5" />
+            </div>
+            <span>Insert 1 row below</span>
+          </button>
+
+          <div className="h-px bg-outline-variant/40 my-1" />
+
+          <button
+            type="button"
+            onClick={() => {
+              const idx = rowContextMenu.rowIndex;
+              setRowContextMenu(null);
+              handleDeleteSingleRow(idx);
+            }}
+            className="w-full px-3 py-2 text-left rounded-xl hover:bg-rose-500/10 text-rose-600 flex items-center gap-2.5 transition-colors cursor-pointer group"
+          >
+            <div className="w-5 h-5 rounded-lg bg-rose-500/15 text-rose-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+              <Trash2 className="w-3.5 h-3.5" />
+            </div>
+            <span>Delete row {rowContextMenu.rowIndex + 1}</span>
+          </button>
+        </div>
+      )}
 
       {/* Excel floating action toast */}
       <AnimatePresence>
