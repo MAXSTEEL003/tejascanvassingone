@@ -947,6 +947,7 @@ export default function PaymentTracking() {
         let isLifted = false;
         let originalBuyer = '';
         let redirectedShop = '';
+        let liftingRecord: any = null;
 
         // 1. Direct sub-order lifting on matchingOrder
         if (matchingOrder?.originalOrders && Array.isArray(matchingOrder.originalOrders)) {
@@ -961,6 +962,7 @@ export default function PaymentTracking() {
               isLifted = true;
               redirectedShop = subRedirect;
               originalBuyer = subOriginal;
+              liftingRecord = matchedSub.liftingRecord || null;
             }
           }
         }
@@ -973,20 +975,23 @@ export default function PaymentTracking() {
             isLifted = true;
             originalBuyer = rOriginal;
             redirectedShop = rRedirect;
+            liftingRecord = row.liftingRecord || null;
           } else if (row.isLifted && rOriginal && rowParty && rOriginal.toLowerCase() !== rowParty.toLowerCase()) {
             isLifted = true;
             originalBuyer = rOriginal;
             redirectedShop = rowParty;
+            liftingRecord = row.liftingRecord || null;
           } else if (hasLftInBill) {
             isLifted = true;
             redirectedShop = rowParty;
             originalBuyer = rOriginal || (matchingOrder?.buyer && matchingOrder.buyer.toLowerCase() !== rowParty.toLowerCase() ? matchingOrder.buyer : '');
+            liftingRecord = row.liftingRecord || null;
           }
         }
 
         // 3. Parent order lifting record (ONLY for single orders, or if redirectedShop matches rowParty)
         if (!isLifted && matchingOrder && !matchingOrder.originalOrders?.length) {
-          const liftingRecord = matchingOrder.liftingRecords?.[0] || null;
+          liftingRecord = matchingOrder.liftingRecords?.[0] || null;
           const recShop = String(liftingRecord?.shopName || matchingOrder.currentShop || matchingOrder.redirectedShop || '').trim();
           const recOrig = String(liftingRecord?.originalBuyer || matchingOrder.buyer || '').trim();
           if (recShop && recOrig && recShop.toLowerCase() !== recOrig.toLowerCase()) {
