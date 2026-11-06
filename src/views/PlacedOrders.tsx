@@ -3151,11 +3151,6 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                               {order.supplierSubOrderNo}
                             </span>
                           )}
-                          {order.originalOrders && order.originalOrders.length > 0 && (
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-surface-container border border-outline-variant/30 text-secondary uppercase tracking-wider">
-                              Grouped PO ({order.originalOrders.length} Sub-Orders)
-                            </span>
-                          )}
                           {(() => {
                             const trk = trackingRecordMap[order.id];
                             const status = (order.purchaseOrderSent || trk?.status === 'Sent') ? 'Sent' : (trk?.status || 'Sent');
@@ -3217,7 +3212,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-surface-container-low/60 dark:bg-neutral-900/40 p-4 rounded-xl border border-outline-variant/30">
                       <div className="space-y-1">
                         <span className="text-[9px] font-black tracking-widest text-secondary uppercase block">
-                          🌾 Primary Supplier Channel
+                          MILLER
                         </span>
                         <p className="text-xs font-black text-on-surface uppercase flex items-center gap-1.5">
                           <span className="w-1.5 h-1.5 rounded-full bg-amber-550" />
@@ -3227,7 +3222,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
 
                       <div className="space-y-1.5">
                         <span className="text-[9px] font-black tracking-widest text-secondary uppercase block">
-                          👥 Registered Buyers (Consignees)
+                          BUYERS
                         </span>
                         <div className="flex flex-wrap gap-1.5">
                           {(() => {
