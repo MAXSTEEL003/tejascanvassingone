@@ -15,7 +15,7 @@ import {
   normalizeDate, 
   MONTH_NAMES_LONG 
 } from './dateUtils';
-import { getDeletedArrivalIds } from '../lib/utils';
+import { getDeletedArrivalIds, getDeletedSheetIds } from '../lib/utils';
 
 export { getMonthYearFromDate };
 
@@ -133,6 +133,15 @@ export function organizeArrivalSheetsByMonth(
     /^(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4}$/i.test(name.trim());
 
   const deletedArrivalIds = getDeletedArrivalIds();
+  const deletedSheetIds = getDeletedSheetIds();
+
+  const isSheetPermanentlyDeleted = (sheetIdOrName?: string) => {
+    if (!sheetIdOrName) return false;
+    const clean = String(sheetIdOrName).trim().toLowerCase();
+    const idSlug = `sheet-${clean.replace(/[^a-z0-9]/g, '-')}`;
+    return deletedSheetIds.has(clean) || deletedSheetIds.has(idSlug);
+  };
+
   const isRowPermanentlyDeleted = (r: any) => {
     if (!r) return true;
     const rId = r.id ? String(r.id).trim().toLowerCase().replace(/^#/, '') : '';
@@ -155,6 +164,7 @@ export function organizeArrivalSheetsByMonth(
   if (Array.isArray(extraSheetMetadata)) {
     extraSheetMetadata.forEach(meta => {
       if (meta && meta.name && !/all\s*arrivals/i.test(meta.name)) {
+        if (isSheetPermanentlyDeleted(meta.id) || isSheetPermanentlyDeleted(meta.name)) return;
         const name = meta.name.trim();
         if (!sheetRowMaps.has(name)) {
           sheetRowMaps.set(name, new Map());
@@ -166,6 +176,7 @@ export function organizeArrivalSheetsByMonth(
   // 1. Process all existing sheets - rows ALREADY in a sheet STAY in that sheet!
   existingSheets.forEach(s => {
     if (!s || !s.name) return;
+    if (isSheetPermanentlyDeleted(s.id) || isSheetPermanentlyDeleted(s.name)) return;
     const isLegacyAllArrivals = /all\s*arrivals/i.test(s.name) || s.id === 'sheet-1';
 
     if (isLegacyAllArrivals) {
@@ -261,6 +272,11 @@ export function organizeArrivalSheetsByMonth(
       targetSheetName = currentMonthYear;
     }
 
+    // Do not resurrect permanently deleted sheets!
+    if (isSheetPermanentlyDeleted(targetSheetName) || (row.sheetId && isSheetPermanentlyDeleted(row.sheetId))) {
+      return;
+    }
+
     if (!sheetRowMaps.has(targetSheetName)) {
       sheetRowMaps.set(targetSheetName, new Map());
     }
@@ -284,10 +300,16 @@ export function organizeArrivalSheetsByMonth(
     sheetRowMaps.set(currentMonthYear, new Map());
   }
 
-  // 3. Separate Month+Year sheets from custom sheets
-  const allSheetNames = Array.from(sheetRowMaps.keys());
+  // 3. Separate Month+Year sheets from custom sheets (filtering out permanently deleted sheets)
+  const allSheetNames = Array.from(sheetRowMaps.keys()).filter(name => !isSheetPermanentlyDeleted(name));
   const monthSheetNames = allSheetNames.filter(isMonthYearName);
   const customSheetNames = allSheetNames.filter(name => !isMonthYearName(name));
+
+  // If all sheets were deleted, ensure current month sheet exists as fallback
+  if (monthSheetNames.length === 0 && customSheetNames.length === 0) {
+    sheetRowMaps.set(currentMonthYear, new Map());
+    monthSheetNames.push(currentMonthYear);
+  }
 
   // Sort Month + Year sheets chronologically
   monthSheetNames.sort((a, b) => {

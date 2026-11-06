@@ -337,6 +337,19 @@ function getLocalBackup(collectionName: string): any[] | null {
               const delSet = new Set(JSON.parse(delRaw).map((id: string) => String(id).trim().toLowerCase().replace(/^#/, '')));
               return parsed.filter((item: any) => item && item.id && !delSet.has(String(item.id).trim().toLowerCase().replace(/^#/, '')));
             }
+          } else if (collectionName === 'arrival_sheets') {
+            const delSheetRaw = localStorage.getItem('deleted_arrival_sheet_ids');
+            if (delSheetRaw) {
+              try {
+                const delSet = new Set(JSON.parse(delSheetRaw).map((id: string) => String(id).trim().toLowerCase()));
+                return parsed.filter((item: any) => {
+                  if (!item) return false;
+                  const sId = String(item.id || '').trim().toLowerCase();
+                  const sName = String(item.name || '').trim().toLowerCase();
+                  return !delSet.has(sId) && !delSet.has(sName);
+                });
+              } catch (e) {}
+            }
           }
           return parsed;
         }
@@ -412,6 +425,19 @@ async function fetchAndSyncFreshCollection(collectionName: string): Promise<any[
           }
           if (delSet.size > 0) {
             items = items.filter((item: any) => item && item.id && !delSet.has(String(item.id).trim().toLowerCase().replace(/^#/, '')));
+          }
+        } else if (collectionName === 'arrival_sheets') {
+          const delSheetRaw = localStorage.getItem('deleted_arrival_sheet_ids');
+          if (delSheetRaw) {
+            try {
+              const delSet = new Set(JSON.parse(delSheetRaw).map((id: string) => String(id).trim().toLowerCase()));
+              items = items.filter((item: any) => {
+                if (!item) return false;
+                const sId = String(item.id || '').trim().toLowerCase();
+                const sName = String(item.name || '').trim().toLowerCase();
+                return !delSet.has(sId) && !delSet.has(sName);
+              });
+            } catch (e) {}
           }
         }
       }

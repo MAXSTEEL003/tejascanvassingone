@@ -329,6 +329,41 @@ export function removeDeletedArrivalId(id: string): void {
   } catch (e) {}
 }
 
+// Persistently deleted arrival sheet IDs and sheet names
+export function getDeletedSheetIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem('deleted_arrival_sheet_ids');
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    if (Array.isArray(arr)) {
+      return new Set(arr.map((id: string) => String(id).trim().toLowerCase()));
+    }
+  } catch (e) {}
+  return new Set();
+}
+
+export function addDeletedSheetIds(ids: string[]): void {
+  try {
+    const current = getDeletedSheetIds();
+    ids.forEach(id => {
+      const norm = String(id).trim().toLowerCase();
+      if (norm) current.add(norm);
+    });
+    localStorage.setItem('deleted_arrival_sheet_ids', JSON.stringify(Array.from(current)));
+  } catch (e) {}
+}
+
+export function removeDeletedSheetId(id: string): void {
+  try {
+    const current = getDeletedSheetIds();
+    const norm = String(id).trim().toLowerCase();
+    if (current.has(norm)) {
+      current.delete(norm);
+      localStorage.setItem('deleted_arrival_sheet_ids', JSON.stringify(Array.from(current)));
+    }
+  } catch (e) {}
+}
+
 export interface ResolvedBuyerProfile {
   id: string;
   name: string;

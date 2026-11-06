@@ -45,7 +45,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { getVerifiedUserRole } from '../lib/auth';
-import { cn, formatINR, getRegisteredSuppliers, getRegisteredBuyerNames, getRegisteredBuyers, sanitizeSupplierName, addDeletedArrivalIds } from '../lib/utils';
+import { cn, formatINR, getRegisteredSuppliers, getRegisteredBuyerNames, getRegisteredBuyers, sanitizeSupplierName, addDeletedArrivalIds, addDeletedSheetIds, getDeletedSheetIds } from '../lib/utils';
 import { getCollectionDocs, setCollectionDoc, deleteCollectionDoc, db, invalidateCollectionCache, autoCreateArrivalEntryForIncomingLog } from '../lib/firebase';
 import { doc, writeBatch, collection, query, where, getDocs } from 'firebase/firestore';
 import * as XLSX from 'xlsx';
@@ -3169,9 +3169,47 @@ export default function ArrivalEntry() {
     setIsDeletingSheet(true);
     const toDelId = targetSheet.id;
     const toDelName = targetSheet.name;
+    const cleanName = (toDelName || '').trim().toLowerCase();
+    const slugId = `sheet-${cleanName.replace(/[^a-z0-9]/g, '-')}`;
 
     try {
-      // 1. Collect all document IDs from local sheet data
+      // 1. Persist sheet tombstones immediately so it is never re-loaded or resurrected
+      addDeletedSheetIds([toDelId, toDelName, cleanName, slugId]);
+
+      // 2. Revert any placed order arrivals and tombstone all rows belonging to this sheet
+      const arrivalIdsToTombstone: string[] = [];
+      (targetSheet.data || []).forEach(row => {
+        if (!row) return;
+        const rId = row.id ? String(row.id).trim() : '';
+        const rBill = row.billNo ? String(row.billNo).trim() : '';
+        const rPo = String(row.purchaseOrderNo || row.mainPoNo || '').trim();
+        const rParty = String(row.partyName || row.buyer || '').trim();
+        const rSub = String(row.subOrderId || '').trim();
+
+        if (rId && !rId.startsWith('row-empty-')) arrivalIdsToTombstone.push(rId);
+        if (rBill) arrivalIdsToTombstone.push(rBill);
+        if (rPo) arrivalIdsToTombstone.push(rPo);
+        if (rSub) arrivalIdsToTombstone.push(rSub);
+        if (rPo && rBill) arrivalIdsToTombstone.push(`${rPo}_${rBill}`);
+        if (rPo && rParty) arrivalIdsToTombstone.push(`${rPo}_${rParty}`);
+        if (rPo && rSub) arrivalIdsToTombstone.push(`${rPo}_${rSub}`);
+        if (rBill && rSub) arrivalIdsToTombstone.push(`${rBill}_${rSub}`);
+
+        if (rPo || rBill || rSub) {
+          revertArrivalInPlacedOrders({
+            poNo: rPo,
+            billNo: rBill,
+            subOrderId: rSub,
+            partyName: rParty
+          }).catch(() => {});
+        }
+      });
+
+      if (arrivalIdsToTombstone.length > 0) {
+        addDeletedArrivalIds(arrivalIdsToTombstone);
+      }
+
+      // 3. Collect all document IDs from local sheet data
       const docIdsToDelete = new Set<string>();
       (targetSheet.data || []).forEach(row => {
         if (row && row.id && !String(row.id).startsWith('row-empty-')) {
@@ -3185,7 +3223,7 @@ export default function ArrivalEntry() {
         }
       });
 
-      // 2. Query Firestore arrival_entries for all docs matching this sheetId, sheetName, or Month date
+      // 4. Query Firestore arrival_entries for all docs matching this sheetId, sheetName, or Month date
       try {
         const qBySheetId = query(collection(db, 'arrival_entries'), where('sheetId', '==', toDelId));
         const snap1 = await getDocs(qBySheetId);
@@ -3202,9 +3240,9 @@ export default function ArrivalEntry() {
         allArrivalsSnap.forEach(d => {
           const dData = d.data();
           if (dData) {
-            const matchesSheetId = dData.sheetId === toDelId;
-            const matchesSheetName = dData.sheetName === toDelName;
-            const matchesDateMonth = dData.date && getMonthYearFromDate(dData.date) === toDelName;
+            const matchesSheetId = dData.sheetId === toDelId || dData.sheetId === slugId;
+            const matchesSheetName = dData.sheetName && dData.sheetName.trim().toLowerCase() === cleanName;
+            const matchesDateMonth = dData.date && getMonthYearFromDate(dData.date)?.toLowerCase() === cleanName;
             if (matchesSheetId || matchesSheetName || matchesDateMonth) {
               docIdsToDelete.add(d.id);
             }
@@ -3214,7 +3252,7 @@ export default function ArrivalEntry() {
         console.warn('Notice querying Firestore for sheet deletion:', e);
       }
 
-      // 3. Batch delete all identified documents in Firestore (max 400 per batch)
+      // 5. Batch delete all identified documents in Firestore (max 400 per batch)
       if (docIdsToDelete.size > 0) {
         const docIdArray = Array.from(docIdsToDelete);
         const BATCH_SIZE = 400;
@@ -3228,21 +3266,65 @@ export default function ArrivalEntry() {
         }
       }
 
-      // 4. Invalidate collection cache so in-memory getCollectionDocs returns fresh data!
+      // 6. Delete all matching documents in arrival_sheets collection in Cloud Firestore
+      try {
+        await deleteCollectionDoc('arrival_sheets', toDelId).catch(() => {});
+        if (slugId !== toDelId) {
+          await deleteCollectionDoc('arrival_sheets', slugId).catch(() => {});
+        }
+        const cloudSheets = await getCollectionDocs('arrival_sheets', true).catch(() => []);
+        const matchingSheets = cloudSheets.filter((cs: any) => {
+          if (!cs) return false;
+          const csId = String(cs.id || '').trim().toLowerCase();
+          const csName = String(cs.name || '').trim().toLowerCase();
+          return csId === toDelId.toLowerCase() || csId === slugId || csName === cleanName;
+        });
+        for (const cs of matchingSheets) {
+          if (cs.id) {
+            await deleteCollectionDoc('arrival_sheets', cs.id).catch(() => {});
+          }
+        }
+      } catch (sheetErr) {
+        console.warn('Error purging sheet doc from Firestore:', sheetErr);
+      }
+
       invalidateCollectionCache('arrival_entries');
-      deleteCollectionDoc('arrival_sheets', toDelId).catch(() => {});
       invalidateCollectionCache('arrival_sheets');
 
-      // 5. Invalidate cache ref so this sheet is not loaded again
+      // 7. Invalidate cache ref so this sheet is not loaded again
       loadedSheetIdsRef.current.delete(toDelId);
+      loadedSheetIdsRef.current.delete(slugId);
 
-      // 6. Update local sheets state and localStorage
-      const remainingSheets = sheets.filter(s => s.id !== toDelId);
+      // 8. Update local sheets state and localStorage across all storage keys
+      const remainingSheets = sheets.filter(s => {
+        if (!s) return false;
+        const sId = String(s.id || '').trim().toLowerCase();
+        const sName = String(s.name || '').trim().toLowerCase();
+        return sId !== toDelId.toLowerCase() && sId !== slugId && sName !== cleanName;
+      });
+
       setSheets(remainingSheets);
       localStorage.setItem('arrival_entry_sheets_v4', JSON.stringify(remainingSheets));
+      localStorage.setItem('arrival_sheets', JSON.stringify(remainingSheets));
 
-      // 7. Switch active sheet if current sheet was deleted
-      if (currentSheetId === toDelId) {
+      try {
+        const cachedRaw = localStorage.getItem('firestore_cache_arrival_sheets');
+        if (cachedRaw) {
+          const cachedParsed = JSON.parse(cachedRaw);
+          if (Array.isArray(cachedParsed)) {
+            const filteredCached = cachedParsed.filter((cs: any) => {
+              if (!cs) return false;
+              const csId = String(cs.id || '').trim().toLowerCase();
+              const csName = String(cs.name || '').trim().toLowerCase();
+              return csId !== toDelId.toLowerCase() && csId !== slugId && csName !== cleanName;
+            });
+            localStorage.setItem('firestore_cache_arrival_sheets', JSON.stringify(filteredCached));
+          }
+        }
+      } catch (e) {}
+
+      // 9. Switch active sheet if current sheet was deleted
+      if (currentSheetId === toDelId || currentSheetId === slugId) {
         const nextActive = remainingSheets[0];
         const nextId = nextActive ? nextActive.id : 'sheet-1';
         setCurrentSheetId(nextId);
@@ -3255,6 +3337,7 @@ export default function ArrivalEntry() {
 
       try {
         window.dispatchEvent(new CustomEvent('arrival-entry-updated'));
+        window.dispatchEvent(new Event('storage'));
       } catch (e) {}
 
     } catch (err) {
