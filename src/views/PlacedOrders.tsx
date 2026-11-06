@@ -3216,7 +3216,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                           }
 
                           return (
-                            <div className="flex items-center gap-2 text-sm md:text-base font-bold text-neutral-800 dark:text-neutral-200 font-mono tracking-wide">
+                            <div className="flex items-center gap-2 text-base font-black text-on-surface tracking-tight">
                               <span>{qtyDisplay}</span>
                             </div>
                           );

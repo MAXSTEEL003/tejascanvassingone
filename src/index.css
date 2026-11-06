@@ -9,7 +9,7 @@
   --font-sf: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "SF Pro", "San Francisco", -apple-system-body, "SF Compact", system-ui, sans-serif;
   --font-serif: "Instrument Serif", Georgia, serif;
   --font-display: "Instrument Serif", Georgia, serif;
-  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-mono: "Geist", -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, sans-serif;
   
   /* Light Theme (Porcelain, Crisp Translucent Glass & TC Crimson Red) */
   --color-surface: #ffffff;
@@ -164,6 +164,17 @@
     letter-spacing: -0.015em;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Unified bold tabular number & figure typography across the entire webapp */
+  .font-mono,
+  .font-tabular,
+  .tabular-nums,
+  [data-num="true"] {
+    font-family: "Geist", -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, sans-serif !important;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1, "cv01" 1;
+    letter-spacing: -0.015em;
   }
 
   /* Ultra-Translucent Apple Glass Panels */
