@@ -144,9 +144,9 @@ const initialStakeholders = {
   suppliers: DEFAULT_VERIFIED_SUPPLIERS,
   buyers: merchantsDirectory as any[],
   employees: [
-    { id: 'EMP-01', name: 'Vikram Singh', role: 'Regional Manager', email: 'v.singh@riceaggregator.com', status: 'On Duty', address: 'Punjab Hub' },
-    { id: 'EMP-02', name: 'Ananya Sharma', role: 'Procurement Officer', email: 'a.sharma@riceaggregator.com', status: 'Remote', address: 'HQ Office' },
-    { id: 'EMP-03', name: 'Sarah Joseph', role: 'Logistics Analyst', email: 's.joseph@riceaggregator.com', status: 'On Duty', address: 'Bangalore Office' }
+    { id: 'EMP-01', name: 'Vikram Singh', role: 'Regional Manager', email: 'v.singh@tejasc.in', status: 'On Duty', address: 'Punjab Hub' },
+    { id: 'EMP-02', name: 'Ananya Sharma', role: 'Procurement Officer', email: 'a.sharma@tejasc.in', status: 'Remote', address: 'HQ Office' },
+    { id: 'EMP-03', name: 'Sarah Joseph', role: 'Logistics Analyst', email: 's.joseph@tejasc.in', status: 'On Duty', address: 'Bangalore Office' }
   ]
 };
 
@@ -787,7 +787,7 @@ export default function UsersManagement() {
         username: generatedUsername,
         password: assignedPassword,
         role: newUser.role || 'Operations Staff',
-        email: newUser.email ? newUser.email.trim() : `${generatedUsername}@riceaggregator.com`
+        email: newUser.email ? newUser.email.trim() : `${generatedUsername}@tejasc.in`
       }).catch(err => console.warn('Error syncing employee credentials to server:', err));
     }
 

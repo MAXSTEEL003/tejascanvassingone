@@ -58,11 +58,19 @@ export function getAuthUser(): AuthenticatedUser | null {
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem(SESSION_USER_KEY) || sessionStorage.getItem(SESSION_USER_KEY);
       if (stored) {
-        return JSON.parse(stored);
+        const u = JSON.parse(stored);
+        if (u && (u.role === 'admin' || u.username === 'tejasadinarayan') && (u.email?.includes('riceaggregator.com') || !u.email)) {
+          u.email = 'nani@tejasc.in';
+        }
+        return u;
       }
       const token = getAuthToken();
       if (token) {
-        return parseTokenPayload(token);
+        const u = parseTokenPayload(token);
+        if (u && (u.role === 'admin' || u.username === 'tejasadinarayan') && (u.email?.includes('riceaggregator.com') || !u.email)) {
+          u.email = 'nani@tejasc.in';
+        }
+        return u;
       }
     }
   } catch {}
@@ -164,7 +172,10 @@ export function setAuthSession(token: string, user: AuthenticatedUser): void {
     // Also set display variables for UI headers while role verification is strictly checked against token
     localStorage.setItem('userRole', user.role);
     localStorage.setItem('userName', user.name);
-    localStorage.setItem('userEmail', user.email);
+    const resolvedEmail = (user.role === 'admin' || user.username === 'tejasadinarayan')
+      ? (user.email && !user.email.includes('riceaggregator.com') ? user.email : 'nani@tejasc.in')
+      : (user.email?.replace(/@riceaggregator\.com$/i, '@tejasc.in') || user.email);
+    localStorage.setItem('userEmail', resolvedEmail);
     window.dispatchEvent(new Event('role-changed'));
   } catch (e) {
     console.warn('Error setting auth session:', e);
@@ -342,7 +353,7 @@ export async function loginWithServer(
                 username: c.username || lowerInput,
                 role: 'employee',
                 name: c.name || `${(c.username || cleanUser).toUpperCase()} (Operations Staff)`,
-                email: c.email || `${(c.username || lowerInput)}@riceaggregator.com`,
+                email: c.email || `${(c.username || lowerInput)}@tejasc.in`,
               };
             }
           }
@@ -371,7 +382,7 @@ export async function loginWithServer(
                 username: emp.username || lowerInput,
                 role: 'employee',
                 name: emp.name || `${(emp.username || cleanUser).toUpperCase()} (Operations Staff)`,
-                email: emp.email || `${(emp.username || lowerInput)}@riceaggregator.com`,
+                email: emp.email || `${(emp.username || lowerInput)}@tejasc.in`,
               };
             }
           }
@@ -380,10 +391,10 @@ export async function loginWithServer(
 
       // 3. Fallback to default operations staff accounts when offline or static deployment
       const defaultStaffAccounts = [
-        { id: "EMP-01", name: "Operations Employee", username: "employee", pass: "adinarayan1977", email: "employee@riceaggregator.com" },
-        { id: "EMP-02", name: "Senior Operations Staff", username: "employee1", pass: "employee1977", email: "employee1@riceaggregator.com" },
-        { id: "EMP-03", name: "Mandi Sortex Incharge", username: "sortex", pass: "sortex2026", email: "sortex@riceaggregator.com" },
-        { id: "EMP-04", name: "Weighbridge Weighmaster", username: "staff", pass: "emp1977", email: "staff@riceaggregator.com" },
+        { id: "EMP-01", name: "Operations Employee", username: "employee", pass: "adinarayan1977", email: "employee@tejasc.in" },
+        { id: "EMP-02", name: "Senior Operations Staff", username: "employee1", pass: "employee1977", email: "employee1@tejasc.in" },
+        { id: "EMP-03", name: "Mandi Sortex Incharge", username: "sortex", pass: "sortex2026", email: "sortex@tejasc.in" },
+        { id: "EMP-04", name: "Weighbridge Weighmaster", username: "staff", pass: "emp1977", email: "staff@tejasc.in" },
       ];
       for (const st of defaultStaffAccounts) {
         if (st.username.toLowerCase() === lowerInput || st.email.toLowerCase() === lowerInput || st.id.toLowerCase() === lowerInput) {
@@ -472,7 +483,7 @@ export async function loginWithServer(
         username: cleanUser || 'admintejas1679',
         role: 'admin',
         name: 'Tejas Adinarayan (Admin HQ)',
-        email: 'tejasadinarayan@riceaggregator.com',
+        email: 'nani@tejasc.in',
       };
       const token = createClientAuthToken(adminUser);
       setAuthSession(token, adminUser);
@@ -522,7 +533,7 @@ export async function loginWithServer(
             username: matchedBuyer.username || prefixInput,
             role: 'merchant',
             name: matchedBuyer.name, // The exact official Buyer Name saved in Users!
-            email: matchedBuyer.email || `${(matchedBuyer.phone || prefixInput).replace(/\D/g, '') || prefixInput}@riceaggregator.com`,
+            email: matchedBuyer.email || `${(matchedBuyer.phone || prefixInput).replace(/\D/g, '') || prefixInput}@tejasc.in`,
           };
           localStorage.setItem('userName', matchedBuyer.name);
           if (matchedBuyer.phone) localStorage.setItem('userPhone', matchedBuyer.phone);
@@ -544,8 +555,8 @@ export async function loginWithServer(
   // Merchant fallback - accept phone/email/username registration without crashing
   const isPhone = /^[0-9+\s-]{8,15}$/.test(cleanUser);
   const resolvedEmail = isPhone 
-    ? `${cleanUser.replace(/\D/g, '')}@riceaggregator.com` 
-    : (cleanUser.includes('@') ? cleanUser : `${cleanUser.toLowerCase().replace(/[^a-z0-9]/g, '') || 'buyer'}@riceaggregator.com`);
+    ? `${cleanUser.replace(/\D/g, '')}@tejasc.in` 
+    : (cleanUser.includes('@') ? cleanUser : `${cleanUser.toLowerCase().replace(/[^a-z0-9]/g, '') || 'buyer'}@tejasc.in`);
   const cleanName = cleanUser.includes('@') ? cleanUser.split('@')[0].toUpperCase() : cleanUser.toUpperCase();
   const resolvedName = cleanName || 'AUTHORIZED MERCHANT';
 
@@ -632,7 +643,7 @@ export async function manageEmployeeServer(action: 'create' | 'update' | 'delete
           password: employee.password || 'emp1977',
           assignedPassword: employee.password || 'emp1977',
           role: employee.role || 'Operations Staff',
-          email: employee.email || `${key}@riceaggregator.com`,
+          email: employee.email || `${key}@tejasc.in`,
           phone: employee.phone || '',
           updatedAt: new Date().toISOString()
         };

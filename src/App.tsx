@@ -90,6 +90,32 @@ function AdminPortalRoute() {
 }
 
 export default function App() {
+  // Auto-migrate legacy placeholder email in localStorage to official nani@tejasc.in
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const uEmail = localStorage.getItem('userEmail');
+        if (uEmail && uEmail.includes('riceaggregator.com')) {
+          localStorage.setItem('userEmail', 'nani@tejasc.in');
+        }
+        const cEmail = localStorage.getItem('companyEmail');
+        if (cEmail && cEmail.includes('riceaggregator.com')) {
+          localStorage.setItem('companyEmail', 'nani@tejasc.in');
+        }
+        const authUserRaw = localStorage.getItem('tejas_auth_user_v1');
+        if (authUserRaw && authUserRaw.includes('riceaggregator.com')) {
+          try {
+            const parsed = JSON.parse(authUserRaw);
+            if (parsed && (parsed.role === 'admin' || parsed.username === 'tejasadinarayan')) {
+              parsed.email = 'nani@tejasc.in';
+              localStorage.setItem('tejas_auth_user_v1', JSON.stringify(parsed));
+            }
+          } catch {}
+        }
+      }
+    } catch (e) {}
+  }, []);
+
   // Support custom admin subdomain (admin.tejascanvassing.com)
   useEffect(() => {
     try {

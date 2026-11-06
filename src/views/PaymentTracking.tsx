@@ -60,7 +60,7 @@ import {
 } from '../utils/arrivalSheetsManager';
 
 const BUYER_PROFILES_LOOKUP: Record<string, { email: string; phone: string }> = {
-  'TEJAS': { email: 'tejas@riceaggregator.com', phone: '9945351166' },
+  'TEJAS': { email: 'nani@tejasc.in', phone: '9945351166' },
   'TEJAS CANVASSING': { email: 'nani@tejasc.in', phone: '9945351166' },
   'TEJAS ADINARAYAN': { email: 'nani@tejasc.in', phone: '9945351166' },
   'VISION STORES': { email: 'visionstores.trade@gmail.com', phone: '9945351166' },

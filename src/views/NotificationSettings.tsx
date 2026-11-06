@@ -488,13 +488,14 @@ export default function NotificationSettings() {
   useEffect(() => {
     async function loadProfile() {
       try {
-        const userEmail = localStorage.getItem('userEmail') || auth.currentUser?.email || '';
+        const rawUserEmail = localStorage.getItem('userEmail') || auth.currentUser?.email || '';
+        const userEmail = rawUserEmail && !rawUserEmail.includes('riceaggregator.com') ? rawUserEmail : 'nani@tejasc.in';
         const currentUid = auth.currentUser?.uid;
         
         // Initial fallbacks
         setBusinessName(localStorage.getItem('userName') || 'Registered Merchant');
         setPhone(localStorage.getItem('userPhone') || '');
-        setContactEmail(userEmail || 'merchant.test@riceaggregator.com');
+        setContactEmail(userEmail);
         setGstin('29AAGCV7712M1ZP');
         setAddress('No. 15, APMC Yard, Yeshwanthpur, Bangalore');
         setPan('ABCDE1234F');

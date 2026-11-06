@@ -205,7 +205,7 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
       const isPhone = /^[0-9+\s-]{8,15}$/.test(rawInput);
       if (isPhone) {
         const digitsOnly = rawInput.replace(/\D/g, '');
-        resolvedEmail = matchedBuyer?.email || `${digitsOnly}@riceaggregator.com`;
+        resolvedEmail = matchedBuyer?.email || `${digitsOnly}@tejasc.in`;
         resolvedPhone = digitsOnly;
         if (!matchedBuyer?.name) {
           resolvedName = `Merchant (+91 ${digitsOnly})`;
@@ -213,7 +213,7 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
       } else if (!rawInput.includes('@')) {
         // Input is a username / firm name
         const cleanUser = rawInput.toLowerCase().replace(/[^a-z0-9]/g, '');
-        resolvedEmail = matchedBuyer?.email || `${cleanUser || 'merchant'}@riceaggregator.com`;
+        resolvedEmail = matchedBuyer?.email || `${cleanUser || 'merchant'}@tejasc.in`;
       } else {
         resolvedEmail = rawInput;
       }
@@ -278,7 +278,7 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
     try {
       const name = signupName.trim();
       const phone = signupPhone.trim();
-      const emailVal = signupEmail.trim() || (phone ? `${phone.replace(/\D/g, '')}@riceaggregator.com` : '');
+      const emailVal = signupEmail.trim() || (phone ? `${phone.replace(/\D/g, '')}@tejasc.in` : '');
       const passVal = password.trim();
       const gstinVal = signupGstin.trim().toUpperCase() || '29AAGCV7712M1ZP';
 
@@ -603,7 +603,7 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
         setLoading(false);
         return;
       }
-      const cleanEmail = email.includes('@') ? email : 'merchant.google@riceaggregator.com';
+      const cleanEmail = email.includes('@') ? email : 'merchant.google@tejasc.in';
       localStorage.setItem('userRole', 'merchant');
       localStorage.setItem('userEmail', cleanEmail);
       localStorage.setItem('userName', 'TEJAS CANVASSING');
@@ -640,7 +640,7 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
       const result = await loginWithServer(inputUser, inputPass, roleToSign);
 
       if (result.success && result.user) {
-        const firebaseEmail = result.user.email || `${inputUser.toLowerCase()}@riceaggregator.com`;
+        const firebaseEmail = result.user.email || `${inputUser.toLowerCase()}@tejasc.in`;
         try {
           await signInWithEmailAndPassword(auth, firebaseEmail, inputPass);
         } catch {
@@ -654,7 +654,7 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
         if (roleToSign === 'admin') {
           localStorage.setItem('userRole', 'admin');
           localStorage.setItem('userName', 'Tejas Adinarayan (Admin HQ)');
-          localStorage.setItem('userEmail', 'tejasadinarayan@riceaggregator.com');
+          localStorage.setItem('userEmail', 'nani@tejasc.in');
           localStorage.setItem('userId', 'admin-tejas-01');
           window.dispatchEvent(new Event('role-changed'));
           window.dispatchEvent(new Event('storage'));
@@ -670,7 +670,7 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
         } else {
           localStorage.setItem('userRole', 'employee');
           localStorage.setItem('userName', result.user.name || 'Operations Staff');
-          localStorage.setItem('userEmail', result.user.email || 'employee@riceaggregator.com');
+          localStorage.setItem('userEmail', result.user.email || 'employee@tejasc.in');
           localStorage.setItem('userId', result.user.sub || 'emp-01');
           window.dispatchEvent(new Event('role-changed'));
           window.dispatchEvent(new Event('storage'));

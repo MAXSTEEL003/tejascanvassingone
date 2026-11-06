@@ -1878,9 +1878,11 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
     }
 
     setPoRecipient(inferredRecipient);
-    const resolvedSender = (order.companyEmail && order.companyEmail !== 'nani@tejasc.in' && order.companyEmail !== 'nani@tejasc.in')
+    const resolvedSender = (order.companyEmail && !order.companyEmail.includes('riceaggregator.com'))
       ? order.companyEmail
-      : (localStorage.getItem('companyEmail') || (localStorage.getItem('userEmail') && localStorage.getItem('userEmail') !== 'nani@tejasc.in' ? localStorage.getItem('userEmail') : null) || 'nani@tejasc.in');
+      : ((localStorage.getItem('companyEmail') && !localStorage.getItem('companyEmail')?.includes('riceaggregator.com'))
+          ? localStorage.getItem('companyEmail')!
+          : 'nani@tejasc.in');
     setPoSender(resolvedSender);
     setSendingSuccess(false);
     setPoLogs([]);

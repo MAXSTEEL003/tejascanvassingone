@@ -1743,7 +1743,7 @@ export default function OrdersDashboard() {
       originalOrders: enrichedSelected,
       purchaseOrderSent: hasAuthenticSupplierEmail,
       purchaseOrderSentAt: hasAuthenticSupplierEmail ? new Date().toISOString() : undefined,
-      companyEmail: localStorage.getItem('companyEmail') || (localStorage.getItem('userEmail') && localStorage.getItem('userEmail') !== 'nani@tejasc.in' ? localStorage.getItem('userEmail') : null) || 'nani@tejasc.in',
+      companyEmail: (localStorage.getItem('companyEmail') && !localStorage.getItem('companyEmail')?.includes('riceaggregator.com')) ? localStorage.getItem('companyEmail')! : 'nani@tejasc.in',
       sellerEmail: hasAuthenticSupplierEmail ? supplierProfile.email : '',
       qty: totalSelectedQty,
       rate: avgRate,

@@ -411,7 +411,7 @@ async function runTests() {
       sub: "admin-tejas-01",
       username: "tejasadinarayan",
       role: "admin",
-      email: "tejasadinarayan@riceaggregator.com",
+      email: "nani@tejasc.in",
       name: "Tejas Adinarayan",
     });
 

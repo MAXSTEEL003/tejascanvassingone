@@ -137,9 +137,9 @@ function loadPersistedEmployees() {
 // Pre-seed default employee accounts with hashed passwords (never store plaintext)
 function seedDefaultEmployees() {
   const defaults = [
-    { id: "EMP-01", name: "Operations Employee", username: "employee", pass: "adinarayan1977", role: "Operations Staff", email: "employee@riceaggregator.com" },
-    { id: "EMP-02", name: "Senior Operations Staff", username: "employee1", pass: "employee1977", role: "Operations Staff", email: "employee1@riceaggregator.com" },
-    { id: "EMP-03", name: "Sortex Quality Officer", username: "sortex", pass: "sortex2026", role: "Quality Officer", email: "sortex@riceaggregator.com" }
+    { id: "EMP-01", name: "Operations Employee", username: "employee", pass: "adinarayan1977", role: "Operations Staff", email: "employee@tejasc.in" },
+    { id: "EMP-02", name: "Senior Operations Staff", username: "employee1", pass: "employee1977", role: "Operations Staff", email: "employee1@tejasc.in" },
+    { id: "EMP-03", name: "Sortex Quality Officer", username: "sortex", pass: "sortex2026", role: "Quality Officer", email: "sortex@tejasc.in" }
   ];
 
   defaults.forEach(d => {
@@ -256,7 +256,7 @@ authRouter.post("/login", (req, res) => {
           sub: "admin-tejas-01",
           username: cleanUser || "tejasadinarayan",
           role: "admin",
-          email: "tejasadinarayan@riceaggregator.com",
+          email: "nani@tejasc.in",
           name: "Tejas Adinarayan (Admin HQ)",
         });
 
@@ -267,7 +267,7 @@ authRouter.post("/login", (req, res) => {
             role: "admin",
             username: cleanUser || "tejasadinarayan",
             name: "Tejas Adinarayan (Admin HQ)",
-            email: "tejasadinarayan@riceaggregator.com",
+            email: "nani@tejasc.in",
           }
         });
       }
@@ -306,7 +306,7 @@ authRouter.post("/login", (req, res) => {
 
       if (isRecordPass && empRecord) {
         const displayName = empRecord.name || `${cleanUser.toUpperCase()} (Operations Staff)`;
-        const displayEmail = empRecord.email || `${(empRecord.username || lowerUser)}@riceaggregator.com`;
+        const displayEmail = empRecord.email || `${(empRecord.username || lowerUser)}@tejasc.in`;
         const token = createSignedToken({
           sub: empRecord.id || `emp-${empRecord.username || lowerUser}`,
           username: empRecord.username || lowerUser,
@@ -342,11 +342,11 @@ authRouter.post("/login", (req, res) => {
     const isPhone = /^[0-9+\s-]{8,15}$/.test(cleanUser);
     if (isPhone) {
       const digitsOnly = cleanUser.replace(/\D/g, "");
-      resolvedEmail = `${digitsOnly}@riceaggregator.com`;
+      resolvedEmail = `${digitsOnly}@tejasc.in`;
       resolvedName = `Merchant (+91 ${digitsOnly})`;
     } else if (!cleanUser.includes("@")) {
       const cleanU = cleanUser.toLowerCase().replace(/[^a-z0-9]/g, "");
-      resolvedEmail = `${cleanU || "merchant"}@riceaggregator.com`;
+      resolvedEmail = `${cleanU || "merchant"}@tejasc.in`;
     }
 
     const token = createSignedToken({
@@ -473,7 +473,7 @@ authRouter.post("/manage-employee", (req, res) => {
     id: employee.id || `EMP-${Date.now()}`,
     name: employee.name || "Operations Staff",
     username: lowerUser,
-    email: employee.email || `${lowerUser}@riceaggregator.com`,
+    email: employee.email || `${lowerUser}@tejasc.in`,
     role: employee.role || "Operations Staff",
     phone: employee.phone || "",
     passwordHash: hash,

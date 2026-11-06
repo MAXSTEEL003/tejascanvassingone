@@ -458,7 +458,8 @@ export default function StoreManagement() {
     setCompSuccessMsg('');
 
     try {
-      const userEmail = auth.currentUser?.email || localStorage.getItem('userEmail') || 'merchant.test@riceaggregator.com';
+      const rawUserEmail = auth.currentUser?.email || localStorage.getItem('userEmail') || '';
+      const userEmail = rawUserEmail && !rawUserEmail.includes('riceaggregator.com') ? rawUserEmail : 'nani@tejasc.in';
       const userId = auth.currentUser?.uid || localStorage.getItem('userId') || 'unauthorized-merchant';
       const userName = localStorage.getItem('userName') || 'Registered Merchant';
 
@@ -593,7 +594,13 @@ export default function StoreManagement() {
   // Extra buyer profile states
   const [phone, setPhone] = useState(() => localStorage.getItem('userPhone') || '');
   const [tempPhone, setTempPhone] = useState('');
-  const [email, setEmail] = useState(() => localStorage.getItem('companyEmail') || (localStorage.getItem('userEmail') && localStorage.getItem('userEmail') !== 'nani@tejasc.in' ? localStorage.getItem('userEmail') : null) || 'nani@tejasc.in');
+  const [email, setEmail] = useState(() => {
+    const comp = localStorage.getItem('companyEmail');
+    if (comp && !comp.includes('riceaggregator.com')) return comp;
+    const uEmail = localStorage.getItem('userEmail');
+    if (uEmail && !uEmail.includes('riceaggregator.com')) return uEmail;
+    return 'nani@tejasc.in';
+  });
   const [tempEmail, setTempEmail] = useState('');
   
   const [gstin, setGstin] = useState(() => localStorage.getItem('userGstin') || '');
@@ -662,7 +669,8 @@ export default function StoreManagement() {
     setIsSavingProfile(true);
     setProfileSuccessMessage('');
     try {
-      const userEmail = localStorage.getItem('userEmail') || auth.currentUser?.email || 'merchant.test@riceaggregator.com';
+      const rawUserEmail = localStorage.getItem('userEmail') || auth.currentUser?.email || '';
+      const userEmail = rawUserEmail && !rawUserEmail.includes('riceaggregator.com') ? rawUserEmail : 'nani@tejasc.in';
       const currentUid = auth.currentUser?.uid || `usr-${Date.now()}`;
       
       const updatedStakeholder = {
