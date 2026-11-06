@@ -1732,7 +1732,7 @@ export default function OrdersDashboard() {
         const yyyy = d.getFullYear();
         return `${day}-${m}-${yyyy}`;
       })(),
-      items: `TC Grouped Orders (${(Number(totalSelectedQty) || 0).toFixed(2)} QTLS)`,
+      items: `${(Number(totalSelectedQty) || 0).toFixed(2)} QTLS`,
       total: `₹ ${formatINR(totalSelectedAmt)}`,
       status: 'Awaiting Settlement',
       progress: 0,

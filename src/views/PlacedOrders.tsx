@@ -3198,9 +3198,29 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                             );
                           })()}
                         </h3>
-                        <div className="flex items-center gap-2 text-xs text-secondary font-medium">
-                          <span>{order.items}</span>
-                        </div>
+                        {(() => {
+                          let qtyDisplay = String(order.items || '').trim();
+                          // Strip any "TC Grouped Orders" wrapping or parentheses
+                          if (/TC Grouped Orders/i.test(qtyDisplay)) {
+                            qtyDisplay = qtyDisplay.replace(/TC Grouped Orders\s*\(?([^)]*)\)?/i, '$1').trim();
+                          }
+                          // Fallback to calculated sum from sub-orders or order.qty
+                          if (!qtyDisplay || qtyDisplay === 'Bulk Grain Lot') {
+                            if (order.originalOrders && Array.isArray(order.originalOrders) && order.originalOrders.length > 0) {
+                              const sumQtl = order.originalOrders.reduce((sum: number, so: any) => sum + (Number(so.qty) || 0), 0);
+                              if (sumQtl > 0) qtyDisplay = `${sumQtl.toFixed(2)} QTLS`;
+                            } else if (order.qty) {
+                              const q = Number(order.qty);
+                              if (!isNaN(q) && q > 0) qtyDisplay = `${q.toFixed(2)} QTLS`;
+                            }
+                          }
+
+                          return (
+                            <div className="flex items-center gap-2 text-sm md:text-base font-bold text-neutral-800 dark:text-neutral-200 font-mono tracking-wide">
+                              <span>{qtyDisplay}</span>
+                            </div>
+                          );
+                        })()}
                       </div>
                       <div className="md:text-right">
                         <p className="text-base font-black text-on-surface">{displayTotalStr}</p>
