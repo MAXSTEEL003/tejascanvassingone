@@ -20,13 +20,15 @@ import {
   Clock, 
   ChevronLeft, 
   ChevronRight, 
-  Download 
+  Download,
+  Building2
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 const navItems = [
   { icon: ShoppingCart, label: 'Dashboard', path: '/admin', roles: ['admin', 'officer'] },
   { icon: Package, label: 'Placed Orders', path: '/placed-orders', roles: ['admin', 'officer'] },
+  { icon: Building2, label: 'Miller Portal', path: '/miller', roles: ['admin', 'officer', 'miller'] },
   { icon: Warehouse, label: 'Inventory', path: '/inventory', roles: ['admin', 'officer', 'employee'] },
   { icon: FileSpreadsheet, label: 'Arrival Entry', path: '/arrival-entry', roles: ['admin', 'officer'] },
   { icon: CreditCard, label: 'Payments', path: '/payments', roles: ['admin', 'officer'] },
@@ -85,7 +87,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
     } catch (err) {
       console.error('Logout error:', err);
     }
-    navigate(role === 'employee' ? '/login?portal=employee' : '/login?portal=admin');
+    navigate(role === 'employee' ? '/login?portal=employee' : role === 'miller' ? '/login?portal=miller' : '/login?portal=admin');
   };
 
   return (

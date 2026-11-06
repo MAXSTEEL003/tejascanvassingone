@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Shield, ShoppingBag, Briefcase, Warehouse, ChevronDown, Check } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { Shield, ShoppingBag, Briefcase, Warehouse, ChevronDown, Check, Building2 } from 'lucide-react';
+import { cn, getRegisteredSuppliers } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function RoleSwitcher({ className }: { className?: string }) {
@@ -30,7 +30,7 @@ export default function RoleSwitcher({ className }: { className?: string }) {
     };
   }, []);
 
-  const switchRole = (newRole: 'merchant' | 'admin' | 'employee') => {
+  const switchRole = (newRole: 'merchant' | 'admin' | 'employee' | 'miller') => {
     setIsOpen(false);
     if (newRole === role) return;
 
@@ -51,6 +51,11 @@ export default function RoleSwitcher({ className }: { className?: string }) {
         localStorage.setItem('userName', defaultBuyer);
       } else if (newRole === 'employee') {
         localStorage.setItem('userName', 'Praveen (Dispatch Staff)');
+      } else if (newRole === 'miller') {
+        const suppliers = getRegisteredSuppliers();
+        const defaultSupplier = suppliers[0]?.name || 'BHAGWATI RICE AND AGRO INDUSTRIES';
+        localStorage.setItem('userName', defaultSupplier);
+        localStorage.setItem('millerName', defaultSupplier);
       } else {
         localStorage.setItem('userName', 'Tejas Canvassing');
       }
@@ -65,6 +70,8 @@ export default function RoleSwitcher({ className }: { className?: string }) {
       navigate('/store');
     } else if (newRole === 'employee') {
       navigate('/inventory');
+    } else if (newRole === 'miller') {
+      navigate('/miller');
     } else {
       navigate('/dashboard');
     }
@@ -94,6 +101,14 @@ export default function RoleSwitcher({ className }: { className?: string }) {
       icon: Warehouse,
       color: 'text-blue-700 dark:text-blue-400',
       bgColor: 'bg-blue-500/10'
+    },
+    {
+      id: 'miller',
+      label: 'Miller (Supplier)',
+      sub: 'PO Approvals, Dispatch Lorry & Payments',
+      icon: Building2,
+      color: 'text-amber-700 dark:text-amber-400',
+      bgColor: 'bg-amber-500/10'
     }
   ];
 

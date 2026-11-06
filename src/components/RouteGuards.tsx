@@ -10,7 +10,7 @@ import { getVerifiedUserRole } from '../lib/auth';
  * - If unauthenticated: redirects to /login?portal=admin.
  */
 export function AdminRoute() {
-  const [role, setRole] = useState<'admin' | 'employee' | 'merchant' | null>(() => getVerifiedUserRole());
+  const [role, setRole] = useState<'admin' | 'employee' | 'merchant' | 'miller' | null>(() => getVerifiedUserRole());
   const location = useLocation();
 
   useEffect(() => {
@@ -35,6 +35,10 @@ export function AdminRoute() {
     return <Navigate to="/store" replace />;
   }
 
+  if (role === 'miller') {
+    return <Navigate to="/miller" replace />;
+  }
+
   return <Navigate to="/login?portal=admin" state={{ from: location }} replace />;
 }
 
@@ -42,10 +46,11 @@ export function AdminRoute() {
  * StaffRoute: Strictly guards routes meant for Operations Staff (and Admin supervisors).
  * - If role === 'employee' || role === 'admin': grants access.
  * - If role === 'merchant': redirects to /store.
+ * - If role === 'miller': redirects to /miller.
  * - If unauthenticated: redirects to /login?portal=employee.
  */
 export function StaffRoute() {
-  const [role, setRole] = useState<'admin' | 'employee' | 'merchant' | null>(() => getVerifiedUserRole());
+  const [role, setRole] = useState<'admin' | 'employee' | 'merchant' | 'miller' | null>(() => getVerifiedUserRole());
   const location = useLocation();
 
   useEffect(() => {
@@ -66,6 +71,10 @@ export function StaffRoute() {
     return <Navigate to="/store" replace />;
   }
 
+  if (role === 'miller') {
+    return <Navigate to="/miller" replace />;
+  }
+
   return <Navigate to="/login?portal=employee" state={{ from: location }} replace />;
 }
 
@@ -74,10 +83,11 @@ export function StaffRoute() {
  * - If role === 'merchant': grants access.
  * - If role === 'admin': redirects to /admin (admin must not enter merchant state).
  * - If role === 'employee': redirects to /inventory (staff must not enter merchant state).
+ * - If role === 'miller': redirects to /miller.
  * - If unauthenticated: allows public catalog when allowPublic is true, otherwise redirects to /login?portal=merchant.
  */
 export function MerchantRoute({ allowPublic = false }: { allowPublic?: boolean }) {
-  const [role, setRole] = useState<'admin' | 'employee' | 'merchant' | null>(() => getVerifiedUserRole());
+  const [role, setRole] = useState<'admin' | 'employee' | 'merchant' | 'miller' | null>(() => getVerifiedUserRole());
   const location = useLocation();
 
   useEffect(() => {
@@ -100,9 +110,40 @@ export function MerchantRoute({ allowPublic = false }: { allowPublic?: boolean }
     return <Navigate to="/employee/dashboard" replace />;
   }
 
+  if (role === 'miller') {
+    return <Navigate to="/miller" replace />;
+  }
+
   if (role === 'merchant' || allowPublic) {
     return <Outlet />;
   }
 
   return <Navigate to="/login?portal=merchant" state={{ from: location }} replace />;
+}
+
+/**
+ * MillerRoute: Guards routes meant for Millers (Suppliers).
+ * - If role === 'miller' || role === 'admin': grants access (Admin can inspect Miller Portal anytime).
+ * - If allowPublic is true: allows direct access.
+ * - Otherwise: redirects to /login?portal=miller.
+ */
+export function MillerRoute({ allowPublic = true }: { allowPublic?: boolean }) {
+  const [role, setRole] = useState<'admin' | 'employee' | 'merchant' | 'miller' | null>(() => getVerifiedUserRole());
+  const location = useLocation();
+
+  useEffect(() => {
+    const handleSync = () => setRole(getVerifiedUserRole());
+    window.addEventListener('storage', handleSync);
+    window.addEventListener('role-changed', handleSync);
+    return () => {
+      window.removeEventListener('storage', handleSync);
+      window.removeEventListener('role-changed', handleSync);
+    };
+  }, []);
+
+  if (role === 'miller' || role === 'admin' || allowPublic) {
+    return <Outlet />;
+  }
+
+  return <Navigate to="/login?portal=miller" state={{ from: location }} replace />;
 }

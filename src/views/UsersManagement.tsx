@@ -806,7 +806,12 @@ export default function UsersManagement() {
     const entry = {
       id,
       name: newUser.name,
-      ...(newUser.category === 'suppliers' ? { code: supplierCode } : {}),
+      ...(newUser.category === 'suppliers' ? { 
+        code: supplierCode,
+        username: (newUser.username || supplierCode || '').toLowerCase().trim(),
+        password: (newUser.password || '').trim(),
+        assignedPassword: (newUser.password || '').trim(),
+      } : {}),
       email: newUser.email ? newUser.email.trim() : '',
       phone: newUser.phone,
       gstin: newUser.gstin || 'N/A',
@@ -907,7 +912,10 @@ export default function UsersManagement() {
       ...selectedUser,
       email: selectedUser.email ? selectedUser.email.trim() : '',
       ...(isSupplier ? {
-        code: (selectedUser.code || deriveSupplierCode(selectedUser.name)).trim().toUpperCase()
+        code: (selectedUser.code || deriveSupplierCode(selectedUser.name)).trim().toUpperCase(),
+        username: (selectedUser.username || selectedUser.code || '').trim(),
+        password: (selectedUser.password !== undefined ? selectedUser.password : (selectedUser.assignedPassword || '')).trim(),
+        assignedPassword: (selectedUser.password !== undefined ? selectedUser.password : (selectedUser.assignedPassword || '')).trim(),
       } : {}),
       ...(isEmployee ? {
         username: (selectedUser.username || '').trim().toLowerCase() || selectedUser.name.trim().toLowerCase().replace(/\s+/g, '_'),
@@ -2075,6 +2083,74 @@ export default function UsersManagement() {
                     </>
                   )}
 
+                  {activeTab === 'suppliers' && (
+                    <div className="p-3.5 rounded-2xl bg-amber-500/[0.04] border border-amber-500/20 space-y-3 my-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 text-amber-700 dark:text-amber-400">
+                          <Key className="w-3.5 h-3.5" />
+                          <span className="text-[10px] font-black uppercase tracking-wider">Miller Portal Login Credentials</span>
+                        </div>
+                        <span className="text-[9px] font-bold text-amber-700 bg-amber-500/10 px-2 py-0.5 rounded-md">
+                          Miller Access
+                        </span>
+                      </div>
+                      <p className="text-[9.5px] text-secondary leading-relaxed">
+                        Assign username and password for this mill to log into the Miller Portal, acknowledge POs, dispatch lorries, attach bills, and view outstanding payments.
+                      </p>
+
+                      <div className="space-y-1.5">
+                        <div className="flex justify-between items-center">
+                          <label className="text-[9px] font-black uppercase tracking-widest text-secondary">Miller Username</label>
+                          {selectedUser.code && !selectedUser.username && (
+                            <button
+                              type="button"
+                              onClick={() => setSelectedUser({...selectedUser, username: selectedUser.code.toLowerCase()})}
+                              className="text-[9px] text-primary hover:underline font-bold cursor-pointer"
+                            >
+                              Use Code ({selectedUser.code.toLowerCase()})
+                            </button>
+                          )}
+                        </div>
+                        <input 
+                          type="text" 
+                          autoComplete="off"
+                          placeholder="e.g. bhagwati_rice or bri001"
+                          value={selectedUser.username || ''}
+                          onChange={(e) => setSelectedUser({...selectedUser, username: e.target.value.trim()})}
+                          className="w-full bg-surface-container border border-outline-variant/40 rounded-xl px-4 py-2.5 text-xs font-bold font-mono outline-none focus:ring-1 focus:ring-primary text-on-surface"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <div className="flex justify-between items-center">
+                          <label className="text-[9px] font-black uppercase tracking-widest text-secondary">Miller Password</label>
+                          <span className="text-[8.5px] text-secondary font-medium italic">Assigned by Admin</span>
+                        </div>
+                        <div className="relative">
+                          <input 
+                            type={showEditPassword ? "text" : "password"} 
+                            autoComplete="new-password"
+                            placeholder="Enter login password for this mill"
+                            value={selectedUser.password || selectedUser.assignedPassword || ''}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setSelectedUser({...selectedUser, password: val, assignedPassword: val});
+                            }}
+                            className="w-full bg-surface-container border border-outline-variant/40 rounded-xl px-4 pr-10 py-2.5 text-xs font-bold font-mono outline-none focus:ring-1 focus:ring-primary text-on-surface"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowEditPassword(!showEditPassword)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-secondary hover:text-on-surface cursor-pointer"
+                            title={showEditPassword ? "Hide password" : "Show password"}
+                          >
+                            {showEditPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {activeTab === 'employees' && (
                     <div className="space-y-1.5">
                       <label className="text-[9px] font-black uppercase tracking-widest text-secondary">Designation / Role</label>
@@ -2312,6 +2388,95 @@ export default function UsersManagement() {
                             >
                               <ExternalLink className="w-3.5 h-3.5" />
                               Monitor Store Profile
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Miller Portal Credentials for Suppliers in Details Drawer */}
+                      {activeTab === 'suppliers' && (
+                        <div className="p-3 bg-amber-500/5 rounded-2xl border border-amber-500/15 space-y-2 mb-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-amber-700 dark:text-amber-400 font-black uppercase text-[9px] tracking-wider flex items-center gap-1.5">
+                              <Key className="w-3 h-3" />
+                              Miller Portal Login Credentials
+                            </span>
+                            <span className="text-[9px] font-bold text-amber-700 bg-amber-500/10 px-2 py-0.5 rounded-full">
+                              Miller Account
+                            </span>
+                          </div>
+
+                          <div className="flex justify-between items-center pt-1 border-t border-amber-500/10">
+                            <span className="text-secondary font-black uppercase text-[8px] tracking-wider">Username:</span>
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-mono font-black text-amber-700 dark:text-amber-400 text-xs">
+                                {selectedUser.username || selectedUser.code || (selectedUser.phone ? `${selectedUser.phone} (Phone)` : 'Not set')}
+                              </span>
+                              {(selectedUser.username || selectedUser.code || selectedUser.phone) && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(selectedUser.username || selectedUser.code || selectedUser.phone);
+                                    setCopiedCred('miller-user');
+                                    setTimeout(() => setCopiedCred(null), 2000);
+                                  }}
+                                  className="text-secondary hover:text-primary p-0.5 cursor-pointer"
+                                  title="Copy username"
+                                >
+                                  {copiedCred === 'miller-user' ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex justify-between items-center">
+                            <span className="text-secondary font-black uppercase text-[8px] tracking-wider">Password:</span>
+                            <div className="flex items-center gap-1.5">
+                              {selectedUser.password || selectedUser.assignedPassword ? (
+                                <>
+                                  <span className="font-mono font-bold text-on-surface text-xs">
+                                    {showBuyerPassword ? (selectedUser.password || selectedUser.assignedPassword) : '••••••••'}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setShowBuyerPassword(!showBuyerPassword)}
+                                    className="text-secondary hover:text-primary p-0.5 cursor-pointer"
+                                    title={showBuyerPassword ? "Hide password" : "Show password"}
+                                  >
+                                    {showBuyerPassword ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(selectedUser.password || selectedUser.assignedPassword);
+                                      setCopiedCred('miller-pass');
+                                      setTimeout(() => setCopiedCred(null), 2000);
+                                    }}
+                                    className="text-secondary hover:text-primary p-0.5 cursor-pointer"
+                                    title="Copy password"
+                                  >
+                                    {copiedCred === 'miller-pass' ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                                  </button>
+                                </>
+                              ) : (
+                                <span className="text-secondary/60 italic font-normal text-xs">No password set</span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="pt-2 border-t border-amber-500/10">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                localStorage.setItem('millerName', selectedUser.name);
+                                if (selectedUser.code) localStorage.setItem('millerCode', selectedUser.code);
+                                window.open('/miller', '_blank');
+                              }}
+                              className="w-full py-2 px-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                              title="Open Miller Portal for this mill"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                              Open Miller Portal
                             </button>
                           </div>
                         </div>

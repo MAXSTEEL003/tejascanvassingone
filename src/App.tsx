@@ -1,7 +1,7 @@
 import React, { useEffect, useState, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { getVerifiedUserRole } from './lib/auth';
-import { AdminRoute, StaffRoute, MerchantRoute } from './components/RouteGuards';
+import { AdminRoute, StaffRoute, MerchantRoute, MillerRoute } from './components/RouteGuards';
 import { CartProvider } from './context/CartContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import PageFallback from './components/PageFallback';
@@ -31,6 +31,7 @@ const BagView = lazy(() => import('./views/BagView'));
 const ProfileView = lazy(() => import('./views/ProfileView'));
 const EmployeePortalView = lazy(() => import('./views/EmployeePortalView'));
 const AcknowledgeReceiptView = lazy(() => import('./views/AcknowledgeReceiptView'));
+const MillerPortalView = lazy(() => import('./views/MillerPortalView'));
 
 
 
@@ -62,7 +63,7 @@ function setStorageItem(key: string, value: string): void {
 // If authenticated as admin, renders MainLayout with OrdersDashboard.
 // If authenticated as employee or merchant, immediately redirects to their respective portals.
 function AdminPortalRoute() {
-  const [role, setRole] = useState<'admin' | 'employee' | 'merchant' | null>(() => getVerifiedUserRole());
+  const [role, setRole] = useState<'admin' | 'employee' | 'merchant' | 'miller' | null>(() => getVerifiedUserRole());
 
   useEffect(() => {
     const handleSync = () => setRole(getVerifiedUserRole());
@@ -84,6 +85,10 @@ function AdminPortalRoute() {
 
   if (role === 'merchant') {
     return <Navigate to="/store" replace />;
+  }
+
+  if (role === 'miller') {
+    return <Navigate to="/miller" replace />;
   }
 
   return <LoginView secretRole="admin" />;
@@ -257,6 +262,14 @@ export default function App() {
                 <Route path="/brokerage" element={<BrokerageView />} />
                 <Route path="/checkout" element={<CheckoutView />} />
               </Route>
+            </Route>
+
+            {/* Miller / Supplier Dedicated Portal Routes (Miller + Admin Preview, Public Can Access or Authenticate) */}
+            <Route element={<MillerRoute allowPublic={true} />}>
+              <Route path="/miller" element={<MillerPortalView />} />
+              <Route path="/miller-portal" element={<Navigate to="/miller" replace />} />
+              <Route path="/supplier-portal" element={<Navigate to="/miller" replace />} />
+              <Route path="/supplier" element={<Navigate to="/miller" replace />} />
             </Route>
 
             {/* Global Fallback */}

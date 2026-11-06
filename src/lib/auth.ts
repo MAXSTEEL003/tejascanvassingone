@@ -3,9 +3,12 @@
 export interface AuthenticatedUser {
   sub?: string;
   username: string;
-  role: 'admin' | 'employee' | 'merchant';
+  role: 'admin' | 'employee' | 'merchant' | 'miller';
   name: string;
   email: string;
+  millerName?: string;
+  millerCode?: string;
+  phone?: string;
 }
 
 const TOKEN_KEY = 'tejas_auth_token_v1';
@@ -116,6 +119,9 @@ export function parseTokenPayload(token: string): AuthenticatedUser | null {
       role: parsed.role,
       name: parsed.name,
       email: parsed.email,
+      millerName: parsed.millerName,
+      millerCode: parsed.millerCode,
+      phone: parsed.phone,
     };
   } catch {
     return null;
@@ -124,7 +130,7 @@ export function parseTokenPayload(token: string): AuthenticatedUser | null {
 
 // Get the verified role from the signed token or verified session.
 // In accordance with Prompt 3, raw localStorage strings cannot bypass authorization.
-export function getVerifiedUserRole(): 'admin' | 'employee' | 'merchant' | null {
+export function getVerifiedUserRole(): 'admin' | 'employee' | 'merchant' | 'miller' | null {
   // 1. Check signed token
   const token = getAuthToken();
   if (token) {
@@ -141,7 +147,7 @@ export function getVerifiedUserRole(): 'admin' | 'employee' | 'merchant' | null 
       if (storedUser) {
         try {
           const parsed = JSON.parse(storedUser);
-          if (parsed && (parsed.role === 'admin' || parsed.role === 'employee' || parsed.role === 'merchant')) {
+          if (parsed && (parsed.role === 'admin' || parsed.role === 'employee' || parsed.role === 'merchant' || parsed.role === 'miller')) {
             if (parsed.role === 'admin') {
               if (parsed.email && isAuthorizedAdminGoogleAccount(parsed.email)) {
                 return 'admin';
@@ -260,7 +266,9 @@ export async function performSecureLogout(): Promise<void> {
       'userAddress',
       'profileLocked',
       'local_orders',
-      'just_placed_order'
+      'just_placed_order',
+      'millerName',
+      'millerCode'
     ];
     merchantKeys.forEach(k => {
       try {
@@ -317,11 +325,27 @@ export async function verifyServerSession(): Promise<AuthenticatedUser | null> {
   }
 }
 
+// Helper: Get the current active Miller (Supplier) name from authenticated session
+export function getCurrentMillerName(): string {
+  try {
+    const user = getAuthUser();
+    if (user?.millerName) return user.millerName;
+    const stored = localStorage.getItem('millerName');
+    if (stored) return stored;
+    const role = getVerifiedUserRole();
+    if (role === 'miller') {
+      const name = localStorage.getItem('userName');
+      if (name) return name;
+    }
+  } catch {}
+  return '';
+}
+
 // Server Login Call with bulletproof response parsing and graceful fallback
 export async function loginWithServer(
   username: string,
   password: string,
-  roleHint?: 'admin' | 'employee' | 'merchant'
+  roleHint?: 'admin' | 'employee' | 'merchant' | 'miller'
 ): Promise<{ success: boolean; token?: string; user?: AuthenticatedUser; error?: string }> {
   const cleanUser = String(username || '').trim();
   const cleanPass = String(password || '').trim();
@@ -494,6 +518,95 @@ export async function loginWithServer(
 
   if (roleHint === 'employee') {
     return { success: false, error: 'Invalid Employee credentials or cannot reach authentication server.' };
+  }
+
+  // Handle Miller (Supplier) Authentication with assigned username & password
+  if (roleHint === 'miller') {
+    try {
+      const { getRegisteredSuppliers } = await import('./utils');
+      let suppliers = getRegisteredSuppliers();
+      try {
+        const stakeholdersStr = localStorage.getItem('stakeholders_v2');
+        if (stakeholdersStr) {
+          const parsed = JSON.parse(stakeholdersStr);
+          if (Array.isArray(parsed.suppliers)) {
+            // Merge with registered suppliers
+            const combined = [...parsed.suppliers, ...suppliers];
+            const dedup = new Map();
+            combined.forEach(s => {
+              if (s && (s.id || s.name)) dedup.set(s.id || s.name, s);
+            });
+            suppliers = Array.from(dedup.values());
+          }
+        }
+      } catch {}
+
+      const lower = cleanUser.toLowerCase();
+      const digits = cleanUser.replace(/\D/g, '');
+
+      const matched = suppliers.find(s => {
+        if (!s) return false;
+        const sUser = (s.username || '').toLowerCase();
+        const sName = (s.name || '').toLowerCase();
+        const sId = (s.id || '').toLowerCase();
+        const sCode = (s.code || '').toLowerCase();
+        const sPhone = (s.phone || '').replace(/\D/g, '');
+        const sEmail = (s.email || '').toLowerCase();
+        return (sUser && sUser === lower) ||
+               (sCode && sCode === lower) ||
+               (sId && sId === lower) ||
+               (sName && (sName === lower || sName.includes(lower) || lower.includes(sName))) ||
+               (digits.length >= 7 && sPhone.includes(digits)) ||
+               (sEmail && sEmail === lower);
+      });
+
+      if (!matched) {
+        return { 
+          success: false, 
+          error: `Miller username or code "${cleanUser}" not recognized. Please verify the credentials assigned in your User Profile.` 
+        };
+      }
+
+      // Verify assigned password if set in profile
+      const expectedPass = String(matched.password || matched.assignedPassword || '').trim();
+      if (expectedPass) {
+        if (!cleanPass) {
+          return { success: false, error: 'Please enter your Miller account password.' };
+        }
+        if (cleanPass !== expectedPass) {
+          return { success: false, error: 'Incorrect password for this Miller account. Access Denied.' };
+        }
+      }
+
+      const effectiveName = matched.name || cleanUser.toUpperCase();
+      const effectiveId = matched.id || `SUP-${Date.now()}`;
+      const effectiveCode = matched.code || '';
+      const effectivePhone = matched.phone || '';
+
+      const millerUser: AuthenticatedUser = {
+        sub: effectiveId,
+        username: matched.username || effectiveCode || effectiveName,
+        role: 'miller',
+        name: effectiveName,
+        millerName: effectiveName,
+        millerCode: effectiveCode,
+        email: matched.email || `${effectiveId.toLowerCase()}@mill.tejasc.in`,
+        phone: effectivePhone,
+      };
+
+      localStorage.setItem('userRole', 'miller');
+      localStorage.setItem('userName', effectiveName);
+      localStorage.setItem('millerName', effectiveName);
+      if (effectiveCode) localStorage.setItem('millerCode', effectiveCode);
+      if (effectivePhone) localStorage.setItem('userPhone', effectivePhone);
+
+      const token = createClientAuthToken(millerUser);
+      setAuthSession(token, millerUser);
+      return { success: true, token, user: millerUser };
+    } catch (err: any) {
+      console.warn('Miller sign-in notice:', err);
+      return { success: false, error: err?.message || 'Miller portal authentication error.' };
+    }
   }
 
   // Check if credentials match any assigned buyer profile in stakeholders_v2

@@ -68,6 +68,7 @@ export default function PendingLoadings() {
   const [expandedPoId, setExpandedPoId] = useState<string | null>(null);
   const [copiedPoNumber, setCopiedPoNumber] = useState<string | null>(null);
   const [isPdfModalOpen, setIsPdfModalOpen] = useState<boolean>(false);
+  const [viewingMillerBill, setViewingMillerBill] = useState<{ url: string; billNo: string; poNumber: string } | null>(null);
 
   // Load orders from canonical operational order service
   const loadOrdersData = async (forceFresh: boolean | any = true) => {
@@ -687,7 +688,13 @@ export default function PendingLoadings() {
 
                                 {/* Supplier / Miller */}
                                 <td className="py-3.5 px-3.5 text-xs font-medium text-slate-700 dark:text-slate-300">
-                                  {po.supplier}
+                                  <div>{po.supplier}</div>
+                                  {((po as any).vehicleNo || (po as any).truckNo) && (
+                                    <div className="flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-mono mt-0.5 font-bold">
+                                      <Truck className="w-3 h-3 shrink-0" />
+                                      <span>{(po as any).vehicleNo || (po as any).truckNo}</span>
+                                    </div>
+                                  )}
                                 </td>
 
                                 {/* Brand */}
@@ -859,8 +866,53 @@ export default function PendingLoadings() {
                                               </div>
                                               <div className="flex justify-between items-center">
                                                 <span className="text-slate-500">Lorry / Bill Ref:</span>
-                                                <span className="font-mono text-slate-600 dark:text-slate-400">{po.billNo || 'Assigned on Arrival'}</span>
+                                                <span className="font-mono text-slate-600 dark:text-slate-400">{po.billNo || (po as any).actualSupplierBillNo || 'Assigned on Arrival'}</span>
                                               </div>
+                                              {Boolean((po as any).vehicleNo || (po as any).truckNo) && (
+                                                <div className="flex justify-between items-center">
+                                                  <span className="text-slate-500">Dispatch Lorry:</span>
+                                                  <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">{(po as any).vehicleNo || (po as any).truckNo}</span>
+                                                </div>
+                                              )}
+                                              {Boolean((po as any).driverPhone) && (
+                                                <div className="flex justify-between items-center">
+                                                  <span className="text-slate-500">Driver Phone:</span>
+                                                  <a href={`tel:${(po as any).driverPhone}`} className="font-mono text-sky-600 dark:text-sky-400 hover:underline">{(po as any).driverPhone}</a>
+                                                </div>
+                                              )}
+                                              {Boolean((po as any).acknowledgedByMiller) && (
+                                                <div className="flex justify-between items-center">
+                                                  <span className="text-slate-500">Mill Status:</span>
+                                                  <span className="font-bold text-emerald-600 dark:text-emerald-400">✓ Acknowledged</span>
+                                                </div>
+                                              )}
+                                              {(() => {
+                                                const rawSub = (po as any).rawOrder?.originalOrders?.find((s: any) => 
+                                                  (s.buyer && String(s.buyer).toLowerCase() === String(po.buyer || '').toLowerCase()) || s.id === po.subOrderId
+                                                );
+                                                const billPhotoUrl = (po as any).billPhoto || (po as any).billPhotoUrl || (po as any).billAttachment || rawSub?.billPhoto || rawSub?.billPhotoUrl;
+                                                const billNumber = po.billNo || (po as any).actualSupplierBillNo || rawSub?.actualSupplierBillNo || rawSub?.billNo || 'Consignment Bill';
+
+                                                if (!billPhotoUrl) return null;
+
+                                                return (
+                                                  <div className="pt-1 flex items-center justify-between">
+                                                    <span className="text-slate-500 font-medium">Mill Bill:</span>
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => setViewingMillerBill({
+                                                        url: billPhotoUrl,
+                                                        billNo: billNumber,
+                                                        poNumber: po.poNumber
+                                                      })}
+                                                      className="px-2 py-0.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-900/50 rounded-lg text-[10px] font-bold cursor-pointer transition-all flex items-center gap-1"
+                                                    >
+                                                      <FileText className="w-3 h-3" />
+                                                      <span>View Mill Bill</span>
+                                                    </button>
+                                                  </div>
+                                                );
+                                              })()}
                                             </div>
                                           </div>
 
@@ -1221,6 +1273,69 @@ export default function PendingLoadings() {
         title="Pending Loadings"
         entries={orders}
       />
+
+      {/* Mill Consignment Attached Bill Viewer Modal */}
+      {viewingMillerBill && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in"
+          onClick={() => setViewingMillerBill(null)}
+        >
+          <div 
+            className="bg-white dark:bg-[#121214] border border-slate-200 dark:border-white/10 rounded-2xl max-w-2xl w-full p-4 sm:p-5 space-y-3 relative shadow-2xl overflow-hidden text-left"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-white/10 pb-3">
+              <div>
+                <h4 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <FileText className="w-4 h-4 text-rose-600" />
+                  <span>Mill Attached Consignment Bill</span>
+                </h4>
+                <p className="text-xs text-slate-500 font-mono mt-0.5">
+                  Bill Ref: {viewingMillerBill.billNo} • PO: {viewingMillerBill.poNumber}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setViewingMillerBill(null)}
+                className="p-1.5 rounded-lg bg-slate-100 dark:bg-neutral-800 text-slate-500 hover:text-slate-900 dark:hover:text-white transition-all cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="max-h-[70vh] overflow-auto rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-black/40 flex items-center justify-center p-2">
+              <img 
+                src={viewingMillerBill.url} 
+                alt="Mill Consignment Bill" 
+                className="max-w-full max-h-[65vh] object-contain rounded-lg shadow-sm"
+              />
+            </div>
+
+            <div className="flex items-center justify-between pt-2">
+              <span className="text-[11px] text-slate-400">Attached directly by Miller via Miller Portal</span>
+              <div className="flex items-center gap-2">
+                <a
+                  href={viewingMillerBill.url}
+                  download={`Mill_Bill_${viewingMillerBill.billNo || 'document'}.png`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1 cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download Bill</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setViewingMillerBill(null)}
+                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-slate-800 dark:text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

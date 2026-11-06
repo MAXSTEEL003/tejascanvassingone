@@ -1115,6 +1115,9 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
   const [liftingScope, setLiftingScope] = useState<'whole' | 'suborders'>('whole');
   const [selectedSubOrderIds, setSelectedSubOrderIds] = useState<string[]>([]);
 
+  // Miller Attached Bill Viewer Modal
+  const [viewingMillerBill, setViewingMillerBill] = useState<{ isOpen: boolean; photoUrl: string; title: string; poNo?: string; billNo?: string } | null>(null);
+
   // Form / Action states
   const [isCopied, setIsCopied] = useState(false);
   const [isMailCopied, setIsMailCopied] = useState(false);
@@ -3347,6 +3350,84 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                       </div>
                     )}
 
+                    {/* Miller Dispatch & Attached Bill Status Banner */}
+                    {(order.isAcknowledged || order.truckNo || order.vehicleNo || order.billPhoto || order.billPhotoUrl || order.billAttachment || order.actualSupplierBillNo) && (
+                      <div className="flex flex-wrap items-center gap-2 p-2.5 rounded-xl bg-surface-container/70 border border-outline-variant/30 text-xs">
+                        {order.isAcknowledged && (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 font-bold text-[10px]">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>Acknowledged by Mill</span>
+                          </span>
+                        )}
+
+                        {(order.truckNo || order.vehicleNo) && (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-500/15 text-blue-800 dark:text-blue-300 font-bold text-[10px]">
+                            <Truck className="w-3.5 h-3.5 text-blue-600" />
+                            <span>Lorry: {order.truckNo || order.vehicleNo}</span>
+                            {order.driverPhone && <span className="opacity-75">({order.driverPhone})</span>}
+                          </span>
+                        )}
+
+                        {(() => {
+                          const subOrdersWithBills = Array.isArray(order.originalOrders)
+                            ? order.originalOrders.filter((s: any) => s.billPhoto || s.billPhotoUrl || s.billAttachment)
+                            : [];
+
+                          if (subOrdersWithBills.length > 1) {
+                            return subOrdersWithBills.map((sub: any, sIdx: number) => {
+                              const sBillNo = sub.actualSupplierBillNo || sub.billNo || (order.supplierBillNos && order.supplierBillNos[sub.id || sub.buyer]);
+                              const sPhoto = sub.billPhoto || sub.billPhotoUrl || sub.billAttachment || (order.supplierBillPhotos && order.supplierBillPhotos[sub.id || sub.buyer]);
+
+                              return (
+                                <button
+                                  key={sIdx}
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setViewingMillerBill({
+                                      isOpen: true,
+                                      photoUrl: sPhoto,
+                                      title: `Mill Bill • ${sub.buyer || order.buyer}`,
+                                      poNo: order.id,
+                                      billNo: sBillNo
+                                    });
+                                  }}
+                                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[10px] shadow-xs cursor-pointer transition-all active:scale-95"
+                                >
+                                  <FileText className="w-3.5 h-3.5" />
+                                  <span>Bill ({sub.buyer}): {sBillNo || 'View'}</span>
+                                </button>
+                              );
+                            });
+                          }
+
+                          const mainPhoto = order.billPhoto || order.billPhotoUrl || order.billAttachment || (subOrdersWithBills[0] && (subOrdersWithBills[0].billPhoto || subOrdersWithBills[0].billPhotoUrl));
+                          if (mainPhoto) {
+                            return (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setViewingMillerBill({
+                                    isOpen: true,
+                                    photoUrl: mainPhoto,
+                                    title: `Mill Invoice • PO #${order.id}`,
+                                    poNo: order.id,
+                                    billNo: order.actualSupplierBillNo || order.billNo || (subOrdersWithBills[0] && (subOrdersWithBills[0].actualSupplierBillNo || subOrdersWithBills[0].billNo))
+                                  });
+                                }}
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[10px] shadow-xs cursor-pointer transition-all active:scale-95"
+                              >
+                                <FileText className="w-3.5 h-3.5" />
+                                <span>View Mill Bill ({order.actualSupplierBillNo || order.billNo || 'Attached'})</span>
+                              </button>
+                            );
+                          }
+                          return null;
+                        })()}
+                      </div>
+                    )}
+
                     <div className="flex flex-wrap items-center justify-start gap-2 pt-3 mt-1 border-t border-outline-variant/15">
                       {/* View / Edit PO button */}
                       <button 
@@ -3559,6 +3640,44 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                                           {sub.status || sub.paymentStatus || 'Awaiting Proof'}
                                         </span>
                                       </div>
+
+                                     {/* Sub-order Mill Bill Action */}
+                                     {(() => {
+                                       const subPhoto = sub.billPhoto || sub.billPhotoUrl || sub.billAttachment || (order.supplierBillPhotos && order.supplierBillPhotos[sub.id || sub.buyer]);
+                                       const subBillNumber = (sub.actualSupplierBillNo || sub.billNo || (order.supplierBillNos && order.supplierBillNos[sub.id || sub.buyer]) || '').trim();
+
+                                       if (!subPhoto && !subBillNumber) return null;
+
+                                       return (
+                                         <div className="flex flex-col items-end gap-1 shrink-0">
+                                           <p className="text-[8px] font-black text-secondary uppercase tracking-tighter mb-0.5">Mill Bill</p>
+                                           {subPhoto ? (
+                                             <button
+                                               type="button"
+                                               onClick={(e) => {
+                                                 e.stopPropagation();
+                                                 setViewingMillerBill({
+                                                   isOpen: true,
+                                                   photoUrl: subPhoto,
+                                                   title: `Mill Bill • ${sub.buyer || order.buyer}`,
+                                                   poNo: order.id,
+                                                   billNo: subBillNumber
+                                                 });
+                                               }}
+                                               className="btn-tactile inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all border border-emerald-500/30 cursor-pointer shadow-2xs"
+                                               title={`View mill bill attached for ${sub.buyer || order.buyer}`}
+                                             >
+                                               <FileText className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                                               <span>{subBillNumber || 'View Bill'}</span>
+                                             </button>
+                                           ) : (
+                                             <span className="px-2 py-1 bg-surface rounded-md border border-outline-variant/30 text-[10px] font-mono font-bold text-on-surface">
+                                               {subBillNumber}
+                                             </span>
+                                           )}
+                                         </div>
+                                       );
+                                     })()}
 
                                      {/* Individual Sub-order Arrival Action */}
                                      {(() => {
@@ -5401,6 +5520,61 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
           onClose={() => setSelectedBuyerForLedger(null)}
           initialTab="payments"
         />
+      )}
+
+      {/* Miller Attached Bill Viewer Modal */}
+      {viewingMillerBill && viewingMillerBill.isOpen && typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-neutral-900 border border-neutral-800 rounded-3xl max-w-4xl w-full p-5 shadow-2xl space-y-3.5 flex flex-col max-h-[92vh]"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-neutral-800">
+                <div className="space-y-0.5">
+                  <span className="font-black text-sm text-white flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-emerald-400" />
+                    {viewingMillerBill.title}
+                  </span>
+                  {viewingMillerBill.billNo && (
+                    <p className="text-xs text-neutral-400 font-mono">
+                      Invoice No: <span className="text-white font-bold">{viewingMillerBill.billNo}</span>
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <a
+                    href={viewingMillerBill.photoUrl}
+                    download={`Mill-Invoice-${viewingMillerBill.billNo || 'document'}.jpg`}
+                    className="p-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white cursor-pointer transition-colors"
+                    title="Download Bill Image"
+                  >
+                    <Download className="w-4 h-4" />
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setViewingMillerBill(null)}
+                    className="p-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white cursor-pointer transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-auto rounded-2xl bg-black/50 p-4 flex items-center justify-center min-h-[350px]">
+                <img
+                  src={viewingMillerBill.photoUrl}
+                  alt="Consignment Bill Document"
+                  className="max-h-[72vh] object-contain rounded-xl shadow-2xl"
+                />
+              </div>
+            </motion.div>
+          </div>
+        </AnimatePresence>,
+        document.body
       )}
 
       {renderDeleteAllModal()}

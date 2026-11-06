@@ -23,7 +23,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { cn, resolveBuyerProfile, syncCurrentMerchantProfile } from '../lib/utils';
+import { cn, resolveBuyerProfile, syncCurrentMerchantProfile, getRegisteredSuppliers } from '../lib/utils';
 import { 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword,
@@ -80,8 +80,8 @@ export const TejasBotanicalLogo = TejasLogoEmblem;
 interface LoginViewProps {
   defaultStep?: string;
   defaultTab?: 'signin' | 'signup';
-  secretRole?: 'admin' | 'employee';
-  defaultPortal?: 'merchant' | 'employee' | 'admin';
+  secretRole?: 'admin' | 'employee' | 'miller';
+  defaultPortal?: 'merchant' | 'employee' | 'admin' | 'miller';
 }
 
 export default function LoginView({ defaultTab = 'signin', secretRole, defaultPortal }: LoginViewProps) {
@@ -129,14 +129,22 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
       } else if ((secretRole === 'employee' || defaultPortal === 'employee') && activeRole === 'employee') {
         const target = redirectTarget || '/employee/dashboard';
         navigate(target, { replace: true });
+      } else if ((secretRole === 'miller' || defaultPortal === 'miller') && activeRole === 'miller') {
+        const target = redirectTarget || '/miller';
+        navigate(target, { replace: true });
       }
     } catch {}
   }, [secretRole, defaultPortal, redirectTarget, navigate]);
 
-  // Active Portal Selection: 'merchant' | 'employee' | 'admin'
-  const [activePortal, setActivePortal] = useState<'merchant' | 'employee' | 'admin'>(() => {
+  // Active Portal Selection: 'merchant' | 'employee' | 'admin' | 'miller'
+  const [activePortal, setActivePortal] = useState<'merchant' | 'employee' | 'admin' | 'miller'>(() => {
     if (secretRole === 'admin' || defaultPortal === 'admin') return 'admin';
     if (secretRole === 'employee' || defaultPortal === 'employee') return 'employee';
+    if (secretRole === 'miller' || defaultPortal === 'miller') return 'miller';
+    const urlPortal = searchParams.get('portal');
+    if (urlPortal === 'miller') return 'miller';
+    if (urlPortal === 'admin') return 'admin';
+    if (urlPortal === 'employee') return 'employee';
     return 'merchant';
   });
 
@@ -148,6 +156,18 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+
+  // Miller Portal States
+  const [millerInput, setMillerInput] = useState('');
+  const [millerPassword, setMillerPassword] = useState('');
+  const [showMillerPassword, setShowMillerPassword] = useState(false);
+  const [registeredSuppliersList] = useState(() => {
+    try {
+      return getRegisteredSuppliers();
+    } catch {
+      return [];
+    }
+  });
 
   // Merchant Signup states
   const [signupName, setSignupName] = useState('');
@@ -695,6 +715,39 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
     }
   };
 
+  // Dedicated Miller / Supplier Sign-In
+  const handleMillerSignIn = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setLoading(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
+    const rawInput = millerInput.trim();
+    if (!rawInput) {
+      setErrorMsg('Please select or enter your Mill / Supplier Name, Code, or Phone.');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const result = await loginWithServer(rawInput, millerPassword.trim(), 'miller');
+      if (result.success && result.user) {
+        setSuccessMsg(`Welcome, ${result.user.name || rawInput}! Launching Miller Portal...`);
+        const target = redirectTarget && redirectTarget.startsWith('/') ? redirectTarget : '/miller';
+        setTimeout(() => {
+          setLoading(false);
+          navigate(target, { replace: true });
+        }, 400);
+      } else {
+        setLoading(false);
+        setErrorMsg(result.error || 'Failed to authenticate miller credentials. Please check mill name or code.');
+      }
+    } catch (err: any) {
+      setLoading(false);
+      setErrorMsg(err.message || 'Miller portal authentication error occurred.');
+    }
+  };
+
   return (
     <div className="min-h-dvh bg-[#FAFBFA] dark:bg-[#0A0A0A] flex flex-col items-center justify-center p-3 sm:p-5 font-sans antialiased text-neutral-900 dark:text-neutral-100 select-none overflow-x-hidden transition-colors duration-200">
       
@@ -757,47 +810,60 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
             </p>
           </div>
 
-          {/* 3-Role Segmented Selector (Merchant | Employee | Admin) */}
+          {/* 4-Role Segmented Selector (Merchant | Employee | Admin | Miller) */}
           {!secretRole && (
-            <div className="grid grid-cols-3 p-1 bg-neutral-100 dark:bg-[#1A1A1A] rounded-xl border border-neutral-200/80 dark:border-[#262626] text-xs font-bold mb-3.5">
+            <div className="grid grid-cols-4 p-1 bg-neutral-100 dark:bg-[#1A1A1A] rounded-xl border border-neutral-200/80 dark:border-[#262626] text-xs font-bold mb-3.5 gap-0.5">
               <button
                 type="button"
                 onClick={() => { setActivePortal('merchant'); setErrorMsg(null); setSuccessMsg(null); }}
                 className={cn(
-                  "py-1.5 px-2 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer text-[11px]",
+                  "py-1.5 px-1 rounded-lg flex items-center justify-center gap-1 transition-all cursor-pointer text-[10.5px]",
                   activePortal === 'merchant'
                     ? "bg-[#C22424] text-white shadow-xs font-bold"
                     : "text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"
                 )}
               >
-                <ShoppingBag className="w-3.5 h-3.5" />
-                <span>Merchant</span>
+                <ShoppingBag className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">Merchant</span>
               </button>
               <button
                 type="button"
                 onClick={() => { setActivePortal('employee'); setErrorMsg(null); setSuccessMsg(null); }}
                 className={cn(
-                  "py-1.5 px-2 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer text-[11px]",
+                  "py-1.5 px-1 rounded-lg flex items-center justify-center gap-1 transition-all cursor-pointer text-[10.5px]",
                   activePortal === 'employee'
                     ? "bg-[#C22424] text-white shadow-xs font-bold"
                     : "text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"
                 )}
               >
-                <Warehouse className="w-3.5 h-3.5" />
-                <span>Employee</span>
+                <Warehouse className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">Staff</span>
               </button>
               <button
                 type="button"
                 onClick={() => { setActivePortal('admin'); setErrorMsg(null); setSuccessMsg(null); }}
                 className={cn(
-                  "py-1.5 px-2 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer text-[11px]",
+                  "py-1.5 px-1 rounded-lg flex items-center justify-center gap-1 transition-all cursor-pointer text-[10.5px]",
                   activePortal === 'admin'
                     ? "bg-[#C22424] text-white shadow-xs font-bold"
                     : "text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"
                 )}
               >
-                <ShieldCheck className="w-3.5 h-3.5" />
-                <span>Admin</span>
+                <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">Admin</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => { setActivePortal('miller'); setErrorMsg(null); setSuccessMsg(null); }}
+                className={cn(
+                  "py-1.5 px-1 rounded-lg flex items-center justify-center gap-1 transition-all cursor-pointer text-[10.5px]",
+                  activePortal === 'miller'
+                    ? "bg-[#C22424] text-white shadow-xs font-bold"
+                    : "text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"
+                )}
+              >
+                <Building2 className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">Miller</span>
               </button>
             </div>
           )}
@@ -1254,6 +1320,93 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
                   )}
                 </button>
               </form>
+            </div>
+          )}
+
+          {/* ============================================================== */}
+          {/* TAB 4: MILLER PORTAL                                           */}
+          {/* ============================================================== */}
+          {activePortal === 'miller' && (
+            <div className="space-y-3.5 text-left">
+              <div>
+                <h1 className="text-base font-bold text-neutral-900 dark:text-white tracking-tight flex items-center gap-2">
+                  <Building2 className="w-4 h-4 text-[#C22424]" />
+                  <span>Miller & Supplier Portal</span>
+                </h1>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+                  Acknowledge POs, dispatch lorries, attach bills, and track payments.
+                </p>
+              </div>
+
+              <form onSubmit={handleMillerSignIn} className="space-y-3">
+                {/* Miller Assigned Username / ID */}
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-neutral-700 dark:text-neutral-300">
+                    Miller Username
+                  </label>
+                  <div className="relative flex items-center">
+                    <Building2 className="absolute left-3 w-3.5 h-3.5 text-[#C22424]" />
+                    <input
+                      type="text"
+                      required
+                      value={millerInput}
+                      onChange={(e) => setMillerInput(e.target.value)}
+                      placeholder="Username assigned by Admin"
+                      className="w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-[#1A1A1A] border border-neutral-200 dark:border-[#2A2A2A] text-xs text-neutral-900 dark:text-white outline-none focus:border-[#C22424] focus:ring-1 focus:ring-[#C22424] transition-all placeholder:text-neutral-400 font-semibold"
+                    />
+                  </div>
+                </div>
+
+                {/* Miller Assigned Password */}
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-neutral-700 dark:text-neutral-300">
+                    Password
+                  </label>
+                  <div className="relative flex items-center">
+                    <Lock className="absolute left-3 w-3.5 h-3.5 text-[#C22424]" />
+                    <input
+                      type={showMillerPassword ? "text" : "password"}
+                      required
+                      value={millerPassword}
+                      onChange={(e) => setMillerPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full pl-9 pr-9 py-2.5 rounded-xl bg-neutral-50 dark:bg-[#1A1A1A] border border-neutral-200 dark:border-[#2A2A2A] text-xs text-neutral-900 dark:text-white outline-none focus:border-[#C22424] focus:ring-1 focus:ring-[#C22424] transition-all placeholder:text-neutral-400"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowMillerPassword(!showMillerPassword)}
+                      className="absolute right-3 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 cursor-pointer"
+                    >
+                      {showMillerPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-2.5 rounded-xl bg-[#C22424] hover:bg-[#A81C1C] text-white font-bold text-xs shadow-xs transition-all cursor-pointer active:scale-[0.98] flex items-center justify-center gap-2 mt-2"
+                >
+                  {loading ? (
+                    <div className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                  ) : (
+                    <>
+                      <span>Sign In to Miller Portal</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </>
+                  )}
+                </button>
+              </form>
+
+              <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-[11px] text-amber-800 dark:text-amber-300 space-y-1">
+                <p className="font-bold flex items-center gap-1.5">
+                  <Info className="w-3.5 h-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                  <span>Direct Mill Operations Console</span>
+                </p>
+                <p className="text-[10.5px] text-neutral-600 dark:text-neutral-400 leading-relaxed">
+                  Millers can instantly view contracts, submit driver phone & lorry number upon dispatch, upload consignment invoices, and track outstanding ledger balances.
+                </p>
+              </div>
             </div>
           )}
 
