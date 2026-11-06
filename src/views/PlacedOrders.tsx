@@ -3497,6 +3497,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                               const subRate = parseFloat(sub.rate) || 4200;
                               const subAmount = subQty * subRate;
                               const subProduct = sub.product || sub.items?.replace(/\(\d+.*$/, '').trim() || "1121 Sella Rice";
+                              const subBrand = sub.brand || sub.product || sub.items?.replace(/\(\d+.*$/, '').trim() || order.brand || order.product || "Standard Rice";
                               const subSupplier = sub.supplier || sub.seller || order.supplier || "Amritsar Grain Export Ltd.";
                               const subOrderNo = sub.supplierSubOrderNo || resolveSubOrderNumber(sub, sIdx, subSupplier);
 
@@ -3520,9 +3521,11 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                                             <span>{sub.buyer || order.buyer || 'Authorized Merchant'}</span>
                                             <ExternalLink className="w-3 h-3 opacity-0 group-hover/buyer:opacity-100 text-primary transition-opacity" />
                                           </button>
-                                          <span className="text-[9px] font-mono text-secondary bg-surface-container border border-outline-variant/30 px-1.5 py-0.5 rounded">
-                                            {subProduct}
-                                          </span>
+                                          {subProduct && subBrand && subProduct.trim().toLowerCase() !== subBrand.trim().toLowerCase() && (
+                                            <span className="text-[9px] font-mono text-secondary bg-surface-container border border-outline-variant/30 px-1.5 py-0.5 rounded">
+                                              {subProduct}
+                                            </span>
+                                          )}
                                           {sub.buyerRequestNo && sub.buyerRequestNo !== subOrderNo && (
                                             <span className="text-[9px] font-mono text-secondary/70 bg-surface-container border border-outline-variant/30 px-1.5 py-0.5 rounded" title="Original Buyer Request Number">
                                               Req: {sub.buyerRequestNo}
@@ -3530,7 +3533,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                                           )}
                                         </div>
                                         <p className="text-[10px] text-secondary font-medium">
-                                          Supplier: <strong className="text-on-surface">{subSupplier}</strong>
+                                          Brand: <strong className="text-on-surface">{subBrand}</strong>
                                         </p>
                                         <p className="text-xs font-semibold text-secondary/80">
                                           Price: <span className="font-bold text-primary font-mono">{subQty.toFixed(2)} QTLS</span> @ <span className="font-bold font-mono">₹{formatINR(subRate)} / QTL</span>
