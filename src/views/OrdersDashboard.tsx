@@ -296,6 +296,19 @@ export default function OrdersDashboard() {
   const [todayHistoryTab, setTodayHistoryTab] = useState<'all' | 'placed' | 'approved'>('all');
   const [todayHistorySearch, setTodayHistorySearch] = useState('');
 
+  // Archived orders state (declared early so metrics and tables have access)
+  const [isArchivedExpanded, setIsArchivedExpanded] = useState(false);
+  const [archivedOrders, setArchivedOrders] = useState<any[]>(() => {
+    return ARCHIVED_ACCEPTED_ORDERS.map(o => normalizeOrder({ ...o, status: o.status || 'Accepted', isArchived: true }));
+  });
+  const [isLoadingArchived, setIsLoadingArchived] = useState(false);
+  const [archivedSearchQuery, setArchivedSearchQuery] = useState('');
+  const [archivedSupplierFilter, setArchivedSupplierFilter] = useState('');
+  const [archivedProductFilter, setArchivedProductFilter] = useState('');
+  const [archivedStatusFilter, setArchivedStatusFilter] = useState<'all' | 'approved' | 'rejected'>('all');
+  const [archivedFeedback, setArchivedFeedback] = useState<string | null>(null);
+  const [selectedArchivedOrder, setSelectedArchivedOrder] = useState<any | null>(null);
+
   // Auto-sync placed_orders updates across local tabs/windows
   useEffect(() => {
     const handleStorageChange = () => {
@@ -1612,18 +1625,6 @@ export default function OrdersDashboard() {
       console.error("Failed to clear all orders from Firestore:", err);
     }
   };
-
-  const [isArchivedExpanded, setIsArchivedExpanded] = useState(false);
-  const [archivedOrders, setArchivedOrders] = useState<any[]>(() => {
-    return ARCHIVED_ACCEPTED_ORDERS.map(o => normalizeOrder({ ...o, status: o.status || 'Accepted', isArchived: true }));
-  });
-  const [isLoadingArchived, setIsLoadingArchived] = useState(false);
-  const [archivedSearchQuery, setArchivedSearchQuery] = useState('');
-  const [archivedSupplierFilter, setArchivedSupplierFilter] = useState('');
-  const [archivedProductFilter, setArchivedProductFilter] = useState('');
-  const [archivedStatusFilter, setArchivedStatusFilter] = useState<'all' | 'approved' | 'rejected'>('all');
-  const [archivedFeedback, setArchivedFeedback] = useState<string | null>(null);
-  const [selectedArchivedOrder, setSelectedArchivedOrder] = useState<any | null>(null);
 
   const fetchArchivedRecords = async (expandAfter = true) => {
     setIsLoadingArchived(true);
