@@ -138,6 +138,28 @@ export default function App() {
     } catch (e) {}
   }, []);
 
+  // Sync deleted arrival sheets tombstones from Firestore on initial app boot
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        import('./lib/firebase').then(({ db }) => {
+          import('firebase/firestore').then(({ doc, getDoc }) => {
+            getDoc(doc(db, 'app_metadata', 'deleted_arrival_sheets')).then(snap => {
+              if (snap && snap.exists()) {
+                const ids = snap.data()?.ids;
+                if (Array.isArray(ids) && ids.length > 0) {
+                  import('./lib/utils').then(({ addDeletedSheetIds }) => {
+                    addDeletedSheetIds(ids);
+                  });
+                }
+              }
+            }).catch(() => {});
+          });
+        }).catch(() => {});
+      }
+    } catch (e) {}
+  }, []);
+
   // Support custom admin subdomain (admin.tejascanvassing.com)
   useEffect(() => {
     try {

@@ -138,8 +138,13 @@ export function organizeArrivalSheetsByMonth(
   const isSheetPermanentlyDeleted = (sheetIdOrName?: string) => {
     if (!sheetIdOrName) return false;
     const clean = String(sheetIdOrName).trim().toLowerCase();
-    const idSlug = `sheet-${clean.replace(/[^a-z0-9]/g, '-')}`;
-    return deletedSheetIds.has(clean) || deletedSheetIds.has(idSlug);
+    const cleanNoPrefix = clean.replace(/^sheet-/, '');
+    const idSlug = `sheet-${cleanNoPrefix.replace(/[^a-z0-9]/g, '-')}`;
+    const unslugged = cleanNoPrefix.replace(/-/g, ' ');
+    return deletedSheetIds.has(clean) || 
+           deletedSheetIds.has(idSlug) || 
+           deletedSheetIds.has(cleanNoPrefix) || 
+           deletedSheetIds.has(unslugged);
   };
 
   const isRowPermanentlyDeleted = (r: any) => {
@@ -185,6 +190,10 @@ export function organizeArrivalSheetsByMonth(
         s.data.forEach((row, idx) => {
           if (!isMeaningfulRow(row) || isRowPermanentlyDeleted(row)) return;
           const targetSheetName = getMonthYearFromDate(row.date) || currentMonthYear;
+          if (isSheetPermanentlyDeleted(targetSheetName)) {
+            return;
+          }
+
           if (!sheetRowMaps.has(targetSheetName)) {
             sheetRowMaps.set(targetSheetName, new Map());
           }
@@ -215,6 +224,10 @@ export function organizeArrivalSheetsByMonth(
                 targetSheetName = dateMonthYear;
               }
             }
+          }
+
+          if (isSheetPermanentlyDeleted(targetSheetName)) {
+            return;
           }
 
           if (!sheetRowMaps.has(targetSheetName)) {

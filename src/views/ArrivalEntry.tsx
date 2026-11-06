@@ -47,7 +47,7 @@ import { useNavigate } from 'react-router-dom';
 import { getVerifiedUserRole } from '../lib/auth';
 import { cn, formatINR, getRegisteredSuppliers, getRegisteredBuyerNames, getRegisteredBuyers, sanitizeSupplierName, addDeletedArrivalIds, addDeletedSheetIds, getDeletedSheetIds } from '../lib/utils';
 import { getCollectionDocs, setCollectionDoc, deleteCollectionDoc, db, invalidateCollectionCache, autoCreateArrivalEntryForIncomingLog } from '../lib/firebase';
-import { doc, writeBatch, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, writeBatch, collection, query, where, getDocs, getDoc } from 'firebase/firestore';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -268,13 +268,28 @@ export default function ArrivalEntry() {
 
   // Sheets state - Automatically organized into Month + Year sheets; "All Arrivals" is removed
   const [sheets, setSheets] = useState<Sheet[]>(() => {
+    const deletedSheetIds = getDeletedSheetIds();
+    const isSheetDeleted = (sheet: any) => {
+      if (!sheet) return true;
+      const sId = String(sheet.id || '').trim().toLowerCase();
+      const sName = String(sheet.name || '').trim().toLowerCase();
+      const cleanNoPrefix = sId.replace(/^sheet-/, '');
+      const sSlug = `sheet-${sName.replace(/[^a-z0-9]/g, '-')}`;
+      const unslugged = cleanNoPrefix.replace(/-/g, ' ');
+      return deletedSheetIds.has(sId) || 
+             deletedSheetIds.has(sName) || 
+             deletedSheetIds.has(sSlug) || 
+             deletedSheetIds.has(cleanNoPrefix) || 
+             deletedSheetIds.has(unslugged);
+    };
+
     let initialSheets: Sheet[] = [];
     const savedSheets = localStorage.getItem('arrival_entry_sheets_v4');
     if (savedSheets) {
       try {
         const parsed = JSON.parse(savedSheets);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          initialSheets = parsed;
+          initialSheets = parsed.filter(s => !isSheetDeleted(s));
         }
       } catch (e) {}
     }
@@ -289,8 +304,9 @@ export default function ArrivalEntry() {
     }
 
     const organized = organizeArrivalSheetsByMonth(initialSheets, [], INITIAL_ROWS);
-    localStorage.setItem('arrival_entry_sheets_v4', JSON.stringify(organized.sheets));
-    return organized.sheets;
+    const finalCleanSheets = organized.sheets.filter(s => !isSheetDeleted(s));
+    localStorage.setItem('arrival_entry_sheets_v4', JSON.stringify(finalCleanSheets));
+    return finalCleanSheets;
   });
 
   // Automatically determine today's local date and open the corresponding Month + Year sheet
@@ -655,29 +671,55 @@ export default function ArrivalEntry() {
     let isMounted = true;
     async function loadSheetData() {
       try {
-        const [cloudArrivals, cloudSheetsMeta] = await Promise.all([
+        const [cloudArrivals, cloudSheetsMeta, deletedSheetsDoc] = await Promise.all([
           getCollectionDocs('arrival_entries').catch(() => []),
-          getCollectionDocs('arrival_sheets').catch(() => [])
+          getCollectionDocs('arrival_sheets').catch(() => []),
+          getDoc(doc(db, 'app_metadata', 'deleted_arrival_sheets')).catch(() => null)
         ]);
         if (!isMounted) return;
 
+        // Sync tombstones from Firestore app_metadata if present
+        if (deletedSheetsDoc && typeof deletedSheetsDoc.data === 'function') {
+          const cloudDelIds = deletedSheetsDoc.data()?.ids;
+          if (Array.isArray(cloudDelIds) && cloudDelIds.length > 0) {
+            addDeletedSheetIds(cloudDelIds);
+          }
+        }
+
+        const delSheetsSet = getDeletedSheetIds();
+        const isSheetDeleted = (sheet: any) => {
+          if (!sheet) return true;
+          const sId = String(sheet.id || '').trim().toLowerCase();
+          const sName = String(sheet.name || '').trim().toLowerCase();
+          const cleanNoPrefix = sId.replace(/^sheet-/, '');
+          const sSlug = `sheet-${sName.replace(/[^a-z0-9]/g, '-')}`;
+          const unslugged = cleanNoPrefix.replace(/-/g, ' ');
+          return delSheetsSet.has(sId) || 
+                 delSheetsSet.has(sName) || 
+                 delSheetsSet.has(sSlug) || 
+                 delSheetsSet.has(cleanNoPrefix) || 
+                 delSheetsSet.has(unslugged);
+        };
+
         setSheets(prevSheets => {
+          const filteredPrev = prevSheets.filter(s => !isSheetDeleted(s));
           const organized = organizeArrivalSheetsByMonth(
-            prevSheets, 
+            filteredPrev, 
             cloudArrivals, 
             INITIAL_ROWS, 
             currentSheetId,
             cloudSheetsMeta
           );
-          localStorage.setItem('arrival_entry_sheets_v4', JSON.stringify(organized.sheets));
-          const activeSheet = organized.sheets.find(s => s.id === currentSheetId) || organized.sheets[0];
+          const finalCleanSheets = organized.sheets.filter(s => !isSheetDeleted(s));
+          localStorage.setItem('arrival_entry_sheets_v4', JSON.stringify(finalCleanSheets));
+          const activeSheet = finalCleanSheets.find(s => s.id === currentSheetId) || finalCleanSheets[0];
           if (activeSheet) {
             localStorage.setItem('arrival_entry_data_v4', JSON.stringify(activeSheet.data));
           }
 
-          // Backfill/seed any local or discovered sheets into Firestore arrival_sheets if missing
-          organized.sheets.forEach(s => {
-            if (s && s.id && s.name && !cloudSheetsMeta.some((cm: any) => cm.id === s.id || cm.name?.toLowerCase() === s.name.toLowerCase())) {
+          // Backfill/seed any local or discovered sheets into Firestore arrival_sheets if missing (NEVER deleted sheets!)
+          finalCleanSheets.forEach(s => {
+            if (s && s.id && s.name && !isSheetDeleted(s) && !cloudSheetsMeta.some((cm: any) => cm.id === s.id || cm.name?.toLowerCase() === s.name.toLowerCase())) {
               setCollectionDoc('arrival_sheets', s.id, { id: s.id, name: s.name, createdAt: Date.now() }).catch(() => {});
             }
           });

@@ -341,15 +341,76 @@ function getLocalBackup(collectionName: string): any[] | null {
             const delSheetRaw = localStorage.getItem('deleted_arrival_sheet_ids');
             if (delSheetRaw) {
               try {
-                const delSet = new Set(JSON.parse(delSheetRaw).map((id: string) => String(id).trim().toLowerCase()));
+                const delSet = new Set<string>();
+                JSON.parse(delSheetRaw).forEach((id: string) => {
+                  const s = String(id).trim().toLowerCase();
+                  if (s) {
+                    delSet.add(s);
+                    const noPrefix = s.replace(/^sheet-/, '');
+                    delSet.add(noPrefix);
+                    delSet.add(`sheet-${noPrefix.replace(/[^a-z0-9]/g, '-')}`);
+                    delSet.add(noPrefix.replace(/-/g, ' '));
+                  }
+                });
                 return parsed.filter((item: any) => {
                   if (!item) return false;
                   const sId = String(item.id || '').trim().toLowerCase();
                   const sName = String(item.name || '').trim().toLowerCase();
-                  return !delSet.has(sId) && !delSet.has(sName);
+                  const noPrefix = sId.replace(/^sheet-/, '');
+                  const sSlug = `sheet-${sName.replace(/[^a-z0-9]/g, '-')}`;
+                  const unslugged = noPrefix.replace(/-/g, ' ');
+                  return !delSet.has(sId) && !delSet.has(sName) && !delSet.has(sSlug) && !delSet.has(noPrefix) && !delSet.has(unslugged);
                 });
               } catch (e) {}
             }
+          } else if (collectionName === 'arrival_entries') {
+            const delRaw = localStorage.getItem('deleted_arrival_entry_ids');
+            const delSheetRaw = localStorage.getItem('deleted_arrival_sheet_ids');
+            const delSet = new Set<string>();
+            const delSheetSet = new Set<string>();
+            if (delRaw) {
+              try {
+                JSON.parse(delRaw).forEach((id: string) => {
+                  const s = String(id).trim().toLowerCase().replace(/^#/, '');
+                  if (s) delSet.add(s);
+                });
+              } catch (e) {}
+            }
+            if (delSheetRaw) {
+              try {
+                JSON.parse(delSheetRaw).forEach((id: string) => {
+                  const s = String(id).trim().toLowerCase();
+                  if (s) {
+                    delSheetSet.add(s);
+                    const noPrefix = s.replace(/^sheet-/, '');
+                    delSheetSet.add(noPrefix);
+                    delSheetSet.add(`sheet-${noPrefix.replace(/[^a-z0-9]/g, '-')}`);
+                    delSheetSet.add(noPrefix.replace(/-/g, ' '));
+                  }
+                });
+              } catch (e) {}
+            }
+            return parsed.filter((item: any) => {
+              if (!item) return false;
+              const rId = item.id ? String(item.id).trim().toLowerCase().replace(/^#/, '') : '';
+              const rBill = item.billNo ? String(item.billNo).trim().toLowerCase().replace(/^(bill[-.\s]*|bil[-.\s]*|tc[-.\s]*)/i, '') : '';
+              const rPo = String(item.purchaseOrderNo || item.mainPoNo || '').trim().toLowerCase().replace(/^#/, '');
+              const rParty = String(item.partyName || item.buyer || '').trim().toLowerCase();
+              const rSub = String(item.subOrderId || '').trim().toLowerCase();
+              const sId = String(item.sheetId || '').trim().toLowerCase();
+              const sName = String(item.sheetName || '').trim().toLowerCase();
+
+              if (sId && delSheetSet.has(sId)) return false;
+              if (sName && delSheetSet.has(sName)) return false;
+              if (rId && delSet.has(rId)) return false;
+              if (rBill && delSet.has(rBill)) return false;
+              if (rSub && delSet.has(rSub)) return false;
+              if (rPo && rBill && delSet.has(`${rPo}_${rBill}`)) return false;
+              if (rPo && rParty && delSet.has(`${rPo}_${rParty}`)) return false;
+              if (rPo && rSub && delSet.has(`${rPo}_${rSub}`)) return false;
+              if (rBill && rSub && delSet.has(`${rBill}_${rSub}`)) return false;
+              return true;
+            });
           }
           return parsed;
         }
@@ -1054,6 +1115,19 @@ export async function autoCreateArrivalEntryForIncomingLog(
     );
 
     if (targetSheetIndex === -1) {
+      // CRITICAL CHECK: If this sheet has been permanently deleted, DO NOT resurrect it!
+      try {
+        const delRaw = localStorage.getItem('deleted_arrival_sheet_ids');
+        if (delRaw) {
+          const delSet = new Set(JSON.parse(delRaw).map((id: string) => String(id).trim().toLowerCase()));
+          const sNameNorm = targetMonthYear.toLowerCase().trim();
+          const sIdNorm = expectedSheetId.toLowerCase().trim();
+          if (delSet.has(sNameNorm) || delSet.has(sIdNorm)) {
+            return orderId;
+          }
+        }
+      } catch (e) {}
+
       const newSheet = {
         id: expectedSheetId,
         name: targetMonthYear,

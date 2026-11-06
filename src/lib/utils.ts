@@ -336,7 +336,18 @@ export function getDeletedSheetIds(): Set<string> {
     if (!raw) return new Set();
     const arr = JSON.parse(raw);
     if (Array.isArray(arr)) {
-      return new Set(arr.map((id: string) => String(id).trim().toLowerCase()));
+      const set = new Set<string>();
+      arr.forEach((id: string) => {
+        const norm = String(id).trim().toLowerCase();
+        if (norm) {
+          set.add(norm);
+          const noPrefix = norm.replace(/^sheet-/, '');
+          set.add(noPrefix);
+          set.add(`sheet-${noPrefix.replace(/[^a-z0-9]/g, '-')}`);
+          set.add(noPrefix.replace(/-/g, ' '));
+        }
+      });
+      return set;
     }
   } catch (e) {}
   return new Set();
@@ -347,9 +358,68 @@ export function addDeletedSheetIds(ids: string[]): void {
     const current = getDeletedSheetIds();
     ids.forEach(id => {
       const norm = String(id).trim().toLowerCase();
-      if (norm) current.add(norm);
+      if (norm) {
+        current.add(norm);
+        const noPrefix = norm.replace(/^sheet-/, '');
+        current.add(noPrefix);
+        current.add(`sheet-${noPrefix.replace(/[^a-z0-9]/g, '-')}`);
+        current.add(noPrefix.replace(/-/g, ' '));
+      }
     });
-    localStorage.setItem('deleted_arrival_sheet_ids', JSON.stringify(Array.from(current)));
+    const arr = Array.from(current);
+    localStorage.setItem('deleted_arrival_sheet_ids', JSON.stringify(arr));
+
+    // Immediately sanitize all local storage sheet caches so deleted sheets NEVER render on cold start
+    const isDeletedItem = (sheetOrDoc: any) => {
+      if (!sheetOrDoc) return true;
+      const sId = String(sheetOrDoc.id || '').trim().toLowerCase();
+      const sName = String(sheetOrDoc.name || '').trim().toLowerCase();
+      const sSlug = `sheet-${sName.replace(/[^a-z0-9]/g, '-')}`;
+      const unslugged = sId.replace(/^sheet-/, '').replace(/-/g, ' ');
+      return current.has(sId) || current.has(sName) || current.has(sSlug) || current.has(unslugged);
+    };
+
+    ['arrival_entry_sheets_v4', 'arrival_sheets', 'firestore_cache_arrival_sheets'].forEach(key => {
+      try {
+        const raw = localStorage.getItem(key);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            const filtered = parsed.filter(item => !isDeletedItem(item));
+            localStorage.setItem(key, JSON.stringify(filtered));
+          }
+        }
+      } catch (e) {}
+    });
+
+    // Also sanitize arrival_entry_data_v4 and firestore_cache_arrival_entries to remove orphaned rows
+    ['arrival_entry_data_v4', 'firestore_cache_arrival_entries'].forEach(key => {
+      try {
+        const raw = localStorage.getItem(key);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            const filtered = parsed.filter(row => {
+              if (!row) return false;
+              const sId = String(row.sheetId || '').trim().toLowerCase();
+              const sName = String(row.sheetName || '').trim().toLowerCase();
+              return !current.has(sId) && !current.has(sName);
+            });
+            localStorage.setItem(key, JSON.stringify(filtered));
+          }
+        }
+      } catch (e) {}
+    });
+
+    // Cloud fire-and-forget sync to Firestore app_metadata
+    if (typeof window !== 'undefined') {
+      import('./firebase').then(({ setCollectionDoc }) => {
+        setCollectionDoc('app_metadata', 'deleted_arrival_sheets', {
+          ids: arr,
+          updatedAt: Date.now()
+        }).catch(() => {});
+      }).catch(() => {});
+    }
   } catch (e) {}
 }
 
