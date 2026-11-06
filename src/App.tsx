@@ -112,6 +112,28 @@ export default function App() {
             }
           } catch {}
         }
+
+        // Deep-clean all localStorage & sessionStorage keys containing legacy email domain
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key) {
+            const val = localStorage.getItem(key);
+            if (val && val.includes('riceaggregator.com')) {
+              const cleaned = val.replace(/tejasadinarayan@riceaggregator\.com/gi, 'nani@tejasc.in').replace(/riceaggregator\.com/gi, 'tejasc.in');
+              localStorage.setItem(key, cleaned);
+            }
+          }
+        }
+        for (let i = 0; i < sessionStorage.length; i++) {
+          const key = sessionStorage.key(i);
+          if (key) {
+            const val = sessionStorage.getItem(key);
+            if (val && val.includes('riceaggregator.com')) {
+              const cleaned = val.replace(/tejasadinarayan@riceaggregator\.com/gi, 'nani@tejasc.in').replace(/riceaggregator\.com/gi, 'tejasc.in');
+              sessionStorage.setItem(key, cleaned);
+            }
+          }
+        }
       }
     } catch (e) {}
   }, []);
