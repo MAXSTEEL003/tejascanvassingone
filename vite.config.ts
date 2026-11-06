@@ -18,7 +18,10 @@ export default defineConfig({
         output: {
           manualChunks(id) {
             if (id.includes('node_modules')) {
-              if (id.includes('react') || id.includes('react-dom') || id.includes('react-router-dom')) {
+              if (/[\\/]node_modules[\\/]lucide-react[\\/]/.test(id)) {
+                return 'vendor-icons';
+              }
+              if (/[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom)[\\/]/.test(id)) {
                 return 'vendor-react';
               }
               if (id.includes('firebase')) {
@@ -32,9 +35,6 @@ export default defineConfig({
               }
               if (id.includes('jspdf') || id.includes('html2canvas')) {
                 return 'vendor-pdf';
-              }
-              if (id.includes('lucide-react')) {
-                return 'vendor-icons';
               }
               if (id.includes('recharts') || id.includes('d3-') || id.includes('victory-vendor')) {
                 return 'vendor-charts';

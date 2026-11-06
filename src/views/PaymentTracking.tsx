@@ -42,6 +42,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { cn, formatINR, formatDateToDDMMYYYY, getDeletedArrivalIds, addDeletedArrivalIds } from '../lib/utils';
 import { getCollectionDocs, syncCollection, setCollectionDoc, deleteCollectionDoc, invalidateCollectionCache } from '../lib/firebase';
 import { recordPaymentClearedForPatti, unmarkPaymentClearedForPatti } from '../utils/pattiBookManager';
+import { revertArrivalInPlacedOrders } from '../utils/orderOperations';
 import { PRELOADED_TRANSACTIONS } from '../lib/analyticsEngine';
 import InlinePattiSlip from '../components/InlinePattiSlip';
 import {
@@ -1700,17 +1701,30 @@ export default function PaymentTracking() {
     const cleanBill = String(txn.billNo || rawRow.billNo || '').trim();
     const po = String(rawRow.purchaseOrderNo || rawRow.mainPoNo || txn.rawOrder?.purchaseOrderNo || '').trim();
     const party = String(txn.buyer || rawRow.partyName || '').trim();
+    const subId = String(rawRow.subOrderId || txn.subOrderId || '').trim();
+
+    // 1. Revert order arrival status in placed_orders so reconciliation never resurrects this row!
+    revertArrivalInPlacedOrders({
+      poNo: po,
+      billNo: cleanBill,
+      subOrderId: subId,
+      partyName: party
+    }).catch(err => console.error("Error reverting order arrival:", err));
 
     const idsToDelete: string[] = [];
     if (rowId) idsToDelete.push(rowId);
     if (cleanBill) idsToDelete.push(cleanBill);
+    if (po) idsToDelete.push(po);
+    if (subId) idsToDelete.push(subId);
     if (po && cleanBill) idsToDelete.push(`${po}_${cleanBill}`);
     if (po && party) idsToDelete.push(`${po}_${party}`);
+    if (po && subId) idsToDelete.push(`${po}_${subId}`);
+    if (cleanBill && subId) idsToDelete.push(`${cleanBill}_${subId}`);
 
-    // 1. Add to persistent tombstones
+    // 2. Add to persistent tombstones
     addDeletedArrivalIds(idsToDelete);
 
-    // 2. Remove from local sheets state & localStorage
+    // 3. Remove from local sheets state & localStorage
     setAllSheets(prevSheets => {
       const updated = prevSheets.map(sheet => {
         if (!Array.isArray(sheet.data)) return sheet;
@@ -1720,9 +1734,12 @@ export default function PaymentTracking() {
           const rBill = String(r.billNo || '').trim();
           const rPo = String(r.purchaseOrderNo || r.mainPoNo || '').trim();
           const rParty = String(r.partyName || r.buyer || '').trim();
+          const rSub = String(r.subOrderId || '').trim();
           if (cleanBill && rBill.toLowerCase() === cleanBill.toLowerCase()) return false;
+          if (subId && rSub.toLowerCase() === subId.toLowerCase()) return false;
           if (po && cleanBill && rPo.toLowerCase() === po.toLowerCase() && rBill.toLowerCase() === cleanBill.toLowerCase()) return false;
           if (po && party && rPo.toLowerCase() === po.toLowerCase() && rParty.toLowerCase() === party.toLowerCase()) return false;
+          if (po && subId && rPo.toLowerCase() === po.toLowerCase() && rSub.toLowerCase() === subId.toLowerCase()) return false;
           return true;
         });
         return { ...sheet, data: filtered };
@@ -1734,7 +1751,7 @@ export default function PaymentTracking() {
       return updated;
     });
 
-    // 3. Purge matching documents in Cloud Firestore
+    // 4. Purge matching documents in Cloud Firestore
     try {
       if (rowId && !String(rowId).startsWith('row-empty-')) {
         await deleteCollectionDoc('arrival_entries', rowId).catch(() => {});
@@ -1746,9 +1763,13 @@ export default function PaymentTracking() {
         const dBill = String(d.billNo || '').trim().toLowerCase();
         const dPo = String(d.purchaseOrderNo || d.mainPoNo || '').trim().toLowerCase();
         const dParty = String(d.partyName || d.buyer || '').trim().toLowerCase();
+        const dSub = String(d.subOrderId || '').trim().toLowerCase();
+
         if (cleanBill && dBill === cleanBill.toLowerCase()) return true;
+        if (subId && dSub === subId.toLowerCase()) return true;
         if (po && cleanBill && dPo === po.toLowerCase() && dBill === cleanBill.toLowerCase()) return true;
         if (po && party && dPo === po.toLowerCase() && dParty === party.toLowerCase()) return true;
+        if (po && subId && dPo === po.toLowerCase() && dSub === subId.toLowerCase()) return true;
         return false;
       });
 
@@ -1762,7 +1783,7 @@ export default function PaymentTracking() {
       console.error('Error deleting arrival entry from cloud:', e);
     }
 
-    // 4. Invalidate selection & notify components
+    // 5. Invalidate selection & notify components
     if (selectedTxn?.id === txn.id) setSelectedTxn(null);
     window.dispatchEvent(new Event('arrival-entry-updated'));
     window.dispatchEvent(new Event('storage'));

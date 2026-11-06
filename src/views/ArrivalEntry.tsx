@@ -55,7 +55,8 @@ import ManifestCameraScanner, { ParsedManifestData } from '../components/Manifes
 import BillPhotoModal from '../components/BillPhotoModal';
 import ArrivalPaymentModal, { PaymentEntryData } from '../components/ArrivalPaymentModal';
 import { recordPaymentClearedForPatti, unmarkPaymentClearedForPatti } from '../utils/pattiBookManager';
-import { isDateBeforeNov3, resolveSubOrderNumber } from '../utils/orderOperations';
+import { isDateBeforeNov3, resolveSubOrderNumber, revertArrivalInPlacedOrders } from '../utils/orderOperations';
+import { getDeletedArrivalIds } from '../lib/utils';
 import ExcelImportModal from '../components/ExcelImportModal';
 import ColumnVisibilityModal from '../components/ColumnVisibilityModal';
 import ExcelColumnFilter, { FilterCondition as ExcelFilterCondition } from '../components/ExcelColumnFilter';
@@ -683,21 +684,33 @@ export default function ArrivalEntry() {
 
           // Reconcile any arrived orders from placed_orders that might be missing from the sheets
           try {
+            const deletedArrivalIds = getDeletedArrivalIds();
             const rawPlaced = localStorage.getItem('placed_orders');
             const placedList: any[] = rawPlaced ? JSON.parse(rawPlaced) : [];
             if (Array.isArray(placedList) && placedList.length > 0) {
               placedList.forEach((order: any) => {
                 if (!order) return;
+                const poId = String(order.id || '').trim().toLowerCase().replace(/^#/, '');
                 const hasSubs = Array.isArray(order.originalOrders) && order.originalOrders.length > 0;
                 if (hasSubs) {
                   order.originalOrders.forEach((sub: any, sIdx: number) => {
                     const isSubArrived = Boolean(sub.isArrived === true || sub.status === 'Arrived');
                     const subBill = (sub.actualSupplierBillNo || sub.billNo || '').trim();
+                    const subId = String(sub.id || sub.supplierSubOrderNo || `sub-${sIdx}`).trim().toLowerCase();
+                    const subParty = String(sub.buyer || order.buyer || '').trim().toLowerCase();
+
+                    // CRITICAL: Skip any sub-order or bill that was deleted by the user!
+                    if (deletedArrivalIds.has(subId)) return;
+                    if (subBill && deletedArrivalIds.has(subBill.toLowerCase())) return;
+                    if (poId && subBill && deletedArrivalIds.has(`${poId}_${subBill.toLowerCase()}`)) return;
+                    if (poId && subId && deletedArrivalIds.has(`${poId}_${subId}`)) return;
+                    if (poId && subParty && deletedArrivalIds.has(`${poId}_${subParty}`)) return;
+
                     if (isSubArrived && subBill) {
                       const exists = organized.sheets.some(s => 
                         Array.isArray(s.data) && s.data.some(r => 
                           isMeaningfulRow(r) && (
-                            (r.subOrderId && (r.subOrderId === sub.id || r.subOrderId === `sub-${sIdx}`)) ||
+                            (r.subOrderId && (String(r.subOrderId).toLowerCase() === subId || r.subOrderId === `sub-${sIdx}`)) ||
                             (r.billNo && String(r.billNo).trim().toLowerCase() === subBill.toLowerCase())
                           )
                         )
@@ -709,6 +722,14 @@ export default function ArrivalEntry() {
                   });
                 } else if (order.status === 'Arrived' && (order.actualSupplierBillNo || order.billNo)) {
                   const bill = (order.actualSupplierBillNo || order.billNo).trim();
+                  const party = String(order.buyer || '').trim().toLowerCase();
+
+                  // CRITICAL: Skip any order or bill that was deleted by the user!
+                  if (poId && deletedArrivalIds.has(poId)) return;
+                  if (bill && deletedArrivalIds.has(bill.toLowerCase())) return;
+                  if (poId && bill && deletedArrivalIds.has(`${poId}_${bill.toLowerCase()}`)) return;
+                  if (poId && party && deletedArrivalIds.has(`${poId}_${party}`)) return;
+
                   const exists = organized.sheets.some(s => 
                     Array.isArray(s.data) && s.data.some(r => 
                       isMeaningfulRow(r) && (
@@ -2406,36 +2427,74 @@ export default function ArrivalEntry() {
     const cleanBill = targetRow.billNo ? String(targetRow.billNo).trim() : '';
     const targetPo = String(targetRow.purchaseOrderNo || targetRow.mainPoNo || '').trim();
     const targetParty = String(targetRow.partyName || targetRow.buyer || '').trim();
+    const targetSub = String(targetRow.subOrderId || '').trim();
 
     if (rowId && !rowId.startsWith('row-empty-')) {
       deletedDocIdsRef.current.add(rowId);
     }
 
-    // Persist tombstones so this row is never resurrected in Payment Tracking, Sheets, or Cloud sync
+    // 1. Revert order arrival status in placed_orders so reconciliation never resurrects this row!
+    revertArrivalInPlacedOrders({
+      poNo: targetPo,
+      billNo: cleanBill,
+      subOrderId: targetSub,
+      partyName: targetParty
+    }).catch(err => console.error("Error reverting order arrival:", err));
+
+    // 2. Persist comprehensive tombstones so this row is never resurrected in Sheets, Payment Tracking, or Cloud sync
     const idsToDelete: string[] = [];
     if (rowId) idsToDelete.push(rowId);
     if (cleanBill) idsToDelete.push(cleanBill);
+    if (targetPo) idsToDelete.push(targetPo);
+    if (targetSub) idsToDelete.push(targetSub);
     if (targetPo && cleanBill) idsToDelete.push(`${targetPo}_${cleanBill}`);
     if (targetPo && targetParty) idsToDelete.push(`${targetPo}_${targetParty}`);
+    if (targetPo && targetSub) idsToDelete.push(`${targetPo}_${targetSub}`);
+    if (cleanBill && targetSub) idsToDelete.push(`${cleanBill}_${targetSub}`);
     addDeletedArrivalIds(idsToDelete);
 
-    const defaultDate = getDefaultDateForSheet(currentSheet.name);
-    const replacementEmptyRow = {
-      id: `row-empty-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      date: defaultDate,
-      sheetId: currentSheetId,
-      sheetName: currentSheet.name
-    };
+    // 3. Purge matching row from all sheets in local state and localStorage
+    setSheets(prevSheets => {
+      const updated = prevSheets.map(s => {
+        if (!Array.isArray(s.data)) return s;
+        const filtered = s.data.filter(r => {
+          if (!r) return false;
+          if (rowId && r.id === rowId) return false;
+          const rBill = String(r.billNo || '').trim();
+          const rPo = String(r.purchaseOrderNo || r.mainPoNo || '').trim();
+          const rParty = String(r.partyName || r.buyer || '').trim();
+          const rSub = String(r.subOrderId || '').trim();
+          if (cleanBill && rBill.toLowerCase() === cleanBill.toLowerCase()) return false;
+          if (targetSub && rSub.toLowerCase() === targetSub.toLowerCase()) return false;
+          if (targetPo && cleanBill && rPo.toLowerCase() === targetPo.toLowerCase() && rBill.toLowerCase() === cleanBill.toLowerCase()) return false;
+          if (targetPo && targetParty && rPo.toLowerCase() === targetPo.toLowerCase() && rParty.toLowerCase() === targetParty.toLowerCase()) return false;
+          if (targetPo && targetSub && rPo.toLowerCase() === targetPo.toLowerCase() && rSub.toLowerCase() === targetSub.toLowerCase()) return false;
+          return true;
+        });
 
-    const nextData = data.filter(r => r && r.id !== targetRow.id);
-    if (nextData.length < INITIAL_ROWS) {
-      nextData.push(replacementEmptyRow);
-    }
+        const defaultDate = getDefaultDateForSheetName(s.name);
+        while (filtered.length < INITIAL_ROWS) {
+          filtered.push({
+            id: `row-empty-${Date.now()}-${filtered.length}-${Math.random().toString(36).substring(2, 6)}`,
+            date: defaultDate,
+            sheetId: s.id,
+            sheetName: s.name
+          });
+        }
+        return { ...s, data: filtered };
+      });
 
-    setData(nextData);
+      localStorage.setItem('arrival_entry_sheets_v4', JSON.stringify(updated));
+      const activeSheet = updated.find(s => s.id === currentSheetId) || updated[0];
+      if (activeSheet) {
+        localStorage.setItem('arrival_entry_data_v4', JSON.stringify(activeSheet.data));
+      }
+      return updated;
+    });
+
     setGridKey(k => k + 1);
 
-    // Asynchronously delete all matching docs from Firestore arrival_entries
+    // 4. Asynchronously delete all matching docs from Firestore arrival_entries
     (async () => {
       try {
         if (rowId && !rowId.startsWith('row-empty-')) {
@@ -2444,13 +2503,17 @@ export default function ArrivalEntry() {
         const cloudArrivals = await getCollectionDocs('arrival_entries', true).catch(() => []);
         const matchingDocs = cloudArrivals.filter((d: any) => {
           if (!d) return false;
-          if (d.id === rowId) return true;
+          if (rowId && d.id === rowId) return true;
           const dBill = String(d.billNo || '').trim().toLowerCase();
           const dPo = String(d.purchaseOrderNo || d.mainPoNo || '').trim().toLowerCase();
           const dParty = String(d.partyName || d.buyer || '').trim().toLowerCase();
+          const dSub = String(d.subOrderId || '').trim().toLowerCase();
+
           if (cleanBill && dBill === cleanBill.toLowerCase()) return true;
+          if (targetSub && dSub === targetSub.toLowerCase()) return true;
           if (targetPo && cleanBill && dPo === targetPo.toLowerCase() && dBill === cleanBill.toLowerCase()) return true;
           if (targetPo && targetParty && dPo === targetPo.toLowerCase() && dParty === targetParty.toLowerCase()) return true;
+          if (targetPo && targetSub && dPo === targetPo.toLowerCase() && dSub === targetSub.toLowerCase()) return true;
           return false;
         });
 
@@ -2466,7 +2529,7 @@ export default function ArrivalEntry() {
         console.error("Cloud purge failed for deleted arrival row:", err);
       }
     })();
-  }, [data, filteredData, currentSheetId, currentSheet.name, saveToHistory, setData]);
+  }, [filteredData, currentSheetId, saveToHistory]);
 
   const addRow = useCallback(() => {
     handleInsertRow(undefined, 'below');

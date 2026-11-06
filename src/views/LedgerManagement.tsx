@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { 
   Search, 
@@ -122,19 +122,19 @@ export default function LedgerManagement() {
   }, []);
 
   // Unique Lists for Dropdown Filters
-  const uniqueBuyers = useMemo(() => {
+  const uniqueBuyers = React.useMemo(() => {
     const set = new Set<string>();
     orders.forEach(o => { if (o?.buyer) set.add(o.buyer); });
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [orders]);
 
-  const uniqueSuppliers = useMemo(() => {
+  const uniqueSuppliers = React.useMemo(() => {
     const set = new Set<string>();
     orders.forEach(o => { if (o?.supplier) set.add(o.supplier); });
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [orders]);
 
-  const uniqueBrands = useMemo(() => {
+  const uniqueBrands = React.useMemo(() => {
     const set = new Set<string>();
     orders.forEach(o => { if (o?.brand) set.add(o.brand); });
     return Array.from(set).sort((a, b) => a.localeCompare(b));
@@ -148,7 +148,7 @@ export default function LedgerManagement() {
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
 
   // Filtered Orders (runs 100% locally in-memory with zero Firestore reads)
-  const filteredOrders = useMemo(() => {
+  const filteredOrders = React.useMemo(() => {
     return orders.filter(po => {
       if (!po) return false;
 
@@ -234,7 +234,7 @@ export default function LedgerManagement() {
   ]);
 
   // Daily Order Visual Grouping (Section 2)
-  const groupedOrders = useMemo(() => {
+  const groupedOrders = React.useMemo(() => {
     const groups: { [dateKey: string]: { dateKey: string; timestamp: number; items: OperationalPO[] } } = {};
 
     filteredOrders.forEach(po => {
@@ -254,7 +254,7 @@ export default function LedgerManagement() {
   }, [filteredOrders]);
 
   // Operational Summary Metrics (Section 9)
-  const summary = useMemo(() => {
+  const summary = React.useMemo(() => {
     let totalPoQtl = 0;
     let totalArrivalQtl = 0;
     let pendingLoadingsCount = 0;
@@ -279,7 +279,7 @@ export default function LedgerManagement() {
   }, [filteredOrders]);
 
   // Active filter count
-  const activeFiltersCount = useMemo(() => {
+  const activeFiltersCount = React.useMemo(() => {
     let count = 0;
     if (searchQuery.trim()) count++;
     if (dateRange !== 'all') count++;
@@ -306,7 +306,7 @@ export default function LedgerManagement() {
   };
 
   // Buyer Mini Profile Data (Section 7)
-  const buyerProfileData = useMemo(() => {
+  const buyerProfileData = React.useMemo(() => {
     if (!selectedBuyerForModal) return null;
     const buyerName = selectedBuyerForModal.toLowerCase();
     const buyerOrders = orders.filter(o => (o?.buyer || '').toLowerCase() === buyerName);

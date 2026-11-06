@@ -19,7 +19,7 @@ import {
   Firestore
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
-import { sanitizeSupplierName } from './utils';
+import { sanitizeSupplierName, getDeletedArrivalIds } from './utils';
 import { getMonthYearFromDate, normalizeDate } from '../utils/dateUtils';
 import { getCurrentMonthYearSheetName } from '../utils/arrivalSheetsManager';
 
@@ -1095,6 +1095,18 @@ export async function autoCreateArrivalEntryForIncomingLog(
 
         const subMiller = sanitizeSupplierName(sub.supplier || sub.seller || targetOrder.origin || targetOrder.supplier, "DIRECT MILL");
 
+        // CRITICAL CHECK: If this sub-order or bill has been explicitly deleted, NEVER resurrect it!
+        const deletedArrivalIds = getDeletedArrivalIds();
+        const normSubId = String(subId).trim().toLowerCase();
+        const normBNo = bNo ? String(bNo).trim().toLowerCase() : '';
+        const normParty = partyName ? String(partyName).trim().toLowerCase() : '';
+
+        if (normSubId && deletedArrivalIds.has(normSubId)) return;
+        if (normBNo && deletedArrivalIds.has(normBNo)) return;
+        if (normPo && normBNo && deletedArrivalIds.has(`${normPo.toLowerCase()}_${normBNo}`)) return;
+        if (normPo && normParty && deletedArrivalIds.has(`${normPo.toLowerCase()}_${normParty}`)) return;
+        if (normPo && normSubId && deletedArrivalIds.has(`${normPo.toLowerCase()}_${normSubId}`)) return;
+
         const subLhRate = (typeof lhPerQtl === 'object' && lhPerQtl !== null)
           ? (lhPerQtl[subId] !== undefined ? Number(lhPerQtl[subId]) : (lhPerQtl[orderId] !== undefined ? Number(lhPerQtl[orderId]) : 0))
           : (typeof lhPerQtl === 'number' ? lhPerQtl : (sub.lhPerQtl || targetOrder.lhPerQtl || 0));
@@ -1169,6 +1181,16 @@ export async function autoCreateArrivalEntryForIncomingLog(
 
       const orderMiller = sanitizeSupplierName(targetOrder.supplier || targetOrder.seller || targetOrder.origin, "DIRECT MILL");
 
+      // CRITICAL CHECK: If this single order or bill has been explicitly deleted, NEVER resurrect it!
+      const deletedArrivalIds = getDeletedArrivalIds();
+      const normBNo = bNo ? String(bNo).trim().toLowerCase() : '';
+      const normParty = partyName ? String(partyName).trim().toLowerCase() : '';
+
+      if (normPo && deletedArrivalIds.has(normPo.toLowerCase())) return orderId;
+      if (normBNo && deletedArrivalIds.has(normBNo)) return orderId;
+      if (normPo && normBNo && deletedArrivalIds.has(`${normPo.toLowerCase()}_${normBNo}`)) return orderId;
+      if (normPo && normParty && deletedArrivalIds.has(`${normPo.toLowerCase()}_${normParty}`)) return orderId;
+
       const singleLhRate = (typeof lhPerQtl === 'object' && lhPerQtl !== null)
         ? (lhPerQtl[orderId] !== undefined ? Number(lhPerQtl[orderId]) : 0)
         : (typeof lhPerQtl === 'number' ? lhPerQtl : (targetOrder.lhPerQtl || 0));
@@ -1210,6 +1232,10 @@ export async function autoCreateArrivalEntryForIncomingLog(
         redirectedTo,
         lastUpdated: new Date().toISOString()
       });
+    }
+
+    if (newItemsToInject.length === 0) {
+      return orderId;
     }
 
     const firstBillNo = newItemsToInject[0]?.billNo || orderId;

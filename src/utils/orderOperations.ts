@@ -6,7 +6,7 @@
  * Provides unified, single-row-per-PO representation for Ledger and Pending Loadings.
  */
 
-import { getCollectionDocs, deleteCollectionDoc } from '../lib/firebase';
+import { getCollectionDocs, deleteCollectionDoc, setCollectionDoc } from '../lib/firebase';
 import { sanitizeSupplierName, getDeletedPlacedOrderIds, getDeletedProcurementIds, getRegisteredSuppliers, getDeletedArrivalIds } from '../lib/utils';
 
 export interface OperationalPO {
@@ -709,6 +709,128 @@ export function invalidateOperationalOrdersCache() {
       window.dispatchEvent(new CustomEvent('operational-orders-updated'));
     } catch (e) {}
   }
+}
+
+/**
+ * Reverts the arrived state of an order or sub-order in placed_orders
+ * when its corresponding arrival row is deleted from Arrival Entry.
+ * Ensures the order reverts to 'Approved'/'In Transit' and is never resurrected on refresh.
+ */
+export async function revertArrivalInPlacedOrders(opts: {
+  poNo?: string;
+  billNo?: string;
+  subOrderId?: string;
+  partyName?: string;
+}): Promise<boolean> {
+  try {
+    const raw = localStorage.getItem('placed_orders');
+    if (!raw) return false;
+    let placedOrders: any[] = JSON.parse(raw);
+    if (!Array.isArray(placedOrders) || placedOrders.length === 0) return false;
+
+    const normPo = (opts.poNo || '').trim().toLowerCase().replace(/^#/, '');
+    const normBill = (opts.billNo || '').trim().toLowerCase();
+    const normSub = (opts.subOrderId || '').trim().toLowerCase();
+    const normParty = (opts.partyName || '').trim().toLowerCase();
+
+    let modified = false;
+    const updatedOrders = placedOrders.map((order: any) => {
+      if (!order) return order;
+      const orderId = String(order.id || '').trim().toLowerCase().replace(/^#/, '');
+      const orderPo = String(order.purchaseOrderNo || '').trim().toLowerCase().replace(/^#/, '');
+      const orderBill = String(order.actualSupplierBillNo || order.billNo || '').trim().toLowerCase();
+      const hasSubs = Array.isArray(order.originalOrders) && order.originalOrders.length > 0;
+
+      // Check if this order matches
+      const isTargetOrder = (normPo && (orderId === normPo || orderPo === normPo)) ||
+                            (normBill && orderBill === normBill);
+
+      if (hasSubs) {
+        let subModified = false;
+        const updatedSubs = order.originalOrders.map((sub: any, sIdx: number) => {
+          const subId = String(sub.id || '').trim().toLowerCase();
+          const subSeq = String(sub.supplierSubOrderNo || '').trim().toLowerCase();
+          const subIdxStr = `sub-${sIdx}`;
+          const subBill = String(sub.actualSupplierBillNo || sub.billNo || '').trim().toLowerCase();
+          const subParty = String(sub.buyer || '').trim().toLowerCase();
+
+          // Does this sub-order match the deleted arrival?
+          const matchSubId = normSub && (subId === normSub || subSeq === normSub || subIdxStr === normSub);
+          const matchBill = normBill && subBill && (subBill === normBill);
+          const matchPartyAndPo = isTargetOrder && normParty && (subParty === normParty);
+
+          if (matchSubId || matchBill || matchPartyAndPo) {
+            subModified = true;
+            modified = true;
+            const { actualSupplierBillNo, billNo, arrivedAt, arrivedQty, settledRate, lh, lhPerQtl, lhAccepted, ...rest } = sub;
+            return {
+              ...rest,
+              isArrived: false,
+              status: 'Approved'
+            };
+          }
+          return sub;
+        });
+
+        if (subModified) {
+          const remainingArrivedCount = updatedSubs.filter((s: any) => s.isArrived === true || s.status === 'Arrived').length;
+          const totalCount = updatedSubs.length;
+          const isFullyArrived = totalCount > 0 && remainingArrivedCount === totalCount;
+          const calculatedProgress = remainingArrivedCount === 0 ? 50 : Math.round((remainingArrivedCount / totalCount) * 100);
+
+          const remainingBills: { [k: string]: string } = { ...(order.supplierBillNos || {}) };
+          if (normSub) {
+            delete remainingBills[normSub];
+            delete remainingBills[normSub.toUpperCase()];
+          }
+          if (normBill) {
+            Object.keys(remainingBills).forEach(k => {
+              if (String(remainingBills[k] || '').trim().toLowerCase() === normBill) {
+                delete remainingBills[k];
+              }
+            });
+          }
+
+          const updated = {
+            ...order,
+            status: isFullyArrived ? 'Arrived' : (remainingArrivedCount > 0 ? 'In Transit' : 'Approved'),
+            progress: calculatedProgress,
+            supplierBillNos: remainingBills,
+            originalOrders: updatedSubs
+          };
+
+          // Update in Firestore
+          setCollectionDoc('placed_orders', order.id, updated).catch(() => {});
+          return updated;
+        }
+      } else if (isTargetOrder) {
+        modified = true;
+        const { actualSupplierBillNo, billNo, arrivedAt, arrivedQty, ...rest } = order;
+        const updated = {
+          ...rest,
+          isArrived: false,
+          status: 'Approved',
+          progress: 50
+        };
+        // Update in Firestore
+        setCollectionDoc('placed_orders', order.id, updated).catch(() => {});
+        return updated;
+      }
+
+      return order;
+    });
+
+    if (modified) {
+      localStorage.setItem('placed_orders', JSON.stringify(updatedOrders));
+      window.dispatchEvent(new Event('placed-orders-updated'));
+      window.dispatchEvent(new Event('operational-orders-updated'));
+      window.dispatchEvent(new Event('storage'));
+      return true;
+    }
+  } catch (err) {
+    console.error('revertArrivalInPlacedOrders error:', err);
+  }
+  return false;
 }
 
 /**
