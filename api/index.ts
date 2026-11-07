@@ -257,7 +257,7 @@ authRouter.post("/login", (req, res) => {
           username: cleanUser || "tejasadinarayan",
           role: "admin",
           email: "nani@tejasc.in",
-          name: "Tejas Adinarayan (Admin HQ)",
+          name: "Tejas Adinarayan (Admin)",
         });
 
         return res.json({
@@ -266,7 +266,7 @@ authRouter.post("/login", (req, res) => {
           user: {
             role: "admin",
             username: cleanUser || "tejasadinarayan",
-            name: "Tejas Adinarayan (Admin HQ)",
+            name: "Tejas Adinarayan (Admin)",
             email: "nani@tejasc.in",
           }
         });

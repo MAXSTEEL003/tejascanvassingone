@@ -76,7 +76,7 @@ const features = [
 // ── Regional Focus ──
 const MARKET_IMAGE = "https://images.unsplash.com/photo-1759272548470-d0686d071036?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjYXJnbyUyMHNoaXBwaW5nJTIwY29udGFpbmVyJTIwcG9ydCUyMGdsb2JhbCUyMGxvZ2lzdGljc3xlbnwxfHx8fDE3NzE3ODQ1MTh8MA&ixlib=rb-4.1.0&q=80&w=1080";
 const regions = [
-  { name: "Karnataka (APMC HQ)", markets: ["Bengaluru · APMC Yeshwanthpur", "Mysuru", "Hubballi", "Belagavi", "Davanagere"], color: "#C9A158", pct: 55 },
+  { name: "Karnataka (APMC Hub)", markets: ["Bengaluru · APMC Yeshwanthpur", "Mysuru", "Hubballi", "Belagavi", "Davanagere"], color: "#C9A158", pct: 55 },
   { name: "Tamil Nadu", markets: ["Chennai Mandis", "Coimbatore APMC", "Madurai", "Tiruchirappalli", "Salem"], color: "#34D399", pct: 30 },
   { name: "Andhra Pradesh", markets: ["Vijayawada", "Guntur Mandi", "Visakhapatnam", "Miryalaguda", "Hyderabad"], color: "#60A5FA", pct: 45 },
 ];
@@ -539,7 +539,7 @@ export default function AboutView() {
                   Serving <span style={{ fontStyle: "italic" }}>Karnataka, Tamil Nadu & Andhra</span>
                 </h2>
                 <p style={{ fontSize: "13.5px", fontWeight: 300, color: "#6B7280", lineHeight: 1.7, marginBottom: "28px" }}>
-                  With headquarters at APMC Yard Yeshwanthpur, we provide dedicated rice canvassing across South India.
+                  Based at APMC Yard Yeshwanthpur, we provide dedicated rice canvassing across South India.
                 </p>
                 <div className="space-y-4">
                   {regions.map((reg, i) => (

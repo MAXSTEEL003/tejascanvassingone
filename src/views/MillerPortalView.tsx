@@ -3,6 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   Building2, 
   Package, 
+  MessageSquare, 
+  Send, 
   Clock, 
   CheckCircle2, 
   Truck, 
@@ -107,7 +109,7 @@ function generateSampleMillInvoice(
   ctx.fillText('COMMISSION BROKER:', 1120, 295);
   ctx.font = 'bold 20px sans-serif';
   ctx.fillStyle = '#B45309';
-  ctx.fillText('TEJAS CANVASSING HQ', 1120, 325);
+  ctx.fillText('TEJAS CANVASSING', 1120, 325);
   ctx.font = '16px sans-serif';
   ctx.fillStyle = '#64748B';
   ctx.fillText('APMC Yard, Bangalore • Karnataka', 1120, 355);
@@ -169,7 +171,7 @@ function generateSampleMillInvoice(
 export default function MillerPortalView() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = (searchParams.get('tab') as 'pos' | 'loadings' | 'payments' | 'profile') || 'pos';
+  const activeTab = (searchParams.get('tab') as 'pos' | 'loadings' | 'payments' | 'profile' | 'chat') || 'pos';
 
   // Role and Mill Resolution
   const userRole = getVerifiedUserRole();
@@ -211,6 +213,62 @@ export default function MillerPortalView() {
   const [arrivalEntries, setArrivalEntries] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [chatMessages, setChatMessages] = useState<any[]>([]);
+  const [chatInputText, setChatInputText] = useState('');
+  const [isSendingChat, setIsSendingChat] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Load chat messages for this mill
+  useEffect(() => {
+    const loadChats = () => {
+      try {
+        const raw = localStorage.getItem('miller_chats');
+        if (raw) {
+          setChatMessages(JSON.parse(raw));
+        }
+      } catch {}
+    };
+    loadChats();
+    window.addEventListener('miller-chat-updated', loadChats);
+    window.addEventListener('storage', loadChats);
+    return () => {
+      window.removeEventListener('miller-chat-updated', loadChats);
+      window.removeEventListener('storage', loadChats);
+    };
+  }, []);
+
+  const handleSendMillerChat = async () => {
+    const text = chatInputText.trim();
+    if (!text || !selectedMill) return;
+    setIsSendingChat(true);
+
+    const newMsg = {
+      id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      millName: selectedMill,
+      sender: 'miller',
+      senderName: selectedMill,
+      type: 'text',
+      text,
+      timestamp: new Date().toISOString(),
+      status: 'sent'
+    };
+
+    try {
+      const current = JSON.parse(localStorage.getItem('miller_chats') || '[]');
+      const updated = [...current, newMsg];
+      localStorage.setItem('miller_chats', JSON.stringify(updated));
+      setChatMessages(updated);
+      await setCollectionDoc('miller_chats', newMsg.id, newMsg);
+      window.dispatchEvent(new CustomEvent('miller-chat-updated'));
+      setChatInputText('');
+      setSuccessToast('✓ Message sent to Tejas Canvassing.');
+      setTimeout(() => setSuccessToast(null), 2500);
+    } catch (err) {
+      console.warn('Failed to send chat message:', err);
+    } finally {
+      setIsSendingChat(false);
+    }
+  };
   const [statusFilter, setStatusFilter] = useState<'all' | 'needs_ack' | 'dispatched' | 'arrived'>('all');
 
   // Modals
@@ -456,7 +514,26 @@ export default function MillerPortalView() {
       window.dispatchEvent(new CustomEvent('operational-orders-updated'));
       window.dispatchEvent(new Event('storage'));
 
-      setSuccessToast(`✓ PO #${order.id} acknowledged! Tejas HQ notified.`);
+      // Log acknowledgment to miller_chats
+      try {
+        const ackChat = {
+          id: `ack-${order.id}-${Date.now()}`,
+          millName: selectedMill,
+          sender: 'miller',
+          senderName: selectedMill,
+          type: 'ack',
+          poId: String(order.id),
+          text: `We acknowledge receipt of Purchase Order #${order.id}. Order is booked for loading as per schedule.`,
+          timestamp: new Date().toISOString(),
+          status: 'read'
+        };
+        const currentChats = JSON.parse(localStorage.getItem('miller_chats') || '[]');
+        localStorage.setItem('miller_chats', JSON.stringify([...currentChats, ackChat]));
+        await setCollectionDoc('miller_chats', ackChat.id, ackChat);
+        window.dispatchEvent(new CustomEvent('miller-chat-updated'));
+      } catch {}
+
+      setSuccessToast(`✓ PO #${order.id} acknowledged! Tejas Canvassing notified.`);
       setTimeout(() => setSuccessToast(null), 3500);
     } catch (err) {
       console.error('Error acknowledging PO:', err);
@@ -509,6 +586,25 @@ export default function MillerPortalView() {
       window.dispatchEvent(new CustomEvent('placed-orders-updated'));
       window.dispatchEvent(new CustomEvent('operational-orders-updated'));
       window.dispatchEvent(new Event('storage'));
+
+      // Log reverse acknowledgment to miller_chats
+      try {
+        const revChat = {
+          id: `rev-${order.id}-${Date.now()}`,
+          millName: selectedMill,
+          sender: 'miller',
+          senderName: selectedMill,
+          type: 'reverse_ack',
+          poId: String(order.id),
+          text: `Purchase Order #${order.id} acknowledgment reversed by ${selectedMill}. Status reverted to Awaiting Acknowledgment.`,
+          timestamp: new Date().toISOString(),
+          status: 'read'
+        };
+        const currentChats = JSON.parse(localStorage.getItem('miller_chats') || '[]');
+        localStorage.setItem('miller_chats', JSON.stringify([...currentChats, revChat]));
+        await setCollectionDoc('miller_chats', revChat.id, revChat);
+        window.dispatchEvent(new CustomEvent('miller-chat-updated'));
+      } catch {}
 
       setSuccessToast(`✓ PO #${order.id} acknowledgment reversed.`);
       setTimeout(() => setSuccessToast(null), 3500);
@@ -788,7 +884,7 @@ export default function MillerPortalView() {
       window.dispatchEvent(new Event('storage'));
 
       setDispatchModalOrder(null);
-      setSuccessToast(`✓ Dispatch & Sub-order Bills synced successfully with Tejas HQ!`);
+      setSuccessToast(`✓ Dispatch & Sub-order Bills synced successfully with Tejas!`);
       setTimeout(() => setSuccessToast(null), 4000);
     } catch (err) {
       console.error('Error saving dispatch details:', err);
@@ -815,7 +911,7 @@ export default function MillerPortalView() {
                 </span>
                 <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  Synced with Tejas HQ
+                  Synced Live
                 </span>
               </div>
               
@@ -855,21 +951,32 @@ export default function MillerPortalView() {
               type="button"
               onClick={refreshAllData}
               disabled={isLoading}
-              title="Refresh Data from HQ"
+              title="Refresh Data"
               className="p-2 rounded-xl bg-surface-container hover:bg-surface-container-high text-secondary hover:text-on-surface transition-all cursor-pointer shadow-xs disabled:opacity-50"
             >
               <RefreshCw className={cn("w-4 h-4", isLoading && "animate-spin text-primary")} />
             </button>
 
             {userRole === 'admin' ? (
-              <button
-                type="button"
-                onClick={() => navigate('/admin')}
-                className="px-3 py-1.5 rounded-xl bg-neutral-900 text-white dark:bg-white dark:text-neutral-900 font-bold text-xs shadow-xs hover:opacity-90 transition-all cursor-pointer flex items-center gap-1.5"
-              >
-                <ShieldCheck className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Admin Console</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => navigate('/miller-updates')}
+                  className="px-3 py-1.5 rounded-xl bg-primary hover:bg-primary/90 text-on-primary font-bold text-xs shadow-xs transition-all cursor-pointer flex items-center gap-1.5"
+                  title="Return to WhatsApp Miller Updates Desk"
+                >
+                  <MessageSquare className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Miller Updates</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigate('/admin')}
+                  className="px-3 py-1.5 rounded-xl bg-neutral-900 text-white dark:bg-white dark:text-neutral-900 font-bold text-xs shadow-xs hover:opacity-90 transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Admin</span>
+                </button>
+              </div>
             ) : (
               <button
                 type="button"
@@ -933,6 +1040,20 @@ export default function MillerPortalView() {
           >
             <Coins className="w-4 h-4" />
             <span>Payments & Billing</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSearchParams({ tab: 'chat' })}
+            className={cn(
+              "px-4 py-3 text-xs font-black tracking-tight border-b-2 transition-all flex items-center gap-2 shrink-0 cursor-pointer",
+              activeTab === 'chat'
+                ? "border-primary text-primary bg-primary/5"
+                : "border-transparent text-secondary hover:text-on-surface"
+            )}
+          >
+            <MessageSquare className="w-4 h-4" />
+            <span>Chat with Tejas</span>
           </button>
 
           <button
@@ -1101,7 +1222,7 @@ export default function MillerPortalView() {
                             )}
                           </div>
                           <p className="text-[11px] text-secondary">
-                            Delivery Terms: Loading Days: <span className="font-bold text-on-surface">{order.loadingDays || 5} Days</span> • Primary Broker: <span className="font-bold text-on-surface">Tejas Canvassing HQ</span>
+                            Delivery Terms: Loading Days: <span className="font-bold text-on-surface">{order.loadingDays || 5} Days</span> • Primary Broker: <span className="font-bold text-on-surface">Tejas Canvassing</span>
                           </p>
                         </div>
 
@@ -1139,7 +1260,7 @@ export default function MillerPortalView() {
 
                           <button
                             type="button"
-                            onClick={() => printPoDocument(order)}
+                            onClick={() => printPoDocument(order.supplier || selectedMill || 'DIRECT MILL', order, subOrders)}
                             title="Print / View Official PO Document"
                             className="p-2 rounded-xl bg-surface-container-high hover:bg-surface-container text-secondary hover:text-on-surface transition-all cursor-pointer"
                           >
@@ -1273,7 +1394,7 @@ export default function MillerPortalView() {
                                   {hasBill ? (order.actualSupplierBillNo || order.billNo) : 'No Bill Attached'}
                                 </p>
                                 <p className="text-[10px] text-secondary font-medium">
-                                  {hasBillPhoto ? '✓ Bill Document Shared with HQ' : 'Pending Upload'}
+                                  {hasBillPhoto ? '✓ Bill Document Shared with Tejas' : 'Pending Upload'}
                                 </p>
                               </div>
                             </div>
@@ -1572,6 +1693,95 @@ export default function MillerPortalView() {
                 </table>
               </div>
             )}
+          </div>
+        )}
+
+        {/* TAB 5: CHAT WITH TEJAS */}
+        {activeTab === 'chat' && (
+          <div className="max-w-3xl mx-auto rounded-3xl bg-[#efeae2] dark:bg-[#0b141a] border border-outline-variant/30 shadow-md flex flex-col h-[600px] overflow-hidden">
+            {/* WhatsApp Header for Miller */}
+            <div className="px-4 py-3 bg-surface/95 dark:bg-neutral-900/95 border-b border-outline-variant/30 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-primary/10 border border-primary/20 text-primary font-black text-xs flex items-center justify-center shrink-0">
+                  TC
+                </div>
+                <div>
+                  <h3 className="font-black text-sm text-on-surface">Tejas Canvassing</h3>
+                  <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    Central APMC Dispatch Desk • Live
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <a
+                  href="tel:9876543210"
+                  className="px-3 py-1.5 rounded-xl bg-surface-container hover:bg-surface-container-high text-secondary hover:text-on-surface font-bold text-xs flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Phone className="w-3.5 h-3.5 text-emerald-600" />
+                  <span className="hidden sm:inline">Call Office</span>
+                </a>
+              </div>
+            </div>
+
+            {/* Chat Messages */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              <div className="max-w-md mx-auto p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-center text-[10px] text-amber-900 dark:text-amber-200">
+                🔒 Direct dispatch chat with Tejas Canvassing. Messages and PO updates are synchronized live.
+              </div>
+
+              {chatMessages
+                .filter(m => (m.millName || '').toUpperCase() === selectedMill.toUpperCase())
+                .map((msg) => {
+                  const isMine = msg.sender === 'miller';
+                  const time = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                  return (
+                    <div key={msg.id} className={cn("flex", isMine ? "justify-end" : "justify-start")}>
+                      <div
+                        className={cn(
+                          "max-w-md rounded-2xl p-3 shadow-xs space-y-1 text-xs",
+                          isMine
+                            ? "bg-[#d9fdd3] dark:bg-[#005c4b] text-neutral-900 dark:text-neutral-100 rounded-tr-xs"
+                            : "bg-white dark:bg-[#202c33] text-neutral-900 dark:text-neutral-100 rounded-tl-xs"
+                        )}
+                      >
+                        <span className="text-[9px] font-black uppercase tracking-wider opacity-70 block">
+                          {isMine ? 'You (Mill)' : 'Tejas Canvassing'}
+                        </span>
+                        <p className="leading-relaxed whitespace-pre-wrap">{msg.text || (msg.vehicleNo ? `Dispatched Lorry: ${msg.vehicleNo}` : 'Update')}</p>
+                        <span className="text-[9px] opacity-60 font-mono block text-right">{time}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              <div ref={chatEndRef} />
+            </div>
+
+            {/* Message Input */}
+            <div className="p-3 bg-surface/95 dark:bg-neutral-900/95 border-t border-outline-variant/30 flex items-center gap-2 shrink-0">
+              <input
+                type="text"
+                placeholder="Type a message to Tejas Canvassing..."
+                value={chatInputText}
+                onChange={(e) => setChatInputText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendMillerChat();
+                  }
+                }}
+                className="flex-1 px-4 py-2.5 rounded-2xl bg-surface-container border border-outline-variant/30 text-xs font-medium text-on-surface placeholder:text-secondary outline-none focus:border-primary"
+              />
+              <button
+                type="button"
+                onClick={handleSendMillerChat}
+                disabled={isSendingChat || !chatInputText.trim()}
+                className="w-10 h-10 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center shrink-0 cursor-pointer shadow-md transition-all active:scale-95 disabled:opacity-40"
+              >
+                <Send className="w-4 h-4 ml-0.5" />
+              </button>
+            </div>
           </div>
         )}
 
@@ -1917,12 +2127,12 @@ export default function MillerPortalView() {
                       {isSavingDispatch ? (
                         <>
                           <RefreshCw className="w-4 h-4 animate-spin" />
-                          <span>Saving & Syncing with HQ...</span>
+                          <span>Saving & Syncing...</span>
                         </>
                       ) : (
                         <>
                           <Check className="w-4 h-4" />
-                          <span>Save & Share with Tejas HQ</span>
+                          <span>Save & Share with Tejas</span>
                         </>
                       )}
                     </button>

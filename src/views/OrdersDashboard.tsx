@@ -16,20 +16,13 @@ import {
   getNextManualOrderNumber, 
   getNextSupplierSubOrderNumber, 
   getSupplierCode, 
-  resolveSubOrderNumber 
+  resolveSubOrderNumber,
+  parseOperationalDate,
+  getPlacedOrderVolume,
+  getValidDeduplicatedPlacedOrders
 } from '../utils/orderOperations';
 import merchantsDirectory from '../data/merchants_directory.json';
 
-
-const trendData = [
-  { name: 'Mon', value: 1200 },
-  { name: 'Tue', value: 1800 },
-  { name: 'Wed', value: 1400 },
-  { name: 'Thu', value: 2400 },
-  { name: 'Fri', value: 2100 },
-  { name: 'Sat', value: 2800 },
-  { name: 'Sun', value: 2600 },
-];
 
 // Default base suppliers and buyers fallback
 const DEFAULT_SUPPLIERS: { id: string; name: string }[] = [];
@@ -285,7 +278,8 @@ export default function OrdersDashboard() {
   const [placedOrdersList, setPlacedOrdersList] = useState<any[]>(() => {
     try {
       const raw = localStorage.getItem('placed_orders');
-      return raw ? JSON.parse(raw) : [];
+      const parsed = raw ? JSON.parse(raw) : [];
+      return getValidDeduplicatedPlacedOrders(parsed);
     } catch {
       return [];
     }
@@ -314,7 +308,7 @@ export default function OrdersDashboard() {
     const handleStorageChange = () => {
       try {
         const raw = localStorage.getItem('placed_orders');
-        if (raw) setPlacedOrdersList(JSON.parse(raw));
+        if (raw) setPlacedOrdersList(getValidDeduplicatedPlacedOrders(JSON.parse(raw)));
       } catch {}
     };
     window.addEventListener('storage', handleStorageChange);
@@ -1026,60 +1020,15 @@ export default function OrdersDashboard() {
     return false;
   };
 
-  // 1. Total Approved Orders QTLS Till Date (Deduplicated across placed, active, and archived)
+  // 1. Total Approved Orders QTLS Till Date (strictly matches total volume & count of placed orders)
   const { totalApprovedQtls, totalApprovedCount } = useMemo(() => {
+    const validPlaced = getValidDeduplicatedPlacedOrders(placedOrdersList);
     let qtls = 0;
-    const countedIds = new Set<string>();
-
-    // A. Placed orders (every placed order was approved before grouping)
-    (placedOrdersList || []).forEach((p: any) => {
-      if (!p) return;
-      if (Array.isArray(p.originalOrders) && p.originalOrders.length > 0) {
-        p.originalOrders.forEach((sub: any, sIdx: number) => {
-          const subId = String(sub.id || `sub-${p.id}-${sIdx}`).trim().toLowerCase().replace(/^#/, '');
-          if (!countedIds.has(subId)) {
-            countedIds.add(subId);
-            qtls += Number(sub.qty || sub.quantity || sub.totalQty || 0);
-          }
-        });
-      } else {
-        const pId = String(p.id || '').trim().toLowerCase().replace(/^#/, '');
-        if (pId && !countedIds.has(pId)) {
-          countedIds.add(pId);
-          qtls += Number(p.qty || p.quantity || p.totalQty || 0);
-        }
-      }
+    validPlaced.forEach((p: any) => {
+      qtls += getPlacedOrderVolume(p);
     });
-
-    // B. Currently approved active procurement requests awaiting grouping
-    (currentOrders || []).forEach((o: any) => {
-      if (!o) return;
-      const status = String(o.status || '').trim().toLowerCase();
-      const isApproved = status === 'approved' || status === 'accepted' || status === 'awaiting grouping';
-      if (isApproved) {
-        const oId = String(o.id || '').trim().toLowerCase().replace(/^#/, '');
-        if (oId && !countedIds.has(oId)) {
-          countedIds.add(oId);
-          qtls += Number(o.qty || o.quantity || o.totalQty || 0);
-        }
-      }
-    });
-
-    // C. Archived accepted/completed orders
-    (archivedOrders || []).forEach((a: any) => {
-      if (!a) return;
-      const status = String(a.status || '').trim().toLowerCase();
-      if (status === 'approved' || status === 'accepted' || status === 'completed') {
-        const aId = String(a.id || '').trim().toLowerCase().replace(/^#/, '');
-        if (aId && !countedIds.has(aId)) {
-          countedIds.add(aId);
-          qtls += Number(a.qty || a.quantity || a.totalQty || 0);
-        }
-      }
-    });
-
-    return { totalApprovedQtls: qtls, totalApprovedCount: countedIds.size };
-  }, [placedOrdersList, currentOrders, archivedOrders]);
+    return { totalApprovedQtls: qtls, totalApprovedCount: validPlaced.length };
+  }, [placedOrdersList]);
 
   // 2. Today's Approved and Placed Orders & QTLS Calculations
   const {
@@ -1089,25 +1038,25 @@ export default function OrdersDashboard() {
     todayPlacedQtls,
     todayApprovedAndPlacedQtls
   } = useMemo(() => {
+    const validPlaced = getValidDeduplicatedPlacedOrders(placedOrdersList);
     const placedTodayList: any[] = [];
     let placedQtls = 0;
     const placedSubIds = new Set<string>();
 
-    (placedOrdersList || []).forEach((p: any) => {
+    validPlaced.forEach((p: any) => {
       if (!p) return;
       const isTodayPlaced = isDateToday(p.date) || isDateToday(p.placedAt) || isDateToday(p.purchaseOrderSentAt);
       if (isTodayPlaced) {
         placedTodayList.push(p);
+        placedQtls += getPlacedOrderVolume(p);
         if (Array.isArray(p.originalOrders) && p.originalOrders.length > 0) {
           p.originalOrders.forEach((sub: any, sIdx: number) => {
             const sId = String(sub.id || `sub-${p.id}-${sIdx}`).trim().toLowerCase().replace(/^#/, '');
             placedSubIds.add(sId);
-            placedQtls += Number(sub.qty || sub.quantity || sub.totalQty || 0);
           });
         } else {
           const pId = String(p.id || '').trim().toLowerCase().replace(/^#/, '');
           placedSubIds.add(pId);
-          placedQtls += Number(p.qty || p.quantity || p.totalQty || 0);
         }
       }
     });
@@ -1138,6 +1087,106 @@ export default function OrdersDashboard() {
     };
   }, [placedOrdersList, currentOrders]);
 
+  // 3. Dynamic Daily Placed Orders Volume Trend (Quantity placed per day)
+  const [chartRange, setChartRange] = useState<'7d' | '14d' | '30d'>('7d');
+
+  const { chartData, chartTotalQty, chartAvgDailyQty } = useMemo(() => {
+    const validPlaced = getValidDeduplicatedPlacedOrders(placedOrdersList);
+    const numDays = chartRange === '30d' ? 30 : chartRange === '14d' ? 14 : 7;
+    
+    // Generate buckets for the last N days ending today
+    const dayBuckets: {
+      year: number;
+      month: number;
+      day: number;
+      name: string;
+      fullDate: string;
+      value: number; // Quantity in QTL
+      ordersCount: number;
+    }[] = [];
+
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    for (let i = numDays - 1; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      const y = d.getFullYear();
+      const m = d.getMonth();
+      const dt = d.getDate();
+      const dayName = dayNames[d.getDay()];
+      const monthName = monthNames[m];
+
+      const displayName = numDays <= 7 ? dayName : `${dt} ${monthName}`;
+      const fullDate = `${dt} ${monthName} ${y}`;
+
+      dayBuckets.push({
+        year: y,
+        month: m,
+        day: dt,
+        name: displayName,
+        fullDate,
+        value: 0,
+        ordersCount: 0
+      });
+    }
+
+    // Map each valid placed order into the appropriate day bucket
+    validPlaced.forEach((ord: any) => {
+      if (!ord) return;
+      const vol = getPlacedOrderVolume(ord);
+      if (vol <= 0) return;
+
+      const rawDate = ord.date || ord.placedAt || ord.purchaseOrderSentAt || ord.createdAt;
+      let orderDate: Date | null = null;
+
+      if (typeof rawDate === 'string' && rawDate.trim().toLowerCase() === 'today') {
+        orderDate = new Date(today);
+      } else if (rawDate) {
+        const parsed = parseOperationalDate(rawDate);
+        if (parsed && parsed.timestamp) {
+          orderDate = new Date(parsed.timestamp);
+        } else {
+          const direct = new Date(rawDate);
+          if (!isNaN(direct.getTime())) orderDate = direct;
+        }
+      }
+
+      if (!orderDate || isNaN(orderDate.getTime())) {
+        orderDate = new Date(today);
+      }
+
+      const ordY = orderDate.getFullYear();
+      const ordM = orderDate.getMonth();
+      const ordD = orderDate.getDate();
+
+      const bucket = dayBuckets.find(b => b.year === ordY && b.month === ordM && b.day === ordD);
+      if (bucket) {
+        bucket.value += vol;
+        bucket.ordersCount += 1;
+      }
+    });
+
+    const formattedData = dayBuckets.map(b => ({
+      name: b.name,
+      fullDate: b.fullDate,
+      value: Math.round(b.value * 100) / 100,
+      ordersCount: b.ordersCount
+    }));
+
+    const totalQty = formattedData.reduce((sum, d) => sum + d.value, 0);
+    const avgDailyQty = numDays > 0 ? totalQty / numDays : 0;
+
+    return {
+      chartData: formattedData,
+      chartTotalQty: totalQty,
+      chartAvgDailyQty: avgDailyQty
+    };
+  }, [placedOrdersList, chartRange]);
+
   // Dynamic statistics calculations
   const approvalPendingCount = currentOrders.filter((o: any) => isPendingApproval(o.status)).length;
   const totalPendingPayments = currentOrders
@@ -1148,7 +1197,7 @@ export default function OrdersDashboard() {
     { 
       label: 'Total Approved Orders', 
       value: `${totalApprovedQtls.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} QTLS`, 
-      sub: `${totalApprovedCount} approved till date`, 
+      sub: `${totalApprovedCount} placed orders till date`, 
       icon: CheckCircle2, 
       color: 'text-primary' 
     },
@@ -1248,8 +1297,9 @@ export default function OrdersDashboard() {
         } catch (e) {}
 
         const allPlaced = [...cloudPlaced, ...localPlaced];
-        setPlacedOrdersList(allPlaced);
-        const allPlacedIds = extractPlacedOrderIds(allPlaced);
+        const validDeduplicated = getValidDeduplicatedPlacedOrders(allPlaced);
+        setPlacedOrdersList(validDeduplicated);
+        const allPlacedIds = extractPlacedOrderIds(validDeduplicated);
         purgePlacedOrdersFromLocal(allPlacedIds);
       }, (err) => {
         console.warn('Placed orders snapshot notice in OrdersDashboard:', err?.message || err);
@@ -1984,7 +2034,7 @@ export default function OrdersDashboard() {
     });
     const newPlaced = [groupedOrder, ...filteredExisting];
     localStorage.setItem('placed_orders', JSON.stringify(newPlaced));
-    setPlacedOrdersList(newPlaced);
+    setPlacedOrdersList(getValidDeduplicatedPlacedOrders(newPlaced));
     window.dispatchEvent(new CustomEvent('placed-orders-updated'));
     localStorage.setItem('just_placed_order', 'true');
 
@@ -3185,12 +3235,30 @@ export default function OrdersDashboard() {
              transition={{ duration: 0.52, delay: 0.26, ease: [0.16, 1, 0.3, 1] }}
              className="liquid-glass p-8 rounded-3xl premium-border bg-gradient-to-br from-surface to-surface-dim/20 shadow-md"
            >
-              <div className="flex justify-between items-center mb-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
                  <div>
                     <h3 className="font-display font-bold text-base text-on-surface">Weekly Transaction & Volume Flow</h3>
-                    <p className="text-[9px] text-secondary font-black uppercase tracking-widest opacity-60">Real-time dynamic system aggregates</p>
+                    <p className="text-[9px] text-secondary font-black uppercase tracking-widest opacity-60">Quantity placed per day • Real-time dynamic aggregates</p>
                  </div>
-                 <div className="flex gap-1.5">
+                 <div className="flex items-center gap-3">
+                    {/* Range Tabs (7D / 14D / 30D) */}
+                    <div className="flex items-center p-0.5 bg-surface-container rounded-xl border border-outline-variant/30 text-[10px] font-black">
+                       {(['7d', '14d', '30d'] as const).map((r) => (
+                          <button
+                             key={r}
+                             type="button"
+                             onClick={() => setChartRange(r)}
+                             className={cn(
+                                "px-2.5 py-1 rounded-lg transition-all uppercase tracking-wider cursor-pointer",
+                                chartRange === r
+                                   ? "bg-primary text-white shadow-xs"
+                                   : "text-secondary hover:text-on-surface"
+                             )}
+                          >
+                             {r.toUpperCase()}
+                          </button>
+                       ))}
+                    </div>
                     <div className="w-8 h-8 rounded-xl bg-primary/10 border border-primary/15 flex items-center justify-center">
                        <TrendingUp className="w-4 h-4 text-primary" />
                     </div>
@@ -3198,19 +3266,37 @@ export default function OrdersDashboard() {
               </div>
               <div className="h-48 w-full min-w-0">
                  <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={100} initialDimension={{ width: 300, height: 180 }}>
-                    <AreaChart data={trendData}>
+                    <AreaChart data={chartData}>
                        <defs>
                           <linearGradient id="colorVal" x1="0" y1="0" x2="0" y2="1">
-                             <stop offset="5%" stopColor="var(--color-primary)" stopOpacity={0.15}/>
+                             <stop offset="5%" stopColor="var(--color-primary)" stopOpacity={0.2}/>
                              <stop offset="95%" stopColor="var(--color-primary)" stopOpacity={0}/>
                           </linearGradient>
                        </defs>
                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-outline-variant)" opacity={0.15} />
-                       <XAxis dataKey="name" stroke="var(--color-on-surface)" fontSize={10} tickLine={false} opacity={0.5} />
+                       <XAxis dataKey="name" stroke="var(--color-on-surface)" fontSize={10} tickLine={false} opacity={0.6} />
                        <Tooltip 
-                          contentStyle={{ borderRadius: '16px', backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-outline-variant)', boxShadow: '0 20px 40px rgba(0,0,0,0.08)', padding: '12px' }}
-                          labelStyle={{ fontSize: '10px', fontWeight: 'black', textTransform: 'uppercase', color: 'var(--color-secondary)' }}
-                          itemStyle={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--color-primary)' }}
+                          contentStyle={{ 
+                             borderRadius: '16px', 
+                             backgroundColor: 'var(--color-surface)', 
+                             border: '1px solid var(--color-outline-variant)', 
+                             boxShadow: '0 20px 40px rgba(0,0,0,0.12)', 
+                             padding: '12px' 
+                          }}
+                          formatter={(val: any, _name: any, item: any) => {
+                             const qtl = Number(val || 0).toLocaleString('en-IN', { minimumFractionDigits: 1, maximumFractionDigits: 2 });
+                             const count = item?.payload?.ordersCount || 0;
+                             return [
+                                `${qtl} QTL${count > 0 ? ` (${count} order${count > 1 ? 's' : ''})` : ''}`,
+                                'Quantity Placed'
+                             ];
+                          }}
+                          labelFormatter={(_label, payload) => {
+                             if (payload && payload[0] && payload[0].payload?.fullDate) {
+                                return `${payload[0].payload.name} • ${payload[0].payload.fullDate}`;
+                             }
+                             return _label;
+                          }}
                        />
                        <Area 
                           type="monotone" 
@@ -3223,17 +3309,38 @@ export default function OrdersDashboard() {
                     </AreaChart>
                  </ResponsiveContainer>
               </div>
-              <div className="flex justify-between items-center mt-6 pt-6 border-t border-outline-variant/15">
-                 <div>
-                    <p className="text-[9px] font-black uppercase tracking-widest text-secondary/60">Annual Trade Valuation</p>
-                    <p className="text-xl font-display font-bold text-emerald-600">₹ 82.4 Cr</p>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mt-6 pt-6 border-t border-outline-variant/15">
+                 <div className="flex items-center gap-6">
+                    <div>
+                       <p className="text-[9px] font-black uppercase tracking-widest text-secondary/60">
+                          {chartRange === '7d' ? '7-Day Placed Volume' : `${chartRange.toUpperCase()} Placed Volume`}
+                       </p>
+                       <p className="text-xl font-display font-bold text-primary font-mono">
+                          {chartTotalQty.toLocaleString('en-IN', { minimumFractionDigits: 1, maximumFractionDigits: 2 })} QTL
+                       </p>
+                    </div>
+                    <div className="border-l border-outline-variant/30 pl-6">
+                       <p className="text-[9px] font-black uppercase tracking-widest text-secondary/60">Daily Average</p>
+                       <p className="text-xl font-display font-bold text-emerald-600 font-mono">
+                          {chartAvgDailyQty.toLocaleString('en-IN', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} QTL/day
+                       </p>
+                    </div>
                  </div>
-                 <button 
-                   onClick={() => navigate('/analytics')}
-                   className="px-4 py-2 bg-on-background text-background hover:bg-on-background/90 rounded-xl text-[10px] font-black uppercase tracking-widest hover:opacity-95 transition-all shadow-md"
-                 >
-                    Full Analytics Panel
-                 </button>
+                 <div className="flex items-center gap-2">
+                    <button 
+                      onClick={() => navigate('/placed-orders')}
+                      className="px-4 py-2 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
+                    >
+                       <Package className="w-3.5 h-3.5" />
+                       View Placed Orders
+                    </button>
+                    <button 
+                      onClick={() => navigate('/analytics')}
+                      className="px-4 py-2 bg-on-background text-background hover:bg-on-background/90 rounded-xl text-[10px] font-black uppercase tracking-widest hover:opacity-95 transition-all shadow-md cursor-pointer"
+                    >
+                       Full Analytics Panel
+                    </button>
+                 </div>
               </div>
            </motion.div>
         </div>

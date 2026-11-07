@@ -53,9 +53,18 @@ import { collection, onSnapshot } from 'firebase/firestore';
 import { verifyActionWithServer } from '../lib/auth';
 import { generateSupplierPOEmailHtml, generateSupplierPOA4PrintHtml, printPoDocument, resolveBuyerProfile, formatPoDate, resolveSupplierProfile, isAuthenticSupplierEmail } from '../utils/poEmailTemplate';
 import { buildPoPdfDocument, getPoPdfFileName } from '../utils/poPdfGenerator';
+import { TC_COMPANY_LOGO_BASE64 } from '../utils/logoBase64';
 import EmailTrackingModal, { getStatusBadgeConfig } from '../components/EmailTrackingModal';
 import BuyerLedgerModal from '../components/BuyerLedgerModal';
-import { purgeOperationalAndLedgerRecords, purgeAllOperationalAndLedgerRecords, resolveSubOrderNumber, resolveGroupedPoNumber, normalizePlacedOrdersSequential, invalidateOperationalOrdersCache } from '../utils/orderOperations';
+import { 
+  purgeOperationalAndLedgerRecords, 
+  purgeAllOperationalAndLedgerRecords, 
+  resolveSubOrderNumber, 
+  resolveGroupedPoNumber, 
+  normalizePlacedOrdersSequential, 
+  invalidateOperationalOrdersCache,
+  getPlacedOrderVolume 
+} from '../utils/orderOperations';
 
 const BUYER_PROFILES: Record<string, { address: string; gstin: string; phone: string; email: string }> = {};
 
@@ -952,8 +961,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
 
   const totalVolumeAll = React.useMemo(() => {
     return currentPlacedOrders.reduce((sum, ord) => {
-      const q = parseFloat(ord.totalQty || ord.items?.match(/\d+(\.\d+)?/)?.[0] || ord.qty || "0") || 0;
-      return sum + q;
+      return sum + getPlacedOrderVolume(ord);
     }, 0);
   }, [currentPlacedOrders]);
 
@@ -2044,12 +2052,12 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Purchase Order - ${order?.id || 'PO'}</title>
+          <title></title>
           ${headStyles}
           <style>
             @page {
               size: A4 portrait;
-              margin: 10mm;
+              margin: 0;
             }
             *, *::before, *::after {
               -webkit-print-color-adjust: exact !important;
@@ -2058,7 +2066,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
             }
             html, body {
               margin: 0 !important;
-              padding: 0 !important;
+              padding: 10mm !important;
               background: #ffffff !important;
               color: #0f172a !important;
               font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
@@ -5333,9 +5341,11 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                     {/* Header */}
                     <div className="flex items-center justify-between pb-4 mb-4 border-b-2 border-slate-900">
                       <div className="flex items-center gap-3.5">
-                        <div className="w-12 h-12 bg-[#0084ff] text-white font-black text-2xl flex items-center justify-center rounded-lg shadow-sm">
-                          TC
-                        </div>
+                        <img
+                          src={TC_COMPANY_LOGO_BASE64}
+                          alt="TC"
+                          className="w-12 h-12 object-contain rounded-lg shadow-sm"
+                        />
                         <div>
                           <h1 className="text-xl font-black text-slate-950 tracking-tight leading-tight">
                             Tejas Canvassing
@@ -5469,31 +5479,16 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                     </div>
                   </div>
 
-                  {/* Signatures & Filing */}
+                  {/* Signatures */}
                   <div className="mt-8 pt-4 border-t border-slate-300">
-                    <div className="grid grid-cols-2 gap-8 text-[10px]">
-                      <div>
-                        <div className="h-12 flex items-end">
-                          <span className="font-mono text-[9px] text-slate-400">[DIGITALLY STAMPED &amp; VERIFIED]</span>
-                        </div>
-                        <div className="border-t border-slate-800 pt-1 font-black uppercase text-slate-900">
-                          Authorized Signatory (Tejas Canvassing)
-                        </div>
-                        <div className="text-[9px] text-slate-500">APMC Yard, Yeshwanthpur</div>
+                    <div className="text-[10px] max-w-xs">
+                      <div className="h-12 flex items-end">
+                        <span className="font-mono text-[9px] text-slate-400">[DIGITALLY STAMPED &amp; VERIFIED]</span>
                       </div>
-                      <div>
-                        <div className="h-12 flex items-end">
-                          <span className="text-[9.5px] text-slate-500">File Ref: TC-PO-{a4PreviewOrder.id?.slice(-4) || '102'} / Date: {formatPoDate(new Date())}</span>
-                        </div>
-                        <div className="border-t border-slate-800 pt-1 font-black uppercase text-slate-900">
-                          Physical Ledger Filing &amp; Audit
-                        </div>
-                        <div className="text-[9px] text-slate-500">Grain Brokerage Central Archives</div>
+                      <div className="border-t border-slate-800 pt-1 font-black uppercase text-slate-900">
+                        Authorized Signatory (Tejas Canvassing)
                       </div>
-                    </div>
-
-                    <div className="mt-6 text-center text-[9px] text-slate-400 italic">
-                      This official purchase order document serves as an authentic trade ledger copy generated by Tejas Canvassing.
+                      <div className="text-[9px] text-slate-500">APMC Yard, Yeshwanthpur</div>
                     </div>
                   </div>
                 </div>

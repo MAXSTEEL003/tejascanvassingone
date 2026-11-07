@@ -1550,3 +1550,69 @@ export function formatDifference(diff: number | undefined | null): {
     };
   }
 }
+
+/**
+ * Safely extracts the total quantity / volume in QTL from any placed order
+ * Checks constituent sub-orders first, then totalQty, items text, or qty.
+ */
+export function getPlacedOrderVolume(ord: any): number {
+  if (!ord) return 0;
+  if (Array.isArray(ord.originalOrders) && ord.originalOrders.length > 0) {
+    const subSum = ord.originalOrders.reduce((sum: number, sub: any) => {
+      const q = parseFloat(sub?.qty || sub?.quantity || sub?.totalQty || "0") || 0;
+      return sum + q;
+    }, 0);
+    if (subSum > 0) return subSum;
+  }
+  return parseFloat(ord.totalQty || ord.items?.match(/\d+(\.\d+)?/)?.[0] || ord.qty || "0") || 0;
+}
+
+/**
+ * Normalizes, filters, and deduplicates placed orders to match canonical Placed Orders view
+ */
+export function getValidDeduplicatedPlacedOrders(placedList: any[]): any[] {
+  if (!Array.isArray(placedList)) return [];
+
+  const deletedPlacedSet = getDeletedPlacedOrderIds();
+  const isDeleted = (id: any) => {
+    if (!id) return false;
+    const norm = String(id).trim().toLowerCase().replace(/^#/, '');
+    return deletedPlacedSet.has(norm);
+  };
+
+  const isCleared = (localStorage.getItem('cleared_placed_orders') === 'true' || localStorage.getItem('placed_orders_cleared_all') === 'true');
+  if (isCleared) {
+    try {
+      const rawPlaced = localStorage.getItem('placed_orders');
+      if (!rawPlaced || JSON.parse(rawPlaced).length === 0) {
+        return [];
+      }
+    } catch {
+      return [];
+    }
+  }
+
+  const uniqueMap = new Map<string, any>();
+
+  placedList.forEach((o: any) => {
+    if (!o || !o.id) return;
+    const normKey = String(o.id).trim().toLowerCase().replace(/^#/, '');
+
+    // Ignore deleted orders
+    if (isDeleted(o.id) || isDeleted(normKey)) return;
+
+    // Ignore test / mock orders
+    if (o.id === 'ORD-TC-1024' || String(o.id).startsWith('#ORD-99') || String(o.id).startsWith('TC-0000')) return;
+
+    // Exclude draft, rejected, or pending approval orders
+    const status = String(o.status || '').trim().toLowerCase();
+    if (status === 'pending approval' || status === 'draft order' || status === 'rejected') return;
+
+    if (!uniqueMap.has(normKey)) {
+      uniqueMap.set(normKey, o);
+    }
+  });
+
+  return Array.from(uniqueMap.values());
+}
+

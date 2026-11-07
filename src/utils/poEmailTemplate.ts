@@ -586,7 +586,7 @@ export const generateSupplierPOEmailHtml = (
     <table cellpadding="0" cellspacing="0" border="0" style="width: 100%; margin-bottom: 16px;">
       <tr>
         <td style="vertical-align: middle; padding-right: 14px; width: 48px;">
-          <img src="" alt="TC" style="width: 48px; height: 48px; object-fit: contain; display: block; border-radius: 6px;" />
+          <img src="${TC_COMPANY_LOGO_BASE64}" alt="TC" style="width: 48px; height: 48px; object-fit: contain; display: block; border-radius: 6px;" />
         </td>
         <td style="vertical-align: middle;">
           <div style="font-size: 20px; font-weight: bold; color: #000000; line-height: 1.2;">Tejas Canvassing</div>
@@ -725,11 +725,11 @@ export const generateSupplierPOA4PrintHtml = (
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>PO_${order?.id || 'DOCUMENT'}_TEJAS_CANVASSING</title>
+  <title></title>
   <style>
     @page {
       size: A4 portrait;
-      margin: 12mm 15mm 15mm 15mm;
+      margin: 0;
     }
     * {
       box-sizing: border-box;
@@ -800,7 +800,8 @@ export const generateSupplierPOA4PrintHtml = (
     @media print {
       body {
         background: #ffffff;
-        padding: 0;
+        margin: 0;
+        padding: 12mm 15mm 15mm 15mm;
       }
       .screen-actions {
         display: none !important;
@@ -825,7 +826,7 @@ export const generateSupplierPOA4PrintHtml = (
     <!-- Top Header & Business Details -->
     <div style="display: table; width: 100%; border-bottom: 2px solid #0f172a; padding-bottom: 12px; margin-bottom: 16px;">
       <div style="display: table-cell; vertical-align: middle; width: 50px;">
-        <img src="" alt="TC" style="width: 46px; height: 46px; object-fit: contain; display: block; border-radius: 6px;" />
+        <img src="${TC_COMPANY_LOGO_BASE64}" alt="TC" style="width: 46px; height: 46px; object-fit: contain; display: block; border-radius: 6px;" />
       </div>
       <div style="display: table-cell; vertical-align: middle; padding-left: 14px;">
         <div style="font-size: 20px; font-weight: 800; color: #0f172a; letter-spacing: -0.3px; line-height: 1.1;">Tejas Canvassing</div>
@@ -883,46 +884,10 @@ export const generateSupplierPOA4PrintHtml = (
             ${totalQty} QTLS
           </td>
           <td colspan="2" style="padding: 8px 12px; border: 1px solid #1f2937; text-align: right; font-size: 10.5px; color: #475569;">
-            Filing Copy &bull; Official Trade Record
           </td>
         </tr>
       </tfoot>
     </table>
-
-    <!-- Filing Signatures & Physical Office Stamp Box -->
-    <div style="margin-top: 24px; border: 1px solid #94a3b8; border-radius: 4px; padding: 14px 18px; background-color: #ffffff; page-break-inside: avoid; break-inside: avoid;">
-      <div style="font-size: 10.5px; font-weight: 800; color: #0f172a; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #cbd5e1; padding-bottom: 6px; margin-bottom: 14px;">
-        Physical Documentation &amp; Office Filing Authorization
-      </div>
-      
-      <div style="display: table; width: 100%;">
-        <div style="display: table-cell; width: 33%; vertical-align: top; padding-right: 15px;">
-          <div style="font-size: 9.5px; color: #64748b; font-weight: 600; text-transform: uppercase;">Prepared / Dispatched By:</div>
-          <div style="margin-top: 36px; border-top: 1px solid #1e293b; font-size: 10px; font-weight: 700; color: #0f172a; padding-top: 4px;">
-            Tejas Canvassing Operations
-          </div>
-        </div>
-
-        <div style="display: table-cell; width: 33%; vertical-align: top; padding-right: 15px; padding-left: 15px;">
-          <div style="font-size: 9.5px; color: #64748b; font-weight: 600; text-transform: uppercase;">Brokerage / Audit Approval:</div>
-          <div style="margin-top: 36px; border-top: 1px solid #1e293b; font-size: 10px; font-weight: 700; color: #0f172a; padding-top: 4px;">
-            Authorized Signatory &amp; Stamp
-          </div>
-        </div>
-
-        <div style="display: table-cell; width: 34%; vertical-align: top; padding-left: 15px;">
-          <div style="font-size: 9.5px; color: #64748b; font-weight: 600; text-transform: uppercase;">Physical Ledger Filing:</div>
-          <div style="margin-top: 36px; border-top: 1px solid #1e293b; font-size: 10px; font-weight: 700; color: #0f172a; padding-top: 4px;">
-            File No: ____________ / Date: ________
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Official Footer Note -->
-    <div style="margin-top: 16px; border-top: 1px solid #e2e8f0; padding-top: 8px; font-size: 9px; color: #64748b; text-align: center; font-style: italic;">
-      This official purchase order is generated under Tejas Canvassing authorization protocol. Printed document serves as an authentic trade ledger copy.
-    </div>
 
   </div>
 
@@ -947,6 +912,7 @@ export const printPoDocument = (
     if (printWindow) {
       printWindow.document.open();
       printWindow.document.write(printableHtml);
+      printWindow.document.title = '';
       printWindow.document.close();
       printWindow.focus();
       setTimeout(() => {

@@ -22,7 +22,8 @@ import {
   Coins,
   Phone,
   ArrowUpRight,
-  Printer
+  Printer,
+  Download
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, formatINR } from '../lib/utils';

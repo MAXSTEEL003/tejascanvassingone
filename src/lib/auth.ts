@@ -506,7 +506,7 @@ export async function loginWithServer(
         sub: 'admin-tejas-01',
         username: cleanUser || 'admintejas1679',
         role: 'admin',
-        name: 'Tejas Adinarayan (Admin HQ)',
+        name: 'Tejas Adinarayan (Admin)',
         email: 'nani@tejasc.in',
       };
       const token = createClientAuthToken(adminUser);
@@ -544,7 +544,7 @@ export async function loginWithServer(
       const lower = cleanUser.toLowerCase();
       const digits = cleanUser.replace(/\D/g, '');
 
-      const matched = suppliers.find(s => {
+      const matched: any = suppliers.find((s: any) => {
         if (!s) return false;
         const sUser = (s.username || '').toLowerCase();
         const sName = (s.name || '').toLowerCase();

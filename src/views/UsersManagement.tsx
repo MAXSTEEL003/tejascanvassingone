@@ -145,7 +145,7 @@ const initialStakeholders = {
   buyers: merchantsDirectory as any[],
   employees: [
     { id: 'EMP-01', name: 'Vikram Singh', role: 'Regional Manager', email: 'v.singh@tejasc.in', status: 'On Duty', address: 'Punjab Hub' },
-    { id: 'EMP-02', name: 'Ananya Sharma', role: 'Procurement Officer', email: 'a.sharma@tejasc.in', status: 'Remote', address: 'HQ Office' },
+    { id: 'EMP-02', name: 'Ananya Sharma', role: 'Procurement Officer', email: 'a.sharma@tejasc.in', status: 'Remote', address: 'Bangalore Office' },
     { id: 'EMP-03', name: 'Sarah Joseph', role: 'Logistics Analyst', email: 's.joseph@tejasc.in', status: 'On Duty', address: 'Bangalore Office' }
   ]
 };

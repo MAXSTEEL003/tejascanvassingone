@@ -32,6 +32,7 @@ const ProfileView = lazy(() => import('./views/ProfileView'));
 const EmployeePortalView = lazy(() => import('./views/EmployeePortalView'));
 const AcknowledgeReceiptView = lazy(() => import('./views/AcknowledgeReceiptView'));
 const MillerPortalView = lazy(() => import('./views/MillerPortalView'));
+const MillerUpdatesView = lazy(() => import('./views/MillerUpdatesView'));
 
 
 
@@ -225,6 +226,7 @@ export default function App() {
                 <Route path="/ledger" element={<LedgerManagement />} />
                 <Route path="/pending-loadings" element={<PendingLoadings />} />
                 <Route path="/arrival-entry" element={<ArrivalEntry />} />
+                <Route path="/miller-updates" element={<MillerUpdatesView />} />
               </Route>
             </Route>
 

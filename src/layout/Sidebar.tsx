@@ -21,14 +21,16 @@ import {
   ChevronLeft, 
   ChevronRight, 
   Download,
-  Building2
+  Building2,
+  MessageSquare
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 const navItems = [
   { icon: ShoppingCart, label: 'Dashboard', path: '/admin', roles: ['admin', 'officer'] },
   { icon: Package, label: 'Placed Orders', path: '/placed-orders', roles: ['admin', 'officer'] },
-  { icon: Building2, label: 'Miller Portal', path: '/miller', roles: ['admin', 'officer', 'miller'] },
+  { icon: MessageSquare, label: 'Miller Updates', path: '/miller-updates', roles: ['admin', 'officer'] },
+  { icon: Building2, label: 'Miller Portal', path: '/miller', roles: ['miller'] },
   { icon: Warehouse, label: 'Inventory', path: '/inventory', roles: ['admin', 'officer', 'employee'] },
   { icon: FileSpreadsheet, label: 'Arrival Entry', path: '/arrival-entry', roles: ['admin', 'officer'] },
   { icon: CreditCard, label: 'Payments', path: '/payments', roles: ['admin', 'officer'] },

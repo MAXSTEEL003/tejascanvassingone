@@ -172,7 +172,7 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 }
 
 // Helper: Determine caller role from authenticated tokens/session without circular imports
-export function getCurrentCallerRole(): 'admin' | 'employee' | 'merchant' | null {
+export function getCurrentCallerRole(): 'admin' | 'employee' | 'merchant' | 'miller' | null {
   try {
     const user = auth.currentUser;
     if (user?.email) {
@@ -199,7 +199,7 @@ export function getCurrentCallerRole(): 'admin' | 'employee' | 'merchant' | null
       } catch {}
     }
     const rawRole = typeof window !== 'undefined' ? localStorage.getItem('userRole') : null;
-    if (rawRole === 'merchant' || rawRole === 'employee' || rawRole === 'admin') {
+    if (rawRole === 'merchant' || rawRole === 'employee' || rawRole === 'admin' || rawRole === 'miller') {
       return rawRole as any;
     }
   } catch {}

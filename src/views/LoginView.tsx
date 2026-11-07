@@ -464,7 +464,7 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
       }
 
       const userUid = user.uid || 'admin-tejas-01';
-      const userName = user.displayName || 'Tejas Adinarayan (Admin HQ)';
+      const userName = user.displayName || 'Tejas Adinarayan (Admin)';
 
       localStorage.setItem('userRole', 'admin');
       localStorage.setItem('userEmail', userEmail);
@@ -535,7 +535,7 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
       if (isAuthorizedAdminGoogleAccount(userEmail)) {
         localStorage.setItem('userRole', 'admin');
         localStorage.setItem('userEmail', userEmail);
-        localStorage.setItem('userName', userName || 'Tejas Adinarayan (Admin HQ)');
+        localStorage.setItem('userName', userName || 'Tejas Adinarayan (Admin)');
         localStorage.setItem('userId', userUid);
         localStorage.setItem('tejas_intro_viewed', 'true');
 
@@ -673,7 +673,7 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
 
         if (roleToSign === 'admin') {
           localStorage.setItem('userRole', 'admin');
-          localStorage.setItem('userName', 'Tejas Adinarayan (Admin HQ)');
+          localStorage.setItem('userName', 'Tejas Adinarayan (Admin)');
           localStorage.setItem('userEmail', 'nani@tejasc.in');
           localStorage.setItem('userId', 'admin-tejas-01');
           window.dispatchEvent(new Event('role-changed'));
