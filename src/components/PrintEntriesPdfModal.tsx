@@ -1116,6 +1116,168 @@ export default function PrintEntriesPdfModal({
               <div className="space-y-1.5 sm:col-span-2">
                 <div className="flex items-center justify-between">
                   <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-amber-500" />
+                    <span>Filter by Date (Today / Any Specific Date)</span>
+                  </label>
+                  <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold">
+                    {dateFilter === 'today' ? `Today's Date (${todayCount} orders)` :
+                     dateFilter === 'yesterday' ? `Yesterday (${yesterdayCount} orders)` :
+                     dateFilter === 'custom' && customDate ? `Date: ${customDate} (${customDateCount} orders)` :
+                     dateFilter === 'custom_range' && customDate ? `Range: ${customDate} to ${customDateEnd || 'Today'} (${customDateCount} orders)` :
+                     dateFilter === 'week' ? 'Past 7 Days' :
+                     dateFilter === 'month' ? 'Current Month' :
+                     'All Recorded Dates'}
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5 p-2 rounded-xl bg-slate-50 dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800">
+                  {/* All Dates */}
+                  <button
+                    type="button"
+                    onClick={() => { setDateFilter('all'); setCustomDate(''); setCustomDateEnd(''); }}
+                    className={cn(
+                      "px-2.5 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer",
+                      dateFilter === 'all'
+                        ? "bg-amber-500 text-white border-amber-500 shadow-xs"
+                        : "bg-white dark:bg-neutral-800 border-slate-200 dark:border-neutral-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100"
+                    )}
+                  >
+                    All Dates
+                  </button>
+
+                  {/* Today Button with Live Count */}
+                  <button
+                    type="button"
+                    onClick={() => { setDateFilter('today'); setCustomDate(''); setCustomDateEnd(''); setSelectedMonths([]); }}
+                    className={cn(
+                      "px-2.5 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5",
+                      dateFilter === 'today'
+                        ? "bg-emerald-600 text-white border-emerald-600 shadow-xs"
+                        : "bg-white dark:bg-neutral-800 border-emerald-500/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                    )}
+                  >
+                    <span>Today ({new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })})</span>
+                    <span className={cn(
+                      "text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold",
+                      dateFilter === 'today' ? "bg-white/20 text-white" : "bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300"
+                    )}>
+                      {todayCount}
+                    </span>
+                  </button>
+
+                  {/* Yesterday Button */}
+                  <button
+                    type="button"
+                    onClick={() => { setDateFilter('yesterday'); setCustomDate(''); setCustomDateEnd(''); setSelectedMonths([]); }}
+                    className={cn(
+                      "px-2.5 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5",
+                      dateFilter === 'yesterday'
+                        ? "bg-amber-500 text-white border-amber-500 shadow-xs"
+                        : "bg-white dark:bg-neutral-800 border-slate-200 dark:border-neutral-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100"
+                    )}
+                  >
+                    <span>Yesterday</span>
+                    <span className="text-[10px] px-1.5 py-0.2 rounded-full font-mono bg-slate-100 dark:bg-neutral-700 text-slate-500 dark:text-slate-400">
+                      {yesterdayCount}
+                    </span>
+                  </button>
+
+                  {/* Past 7 Days */}
+                  <button
+                    type="button"
+                    onClick={() => { setDateFilter('week'); setCustomDate(''); setCustomDateEnd(''); setSelectedMonths([]); }}
+                    className={cn(
+                      "px-2.5 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer",
+                      dateFilter === 'week'
+                        ? "bg-amber-500 text-white border-amber-500 shadow-xs"
+                        : "bg-white dark:bg-neutral-800 border-slate-200 dark:border-neutral-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100"
+                    )}
+                  >
+                    Past 7 Days
+                  </button>
+
+                  {/* Pick Any Specific Date input */}
+                  <div className={cn(
+                    "flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all",
+                    dateFilter === 'custom' 
+                      ? "bg-amber-500/15 border-amber-500 text-amber-900 dark:text-amber-200" 
+                      : "bg-white dark:bg-neutral-800 border-slate-200 dark:border-neutral-700 text-slate-600 dark:text-slate-300"
+                  )}>
+                    <span className="text-[10.5px] font-bold shrink-0">Any Date:</span>
+                    <input
+                      type="date"
+                      value={customDate}
+                      onChange={(e) => {
+                        setCustomDate(e.target.value);
+                        if (e.target.value) {
+                          setDateFilter('custom');
+                          setSelectedMonths([]);
+                        }
+                      }}
+                      className="text-[11px] font-bold bg-transparent border-0 focus:outline-none cursor-pointer"
+                      title="Pick any specific date to print"
+                    />
+                    {customDate && (
+                      <button
+                        type="button"
+                        onClick={() => { setCustomDate(''); setDateFilter('all'); }}
+                        className="text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                        title="Clear date"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Date Range Selector */}
+                  <div className={cn(
+                    "flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all",
+                    dateFilter === 'custom_range' 
+                      ? "bg-amber-500/15 border-amber-500 text-amber-900 dark:text-amber-200" 
+                      : "bg-white dark:bg-neutral-800 border-slate-200 dark:border-neutral-700 text-slate-600 dark:text-slate-300"
+                  )}>
+                    <span className="text-[10.5px] font-bold shrink-0">Range:</span>
+                    <input
+                      type="date"
+                      value={customDate}
+                      onChange={(e) => {
+                        setCustomDate(e.target.value);
+                        setDateFilter('custom_range');
+                        setSelectedMonths([]);
+                      }}
+                      className="text-[11px] font-bold bg-transparent border-0 focus:outline-none cursor-pointer"
+                      title="From date"
+                    />
+                    <span className="text-[10px] text-slate-400">to</span>
+                    <input
+                      type="date"
+                      value={customDateEnd}
+                      onChange={(e) => {
+                        setCustomDateEnd(e.target.value);
+                        setDateFilter('custom_range');
+                        setSelectedMonths([]);
+                      }}
+                      className="text-[11px] font-bold bg-transparent border-0 focus:outline-none cursor-pointer"
+                      title="To date"
+                    />
+                    {(customDate || customDateEnd) && (
+                      <button
+                        type="button"
+                        onClick={() => { setCustomDate(''); setCustomDateEnd(''); setDateFilter('all'); }}
+                        className="text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                        title="Clear range"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* 4. Month Selector with multi-select capability */}
+              <div className="space-y-1.5 sm:col-span-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
                     <Calendar className="w-3.5 h-3.5 text-slate-400" />
                     <span>Select Month(s)</span>
                   </label>
