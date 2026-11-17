@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { ShoppingCart, TrendingUp, Activity, ChevronRight, MoreVertical, Package, Truck, AlertCircle, Search, Filter, CheckCircle2, ChevronDown, ChevronUp, Plus, PlusCircle, X, Lock, CreditCard, RefreshCw, Trash2, Loader2, Clock, History, Eye, ArrowUpRight, Archive, Copy, MessageSquare, User, Inbox, Check, Edit3 } from 'lucide-react';
+import { ShoppingCart, TrendingUp, Activity, ChevronRight, MoreVertical, Package, Truck, AlertCircle, Search, Filter, CheckCircle2, ChevronDown, ChevronUp, Plus, PlusCircle, X, Lock, CreditCard, RefreshCw, Trash2, Loader2, Clock, History, Eye, ArrowUpRight, Archive, Copy, MessageSquare, User, Inbox, Check, Edit3, Calendar } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { AreaChart, Area, XAxis, ResponsiveContainer, Tooltip, CartesianGrid } from 'recharts';
 import { cn, formatINR, getRegisteredSuppliers, getPrimaryRegisteredSupplier, sanitizeSupplierName, removeDeletedPlacedOrderId } from '../lib/utils';
@@ -289,6 +289,11 @@ export default function OrdersDashboard() {
   const [isTodayHistoryModalOpen, setIsTodayHistoryModalOpen] = useState(false);
   const [todayHistoryTab, setTodayHistoryTab] = useState<'all' | 'placed' | 'approved'>('all');
   const [todayHistorySearch, setTodayHistorySearch] = useState('');
+
+  // Everyday Placed Orders History (Daily Ledger) states
+  const [isTodayStatsCardExpanded, setIsTodayStatsCardExpanded] = useState(false);
+  const [expandedDailyDates, setExpandedDailyDates] = useState<Record<string, boolean>>({});
+  const [dailyHistorySearch, setDailyHistorySearch] = useState('');
 
   // Archived orders state (declared early so metrics and tables have access)
   const [isArchivedExpanded, setIsArchivedExpanded] = useState(false);
@@ -1087,6 +1092,174 @@ export default function OrdersDashboard() {
     };
   }, [placedOrdersList, currentOrders]);
 
+  // Everyday Placed Orders History (Daily Ledger) grouped by date
+  const dailyPlacedHistory = useMemo(() => {
+    const validPlaced = getValidDeduplicatedPlacedOrders(placedOrdersList);
+    const groupsMap = new Map<string, {
+      dateKey: string;
+      timestamp: number;
+      displayDate: string;
+      isToday: boolean;
+      totalQtls: number;
+      totalAmount: number;
+      ordersCount: number;
+      posCount: number;
+      individualOrders: Array<{
+        id: string;
+        subOrderNo?: string;
+        poId: string;
+        buyer: string;
+        buyerInitials?: string;
+        phone?: string;
+        product: string;
+        qty: number;
+        rate: number;
+        totalAmount: number;
+        supplier: string;
+        loadingDays: number;
+        unloadingPoint: string;
+        remarks: string;
+        date: any;
+        status: string;
+      }>;
+    }>();
+
+    const todayObj = new Date();
+    todayObj.setHours(0, 0, 0, 0);
+    const todayKey = `${todayObj.getFullYear()}-${String(todayObj.getMonth() + 1).padStart(2, '0')}-${String(todayObj.getDate()).padStart(2, '0')}`;
+    const monthNamesShort = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const todayFormatted = `${todayObj.getDate()} ${monthNamesShort[todayObj.getMonth()]} ${todayObj.getFullYear()}`;
+
+    // Always ensure today's bucket exists at top
+    groupsMap.set(todayKey, {
+      dateKey: todayKey,
+      timestamp: todayObj.getTime(),
+      displayDate: `Today (${todayFormatted})`,
+      isToday: true,
+      totalQtls: 0,
+      totalAmount: 0,
+      ordersCount: 0,
+      posCount: 0,
+      individualOrders: []
+    });
+
+    validPlaced.forEach((p: any) => {
+      if (!p) return;
+      const rawDate = p.date || p.placedAt || p.purchaseOrderSentAt || p.createdAt;
+      let orderDate: Date | null = null;
+
+      if (typeof rawDate === 'string' && rawDate.trim().toLowerCase() === 'today') {
+        orderDate = new Date(todayObj);
+      } else if (rawDate) {
+        const parsed = parseOperationalDate(rawDate);
+        if (parsed && parsed.timestamp) {
+          orderDate = new Date(parsed.timestamp);
+        } else {
+          const direct = new Date(rawDate);
+          if (!isNaN(direct.getTime())) orderDate = direct;
+        }
+      }
+
+      if (!orderDate || isNaN(orderDate.getTime())) {
+        orderDate = new Date(todayObj);
+      }
+
+      orderDate.setHours(0, 0, 0, 0);
+      const y = orderDate.getFullYear();
+      const m = String(orderDate.getMonth() + 1).padStart(2, '0');
+      const d = String(orderDate.getDate()).padStart(2, '0');
+      const dKey = `${y}-${m}-${d}`;
+      const isToday = dKey === todayKey;
+      const dFormatted = `${orderDate.getDate()} ${monthNamesShort[orderDate.getMonth()]} ${orderDate.getFullYear()}`;
+      const dispDate = isToday ? `Today (${dFormatted})` : dFormatted;
+
+      if (!groupsMap.has(dKey)) {
+        groupsMap.set(dKey, {
+          dateKey: dKey,
+          timestamp: orderDate.getTime(),
+          displayDate: dispDate,
+          isToday,
+          totalQtls: 0,
+          totalAmount: 0,
+          ordersCount: 0,
+          posCount: 0,
+          individualOrders: []
+        });
+      }
+
+      const group = groupsMap.get(dKey)!;
+      group.posCount += 1;
+
+      if (Array.isArray(p.originalOrders) && p.originalOrders.length > 0) {
+        p.originalOrders.forEach((sub: any, sIdx: number) => {
+          const sQty = parseFloat(sub?.qty || sub?.quantity || sub?.totalQty || "0") || 0;
+          const sRate = parseFloat(sub?.rate || p?.rate || "0") || 0;
+          const buyerName = sub?.buyer || p?.buyer || "Authorized Merchant";
+          const productName = sub?.product || sub?.brand || p?.product || p?.brand || "Rice";
+          const sId = sub?.id || sub?.orderNo || sub?.subOrderNo || `${p.id}-${sIdx + 1}`;
+          const subOrderNo = sub?.orderNo || sub?.subOrderNo || (p.supplierSubOrderNo ? `${p.supplierSubOrderNo}-${sIdx + 1}` : undefined);
+          const loadingDays = sub?.loadingDays !== undefined ? sub.loadingDays : (p.loadingDays !== undefined ? p.loadingDays : 0);
+          const unloadingPoint = sub?.unloadingPoint || p?.unloadingPoint || 'shop';
+          const remarks = sub?.remarks || p?.remarks || '';
+          const phone = sub?.phone || p?.phone || '';
+          const initials = sub?.initials || buyerName.slice(0, 2).toUpperCase();
+
+          group.totalQtls += sQty;
+          group.totalAmount += (sQty * sRate);
+          group.ordersCount += 1;
+          group.individualOrders.push({
+            id: String(sId),
+            subOrderNo,
+            poId: String(p.id),
+            buyer: buyerName,
+            buyerInitials: initials,
+            phone,
+            product: productName,
+            qty: sQty,
+            rate: sRate,
+            totalAmount: sQty * sRate,
+            supplier: p.supplier || 'Direct Mill',
+            loadingDays,
+            unloadingPoint,
+            remarks,
+            date: orderDate,
+            status: p.status || 'Placed'
+          });
+        });
+      } else {
+        const pQty = getPlacedOrderVolume(p);
+        const pRate = parseFloat(p.rate || "0") || 0;
+        const buyerName = p.buyer || "Authorized Merchant";
+        const productName = p.product || p.brand || p.items?.replace(/\(\d+.*$/, '').trim() || "Rice";
+        const initials = p.initials || buyerName.slice(0, 2).toUpperCase();
+
+        group.totalQtls += pQty;
+        group.totalAmount += (pQty * pRate);
+        group.ordersCount += 1;
+        group.individualOrders.push({
+          id: String(p.id),
+          subOrderNo: p.supplierSubOrderNo,
+          poId: String(p.id),
+          buyer: buyerName,
+          buyerInitials: initials,
+          phone: p.phone || '',
+          product: productName,
+          qty: pQty,
+          rate: pRate,
+          totalAmount: pQty * pRate,
+          supplier: p.supplier || 'Direct Mill',
+          loadingDays: p.loadingDays !== undefined ? p.loadingDays : 0,
+          unloadingPoint: p.unloadingPoint || 'shop',
+          remarks: p.remarks || '',
+          date: orderDate,
+          status: p.status || 'Placed'
+        });
+      }
+    });
+
+    return Array.from(groupsMap.values()).sort((a, b) => b.timestamp - a.timestamp);
+  }, [placedOrdersList]);
+
   // 3. Dynamic Daily Placed Orders Volume Trend (Quantity placed per day)
   const [chartRange, setChartRange] = useState<'7d' | '14d' | '30d'>('7d');
 
@@ -1210,8 +1383,8 @@ export default function OrdersDashboard() {
     },
     { 
       label: 'Today Approved & Placed', 
-      value: `${todayApprovedAndPlacedQtls.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} QTLS`, 
-      sub: `Appr: ${todayApprovedQtls.toFixed(1)} Q • Placed: ${todayPlacedQtls.toFixed(1)} Q`, 
+      value: `${todayPlacedQtls.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} QTLS`, 
+      sub: `${todayPlacedOrders.length} placed today • Click for Everyday History`, 
       icon: History, 
       color: 'text-emerald-500' 
     },
@@ -2229,6 +2402,285 @@ export default function OrdersDashboard() {
     setNewOrder({ buyer: '', phone: '', supplier: '', product: '', qty: '', rate: '', urgency: 'Standard', loadingDays: 0, unloadingPoint: 'shop', remarks: '' });
   };
 
+  // Render function for Everyday Placed Orders History (Daily Ledger)
+  const renderEverydayHistoryList = (isInsideModal: boolean = false) => {
+    const q = (isInsideModal ? todayHistorySearch : dailyHistorySearch).trim().toLowerCase();
+
+    const filtered = dailyPlacedHistory.map(group => {
+      if (!q) return group;
+      if (group.displayDate.toLowerCase().includes(q)) return group;
+
+      const matchedOrders = group.individualOrders.filter(ord => {
+        return ord.buyer.toLowerCase().includes(q) ||
+               ord.product.toLowerCase().includes(q) ||
+               ord.supplier.toLowerCase().includes(q) ||
+               ord.poId.toLowerCase().includes(q) ||
+               (ord.subOrderNo && ord.subOrderNo.toLowerCase().includes(q)) ||
+               (ord.phone && ord.phone.includes(q)) ||
+               (ord.remarks && ord.remarks.toLowerCase().includes(q));
+      });
+
+      if (matchedOrders.length === 0) return null;
+
+      const matchedQtls = matchedOrders.reduce((sum, o) => sum + o.qty, 0);
+      const matchedAmount = matchedOrders.reduce((sum, o) => sum + o.totalAmount, 0);
+
+      return {
+        ...group,
+        totalQtls: matchedQtls,
+        totalAmount: matchedAmount,
+        ordersCount: matchedOrders.length,
+        individualOrders: matchedOrders
+      };
+    }).filter(Boolean) as typeof dailyPlacedHistory;
+
+    const allKeys = filtered.map(g => g.dateKey);
+
+    return (
+      <div className="space-y-4">
+        {/* Controls row */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                const next: Record<string, boolean> = {};
+                allKeys.forEach(k => { next[k] = true; });
+                setExpandedDailyDates(next);
+              }}
+              className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-surface-container hover:bg-surface-container-high border border-outline-variant/30 text-secondary hover:text-on-surface transition-all cursor-pointer"
+            >
+              Expand All
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const next: Record<string, boolean> = {};
+                allKeys.forEach(k => { next[k] = false; });
+                setExpandedDailyDates(next);
+              }}
+              className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-surface-container hover:bg-surface-container-high border border-outline-variant/30 text-secondary hover:text-on-surface transition-all cursor-pointer"
+            >
+              Collapse All
+            </button>
+          </div>
+
+          <div className="relative w-full sm:w-72">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-secondary" />
+            <input
+              type="text"
+              placeholder="Search buyer, brand, PO, supplier..."
+              value={isInsideModal ? todayHistorySearch : dailyHistorySearch}
+              onChange={(e) => {
+                if (isInsideModal) {
+                  setTodayHistorySearch(e.target.value);
+                } else {
+                  setDailyHistorySearch(e.target.value);
+                }
+              }}
+              className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-1.5 pl-9 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary/20 text-on-surface placeholder:text-secondary/60"
+            />
+          </div>
+        </div>
+
+        {/* Date groups accordion */}
+        {filtered.length === 0 ? (
+          <div className="py-10 text-center space-y-2 bg-surface-container-lowest rounded-2xl border border-outline-variant/20">
+            <Inbox className="w-9 h-9 text-secondary/40 mx-auto" />
+            <p className="text-sm font-bold text-on-surface">No orders matched your search</p>
+            <p className="text-xs text-secondary">Try searching with a different buyer, product, or supplier name.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {filtered.map((group) => {
+              const isExpanded = q ? true : (expandedDailyDates[group.dateKey] !== undefined ? expandedDailyDates[group.dateKey] : group.isToday);
+
+              return (
+                <div 
+                  key={group.dateKey}
+                  className="rounded-2xl border border-outline-variant/25 overflow-hidden bg-surface-container-lowest shadow-2xs transition-all"
+                >
+                  {/* Date Header Row - Click to Expand / Collapse */}
+                  <div
+                    onClick={() => {
+                      setExpandedDailyDates(prev => ({
+                        ...prev,
+                        [group.dateKey]: !isExpanded
+                      }));
+                    }}
+                    className={cn(
+                      "p-4 flex flex-wrap items-center justify-between gap-3 cursor-pointer select-none transition-all",
+                      isExpanded 
+                        ? "bg-surface-container-low border-b border-outline-variant/20" 
+                        : "hover:bg-surface-container-low/60"
+                    )}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={cn(
+                        "w-8 h-8 rounded-xl flex items-center justify-center transition-all",
+                        group.isToday 
+                          ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30" 
+                          : "bg-surface-container-highest text-secondary border border-outline-variant/20"
+                      )}>
+                        {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-bold text-sm sm:text-base text-on-surface">
+                            {group.displayDate}
+                          </h4>
+                          {group.isToday && (
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30">
+                              Today
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-secondary font-medium">
+                          {group.ordersCount} individual order{group.ordersCount !== 1 ? 's' : ''} • {group.posCount} PO{group.posCount !== 1 ? 's' : ''}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-4">
+                      <div className="text-right">
+                        <div className="text-sm sm:text-base font-black font-mono text-emerald-600 dark:text-emerald-400">
+                          {group.totalQtls.toFixed(2)} QTLS
+                        </div>
+                        {group.totalAmount > 0 && (
+                          <div className="text-[10px] sm:text-xs font-mono font-bold text-secondary">
+                            ₹ {formatINR(group.totalAmount)}
+                          </div>
+                        )}
+                      </div>
+                      <div className="text-secondary/70">
+                        {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Expanded Individual Orders List */}
+                  {isExpanded && (
+                    <div className="p-3 sm:p-4 bg-surface-container-lowest/80 space-y-3">
+                      {group.individualOrders.length === 0 ? (
+                        <div className="py-6 text-center text-secondary text-xs font-medium">
+                          No individual orders placed on this date.
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 gap-2.5">
+                          {group.individualOrders.map((ord, oIdx) => (
+                            <div
+                              key={`${ord.id}-${oIdx}`}
+                              className="p-3.5 sm:p-4 rounded-xl bg-surface border border-outline-variant/20 hover:border-emerald-500/40 transition-all space-y-2.5 shadow-2xs"
+                            >
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div className="flex items-center gap-2.5">
+                                  <div className="w-8 h-8 rounded-xl bg-primary/10 text-primary font-black text-xs flex items-center justify-center border border-primary/20 shrink-0">
+                                    {ord.buyerInitials}
+                                  </div>
+                                  <div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-bold text-sm text-on-surface">
+                                        {ord.buyer}
+                                      </span>
+                                      {ord.phone && (
+                                        <span className="text-[10px] text-secondary font-mono">
+                                          ({ord.phone})
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-1.5 text-[10px] text-secondary font-mono mt-0.5">
+                                      <span className="px-1.5 py-0.5 rounded bg-surface-container border border-outline-variant/20 text-on-surface font-bold">
+                                        PO: {ord.poId}
+                                      </span>
+                                      {ord.subOrderNo && (
+                                        <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary font-bold">
+                                          Ref: {ord.subOrderNo}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-3">
+                                  <div className="text-right">
+                                    <span className="text-sm font-black font-mono text-emerald-600 dark:text-emerald-400">
+                                      {ord.qty.toFixed(2)} QTLS
+                                    </span>
+                                    {ord.rate > 0 && (
+                                      <div className="text-xs font-mono font-bold text-secondary">
+                                        @ ₹{formatINR(ord.rate)}/QTL
+                                      </div>
+                                    )}
+                                    {ord.totalAmount > 0 && (
+                                      <div className="text-[10px] font-mono text-secondary/70">
+                                        ₹ {formatINR(ord.totalAmount)}
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* Direct WhatsApp Action Button */}
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const phone = ord.phone || '';
+                                      const clean = phone.replace(/\D/g, '');
+                                      const target = clean.length === 10 ? `91${clean}` : clean;
+                                      const msg = `Hello ${ord.buyer},\n\nOrder placed successfully.\n\nBrand: ${ord.product}\nQuantity: ${ord.qty} QTL\nRate: ₹${ord.rate}/QTL\nPO Ref: ${ord.poId}${ord.subOrderNo ? ` (${ord.subOrderNo})` : ''}\n\nThank you,\nTejas Canvassing`;
+                                      if (target) {
+                                        window.open(`https://wa.me/${target}?text=${encodeURIComponent(msg)}`, '_blank');
+                                      } else {
+                                        navigator.clipboard?.writeText(msg);
+                                        alert('WhatsApp message copied to clipboard:\n\n' + msg);
+                                      }
+                                    }}
+                                    className="p-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 transition-all cursor-pointer"
+                                    title="Send WhatsApp confirmation to buyer"
+                                  >
+                                    <MessageSquare className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-outline-variant/10 text-xs">
+                                <div>
+                                  <span className="text-[9px] uppercase tracking-wider text-secondary font-bold block">Brand:</span>
+                                  <span className="font-bold text-on-surface">{ord.product}</span>
+                                </div>
+                                <div>
+                                  <span className="text-[9px] uppercase tracking-wider text-secondary font-bold block">Supplier / Mill:</span>
+                                  <span className="font-bold text-on-surface truncate block">{ord.supplier}</span>
+                                </div>
+                                <div>
+                                  <span className="text-[9px] uppercase tracking-wider text-secondary font-bold block">Loading Terms:</span>
+                                  <span className="font-mono font-bold text-on-surface">{ord.loadingDays} Day{ord.loadingDays !== 1 ? 's' : ''}</span>
+                                </div>
+                                <div>
+                                  <span className="text-[9px] uppercase tracking-wider text-secondary font-bold block">Unload Point:</span>
+                                  <span className="font-bold text-on-surface capitalize">{ord.unloadingPoint || 'shop'}</span>
+                                </div>
+                              </div>
+
+                              {ord.remarks && (
+                                <div className="text-[11px] bg-surface-container px-3 py-1.5 rounded-lg border border-outline-variant/10 text-secondary">
+                                  <strong className="text-on-surface">Remarks:</strong> {ord.remarks}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="p-4 sm:p-8 space-y-8 max-w-7xl mx-auto pb-32 admin-font font-sf">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-2 border-b border-slate-200/80 dark:border-outline-variant/10">
@@ -2264,7 +2716,7 @@ export default function OrdersDashboard() {
       </div>
 
       {/* Hero Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 items-start">
         {stats.map((stat, i) => {
           const iconBgClass = i === 0 ? "bg-red-500/15 text-red-700 dark:text-red-400 border-red-500/30" :
                               i === 1 ? "bg-slate-700/10 text-slate-800 dark:text-slate-200 border-slate-700/20 dark:border-white/10" :
@@ -2272,13 +2724,87 @@ export default function OrdersDashboard() {
                                         "bg-blue-500/15 text-blue-700 dark:text-blue-500 border-blue-500/30";
           const glowColor = i === 0 ? "hover:shadow-red-500/10 hover:border-red-500/40" :
                             i === 1 ? "hover:shadow-slate-500/10 hover:border-slate-500/40" :
-                            i === 2 ? "hover:shadow-emerald-500/10 hover:border-emerald-500/40 cursor-pointer" :
+                            i === 2 ? "hover:shadow-emerald-500/10 hover:border-emerald-500/40" :
                                       "hover:shadow-blue-500/10 hover:border-blue-500/40 cursor-pointer";
 
           const isPaymentCard = i === 3;
           const isTodayHistoryCard = i === 2;
-          const isClickableCard = isPaymentCard || isTodayHistoryCard;
 
+          if (isTodayHistoryCard) {
+            return (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, y: 20, scale: 0.985 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                whileHover={{ y: -4, transition: { duration: 0.2, ease: "easeOut" } }}
+                transition={{ duration: 0.45, delay: i * 0.07, ease: [0.16, 1, 0.3, 1] }}
+                className={cn(
+                  "floating-card liquid-glass p-6 rounded-3xl premium-border space-y-3 group interactive-card relative overflow-hidden transition-all duration-300",
+                  glowColor,
+                  isTodayStatsCardExpanded && "ring-2 ring-emerald-500/30 border-emerald-500/60 shadow-lg bg-emerald-500/[0.03]"
+                )}
+              >
+                {/* Ambient radial accent glow */}
+                <div className="absolute -right-6 -bottom-6 w-24 h-24 rounded-full blur-2xl pointer-events-none opacity-20 transition-opacity group-hover:opacity-40 bg-emerald-500" />
+                
+                <div className="flex justify-between items-start relative z-10">
+                  <div className={cn("p-2.5 rounded-2xl w-fit border transition-all duration-300 group-hover:scale-110", iconBgClass)}>
+                    <stat.icon className="w-5 h-5" />
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 font-mono">
+                      Today
+                    </span>
+                    <span className="text-[9px] font-bold text-slate-400 dark:text-secondary/30 uppercase tracking-widest font-mono">0{i + 1}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-1 relative z-10">
+                  <p className="text-[10px] font-bold text-slate-500 dark:text-secondary/70 uppercase tracking-wider leading-none">
+                    {stat.label}
+                  </p>
+                  
+                  {/* Today's Date next to Today's Placed Orders Total QTLS */}
+                  <div className="flex items-baseline justify-between gap-2 pt-1">
+                    <span className="text-xs font-bold text-slate-600 dark:text-secondary font-mono">
+                      {new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}:
+                    </span>
+                    <h3 className="text-2xl font-black font-mono tracking-tight text-emerald-600 dark:text-emerald-400">
+                      {todayPlacedQtls.toFixed(2)} <span className="text-xs font-normal text-slate-500 dark:text-secondary">QTLS</span>
+                    </h3>
+                  </div>
+
+                  <p className="text-[11px] font-medium text-slate-500 dark:text-secondary/50 pt-0.5">
+                    {todayPlacedOrders.length} placed order{todayPlacedOrders.length !== 1 ? 's' : ''} today
+                  </p>
+                </div>
+
+                {/* Interactive Expand Button right on stats card */}
+                <button
+                  type="button"
+                  onClick={() => setIsTodayStatsCardExpanded(prev => !prev)}
+                  className={cn(
+                    "w-full mt-2 py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-between transition-all cursor-pointer shadow-2xs group/btn relative z-10",
+                    isTodayStatsCardExpanded 
+                      ? "bg-emerald-600 text-white border-emerald-600 shadow-md"
+                      : "bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30"
+                  )}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5" />
+                    <span>{isTodayStatsCardExpanded ? "Collapse Orders" : "Expand Individual Orders"}</span>
+                  </span>
+                  {isTodayStatsCardExpanded ? (
+                    <ChevronUp className="w-4 h-4 transition-transform" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 group-hover/btn:translate-y-0.5 transition-transform" />
+                  )}
+                </button>
+              </motion.div>
+            );
+          }
+
+          // Other standard stats cards (0, 1, 3)
           return (
             <motion.div 
               key={i}
@@ -2293,29 +2819,20 @@ export default function OrdersDashboard() {
               onClick={() => {
                 if (isPaymentCard) {
                   navigate('/payments');
-                } else if (isTodayHistoryCard) {
-                  setIsTodayHistoryModalOpen(true);
                 }
               }}
               className={cn(
                 "floating-card liquid-glass p-6 rounded-3xl premium-border space-y-4 group interactive-card relative overflow-hidden transition-all duration-300",
                 glowColor,
-                isClickableCard && "cursor-pointer hover:shadow-lg active:scale-95"
+                isPaymentCard && "cursor-pointer hover:shadow-lg active:scale-95"
               )}
-              title={
-                isPaymentCard 
-                  ? "Click to navigate to Payment Tracking" 
-                  : isTodayHistoryCard 
-                    ? "Click to view today's approved & placed orders history" 
-                    : undefined
-              }
+              title={isPaymentCard ? "Click to navigate to Payment Tracking" : undefined}
             >
               {/* Ambient radial accent glow */}
               <div className={cn(
                 "absolute -right-6 -bottom-6 w-24 h-24 rounded-full blur-2xl pointer-events-none opacity-20 transition-opacity group-hover:opacity-40",
                 i === 0 ? "bg-red-500" :
                 i === 1 ? "bg-slate-600" :
-                i === 2 ? "bg-emerald-500" :
                           "bg-blue-500"
               )} />
               <div className="flex justify-between items-start relative z-10">
@@ -2326,9 +2843,6 @@ export default function OrdersDashboard() {
                   {isPaymentCard && (
                     <ArrowUpRight className="w-4 h-4 text-blue-600 dark:text-blue-500 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
                   )}
-                  {isTodayHistoryCard && (
-                    <ArrowUpRight className="w-4 h-4 text-emerald-600 dark:text-emerald-500 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-                  )}
                   <span className="text-[9px] font-bold text-slate-400 dark:text-secondary/30 uppercase tracking-widest font-mono">0{i + 1}</span>
                 </div>
               </div>
@@ -2338,13 +2852,94 @@ export default function OrdersDashboard() {
                  <p className="text-[11px] font-medium text-slate-500 dark:text-secondary/50 flex items-center justify-between">
                    <span>{stat.sub}</span>
                    {isPaymentCard && <span className="text-blue-600 dark:text-blue-500 font-bold group-hover:underline text-[9.5px]">Track Payments →</span>}
-                   {isTodayHistoryCard && <span className="text-emerald-600 dark:text-emerald-500 font-bold group-hover:underline text-[9.5px]">View History →</span>}
                  </p>
               </div>
             </motion.div>
           );
         })}
       </div>
+
+      {/* Expanded Everyday History Drawer Attached to Today's Approved & Placed Stats Card */}
+      <AnimatePresence>
+        {isTodayStatsCardExpanded && (
+          <motion.div
+            initial={{ opacity: 0, height: 0, y: -8 }}
+            animate={{ opacity: 1, height: 'auto', y: 0 }}
+            exit={{ opacity: 0, height: 0, y: -8 }}
+            transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
+            className="overflow-hidden"
+          >
+            <div className="floating-card liquid-glass p-6 sm:p-7 rounded-3xl premium-border space-y-5 border-emerald-500/40 shadow-xl bg-gradient-to-br from-surface to-emerald-500/[0.03]">
+              {/* Header */}
+              <div className="flex flex-wrap items-center justify-between gap-4 border-b border-outline-variant/20 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400">
+                    <History className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-base sm:text-lg font-black tracking-tight text-slate-900 dark:text-on-surface">
+                        Today Approved & Placed — Everyday Orders Ledger
+                      </h3>
+                      <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 font-mono">
+                        {dailyPlacedHistory.length} Days Recorded
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-secondary font-medium mt-0.5">
+                      Today's date & placed QTLS on top • Expand any date to view all individual customer orders
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsTodayStatsCardExpanded(false)}
+                    className="px-3.5 py-1.5 bg-surface-container hover:bg-surface-container-high text-on-surface border border-outline-variant/30 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-xs"
+                  >
+                    <ChevronUp className="w-4 h-4" />
+                    <span>Collapse</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsTodayHistoryModalOpen(true)}
+                    className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-xs"
+                    title="Open full screen history modal"
+                  >
+                    <ArrowUpRight className="w-3.5 h-3.5" />
+                    <span>Full Screen</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Today's Placed Summary Banner */}
+              <div className="p-3.5 sm:p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <Calendar className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                  <div>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-400 block">
+                      Today's Date: {new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    </span>
+                    <h4 className="text-base sm:text-lg font-black font-mono text-slate-900 dark:text-on-surface">
+                      Today's Placed Orders: <span className="text-emerald-600 dark:text-emerald-400">{todayPlacedQtls.toFixed(2)} QTLS</span>
+                    </h4>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="text-xs font-bold text-slate-600 dark:text-secondary font-mono">
+                    {todayPlacedOrders.length} Purchase Order(s) dispatched today
+                  </span>
+                </div>
+              </div>
+
+              {/* Everyday History Accordion with Individual Orders */}
+              <div className="pt-1">
+                {renderEverydayHistoryList(false)}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="space-y-8">
         {/* Main Table Content - Now full width */}
@@ -4298,14 +4893,14 @@ export default function OrdersDashboard() {
               <div className="p-5 sm:p-6 border-b border-outline-variant/20 flex items-center justify-between bg-surface-container-low/60 gap-4">
                 <div className="flex items-center gap-3">
                   <div className="p-2.5 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400">
-                    <History className="w-5 h-5" />
+                    <Calendar className="w-5 h-5" />
                   </div>
                   <div>
                     <h3 className="text-base sm:text-lg font-black text-on-surface flex items-center gap-2">
-                      Today's Approved & Placed Orders
+                      Everyday Placed Orders History (Daily Ledger)
                     </h3>
                     <p className="text-[11px] text-secondary font-bold font-mono">
-                      {new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} • Daily Dispatch & Approval Ledger
+                      {new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} • Chronological Daily Dispatch & Placed Indents
                     </p>
                   </div>
                 </div>
@@ -4322,197 +4917,67 @@ export default function OrdersDashboard() {
               <div className="p-4 sm:p-6 bg-surface-container-lowest border-b border-outline-variant/15">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="p-3.5 rounded-2xl bg-primary/5 border border-primary/15 space-y-1">
-                    <span className="text-[9px] font-black uppercase tracking-widest text-primary">Total Volume Today</span>
-                    <p className="text-xl font-black font-mono text-on-surface">{todayApprovedAndPlacedQtls.toFixed(2)} QTLS</p>
-                    <p className="text-[10px] text-secondary font-medium">Combined approved & placed</p>
+                    <span className="text-[9px] font-black uppercase tracking-widest text-primary">Total Placed Volume</span>
+                    <p className="text-xl font-black font-mono text-on-surface">{totalApprovedQtls.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} QTLS</p>
+                    <p className="text-[10px] text-secondary font-medium">{totalApprovedCount} placed orders till date</p>
                   </div>
 
                   <div className="p-3.5 rounded-2xl bg-emerald-500/5 border border-emerald-500/15 space-y-1">
                     <span className="text-[9px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">Placed in POs Today</span>
                     <p className="text-xl font-black font-mono text-emerald-600 dark:text-emerald-400">{todayPlacedQtls.toFixed(2)} QTLS</p>
-                    <p className="text-[10px] text-secondary font-medium">{todayPlacedOrders.length} Purchase Order(s) dispatched</p>
+                    <p className="text-[10px] text-secondary font-medium">{todayPlacedOrders.length} Purchase Order(s) dispatched today</p>
                   </div>
 
                   <div className="p-3.5 rounded-2xl bg-blue-500/5 border border-blue-500/15 space-y-1">
-                    <span className="text-[9px] font-black uppercase tracking-widest text-blue-600 dark:text-blue-400">Approved Today</span>
-                    <p className="text-xl font-black font-mono text-blue-600 dark:text-blue-400">{todayApprovedQtls.toFixed(2)} QTLS</p>
-                    <p className="text-[10px] text-secondary font-medium">{todayApprovedOrders.length} Approved indent(s) active</p>
+                    <span className="text-[9px] font-black uppercase tracking-widest text-blue-600 dark:text-blue-400">Daily History Scope</span>
+                    <p className="text-xl font-black font-mono text-blue-600 dark:text-blue-400">{dailyPlacedHistory.length} Days Recorded</p>
+                    <p className="text-[10px] text-secondary font-medium">Expand dates to view all customer orders</p>
                   </div>
                 </div>
 
-                {/* Filter and Search Bar */}
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 mt-4 pt-4 border-t border-outline-variant/10">
-                  <div className="flex items-center gap-1.5 p-1 bg-surface-container rounded-xl border border-outline-variant/20 self-start">
-                    <button
-                      type="button"
-                      onClick={() => setTodayHistoryTab('all')}
-                      className={cn(
-                        "px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer",
-                        todayHistoryTab === 'all'
-                          ? "bg-surface text-primary shadow-xs"
-                          : "text-secondary hover:text-on-surface"
-                      )}
-                    >
-                      All ({todayPlacedOrders.length + todayApprovedOrders.length})
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setTodayHistoryTab('placed')}
-                      className={cn(
-                        "px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer",
-                        todayHistoryTab === 'placed'
-                          ? "bg-surface text-emerald-600 dark:text-emerald-400 shadow-xs"
-                          : "text-secondary hover:text-on-surface"
-                      )}
-                    >
-                      Placed POs ({todayPlacedOrders.length})
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setTodayHistoryTab('approved')}
-                      className={cn(
-                        "px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer",
-                        todayHistoryTab === 'approved'
-                          ? "bg-surface text-blue-600 dark:text-blue-400 shadow-xs"
-                          : "text-secondary hover:text-on-surface"
-                      )}
-                    >
-                      Approved ({todayApprovedOrders.length})
-                    </button>
-                  </div>
-
-                  <div className="relative flex-1 sm:max-w-xs">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-secondary" />
-                    <input
-                      type="text"
-                      placeholder="Search buyer, supplier, brand, PO..."
-                      value={todayHistorySearch}
-                      onChange={(e) => setTodayHistorySearch(e.target.value)}
-                      className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-1.5 pl-9 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary/20 text-on-surface placeholder:text-secondary/60"
-                    />
-                  </div>
+                {/* Filter Tabs */}
+                <div className="flex items-center gap-1.5 p-1 bg-surface-container rounded-xl border border-outline-variant/20 self-start mt-4 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setTodayHistoryTab('placed')}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer",
+                      todayHistoryTab !== 'approved'
+                        ? "bg-surface text-emerald-600 dark:text-emerald-400 shadow-xs"
+                        : "text-secondary hover:text-on-surface"
+                    )}
+                  >
+                    Everyday Placed History ({dailyPlacedHistory.length} Days)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTodayHistoryTab('approved')}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer",
+                      todayHistoryTab === 'approved'
+                        ? "bg-surface text-blue-600 dark:text-blue-400 shadow-xs"
+                        : "text-secondary hover:text-on-surface"
+                    )}
+                  >
+                    Today's Approved Indents ({todayApprovedOrders.length})
+                  </button>
                 </div>
               </div>
 
               {/* Scrollable Order Records */}
-              <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3">
-                {(() => {
-                  const q = todayHistorySearch.trim().toLowerCase();
-
-                  // Filter placed orders
-                  const filteredPlaced = todayPlacedOrders.filter(p => {
-                    if (!q) return true;
-                    const idMatch = String(p.id || '').toLowerCase().includes(q);
-                    const supMatch = String(p.supplier || '').toLowerCase().includes(q);
-                    const buyerMatch = String(p.buyer || '').toLowerCase().includes(q);
-                    const brandMatch = String(p.brand || p.product || '').toLowerCase().includes(q);
-                    const subMatch = Array.isArray(p.originalOrders) && p.originalOrders.some((s: any) => 
-                      String(s.buyer || '').toLowerCase().includes(q) ||
-                      String(s.product || s.brand || '').toLowerCase().includes(q)
-                    );
-                    return idMatch || supMatch || buyerMatch || brandMatch || subMatch;
-                  });
-
-                  // Filter approved orders
-                  const filteredApproved = todayApprovedOrders.filter(o => {
-                    if (!q) return true;
-                    return String(o.id || '').toLowerCase().includes(q) ||
-                           String(o.buyer || '').toLowerCase().includes(q) ||
-                           String(o.supplier || '').toLowerCase().includes(q) ||
-                           String(o.brand || o.product || '').toLowerCase().includes(q);
-                  });
-
-                  const showPlaced = todayHistoryTab === 'all' || todayHistoryTab === 'placed';
-                  const showApproved = todayHistoryTab === 'all' || todayHistoryTab === 'approved';
-
-                  const totalVisible = (showPlaced ? filteredPlaced.length : 0) + (showApproved ? filteredApproved.length : 0);
-
-                  if (totalVisible === 0) {
-                    return (
-                      <div className="py-12 text-center space-y-2">
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
+                {todayHistoryTab !== 'approved' ? (
+                  renderEverydayHistoryList(true)
+                ) : (
+                  <div className="space-y-3">
+                    {todayApprovedOrders.length === 0 ? (
+                      <div className="py-12 text-center space-y-2 bg-surface-container-lowest rounded-2xl border border-outline-variant/20">
                         <Inbox className="w-10 h-10 text-secondary/40 mx-auto" />
-                        <p className="text-sm font-bold text-on-surface">No records found for today</p>
-                        <p className="text-xs text-secondary">
-                          {q ? `No items matched "${todayHistorySearch}"` : 'No orders have been approved or placed today yet.'}
-                        </p>
+                        <p className="text-sm font-bold text-on-surface">No pending approved indents today</p>
+                        <p className="text-xs text-secondary">All approved indents have either been grouped into POs or none are pending.</p>
                       </div>
-                    );
-                  }
-
-                  return (
-                    <div className="space-y-3">
-                      {/* Placed Orders */}
-                      {showPlaced && filteredPlaced.map((p, idx) => {
-                        const poQty = Array.isArray(p.originalOrders) && p.originalOrders.length > 0
-                          ? p.originalOrders.reduce((sum: number, s: any) => sum + Number(s.qty || s.totalQty || 0), 0)
-                          : Number(p.qty || p.totalQty || 0);
-
-                        return (
-                          <div 
-                            key={`placed-${p.id || idx}`} 
-                            className="p-4 rounded-2xl bg-surface-container-lowest border border-outline-variant/20 hover:border-emerald-500/30 transition-all space-y-3 shadow-2xs"
-                          >
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <div className="flex items-center gap-2">
-                                <span className="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/25 text-emerald-700 dark:text-emerald-400 font-mono font-black text-xs">
-                                  {p.id}
-                                </span>
-                                <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
-                                  Placed PO
-                                </span>
-                                {p.supplierSubOrderNo && (
-                                  <span className="text-[10px] font-mono text-secondary">Ref: {p.supplierSubOrderNo}</span>
-                                )}
-                              </div>
-                              <div className="text-right">
-                                <span className="text-sm font-black font-mono text-emerald-600 dark:text-emerald-400">
-                                  {poQty.toFixed(2)} QTLS
-                                </span>
-                                {p.total && (
-                                  <span className="text-xs font-mono font-bold text-secondary ml-2">({p.total})</span>
-                                )}
-                              </div>
-                            </div>
-
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                              <div>
-                                <span className="text-[9px] font-black uppercase tracking-wider text-secondary">Supplier / Mill:</span>
-                                <p className="font-bold text-on-surface truncate">{p.supplier || 'Direct Mill'}</p>
-                              </div>
-                              <div>
-                                <span className="text-[9px] font-black uppercase tracking-wider text-secondary">Buyers / Brand:</span>
-                                <p className="font-bold text-on-surface truncate">
-                                  {p.buyer || 'Multiple Buyers'} • {p.brand || p.product || 'Standard Rice'}
-                                </p>
-                              </div>
-                            </div>
-
-                            {/* Sub-orders preview if batch */}
-                            {Array.isArray(p.originalOrders) && p.originalOrders.length > 0 && (
-                              <div className="mt-2 pt-2 border-t border-outline-variant/10 space-y-1.5">
-                                <span className="text-[9px] font-black uppercase tracking-widest text-secondary block">
-                                  Sub-Orders ({p.originalOrders.length}):
-                                </span>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                                  {p.originalOrders.map((sub: any, sIdx: number) => (
-                                    <div key={sIdx} className="px-2.5 py-1.5 rounded-lg bg-surface-container text-[11px] flex justify-between items-center border border-outline-variant/15">
-                                      <span className="font-bold text-on-surface truncate max-w-[65%]">
-                                        {sub.buyer} <span className="text-secondary font-normal">({sub.brand || sub.product || 'Rice'})</span>
-                                      </span>
-                                      <span className="font-mono font-bold text-primary shrink-0">
-                                        {(Number(sub.qty || sub.totalQty) || 0).toFixed(2)} QTLS
-                                      </span>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-
-                      {/* Approved Orders */}
-                      {showApproved && filteredApproved.map((o, idx) => (
+                    ) : (
+                      todayApprovedOrders.map((o, idx) => (
                         <div 
                           key={`approved-${o.id || idx}`}
                           className="p-4 rounded-2xl bg-surface-container-lowest border border-outline-variant/20 hover:border-blue-500/30 transition-all space-y-2 shadow-2xs"
@@ -4551,16 +5016,16 @@ export default function OrdersDashboard() {
                             </div>
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  );
-                })()}
+                      ))
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Modal Footer */}
               <div className="p-4 border-t border-outline-variant/20 bg-surface-container-low flex justify-between items-center text-xs">
                 <span className="text-secondary font-medium font-mono text-[11px]">
-                  Total: {todayApprovedAndPlacedQtls.toFixed(2)} QTLS today
+                  Today's Placed: {todayPlacedQtls.toFixed(2)} QTLS • {dailyPlacedHistory.length} Days in ledger
                 </span>
                 <button
                   type="button"
