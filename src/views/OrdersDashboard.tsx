@@ -2106,29 +2106,43 @@ export default function OrdersDashboard() {
       console.warn(`[PO Dispatch Skipped] Supplier "${assignedBatchSupplier}" has no verified email address configured. PO email dispatch prevented to avoid sending to random email addresses.`);
     }
 
-    buyerProfiles.forEach(async bp => {
-      const buyerOrders = selected.filter(s => (s.buyer || '').trim().toLowerCase() === bp.name.trim().toLowerCase());
-      const bpOrder = buyerOrders[0] || groupedOrder;
-      const bpBrand = (bpOrder.product || groupedOrder.product || 'keshar kali').replace(/\(\d+.*$/, '').trim();
-      const bpQtyNum = buyerOrders.reduce((sum, o) => sum + (Number(o.qty) || 0), 0) || Number(groupedOrder.qty) || 40;
-      const bpRateNum = bpOrder.rate || groupedOrder.rate || 10000;
-      const buyerWhatsappMsg = `Hello ${bp.name},\n\nOrder placed successfully.\n\nBrand: ${bpBrand}\nQuantity: ${bpQtyNum} QTL\nRate: ₹${bpRateNum}/QTL\n\nThank you,\nTejas Canvassing`;
+    // 4B. DISPATCH SEPARATE BUYER WHATSAPP ALERTS FOR EACH SEPARATE ORDER
+    // Even if from the same supplier or for the same buyer, each distinct product & rate gets its own separate WhatsApp confirmation
+    for (const subOrder of enrichedSelected) {
+      const buyerName = (subOrder.buyer || 'Valued Merchant').trim();
+      const prof = resolveBuyerProfile(buyerName);
+      const orderPhone = (subOrder.phone || '').replace(/[^0-9]/g, '');
+      const rawFinalPhone = (orderPhone.length >= 10 && orderPhone !== '9845012345' && orderPhone !== '9845000000' && orderPhone !== '919845000000') 
+        ? orderPhone 
+        : (prof.phone || '').replace(/[^0-9]/g, '');
+      const cleanPhone = rawFinalPhone.length >= 10 ? rawFinalPhone.slice(-10) : '9945351166';
+      const targetPhone = `91${cleanPhone}`;
+
+      const itemBrand = (subOrder.product || subOrder.brand || 'keshar kali').replace(/\(\d+.*$/, '').trim();
+      const itemQty = Number(subOrder.qty) || 0;
+      const itemRate = Number(subOrder.rate) || 0;
+      const itemRef = subOrder.supplierSubOrderNo || subOrder.orderNo || subOrder.buyerRequestNo || subOrder.id || groupedOrder.id;
+
+      const buyerWhatsappMsg = `Hello ${buyerName},\n\nOrder placed successfully.\n\nBrand: ${itemBrand}\nQuantity: ${itemQty} QTL\nRate: ₹${itemRate}/QTL\n\nThank you,\nTejas Canvassing`;
 
       try {
         await dispatchOrderPlacedWhatsApp({
-          to: bp.phone,
-          buyerName: bp.name,
-          brand: bpBrand,
-          qty: bpQtyNum,
-          rate: bpRateNum,
-          orderId: groupedOrder.id,
+          to: targetPhone,
+          buyerName: buyerName,
+          brand: itemBrand,
+          qty: itemQty,
+          rate: itemRate,
+          orderId: itemRef,
           poNumber: groupedOrder.id,
           customMessage: buyerWhatsappMsg
         });
+
+        // Small delay between sequential WhatsApp dispatches to prevent rate-limiting and ensure delivery order
+        await new Promise(resolve => setTimeout(resolve, 350));
       } catch (err: any) {
-        console.warn(`WhatsApp dispatch note for ${bp.name}:`, err?.message || err);
+        console.warn(`WhatsApp dispatch note for ${buyerName} (Order ${itemRef}):`, err?.message || err);
       }
-    });
+    }
 
     // 5. Directly navigate to Placed Orders without overlay
     navigate('/placed-orders');

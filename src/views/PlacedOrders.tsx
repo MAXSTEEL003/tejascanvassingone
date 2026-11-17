@@ -1857,13 +1857,27 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
       : null;
     const finalTotal = calculatedAmt !== null ? `₹ ${formatINR(calculatedAmt)}` : (typeof order.total === 'number' ? `₹ ${formatINR(order.total)}` : order.total);
 
-    const firstSub = order.originalOrders && order.originalOrders.length > 0 ? order.originalOrders[0] : null;
-    const brand = (firstSub?.product || order.items || order.product || 'keshar kali').replace(/\(\d+.*$/, '').trim();
-    const qty = firstSub?.qty || order.qty || parseFloat(order.items?.match(/\d+/)?.[0] || '40');
-    const rate = firstSub?.rate || order.rate || 10000;
     const buyerName = order.buyer || 'Vision stores';
 
-    const message = `Hello ${buyerName},\n\nOrder placed successfully.\n\nBrand: ${brand}\nQuantity: ${qty} QTL\nRate: ₹${rate}/QTL\n\nThank you,\nTejas Canvassing`;
+    let message = '';
+    if (order.originalOrders && Array.isArray(order.originalOrders) && order.originalOrders.length > 1) {
+      const itemsList = order.originalOrders.map((sub: any, idx: number) => {
+        const sBrand = (sub.product || sub.brand || 'Rice').replace(/\(\d+.*$/, '').trim();
+        const sQty = sub.qty || 0;
+        const sRate = sub.rate || 0;
+        const sRef = sub.supplierSubOrderNo || sub.orderNo || sub.id;
+        return `${idx + 1}. Brand: ${sBrand}\n   Quantity: ${sQty} QTL\n   Rate: ₹${sRate}/QTL${sRef ? `\n   Ref: ${sRef}` : ''}`;
+      }).join('\n\n');
+
+      message = `Hello ${buyerName},\n\nOrder placed successfully.\n\nIndividual Order Particulars:\n${itemsList}\n\nTotal Volume: ${order.qty || parseFloat(order.items?.match(/\d+/)?.[0] || '0')} QTL\nTotal Value: ${finalTotal}\n\nThank you,\nTejas Canvassing`;
+    } else {
+      const firstSub = order.originalOrders && order.originalOrders.length > 0 ? order.originalOrders[0] : null;
+      const brand = (firstSub?.product || order.items || order.product || 'keshar kali').replace(/\(\d+.*$/, '').trim();
+      const qty = firstSub?.qty || order.qty || parseFloat(order.items?.match(/\d+/)?.[0] || '40');
+      const rate = firstSub?.rate || order.rate || 10000;
+      message = `Hello ${buyerName},\n\nOrder placed successfully.\n\nBrand: ${brand}\nQuantity: ${qty} QTL\nRate: ₹${rate}/QTL\n\nThank you,\nTejas Canvassing`;
+    }
+
     setShareMessage(message);
     setIsCopied(false);
   };
@@ -3741,6 +3755,37 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                                                <span>Arrival Entry</span>
                                              </button>
                                            )}
+                                         </div>
+                                       );
+                                     })()}
+
+                                     {/* Sub-order WhatsApp Action */}
+                                     {(() => {
+                                       const subBuyer = sub.buyer || order.buyer || 'Valued Merchant';
+                                       const prof = resolveBuyerProfile(subBuyer);
+                                       const rawPhone = (sub.phone || '').replace(/[^0-9]/g, '');
+                                       const cleanPhone = (rawPhone.length >= 10 && rawPhone !== '9845012345' && rawPhone !== '9845000000')
+                                         ? (rawPhone.length === 10 ? `91${rawPhone}` : rawPhone)
+                                         : (prof.phone ? (prof.phone.length === 10 ? `91${prof.phone}` : prof.phone) : '919945351166');
+                                       const subItemBrand = (subBrand || 'Rice').replace(/\(\d+.*$/, '').trim();
+                                       const waMsg = encodeURIComponent(
+                                         `Hello ${subBuyer},\n\nOrder placed successfully.\n\nBrand: ${subItemBrand}\nQuantity: ${subQty.toFixed(2)} QTL\nRate: ₹${formatINR(subRate)}/QTL\n\nThank you,\nTejas Canvassing`
+                                       );
+
+                                       return (
+                                         <div className="flex flex-col items-end gap-1 shrink-0">
+                                           <p className="text-[8px] font-black text-secondary uppercase tracking-tighter mb-0.5">WhatsApp</p>
+                                           <a
+                                             href={`https://wa.me/${cleanPhone}?text=${waMsg}`}
+                                             target="_blank"
+                                             rel="noopener noreferrer"
+                                             onClick={(e) => e.stopPropagation()}
+                                             className="btn-tactile inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all border border-emerald-500/30 cursor-pointer shadow-2xs no-underline"
+                                             title={`Send WhatsApp confirmation to ${subBuyer} for ${subItemBrand} (${subQty.toFixed(2)} QTL @ ₹${formatINR(subRate)})`}
+                                           >
+                                             <MessageSquare className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                                             <span>WhatsApp</span>
+                                           </a>
                                          </div>
                                        );
                                      })()}
