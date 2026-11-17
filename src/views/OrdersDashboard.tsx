@@ -2941,6 +2941,88 @@ export default function OrdersDashboard() {
         )}
       </AnimatePresence>
 
+      {/* Expanded Everyday History Drawer Attached to Today's Approved & Placed Stats Card */}
+      <AnimatePresence>
+        {isTodayStatsCardExpanded && (
+          <motion.div
+            initial={{ opacity: 0, height: 0, y: -8 }}
+            animate={{ opacity: 1, height: 'auto', y: 0 }}
+            exit={{ opacity: 0, height: 0, y: -8 }}
+            transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
+            className="overflow-hidden"
+          >
+            <div className="floating-card liquid-glass p-6 sm:p-7 rounded-3xl premium-border space-y-5 border-emerald-500/40 shadow-xl bg-gradient-to-br from-surface to-emerald-500/[0.03]">
+              {/* Header */}
+              <div className="flex flex-wrap items-center justify-between gap-4 border-b border-outline-variant/20 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400">
+                    <History className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-base sm:text-lg font-black tracking-tight text-slate-900 dark:text-on-surface">
+                        Today Approved & Placed — Everyday Orders Ledger
+                      </h3>
+                      <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 font-mono">
+                        {dailyPlacedHistory.length} Days Recorded
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-secondary font-medium mt-0.5">
+                      Today's date & placed QTLS on top • Expand any date to view all individual customer orders
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsTodayStatsCardExpanded(false)}
+                    className="px-3.5 py-1.5 bg-surface-container hover:bg-surface-container-high text-on-surface border border-outline-variant/30 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-xs"
+                  >
+                    <ChevronUp className="w-4 h-4" />
+                    <span>Collapse</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsTodayHistoryModalOpen(true)}
+                    className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-xs"
+                    title="Open full screen history modal"
+                  >
+                    <ArrowUpRight className="w-3.5 h-3.5" />
+                    <span>Full Screen</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Today's Placed Summary Banner */}
+              <div className="p-3.5 sm:p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <Calendar className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                  <div>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-400 block">
+                      Today's Date: {new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    </span>
+                    <h4 className="text-base sm:text-lg font-black font-mono text-slate-900 dark:text-on-surface">
+                      Today's Placed Orders: <span className="text-emerald-600 dark:text-emerald-400">{todayPlacedQtls.toFixed(2)} QTLS</span>
+                    </h4>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="text-xs font-bold text-slate-600 dark:text-secondary font-mono">
+                    {todayPlacedOrders.length} Purchase Order(s) dispatched today
+                  </span>
+                </div>
+              </div>
+
+              {/* Everyday History Accordion with Individual Orders */}
+              <div className="pt-1">
+                {renderEverydayHistoryList(false)}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="space-y-8">
         {/* Main Table Content - Now full width */}
         <motion.div 
