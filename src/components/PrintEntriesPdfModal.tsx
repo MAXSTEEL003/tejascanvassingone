@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   X, 
   Printer, 
@@ -9,26 +9,69 @@ import {
   CheckCircle2, 
   Sparkles,
   AlertCircle,
-  ArrowUpDown
+  ArrowUpDown,
+  Clock,
+  RotateCcw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { OperationalPO } from '../utils/orderOperations';
+import { OperationalPO, parseOperationalDate } from '../utils/orderOperations';
 import { cn, formatINR } from '../lib/utils';
 
-interface PrintEntriesPdfModalProps {
+export interface PrintEntriesPdfModalProps {
   isOpen: boolean;
   onClose: () => void;
   reportType: 'pending_loadings' | 'po_ledger';
   title: string;
   entries: OperationalPO[];
+  initialDateFilter?: 'all' | 'today' | 'yesterday' | 'week' | 'month' | 'custom' | 'custom_range';
+  initialCustomDate?: string;
+  initialCustomDateEnd?: string;
 }
 
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December'
 ];
+
+const MONTH_NAMES_SHORT = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+];
+
+export function getOperationalEntryDateKey(e: OperationalPO | any): string {
+  if (!e) return '';
+  if (typeof e.dateTimestamp === 'number' && e.dateTimestamp > 0 && !isNaN(e.dateTimestamp)) {
+    const d = new Date(e.dateTimestamp);
+    if (!isNaN(d.getTime())) {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
+  }
+
+  const rawDate = e.rawOrder?.placedAt || e.rawOrder?.purchaseOrderSentAt || e.rawOrder?.createdAt || e.date;
+  if (typeof rawDate === 'string' && rawDate.trim().toLowerCase() === 'today') {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
+  const parsed = parseOperationalDate(rawDate || e.date);
+  if (parsed && parsed.timestamp && !isNaN(parsed.timestamp)) {
+    const d = new Date(parsed.timestamp);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
+  return '';
+}
 
 // Consistent Indian number formatting for quantities, rates, and amounts.
 const numberFormatter = new Intl.NumberFormat('en-IN', {
@@ -79,14 +122,86 @@ export default function PrintEntriesPdfModal({
   onClose,
   reportType,
   title,
-  entries
+  entries,
+  initialDateFilter = 'all',
+  initialCustomDate = '',
+  initialCustomDateEnd = ''
 }: PrintEntriesPdfModalProps) {
   const [selectedBuyer, setSelectedBuyer] = useState<string>('all');
   const [selectedSupplier, setSelectedSupplier] = useState<string>('all');
   const [selectedMonths, setSelectedMonths] = useState<string[]>([]);
+  const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'yesterday' | 'week' | 'month' | 'custom' | 'custom_range'>(initialDateFilter);
+  const [customDate, setCustomDate] = useState<string>(initialCustomDate);
+  const [customDateEnd, setCustomDateEnd] = useState<string>(initialCustomDateEnd);
   const [sortOrder, setSortOrder] = useState<'buyer_asc' | 'buyer_desc' | 'date_desc' | 'amount_desc' | 'qty_desc'>('buyer_asc');
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [successFeedback, setSuccessFeedback] = useState<string | null>(null);
+
+  // Sync initial date filters when modal is opened
+  useEffect(() => {
+    if (isOpen) {
+      if (initialDateFilter) setDateFilter(initialDateFilter);
+      if (initialCustomDate) setCustomDate(initialCustomDate);
+      if (initialCustomDateEnd) setCustomDateEnd(initialCustomDateEnd);
+    }
+  }, [isOpen, initialDateFilter, initialCustomDate, initialCustomDateEnd]);
+
+  // Date boundary helpers
+  const now = useMemo(() => new Date(), []);
+  const todayKey = useMemo(() => {
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  }, [now]);
+
+  const yesterdayKey = useMemo(() => {
+    const yDate = new Date(now.getTime() - 86400000);
+    return `${yDate.getFullYear()}-${String(yDate.getMonth() + 1).padStart(2, '0')}-${String(yDate.getDate()).padStart(2, '0')}`;
+  }, [now]);
+
+  // Live order counts for quick date buttons
+  const todayCount = useMemo(() => {
+    return entries.filter(e => {
+      const dKey = getOperationalEntryDateKey(e);
+      return dKey === todayKey || e.date === 'Today' || e.dateGroupKey === 'Today' || e.rawOrder?.placedAt === 'Today';
+    }).length;
+  }, [entries, todayKey]);
+
+  const yesterdayCount = useMemo(() => {
+    return entries.filter(e => {
+      const dKey = getOperationalEntryDateKey(e);
+      return dKey === yesterdayKey || e.date === 'Yesterday';
+    }).length;
+  }, [entries, yesterdayKey]);
+
+  const customDateCount = useMemo(() => {
+    if (!customDate) return 0;
+    return entries.filter(e => {
+      const dKey = getOperationalEntryDateKey(e);
+      if (customDateEnd) {
+        return dKey >= customDate && dKey <= customDateEnd;
+      }
+      return dKey === customDate;
+    }).length;
+  }, [entries, customDate, customDateEnd]);
+
+  // Extract unique recorded dates with counts for quick date dropdown
+  const availableDates = useMemo(() => {
+    const map = new Map<string, { key: string; label: string; count: number; timestamp: number }>();
+    entries.forEach(e => {
+      const dKey = getOperationalEntryDateKey(e);
+      if (dKey) {
+        if (!map.has(dKey)) {
+          const parts = dKey.split('-');
+          const y = parseInt(parts[0], 10);
+          const m = parseInt(parts[1], 10) - 1;
+          const d = parseInt(parts[2], 10);
+          const label = `${d} ${MONTH_NAMES_SHORT[m] || parts[1]} ${y}`;
+          map.set(dKey, { key: dKey, label, count: 0, timestamp: new Date(y, m, d).getTime() });
+        }
+        map.get(dKey)!.count += 1;
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => b.timestamp - a.timestamp);
+  }, [entries]);
 
   // Extract unique buyers with count
   const buyerOptions = useMemo(() => {
@@ -150,13 +265,38 @@ export default function PrintEntriesPdfModal({
         }
       }
 
-      // Month filter (multi-month or all)
-      if (selectedMonths.length > 0) {
-        if (e.dateTimestamp) {
+      // Date filter (Today, Yesterday, Specific Date, Date Range, Week, Month)
+      const dKey = getOperationalEntryDateKey(e);
+      const isToday = dKey === todayKey || e.date === 'Today' || e.dateGroupKey === 'Today' || e.rawOrder?.placedAt === 'Today';
+
+      if (dateFilter === 'today') {
+        if (!isToday) return false;
+      } else if (dateFilter === 'yesterday') {
+        if (dKey !== yesterdayKey && e.date !== 'Yesterday') return false;
+      } else if (dateFilter === 'custom' && customDate) {
+        if (dKey !== customDate) return false;
+      } else if (dateFilter === 'custom_range' && customDate) {
+        if (customDateEnd) {
+          if (dKey < customDate || dKey > customDateEnd) return false;
+        } else {
+          if (dKey !== customDate) return false;
+        }
+      } else if (dateFilter === 'week') {
+        const itemTs = e.dateTimestamp || parseOperationalDate(e.date)?.timestamp || 0;
+        if (itemTs < now.getTime() - 7 * 86400000) return false;
+      } else if (dateFilter === 'month') {
+        const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        if (!dKey.startsWith(currentMonthKey)) return false;
+      }
+
+      // Month filter (multi-month or all) - applied when dateFilter is 'all' or 'month'
+      if ((dateFilter === 'all' || dateFilter === 'month') && selectedMonths.length > 0) {
+        if (dKey) {
+          const itemMonthKey = dKey.slice(0, 7);
+          if (!selectedMonths.includes(itemMonthKey)) return false;
+        } else if (e.dateTimestamp) {
           const d = new Date(e.dateTimestamp);
-          const y = d.getFullYear();
-          const m = d.getMonth();
-          const key = `${y}-${String(m + 1).padStart(2, '0')}`;
+          const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
           if (!selectedMonths.includes(key)) return false;
         } else {
           return false;
@@ -294,22 +434,43 @@ export default function PrintEntriesPdfModal({
 
       const buyerLabel = selectedBuyer === 'all' ? 'All Buyers' : selectedBuyer;
       const supplierLabel = selectedSupplier === 'all' ? 'All Suppliers' : selectedSupplier;
-      const monthLabel = selectedMonths.length === 0
-        ? 'All Recorded Months'
-        : selectedMonths.length > 2
-        ? `${selectedMonths.length} Months Selected`
-        : selectedMonths.map(k => {
-            const mObj = monthOptions.find(m => m.key === k);
-            return mObj ? mObj.label : k;
-          }).join(', ');
 
-      const buyerDisplay = buyerLabel.length > 28 ? buyerLabel.slice(0, 27) + '…' : buyerLabel;
-      const supplierDisplay = supplierLabel.length > 28 ? supplierLabel.slice(0, 27) + '…' : supplierLabel;
+      let dateFilterLabel = 'All Dates';
+      if (dateFilter === 'today') {
+        const todayFormatted = `${now.getDate()} ${MONTH_NAMES_SHORT[now.getMonth()]} ${now.getFullYear()}`;
+        dateFilterLabel = `Today (${todayFormatted})`;
+      } else if (dateFilter === 'yesterday') {
+        const yDate = new Date(now.getTime() - 86400000);
+        const yFormatted = `${yDate.getDate()} ${MONTH_NAMES_SHORT[yDate.getMonth()]} ${yDate.getFullYear()}`;
+        dateFilterLabel = `Yesterday (${yFormatted})`;
+      } else if (dateFilter === 'custom' && customDate) {
+        const parts = customDate.split('-');
+        if (parts.length === 3) {
+          const mIdx = parseInt(parts[1], 10) - 1;
+          dateFilterLabel = `${parseInt(parts[2], 10)} ${MONTH_NAMES_SHORT[mIdx] || parts[1]} ${parts[0]}`;
+        } else {
+          dateFilterLabel = customDate;
+        }
+      } else if (dateFilter === 'custom_range' && customDate) {
+        dateFilterLabel = customDateEnd ? `${customDate} to ${customDateEnd}` : customDate;
+      } else if (dateFilter === 'week') {
+        dateFilterLabel = 'Past 7 Days';
+      } else if (selectedMonths.length > 0) {
+        dateFilterLabel = selectedMonths.length > 2
+          ? `${selectedMonths.length} Months Selected`
+          : selectedMonths.map(k => {
+              const mObj = monthOptions.find(m => m.key === k);
+              return mObj ? mObj.label : k;
+            }).join(', ');
+      }
+
+      const buyerDisplay = buyerLabel.length > 24 ? buyerLabel.slice(0, 23) + '…' : buyerLabel;
+      const supplierDisplay = supplierLabel.length > 24 ? supplierLabel.slice(0, 23) + '…' : supplierLabel;
 
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(8.8);
       doc.setTextColor(15, 23, 42);
-      const line1 = `Buyer: ${buyerDisplay}   |   Supplier: ${supplierDisplay}   |   Month: ${monthLabel}`;
+      const line1 = `Buyer: ${buyerDisplay}   |   Supplier: ${supplierDisplay}   |   Date: ${dateFilterLabel}`;
       doc.text(line1, 10, 31.2, { maxWidth: 190 });
 
       doc.setFont('helvetica', 'normal');
@@ -646,8 +807,15 @@ export default function PrintEntriesPdfModal({
 
       // 5. Output PDF (Save & Open Preview Window)
       const cleanBuyer = selectedBuyer === 'all' ? 'AllBuyers' : selectedBuyer.replace(/[^a-zA-Z0-9]/g, '_');
-      const cleanMonth = selectedMonths.length === 0 ? 'AllMonths' : selectedMonths.join('_');
-      const fileName = `${reportType === 'pending_loadings' ? 'Pending_Loadings' : 'PO_Ledger'}_${cleanBuyer}_${cleanMonth}.pdf`;
+      let dateTag = 'AllDates';
+      if (dateFilter === 'today') dateTag = `Today_${todayKey}`;
+      else if (dateFilter === 'yesterday') dateTag = `Yesterday_${yesterdayKey}`;
+      else if (dateFilter === 'custom' && customDate) dateTag = `Date_${customDate}`;
+      else if (dateFilter === 'custom_range' && customDate) dateTag = `Range_${customDate}_${customDateEnd || ''}`;
+      else if (dateFilter === 'week') dateTag = 'Past7Days';
+      else if (selectedMonths.length > 0) dateTag = selectedMonths.join('_');
+
+      const fileName = `${reportType === 'pending_loadings' ? 'Pending_Loadings' : 'PO_Ledger'}_${cleanBuyer}_${dateTag}.pdf`;
 
       // Trigger file download
       doc.save(fileName);
@@ -708,7 +876,7 @@ export default function PrintEntriesPdfModal({
           <div className="p-6 overflow-y-auto space-y-5 text-left">
 
             {/* Filter Controls Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
               {/* 1. Buyer Selector */}
               <div className="space-y-1.5">
@@ -750,8 +918,202 @@ export default function PrintEntriesPdfModal({
                 </select>
               </div>
 
-              {/* 3. Month Selector with multi-select capability */}
-              <div className="space-y-1.5 sm:col-span-3">
+              {/* 3. Dedicated Date Filter (Today / Specific Date / Range / Week / Month) */}
+              <div className="space-y-2 sm:col-span-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-amber-500" />
+                    <span>Filter by Date (Today / Any Specific Date)</span>
+                  </label>
+                  <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold">
+                    {dateFilter === 'today' ? `Today's Date (${todayCount} orders)` :
+                     dateFilter === 'yesterday' ? `Yesterday (${yesterdayCount} orders)` :
+                     dateFilter === 'custom' && customDate ? `Date: ${customDate} (${customDateCount} orders)` :
+                     dateFilter === 'custom_range' && customDate ? `Range: ${customDate} to ${customDateEnd || 'Today'} (${customDateCount} orders)` :
+                     dateFilter === 'week' ? 'Past 7 Days' :
+                     dateFilter === 'month' ? 'Current Month' :
+                     'All Recorded Dates'}
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5 p-2 rounded-xl bg-slate-50 dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800">
+                  {/* All Dates */}
+                  <button
+                    type="button"
+                    onClick={() => { setDateFilter('all'); setCustomDate(''); setCustomDateEnd(''); }}
+                    className={cn(
+                      "px-2.5 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer",
+                      dateFilter === 'all'
+                        ? "bg-amber-500 text-white border-amber-500 shadow-xs"
+                        : "bg-white dark:bg-neutral-800 border-slate-200 dark:border-neutral-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100"
+                    )}
+                  >
+                    All Dates
+                  </button>
+
+                  {/* Today Button with Live Count */}
+                  <button
+                    type="button"
+                    onClick={() => { setDateFilter('today'); setCustomDate(''); setCustomDateEnd(''); setSelectedMonths([]); }}
+                    className={cn(
+                      "px-2.5 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5",
+                      dateFilter === 'today'
+                        ? "bg-emerald-600 text-white border-emerald-600 shadow-xs"
+                        : "bg-white dark:bg-neutral-800 border-emerald-500/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                    )}
+                  >
+                    <span>Today ({new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })})</span>
+                    <span className={cn(
+                      "text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold",
+                      dateFilter === 'today' ? "bg-white/20 text-white" : "bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300"
+                    )}>
+                      {todayCount}
+                    </span>
+                  </button>
+
+                  {/* Yesterday Button */}
+                  <button
+                    type="button"
+                    onClick={() => { setDateFilter('yesterday'); setCustomDate(''); setCustomDateEnd(''); setSelectedMonths([]); }}
+                    className={cn(
+                      "px-2.5 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5",
+                      dateFilter === 'yesterday'
+                        ? "bg-amber-500 text-white border-amber-500 shadow-xs"
+                        : "bg-white dark:bg-neutral-800 border-slate-200 dark:border-neutral-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100"
+                    )}
+                  >
+                    <span>Yesterday</span>
+                    <span className="text-[10px] px-1.5 py-0.2 rounded-full font-mono bg-slate-100 dark:bg-neutral-700 text-slate-500 dark:text-slate-400">
+                      {yesterdayCount}
+                    </span>
+                  </button>
+
+                  {/* Past 7 Days */}
+                  <button
+                    type="button"
+                    onClick={() => { setDateFilter('week'); setCustomDate(''); setCustomDateEnd(''); setSelectedMonths([]); }}
+                    className={cn(
+                      "px-2.5 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer",
+                      dateFilter === 'week'
+                        ? "bg-amber-500 text-white border-amber-500 shadow-xs"
+                        : "bg-white dark:bg-neutral-800 border-slate-200 dark:border-neutral-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100"
+                    )}
+                  >
+                    Past 7 Days
+                  </button>
+
+                  {/* Pick Any Specific Date input */}
+                  <div className={cn(
+                    "flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all",
+                    dateFilter === 'custom' 
+                      ? "bg-amber-500/15 border-amber-500 text-amber-900 dark:text-amber-200" 
+                      : "bg-white dark:bg-neutral-800 border-slate-200 dark:border-neutral-700 text-slate-600 dark:text-slate-300"
+                  )}>
+                    <span className="text-[10.5px] font-bold shrink-0">Any Date:</span>
+                    <input
+                      type="date"
+                      value={customDate}
+                      onChange={(e) => {
+                        setCustomDate(e.target.value);
+                        if (e.target.value) {
+                          setDateFilter('custom');
+                          setSelectedMonths([]);
+                        }
+                      }}
+                      className="text-[11px] font-bold bg-transparent border-0 focus:outline-none cursor-pointer"
+                      title="Pick any specific date to print"
+                    />
+                    {customDate && (
+                      <button
+                        type="button"
+                        onClick={() => { setCustomDate(''); setDateFilter('all'); }}
+                        className="text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                        title="Clear date"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Or select from recorded order dates */}
+                  {availableDates.length > 0 && (
+                    <select
+                      value={dateFilter === 'custom' ? customDate : ''}
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          setCustomDate(e.target.value);
+                          setCustomDateEnd('');
+                          setDateFilter('custom');
+                          setSelectedMonths([]);
+                        } else {
+                          setCustomDate('');
+                          setDateFilter('all');
+                        }
+                      }}
+                      className={cn(
+                        "px-2.5 py-1 text-[11px] font-bold rounded-lg border transition-all cursor-pointer",
+                        dateFilter === 'custom' && customDate
+                          ? "bg-amber-500/15 border-amber-500 text-amber-900 dark:text-amber-200"
+                          : "bg-white dark:bg-neutral-800 border-slate-200 dark:border-neutral-700 text-slate-600 dark:text-slate-300"
+                      )}
+                      title="Select from existing order dates"
+                    >
+                      <option value="">Recorded Dates ({availableDates.length})</option>
+                      {availableDates.map(d => (
+                        <option key={d.key} value={d.key}>
+                          {d.label} ({d.count} order{d.count !== 1 ? 's' : ''})
+                        </option>
+                      ))}
+                    </select>
+                  )}
+
+                  {/* Date Range Selector */}
+                  <div className={cn(
+                    "flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all",
+                    dateFilter === 'custom_range' 
+                      ? "bg-amber-500/15 border-amber-500 text-amber-900 dark:text-amber-200" 
+                      : "bg-white dark:bg-neutral-800 border-slate-200 dark:border-neutral-700 text-slate-600 dark:text-slate-300"
+                  )}>
+                    <span className="text-[10.5px] font-bold shrink-0">Range:</span>
+                    <input
+                      type="date"
+                      value={customDate}
+                      onChange={(e) => {
+                        setCustomDate(e.target.value);
+                        setDateFilter('custom_range');
+                        setSelectedMonths([]);
+                      }}
+                      className="text-[11px] font-bold bg-transparent border-0 focus:outline-none cursor-pointer"
+                      title="From date"
+                    />
+                    <span className="text-[10px] text-slate-400">to</span>
+                    <input
+                      type="date"
+                      value={customDateEnd}
+                      onChange={(e) => {
+                        setCustomDateEnd(e.target.value);
+                        setDateFilter('custom_range');
+                        setSelectedMonths([]);
+                      }}
+                      className="text-[11px] font-bold bg-transparent border-0 focus:outline-none cursor-pointer"
+                      title="To date"
+                    />
+                    {(customDate || customDateEnd) && (
+                      <button
+                        type="button"
+                        onClick={() => { setCustomDate(''); setCustomDateEnd(''); setDateFilter('all'); }}
+                        className="text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                        title="Clear range"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* 4. Month Selector with multi-select capability */}
+              <div className="space-y-1.5 sm:col-span-2">
                 <div className="flex items-center justify-between">
                   <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
                     <Calendar className="w-3.5 h-3.5 text-slate-400" />
@@ -949,7 +1311,7 @@ export default function PrintEntriesPdfModal({
               ) : (
                 <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-center gap-2 text-xs text-amber-700 dark:text-amber-400 font-medium">
                   <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>No entries match the selected buyer, supplier, and month combination.</span>
+                  <span>No entries match the selected buyer, supplier, date, or month criteria.</span>
                 </div>
               )}
             </div>
@@ -971,6 +1333,9 @@ export default function PrintEntriesPdfModal({
                 setSelectedBuyer('all');
                 setSelectedSupplier('all');
                 setSelectedMonths([]);
+                setDateFilter('all');
+                setCustomDate('');
+                setCustomDateEnd('');
                 setSortOrder('buyer_asc');
               }}
               className="text-xs text-slate-500 hover:text-slate-800 dark:hover:text-slate-300 font-bold transition-colors cursor-pointer"

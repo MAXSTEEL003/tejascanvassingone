@@ -32,7 +32,7 @@ import {
   isDateBeforeNov3,
   purgeRecordsBeforeNov3
 } from '../utils/orderOperations';
-import PrintEntriesPdfModal from '../components/PrintEntriesPdfModal';
+import PrintEntriesPdfModal, { getOperationalEntryDateKey } from '../components/PrintEntriesPdfModal';
 
 export default function LedgerManagement() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -61,8 +61,9 @@ export default function LedgerManagement() {
 
   // Filters State
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [dateRange, setDateRange] = useState<'all' | 'today' | 'yesterday' | 'week' | 'month' | 'custom'>('all');
+  const [dateRange, setDateRange] = useState<'all' | 'today' | 'yesterday' | 'week' | 'month' | 'custom' | 'custom_range'>('all');
   const [customDate, setCustomDate] = useState<string>('');
+  const [customDateEnd, setCustomDateEnd] = useState<string>('');
   const [selectedBuyer, setSelectedBuyer] = useState<string>(() => searchParams.get('buyer') || 'all');
   const [selectedSupplier, setSelectedSupplier] = useState<string>('all');
   const [selectedBrand, setSelectedBrand] = useState<string>('all');
@@ -142,10 +143,39 @@ export default function LedgerManagement() {
 
   // Date boundary helpers for Date Filter
   const now = new Date();
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const yesterdayStart = todayStart - 86400000;
-  const weekStart = todayStart - 7 * 86400000;
+  const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const yesterdayDate = new Date(now.getTime() - 86400000);
+  const yesterdayKey = `${yesterdayDate.getFullYear()}-${String(yesterdayDate.getMonth() + 1).padStart(2, '0')}-${String(yesterdayDate.getDate()).padStart(2, '0')}`;
+  const weekStart = now.getTime() - 7 * 86400000;
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+
+  // Pre-calculate today's orders count and available unique dates
+  const todayOrdersCount = React.useMemo(() => {
+    return orders.filter(po => {
+      const dKey = getOperationalEntryDateKey(po);
+      return dKey === todayKey || po.date === 'Today' || po.dateGroupKey === 'Today' || po.rawOrder?.placedAt === 'Today';
+    }).length;
+  }, [orders, todayKey]);
+
+  const availableRecordedDates = React.useMemo(() => {
+    const map = new Map<string, { key: string; label: string; count: number; timestamp: number }>();
+    orders.forEach(po => {
+      const dKey = getOperationalEntryDateKey(po);
+      if (dKey) {
+        if (!map.has(dKey)) {
+          const parts = dKey.split('-');
+          const y = parseInt(parts[0], 10);
+          const m = parseInt(parts[1], 10) - 1;
+          const d = parseInt(parts[2], 10);
+          const monthShortNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+          const label = `${d} ${monthShortNames[m] || parts[1]} ${y}`;
+          map.set(dKey, { key: dKey, label, count: 0, timestamp: new Date(y, m, d).getTime() });
+        }
+        map.get(dKey)!.count += 1;
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => b.timestamp - a.timestamp);
+  }, [orders]);
 
   // Filtered Orders (runs 100% locally in-memory with zero Firestore reads)
   const filteredOrders = React.useMemo(() => {
@@ -197,22 +227,26 @@ export default function LedgerManagement() {
       }
 
       // 6. Date Filter
-      const poTs = po.dateTimestamp || 0;
+      const dKey = getOperationalEntryDateKey(po);
+      const isToday = dKey === todayKey || po.date === 'Today' || po.dateGroupKey === 'Today' || po.rawOrder?.placedAt === 'Today';
+
       if (dateRange === 'today') {
-        if (poTs < todayStart) return false;
+        if (!isToday) return false;
       } else if (dateRange === 'yesterday') {
-        if (poTs < yesterdayStart || poTs >= todayStart) return false;
+        if (dKey !== yesterdayKey && po.date !== 'Yesterday') return false;
       } else if (dateRange === 'week') {
+        const poTs = po.dateTimestamp || 0;
         if (poTs < weekStart) return false;
       } else if (dateRange === 'month') {
+        const poTs = po.dateTimestamp || 0;
         if (poTs < monthStart) return false;
       } else if (dateRange === 'custom' && customDate) {
-        // match YYYY-MM-DD
-        const targetDate = new Date(customDate);
-        if (!isNaN(targetDate.getTime())) {
-          const targetStart = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate()).getTime();
-          const targetEnd = targetStart + 86400000;
-          if (poTs < targetStart || poTs >= targetEnd) return false;
+        if (dKey !== customDate) return false;
+      } else if (dateRange === 'custom_range' && customDate) {
+        if (customDateEnd) {
+          if (dKey < customDate || dKey > customDateEnd) return false;
+        } else {
+          if (dKey !== customDate) return false;
         }
       }
 
@@ -227,8 +261,9 @@ export default function LedgerManagement() {
     statusFilter, 
     dateRange, 
     customDate,
-    todayStart,
-    yesterdayStart,
+    customDateEnd,
+    todayKey,
+    yesterdayKey,
     weekStart,
     monthStart
   ]);
@@ -294,6 +329,7 @@ export default function LedgerManagement() {
     setSearchQuery('');
     setDateRange('all');
     setCustomDate('');
+    setCustomDateEnd('');
     setSelectedBuyer('all');
     setSelectedSupplier('all');
     setSelectedBrand('all');
@@ -512,38 +548,167 @@ export default function LedgerManagement() {
               <span>Filters:</span>
             </div>
 
-            {/* Date Range Filter */}
-            <div className="flex items-center bg-slate-100 dark:bg-neutral-900 rounded-xl p-0.5 border border-slate-200/60 dark:border-neutral-800 text-xs">
-              {(['all', 'today', 'yesterday', 'week', 'month'] as const).map(tab => (
+            {/* Date Range & Specific Date Filter */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <div className="flex items-center bg-slate-100 dark:bg-neutral-900 rounded-xl p-0.5 border border-slate-200/60 dark:border-neutral-800 text-xs">
                 <button
-                  key={tab}
+                  type="button"
                   onClick={() => {
-                    setDateRange(tab);
+                    setDateRange('all');
                     setCustomDate('');
+                    setCustomDateEnd('');
                   }}
                   className={cn(
                     "px-2.5 py-1 rounded-lg font-bold capitalize transition-all cursor-pointer btn-tactile",
-                    dateRange === tab 
+                    dateRange === 'all' 
                       ? "bg-white dark:bg-neutral-800 text-slate-900 dark:text-white shadow-2xs" 
                       : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
                   )}
                 >
-                  {tab === 'all' ? 'All Dates' : tab === 'week' ? '7 Days' : tab === 'month' ? 'This Month' : tab}
+                  All Dates
                 </button>
-              ))}
-              <input
-                type="date"
-                value={customDate}
-                onChange={(e) => {
-                  setCustomDate(e.target.value);
-                  setDateRange('custom');
-                }}
-                className={cn(
-                  "px-2 py-0.5 text-[11px] font-bold rounded-lg bg-transparent text-slate-600 dark:text-slate-300 border-0 focus:outline-none cursor-pointer",
-                  dateRange === 'custom' && "bg-white dark:bg-neutral-800 text-slate-900 dark:text-white"
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDateRange('today');
+                    setCustomDate('');
+                    setCustomDateEnd('');
+                  }}
+                  className={cn(
+                    "px-2.5 py-1 rounded-lg font-bold capitalize transition-all cursor-pointer btn-tactile flex items-center gap-1",
+                    dateRange === 'today' 
+                      ? "bg-emerald-600 text-white shadow-2xs" 
+                      : "text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                  )}
+                  title="Filter today's purchase orders"
+                >
+                  <span>Today</span>
+                  <span className={cn(
+                    "text-[9px] px-1 py-0.2 rounded-full font-mono font-bold",
+                    dateRange === 'today' ? "bg-white/25 text-white" : "bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300"
+                  )}>
+                    {todayOrdersCount}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDateRange('yesterday');
+                    setCustomDate('');
+                    setCustomDateEnd('');
+                  }}
+                  className={cn(
+                    "px-2.5 py-1 rounded-lg font-bold capitalize transition-all cursor-pointer btn-tactile",
+                    dateRange === 'yesterday' 
+                      ? "bg-white dark:bg-neutral-800 text-slate-900 dark:text-white shadow-2xs" 
+                      : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                  )}
+                >
+                  Yesterday
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDateRange('week');
+                    setCustomDate('');
+                    setCustomDateEnd('');
+                  }}
+                  className={cn(
+                    "px-2.5 py-1 rounded-lg font-bold capitalize transition-all cursor-pointer btn-tactile",
+                    dateRange === 'week' 
+                      ? "bg-white dark:bg-neutral-800 text-slate-900 dark:text-white shadow-2xs" 
+                      : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                  )}
+                >
+                  7 Days
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDateRange('month');
+                    setCustomDate('');
+                    setCustomDateEnd('');
+                  }}
+                  className={cn(
+                    "px-2.5 py-1 rounded-lg font-bold capitalize transition-all cursor-pointer btn-tactile",
+                    dateRange === 'month' 
+                      ? "bg-white dark:bg-neutral-800 text-slate-900 dark:text-white shadow-2xs" 
+                      : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                  )}
+                >
+                  This Month
+                </button>
+              </div>
+
+              {/* Any Date Picker & Clear Button */}
+              <div className={cn(
+                "flex items-center gap-1.5 px-2.5 py-1 rounded-xl border text-xs font-bold transition-all",
+                dateRange === 'custom' || dateRange === 'custom_range'
+                  ? "bg-amber-50 dark:bg-amber-950/40 border-amber-500/50 text-amber-900 dark:text-amber-300"
+                  : "bg-slate-50 dark:bg-neutral-900 border-slate-200 dark:border-neutral-800 text-slate-700 dark:text-slate-300"
+              )}>
+                <Calendar className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Date:</span>
+                <input
+                  type="date"
+                  value={customDate}
+                  onChange={(e) => {
+                    setCustomDate(e.target.value);
+                    if (e.target.value) {
+                      setDateRange('custom');
+                    } else {
+                      setDateRange('all');
+                    }
+                  }}
+                  className="bg-transparent border-0 text-xs font-bold focus:outline-none cursor-pointer"
+                  title="Pick any given date to filter ledger"
+                />
+                {customDate && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCustomDate('');
+                      setCustomDateEnd('');
+                      setDateRange('all');
+                    }}
+                    className="p-0.5 hover:text-rose-500 text-slate-400 cursor-pointer"
+                    title="Clear date"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
                 )}
-                title="Pick custom date"
-              />
+              </div>
+
+              {/* Dropdown of recorded dates to select any existing date */}
+              {availableRecordedDates.length > 0 && (
+                <select
+                  value={dateRange === 'custom' ? customDate : ''}
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      setCustomDate(e.target.value);
+                      setCustomDateEnd('');
+                      setDateRange('custom');
+                    } else {
+                      setCustomDate('');
+                      setDateRange('all');
+                    }
+                  }}
+                  className={cn(
+                    "px-2.5 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-amber-500/20",
+                    dateRange === 'custom' && customDate
+                      ? "bg-amber-50 dark:bg-amber-950/40 border-amber-500/50 text-amber-900 dark:text-amber-300"
+                      : "bg-slate-50 dark:bg-neutral-900 border-slate-200 dark:border-neutral-800 text-slate-700 dark:text-slate-300"
+                  )}
+                  title="Select any recorded date from the list"
+                >
+                  <option value="">Recorded Dates ({availableRecordedDates.length})</option>
+                  {availableRecordedDates.map(d => (
+                    <option key={d.key} value={d.key}>
+                      {d.label} ({d.count} order{d.count !== 1 ? 's' : ''})
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
 
             {/* Buyer Dropdown */}
@@ -1260,6 +1425,16 @@ export default function LedgerManagement() {
         reportType="po_ledger"
         title="Purchase Order Ledger"
         entries={orders}
+        initialDateFilter={
+          dateRange === 'today' ? 'today' :
+          dateRange === 'yesterday' ? 'yesterday' :
+          dateRange === 'week' ? 'week' :
+          dateRange === 'month' ? 'month' :
+          dateRange === 'custom' ? 'custom' :
+          dateRange === 'custom_range' ? 'custom_range' : 'all'
+        }
+        initialCustomDate={customDate}
+        initialCustomDateEnd={customDateEnd}
       />
 
     </div>
