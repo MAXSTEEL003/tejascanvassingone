@@ -1956,7 +1956,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
           qty: parseFloat(poOrder.qty || poOrder.items?.match(/\d+/)?.[0] || '80'),
           rate: parseFloat(poOrder.rate || '8400') || 8400,
           date: poOrder.date || new Date(),
-          loadingDays: poOrder.loadingDays !== undefined ? poOrder.loadingDays : 3,
+          loadingDays: poOrder.loadingDays !== undefined ? poOrder.loadingDays : 0,
           unloadingPoint: poOrder.unloadingPoint || 'shop',
           remarks: poOrder.remarks || ''
         }];
@@ -1968,7 +1968,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
     const updatedPo = {
       ...poOrder,
       originalOrders: currentSubs,
-      loadingDays: field === 'loadingDays' ? val : (poOrder.loadingDays !== undefined ? poOrder.loadingDays : 3),
+      loadingDays: field === 'loadingDays' ? val : (poOrder.loadingDays !== undefined ? poOrder.loadingDays : 0),
       unloadingPoint: field === 'unloadingPoint' ? val : (poOrder.unloadingPoint || 'shop'),
       remarks: field === 'remarks' ? val : (poOrder.remarks || '')
     };
@@ -3924,7 +3924,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
             const textContent = `Tejas Canvassing\nBangalore\n\nDear ${supplierName.toUpperCase()},\n\nToday's orders:\n\n` + 
               subOrders.map((s: any) => {
                 const profile = getBuyerProfile(s.buyer);
-                return `- ${s.buyer} (${s.product || 'KESHAR KALI'}): ${s.qty} QTLS @ Rate ${s.rate || 8000}\n  Address: ${profile.address}\n  GSTIN: ${profile.gstin} | Phone: ${profile.phone}${profile.email ? ` | Email: ${profile.email}` : ''}${s.remarks ? `\n  Remarks: ${s.remarks}` : ''}\n  Loading days: ${s.loadingDays !== undefined ? s.loadingDays : 3} | Unloading point: ${s.unloadingPoint || 'shop'}`;
+                return `- ${s.buyer} (${s.product || 'KESHAR KALI'}): ${s.qty} QTLS @ Rate ${s.rate || 8000}\n  Address: ${profile.address}\n  GSTIN: ${profile.gstin} | Phone: ${profile.phone}${profile.email ? ` | Email: ${profile.email}` : ''}${s.remarks ? `\n  Remarks: ${s.remarks}` : ''}\n  Loading days: ${s.loadingDays !== undefined ? s.loadingDays : 0} | Unloading point: ${s.unloadingPoint || 'shop'}`;
               }).join('\n\n');
             
             try {

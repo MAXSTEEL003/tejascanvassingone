@@ -227,7 +227,7 @@ export const normalizeOrder = (raw: any): any => {
     status,
     isArchived: isApproved ? false : !!raw.isArchived,
     supplier,
-    loadingDays: raw.loadingDays !== undefined ? raw.loadingDays : 3,
+    loadingDays: raw.loadingDays !== undefined ? raw.loadingDays : 0,
     unloadingPoint: raw.unloadingPoint || 'shop',
     remarks: raw.remarks !== undefined ? raw.remarks : ''
   };
@@ -581,13 +581,13 @@ export default function OrdersDashboard() {
     qty: '',
     rate: '',
     urgency: 'Standard' as 'Critical' | 'Standard' | 'High',
-    loadingDays: 3,
+    loadingDays: 0,
     unloadingPoint: 'shop',
     remarks: ''
   });
 
   const [editingLogisticsId, setEditingLogisticsId] = useState<string | null>(null);
-  const [editLogisticsDays, setEditLogisticsDays] = useState<number>(3);
+  const [editLogisticsDays, setEditLogisticsDays] = useState<number>(0);
   const [editLogisticsPoint, setEditLogisticsPoint] = useState<string>('shop');
   const [editLogisticsRemarks, setEditLogisticsRemarks] = useState<string>('');
 
@@ -2201,7 +2201,7 @@ export default function OrdersDashboard() {
       status: 'Pending Approval',
       color: newOrder.urgency === 'Critical' ? 'red' : newOrder.urgency === 'High' ? 'orange' : 'zinc',
       phone: cleanBuyerPhone || undefined,
-      loadingDays: isNaN(loadingDaysNum) ? 3 : loadingDaysNum,
+      loadingDays: isNaN(loadingDaysNum) ? 0 : loadingDaysNum,
       unloadingPoint: (newOrder.unloadingPoint || 'shop').trim(),
       remarks: (newOrder.remarks || '').trim()
     });
@@ -2226,7 +2226,7 @@ export default function OrdersDashboard() {
     window.dispatchEvent(new Event('procurement-updated'));
 
     setIsCreateModalOpen(false);
-    setNewOrder({ buyer: '', phone: '', supplier: '', product: '', qty: '', rate: '', urgency: 'Standard', loadingDays: 3, unloadingPoint: 'shop', remarks: '' });
+    setNewOrder({ buyer: '', phone: '', supplier: '', product: '', qty: '', rate: '', urgency: 'Standard', loadingDays: 0, unloadingPoint: 'shop', remarks: '' });
   };
 
   return (
@@ -2758,7 +2758,7 @@ export default function OrdersDashboard() {
                                     type="button"
                                     onClick={() => {
                                       setEditingLogisticsId(order.id);
-                                      setEditLogisticsDays(order.loadingDays !== undefined ? order.loadingDays : 3);
+                                      setEditLogisticsDays(order.loadingDays !== undefined ? order.loadingDays : 0);
                                       setEditLogisticsPoint(order.unloadingPoint || 'shop');
                                       setEditLogisticsRemarks(order.remarks || '');
                                     }}
@@ -2817,7 +2817,7 @@ export default function OrdersDashboard() {
                                 <div className="text-xs space-y-1">
                                   <div className="flex items-center justify-between">
                                     <span className="text-[10px] text-secondary">Loading Days:</span>
-                                    <strong className="font-mono text-red-700 dark:text-red-400 font-bold">{order.loadingDays !== undefined ? order.loadingDays : 3} days</strong>
+                                    <strong className="font-mono text-red-700 dark:text-red-400 font-bold">{order.loadingDays !== undefined ? order.loadingDays : 0} days</strong>
                                   </div>
                                   <div className="flex items-center justify-between">
                                     <span className="text-[10px] text-secondary">Unloading:</span>
@@ -3628,13 +3628,13 @@ export default function OrdersDashboard() {
                           type="number" 
                           min="0"
                           max="30"
-                          placeholder="3"
+                          placeholder="0"
                           value={newOrder.loadingDays}
                           onChange={(e) => setNewOrder({...newOrder, loadingDays: parseInt(e.target.value) || 0})}
                           className="w-full bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-primary/20 transition-all text-neutral-900 dark:text-white font-mono"
                         />
                         <div className="flex items-center gap-1 flex-wrap">
-                          {[1, 2, 3, 5, 7].map((d) => (
+                          {[0, 1, 2, 3, 5, 7].map((d) => (
                             <button
                               key={d}
                               type="button"
