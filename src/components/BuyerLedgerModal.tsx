@@ -94,16 +94,28 @@ export default function BuyerLedgerModal({
 
         const delPlaced = getDeletedPlacedOrderIds();
         const delProc = getDeletedProcurementIds();
-        const isDeleted = (id: any) => {
-          const norm = String(id || '').trim().toLowerCase().replace(/^#/, '');
-          return delPlaced.has(norm) || delProc.has(norm);
+        const isPlacedDeleted = (id: any) => {
+          if (!id) return false;
+          const norm = String(id).trim().toLowerCase().replace(/^#/, '');
+          return delPlaced.has(norm);
+        };
+        const isProcDeleted = (id: any) => {
+          if (!id) return false;
+          const norm = String(id).trim().toLowerCase().replace(/^#/, '');
+          return delProc.has(norm);
         };
 
         const combinedPlaced = [...localPlaced, ...cloudPlaced];
-        uniquePlaced = Array.from(new Map(combinedPlaced.filter(p => p && p.id && !isDeleted(p.id) && !isDeleted(p.purchaseOrderNo)).map(item => [item.id, item])).values());
+        uniquePlaced = Array.from(new Map(combinedPlaced.filter(p => p && p.id && !isPlacedDeleted(p.id) && !isPlacedDeleted(p.purchaseOrderNo)).map(item => [item.id, item])).values());
+        if (uniquePlaced.length > 0) {
+          try {
+            localStorage.setItem('placed_orders', JSON.stringify(uniquePlaced));
+          } catch (e) {}
+        }
 
-        const combinedOrders = [...localRequests, ...cloudRequests, ...localPlaced, ...cloudPlaced];
-        const uniqueOrders = Array.from(new Map(combinedOrders.filter(o => o && o.id && !isDeleted(o.id) && !isDeleted(o.purchaseOrderNo)).map(item => [item.id, item])).values());
+        const validRequests = [...localRequests, ...cloudRequests].filter(r => r && r.id && !isProcDeleted(r.id));
+        const combinedOrders = [...validRequests, ...uniquePlaced];
+        const uniqueOrders = Array.from(new Map(combinedOrders.map(item => [item.id, item])).values());
 
         merchantOrders = uniqueOrders.flatMap(o => {
           if (!o) return [];

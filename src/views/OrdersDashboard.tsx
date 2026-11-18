@@ -2153,6 +2153,7 @@ export default function OrdersDashboard() {
     const groupedOrder = {
       id: batchId,
       poNumber: batchId,
+      purchaseOrderNo: batchId,
       batchId: batchId,
       date: (() => {
         const d = new Date();
@@ -2209,6 +2210,9 @@ export default function OrdersDashboard() {
     localStorage.setItem('placed_orders', JSON.stringify(newPlaced));
     setPlacedOrdersList(getValidDeduplicatedPlacedOrders(newPlaced));
     window.dispatchEvent(new CustomEvent('placed-orders-updated'));
+    window.dispatchEvent(new CustomEvent('operational-orders-updated'));
+    window.dispatchEvent(new CustomEvent('ledgers-updated'));
+    window.dispatchEvent(new Event('storage'));
     localStorage.setItem('just_placed_order', 'true');
 
     // Remove approved orders from procurement_requests in local state & localStorage

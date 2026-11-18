@@ -7,7 +7,7 @@
  */
 
 import { getCollectionDocs, deleteCollectionDoc, setCollectionDoc } from '../lib/firebase';
-import { sanitizeSupplierName, getDeletedPlacedOrderIds, getDeletedProcurementIds, getRegisteredSuppliers, getDeletedArrivalIds } from '../lib/utils';
+import { sanitizeSupplierName, getDeletedPlacedOrderIds, getRegisteredSuppliers, getDeletedArrivalIds } from '../lib/utils';
 
 export interface OperationalPO {
   id: string;                // Unique row key
@@ -961,9 +961,10 @@ export async function fetchOperationalOrders(forceFresh = false): Promise<Operat
       return operationalOrdersMemCache.data;
     }
 
-    // 1. Fetch Placed Orders, Arrival Entries, and Ledgers in PARALLEL
-    const [cloudPlaced, cloudArrivals, cloudLedgers] = await Promise.all([
+    // 1. Fetch Placed Orders, Procurement Requests, Arrival Entries, and Ledgers in PARALLEL
+    const [cloudPlaced, cloudProc, cloudArrivals, cloudLedgers] = await Promise.all([
       getCollectionDocs('placed_orders', forceFresh).catch(() => []),
+      getCollectionDocs('procurement_requests', forceFresh).catch(() => []),
       getCollectionDocs('arrival_entries', forceFresh).catch(() => []),
       getCollectionDocs('ledgers', forceFresh).catch(() => [])
     ]);
@@ -973,12 +974,18 @@ export async function fetchOperationalOrders(forceFresh = false): Promise<Operat
       localPlaced = JSON.parse(localStorage.getItem('placed_orders') || '[]');
     } catch {}
 
+    let localProc: any[] = [];
+    try {
+      localProc = JSON.parse(localStorage.getItem('procurement_requests') || '[]');
+    } catch {}
+
     // Deduplicate placed orders by normalized ID
     const deletedPlaced = getDeletedPlacedOrderIds();
-    const deletedProc = getDeletedProcurementIds();
     const isDeletedPo = (id: string) => {
-      const norm = normalizePo(id);
-      return deletedPlaced.has(norm) || deletedProc.has(norm);
+      if (!id) return false;
+      const lower = String(id).trim().toLowerCase().replace(/^#/, '');
+      const upper = String(id).trim().toUpperCase().replace(/^#/, '');
+      return deletedPlaced.has(lower) || deletedPlaced.has(upper);
     };
 
     const isWiped = localStorage.getItem('cleared_placed_orders') === 'true' || localStorage.getItem('placed_orders_cleared_all') === 'true';
@@ -996,8 +1003,19 @@ export async function fetchOperationalOrders(forceFresh = false): Promise<Operat
         if (!ord || !ord.id) return;
         if (ord.status === 'Rejected') return;
         const key = normalizePo(ord.purchaseOrderNo || ord.id);
-        if (key && !isDeletedPo(key) && !placedOrderMap.has(key)) {
+        if (!key || isDeletedPo(key)) return;
+
+        const existing = placedOrderMap.get(key);
+        if (!existing) {
           placedOrderMap.set(key, ord);
+        } else {
+          const ordSubs = Array.isArray(ord.originalOrders) ? ord.originalOrders.length : 0;
+          const existSubs = Array.isArray(existing.originalOrders) ? existing.originalOrders.length : 0;
+          if (ordSubs > existSubs) {
+            placedOrderMap.set(key, { ...existing, ...ord });
+          } else {
+            placedOrderMap.set(key, { ...ord, ...existing });
+          }
         }
       });
     }
@@ -1066,44 +1084,56 @@ export async function fetchOperationalOrders(forceFresh = false): Promise<Operat
       entry.rows.push(arr);
     });
 
-    // 3. Historical Ledgers Fallback (Ensure no older orders are missing)
+    // 3. Historical Ledgers Fallback (Ensure no older orders or buyer ledger entries are missing)
     let localLedgers: any[] = [];
     try {
       localLedgers = JSON.parse(localStorage.getItem('ledgers') || '[]');
     } catch {}
     const historicalLedgers = [...cloudLedgers, ...localLedgers];
 
-    const ledgerPoMap = new Map<string, { buyer?: string; supplier?: string; date?: any; qty?: number; rate?: number; amount?: number; brand?: string; product?: string }>();
+    // Multi-buyer ledger records map
+    const ledgerBuyerMap = new Map<string, { poKey: string; buyer: string; supplier?: string; date?: any; qty: number; rate: number; amount: number; brand?: string; product?: string; id?: string }>();
+    const supplierNamesByPo = new Map<string, string>();
+
     historicalLedgers.forEach(l => {
       if (!l || !l.purchaseOrderNo) return;
       const poKey = normalizePo(l.purchaseOrderNo);
-      if (!poKey || isDeletedPo(poKey) || isDeletedPo(l.id) || (l.orderId && isDeletedPo(l.orderId))) return;
+      if (!poKey || isDeletedPo(poKey) || isDeletedPo(l.id)) return;
 
-      if (!ledgerPoMap.has(poKey)) {
-        ledgerPoMap.set(poKey, {});
-      }
-      const rec = ledgerPoMap.get(poKey)!;
-      if (l.partyType === 'Buyer') {
-        rec.buyer = l.partyName;
-      } else if (l.partyType === 'Supplier') {
-        rec.supplier = l.partyName;
-      }
-      if (!rec.date && l.date) rec.date = l.date;
-      if (!rec.qty && l.qty) rec.qty = Number(l.qty) || 0;
-      if (!rec.rate && l.rate) rec.rate = Number(l.rate) || 0;
-      if (!rec.amount && l.amount) rec.amount = Number(l.amount) || 0;
-      if (!rec.brand && (l.brand || l.product || l.variety || l.itemName)) {
-        rec.brand = l.brand || l.product || l.variety || l.itemName;
+      if (l.partyType === 'Supplier' && l.partyName) {
+        supplierNamesByPo.set(poKey, l.partyName);
+      } else if (l.partyType === 'Buyer') {
+        const buyer = String(l.partyName || 'General Merchant').trim();
+        const buyerKey = `${poKey}__${normalizePartyStrict(buyer)}__${l.id || ''}`;
+        if (!ledgerBuyerMap.has(buyerKey)) {
+          ledgerBuyerMap.set(buyerKey, {
+            poKey,
+            buyer,
+            date: l.date,
+            qty: Number(l.qty) || 0,
+            rate: Number(l.rate) || 0,
+            amount: Number(l.amount) || 0,
+            brand: l.brand || l.product || l.variety || l.itemName,
+            id: l.id
+          });
+        }
       }
     });
 
     // Track sub-order keys that belong to grouped batches so they are not treated as independent orders
     const groupedSubOrderIds = new Set<string>();
     Array.from(placedOrderMap.values()).forEach(ord => {
+      const parentPoKey = normalizePo(ord.purchaseOrderNo || ord.id);
       if (ord.originalOrders && Array.isArray(ord.originalOrders) && ord.originalOrders.length > 0) {
         ord.originalOrders.forEach((sub: any) => {
-          if (sub?.id) groupedSubOrderIds.add(normalizePo(sub.id));
-          if (sub?.purchaseOrderNo) groupedSubOrderIds.add(normalizePo(sub.purchaseOrderNo));
+          [sub?.id, sub?.orderNo, sub?.subOrderNo, sub?.supplierSubOrderNo, sub?.buyerRequestNo].forEach(idVal => {
+            if (idVal) {
+              const norm = normalizePo(idVal);
+              if (norm && norm !== parentPoKey) {
+                groupedSubOrderIds.add(norm);
+              }
+            }
+          });
         });
       }
     });
@@ -1113,6 +1143,43 @@ export async function fetchOperationalOrders(forceFresh = false): Promise<Operat
       if (placedOrderMap.has(subKey)) {
         placedOrderMap.delete(subKey);
       }
+    });
+
+    // Ingest any active orders from procurement_requests that are not already inside a placed batch
+    const allProc = [...cloudProc, ...localProc];
+    allProc.forEach((proc: any) => {
+      if (!proc || !proc.id) return;
+      if (proc.status === 'Rejected' || proc.status === 'Draft Order') return;
+      if (String(proc.id).startsWith('#ORD-99') || String(proc.id).startsWith('TC-0000') || proc.id === 'ORD-TC-1024') return;
+      
+      const candidateKeys = [
+        proc.id,
+        proc.orderNo,
+        proc.subOrderNo,
+        proc.supplierSubOrderNo,
+        proc.buyerRequestNo,
+        proc.purchaseOrderNo,
+        proc.poNumber
+      ].filter(Boolean).map(normalizePo);
+
+      // If any identifier belongs to an already-placed grouped batch or placed order, do not duplicate!
+      const isAlreadyGrouped = candidateKeys.some(k => groupedSubOrderIds.has(k) || placedOrderMap.has(k));
+      if (isAlreadyGrouped) return;
+
+      const key = normalizePo(proc.purchaseOrderNo || proc.orderNo || proc.id);
+      if (!key || isDeletedPo(key)) return;
+      if (groupedSubOrderIds.has(key) || placedOrderMap.has(key)) return;
+
+      placedOrderMap.set(key, {
+        ...proc,
+        purchaseOrderNo: proc.purchaseOrderNo || proc.orderNo || proc.id,
+        supplier: sanitizeSupplierName(proc.supplier, 'DIRECT MILL'),
+        buyer: String(proc.buyer || proc.partyName || 'General Merchant').trim(),
+        product: proc.product || proc.brand || proc.variety || proc.items || 'Standard Rice',
+        brand: proc.brand || proc.product || proc.variety || 'Standard Rice',
+        qty: Number(proc.qty) || Number(proc.totalQty) || 0,
+        rate: Number(proc.rate) || Number(proc.pricePerUnit) || 0
+      });
     });
 
     const results: OperationalPO[] = [];
@@ -1378,16 +1445,17 @@ export async function fetchOperationalOrders(forceFresh = false): Promise<Operat
       }
     });
 
-    // B. Historical Ledger Reconciliation (if PO not present in placed_orders)
-    ledgerPoMap.forEach((rec, poKey) => {
-      if (isDeletedPo(poKey)) return;
-      if (processedPoKeys.has(poKey)) return;
-      if (groupedSubOrderIds.has(poKey)) return;
-      processedPoKeys.add(poKey);
+    // B. Historical Ledger Reconciliation (if PO / Buyer not present in placed_orders)
+    ledgerBuyerMap.forEach((rec, buyerRowKey) => {
+      const { poKey, buyer } = rec;
+      if (isDeletedPo(poKey) || (rec.id && isDeletedPo(rec.id))) return;
+      const normParty = normalizePartyStrict(buyer);
+      const rowKey = `${poKey}_${normParty}`;
+      if (placedOrderMap.has(poKey) || processedPoKeys.has(poKey) || processedPoKeys.has(rowKey) || groupedSubOrderIds.has(poKey)) return;
+      processedPoKeys.add(rowKey);
 
+      const supplier = sanitizeSupplierName(supplierNamesByPo.get(poKey) || rec.supplier, 'DIRECT MILL');
       const dateMeta = parseOperationalDate(rec.date);
-      const buyer = String(rec.buyer || 'General Merchant').trim();
-      const supplier = sanitizeSupplierName(rec.supplier, 'DIRECT MILL');
       const poQtl = Number(rec.qty) || 0;
       if (poQtl <= 0) return;
 
@@ -1398,7 +1466,6 @@ export async function fetchOperationalOrders(forceFresh = false): Promise<Operat
 
       // Check arrival entry for brand and arrival qty SPECIFICALLY for this party
       const arrData = arrivedPoMap.get(poKey) || { totalQty: 0, billNos: new Set(), rows: [] };
-      const normParty = normalizePartyStrict(buyer);
       const partyArrivalRows = arrData.rows.filter(r => {
         const rParty = normalizePartyStrict(r.partyName || r.originalBuyer || r.buyer);
         if (normParty && rParty) {
@@ -1418,7 +1485,6 @@ export async function fetchOperationalOrders(forceFresh = false): Promise<Operat
         arrivalQtl = Math.min(poQtl, arrData.totalQty);
         billNo = Array.from(arrData.billNos)[0] || undefined;
       } else {
-        // No arrival record for this specific buyer -> 0 arrived!
         arrivalQtl = 0;
       }
 
@@ -1435,7 +1501,7 @@ export async function fetchOperationalOrders(forceFresh = false): Promise<Operat
       }
 
       results.push({
-        id: `po-hist-${poKey}`,
+        id: `po-hist-${poKey}-${normParty}-${rec.id || ''}`,
         poNumber: poKey,
         date: dateMeta.displayLong,
         dateShort: dateMeta.displayShort,
@@ -1474,16 +1540,12 @@ export async function fetchOperationalOrders(forceFresh = false): Promise<Operat
       dedupedResults.push(po);
     }
 
-    // Filter out any deleted PO and any orders dated before November 3, 2026
+    // Filter out any deleted PO
     const activeResults = dedupedResults.filter(po => {
       const normPo = normalizePo(po.poNumber);
       const normId = normalizePo(po.id);
       const normSub = po.subOrderId ? normalizePo(po.subOrderId) : '';
-      const normRaw = po.rawOrder?.id ? normalizePo(po.rawOrder.id) : '';
-      if (isDeletedPo(normPo) || isDeletedPo(normId) || (normSub && isDeletedPo(normSub)) || (normRaw && isDeletedPo(normRaw))) {
-        return false;
-      }
-      if (po.dateTimestamp && po.dateTimestamp < CUTOFF_NOV_3_2026) {
+      if (isDeletedPo(normPo) || isDeletedPo(normId) || (normSub && isDeletedPo(normSub))) {
         return false;
       }
       return true;

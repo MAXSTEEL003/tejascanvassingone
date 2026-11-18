@@ -791,6 +791,32 @@ export default function LedgerManagement() {
           </div>
         </div>
 
+        {/* Active Filter Indicators */}
+        {selectedBuyer !== 'all' && (
+          <div className="flex items-center justify-between p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-xs">
+            <div className="flex items-center gap-2">
+              <User className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+              <span className="text-slate-800 dark:text-slate-200">
+                Filtered to Buyer: <strong className="font-black text-amber-700 dark:text-amber-400 uppercase">{selectedBuyer}</strong>
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedBuyer('all');
+                if (searchParams.get('buyer')) {
+                  const nextParams = new URLSearchParams(searchParams);
+                  nextParams.delete('buyer');
+                  setSearchParams(nextParams);
+                }
+              }}
+              className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs transition-all shadow-xs cursor-pointer btn-tactile"
+            >
+              Show All Buyers ({orders.length} Orders)
+            </button>
+          </div>
+        )}
+
         {/* 4. Daily Order Organization (Section 1 & 2) */}
         {groupedOrders.length === 0 ? (
           <div className="p-12 text-center rounded-2xl bg-white dark:bg-[#121214] border border-slate-200/80 dark:border-white/10 shadow-2xs space-y-3">

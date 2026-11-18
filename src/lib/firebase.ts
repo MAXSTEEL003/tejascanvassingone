@@ -951,6 +951,14 @@ export async function createLedgerEntriesForOrder(groupedOrder: any): Promise<vo
     // Also update LocalStorage as a dual-write fallback
     const existingLedgers = JSON.parse(localStorage.getItem('ledgers') || '[]');
     localStorage.setItem('ledgers', JSON.stringify([...ledgerEntries, ...existingLedgers]));
+    try {
+      localStorage.removeItem('cached_operational_orders');
+    } catch {}
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('ledgers-updated'));
+      window.dispatchEvent(new CustomEvent('operational-orders-updated'));
+      window.dispatchEvent(new Event('storage'));
+    }
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, 'ledgers');
   }
