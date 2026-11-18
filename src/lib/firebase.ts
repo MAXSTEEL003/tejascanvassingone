@@ -19,7 +19,7 @@ import {
   Firestore
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
-import { sanitizeSupplierName, getDeletedArrivalIds } from './utils';
+import { sanitizeSupplierName, getDeletedArrivalIds, removeDeletedArrivalId, removeDeletedSheetId } from './utils';
 import { getMonthYearFromDate, normalizeDate } from '../utils/dateUtils';
 import { getCurrentMonthYearSheetName } from '../utils/arrivalSheetsManager';
 
@@ -1085,10 +1085,16 @@ export async function autoCreateArrivalEntryForIncomingLog(
   try {
     if (!targetOrder) return orderId;
 
-    const rawOrderDate = targetOrder.arrivedAt || targetOrder.date;
-    const dateStr = rawOrderDate ? (normalizeDate(rawOrderDate) || new Date().toISOString().split('T')[0]) : new Date().toISOString().split('T')[0];
+    const normPo = String(orderId).trim().toUpperCase().replace(/^#/, '');
+    const todayStr = new Date().toISOString().split('T')[0];
+    const rawOrderDate = targetOrder.arrivedDate || targetOrder.arrivedAt;
+    const dateStr = rawOrderDate ? (normalizeDate(rawOrderDate) || todayStr) : todayStr;
     const targetMonthYear = getMonthYearFromDate(dateStr) || getCurrentMonthYearSheetName();
     const expectedSheetId = `sheet-${targetMonthYear.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+
+    // Untombstone sheet if it was previously marked deleted
+    removeDeletedSheetId(expectedSheetId);
+    removeDeletedSheetId(targetMonthYear);
 
     // 1. Read local sheets and local single data
     const rawSheets = localStorage.getItem('arrival_entry_sheets_v4');
@@ -1115,19 +1121,6 @@ export async function autoCreateArrivalEntryForIncomingLog(
     );
 
     if (targetSheetIndex === -1) {
-      // CRITICAL CHECK: If this sheet has been permanently deleted, DO NOT resurrect it!
-      try {
-        const delRaw = localStorage.getItem('deleted_arrival_sheet_ids');
-        if (delRaw) {
-          const delSet = new Set(JSON.parse(delRaw).map((id: string) => String(id).trim().toLowerCase()));
-          const sNameNorm = targetMonthYear.toLowerCase().trim();
-          const sIdNorm = expectedSheetId.toLowerCase().trim();
-          if (delSet.has(sNameNorm) || delSet.has(sIdNorm)) {
-            return orderId;
-          }
-        }
-      } catch (e) {}
-
       const newSheet = {
         id: expectedSheetId,
         name: targetMonthYear,
@@ -1173,7 +1166,6 @@ export async function autoCreateArrivalEntryForIncomingLog(
           ? (customRates[subId] ?? customRates[sub.id] ?? customRates[sub.supplierSubOrderNo] ?? customRates[`sub-${sIdx}`])
           : (parseFloat(sub.settledRate) || parseFloat(sub.rate) || 4200);
         const amount = qty * rate;
-        const normPo = String(orderId).trim().toUpperCase().replace(/^#/, '');
         
         const subCustomBill = (typeof customBillNo === 'object' && customBillNo !== null)
           ? (customBillNo[subId] || (sub.id && customBillNo[sub.id]) || (sub.supplierSubOrderNo && customBillNo[sub.supplierSubOrderNo]) || customBillNo[`sub-${sIdx}`] || '')
@@ -1195,17 +1187,17 @@ export async function autoCreateArrivalEntryForIncomingLog(
 
         const subMiller = sanitizeSupplierName(sub.supplier || sub.seller || targetOrder.origin || targetOrder.supplier, "DIRECT MILL");
 
-        // CRITICAL CHECK: If this sub-order or bill has been explicitly deleted, NEVER resurrect it!
-        const deletedArrivalIds = getDeletedArrivalIds();
+        // Explicit user arrival action: clear any previous tombstones so this arrival row is NEVER blocked
         const normSubId = String(subId).trim().toLowerCase();
         const normBNo = bNo ? String(bNo).trim().toLowerCase() : '';
         const normParty = partyName ? String(partyName).trim().toLowerCase() : '';
 
-        if (normSubId && deletedArrivalIds.has(normSubId)) return;
-        if (normBNo && deletedArrivalIds.has(normBNo)) return;
-        if (normPo && normBNo && deletedArrivalIds.has(`${normPo.toLowerCase()}_${normBNo}`)) return;
-        if (normPo && normParty && deletedArrivalIds.has(`${normPo.toLowerCase()}_${normParty}`)) return;
-        if (normPo && normSubId && deletedArrivalIds.has(`${normPo.toLowerCase()}_${normSubId}`)) return;
+        if (normSubId) removeDeletedArrivalId(normSubId);
+        if (normBNo) removeDeletedArrivalId(normBNo);
+        if (normPo) removeDeletedArrivalId(normPo);
+        if (normPo && normBNo) removeDeletedArrivalId(`${normPo.toLowerCase()}_${normBNo}`);
+        if (normPo && normParty) removeDeletedArrivalId(`${normPo.toLowerCase()}_${normParty}`);
+        if (normPo && normSubId) removeDeletedArrivalId(`${normPo.toLowerCase()}_${normSubId}`);
 
         const subLhRate = (typeof lhPerQtl === 'object' && lhPerQtl !== null)
           ? (lhPerQtl[subId] !== undefined ? Number(lhPerQtl[subId]) : (lhPerQtl[orderId] !== undefined ? Number(lhPerQtl[orderId]) : 0))
@@ -1259,7 +1251,6 @@ export async function autoCreateArrivalEntryForIncomingLog(
         ? customRates[orderId] 
         : (parseFloat(targetOrder.rate) || 4200);
       const amount = totalQty * rate;
-      const normPo = String(orderId).trim().toUpperCase().replace(/^#/, '');
       
       const singleCustomBill = (typeof customBillNo === 'object' && customBillNo !== null)
         ? (customBillNo[orderId] || '')
@@ -1281,15 +1272,14 @@ export async function autoCreateArrivalEntryForIncomingLog(
 
       const orderMiller = sanitizeSupplierName(targetOrder.supplier || targetOrder.seller || targetOrder.origin, "DIRECT MILL");
 
-      // CRITICAL CHECK: If this single order or bill has been explicitly deleted, NEVER resurrect it!
-      const deletedArrivalIds = getDeletedArrivalIds();
+      // Explicit user arrival action: clear any previous tombstones so this arrival row is NEVER blocked
       const normBNo = bNo ? String(bNo).trim().toLowerCase() : '';
       const normParty = partyName ? String(partyName).trim().toLowerCase() : '';
 
-      if (normPo && deletedArrivalIds.has(normPo.toLowerCase())) return orderId;
-      if (normBNo && deletedArrivalIds.has(normBNo)) return orderId;
-      if (normPo && normBNo && deletedArrivalIds.has(`${normPo.toLowerCase()}_${normBNo}`)) return orderId;
-      if (normPo && normParty && deletedArrivalIds.has(`${normPo.toLowerCase()}_${normParty}`)) return orderId;
+      if (normPo) removeDeletedArrivalId(normPo);
+      if (normBNo) removeDeletedArrivalId(normBNo);
+      if (normPo && normBNo) removeDeletedArrivalId(`${normPo.toLowerCase()}_${normBNo}`);
+      if (normPo && normParty) removeDeletedArrivalId(`${normPo.toLowerCase()}_${normParty}`);
 
       const singleLhRate = (typeof lhPerQtl === 'object' && lhPerQtl !== null)
         ? (lhPerQtl[orderId] !== undefined ? Number(lhPerQtl[orderId]) : 0)
@@ -1427,7 +1417,7 @@ export async function autoCreateArrivalEntryForIncomingLog(
     localStorage.setItem('arrival_entry_data_v4', JSON.stringify(currentGrid));
 
     // Save goto_arrival_bill so ArrivalEntry highlights it
-    sessionStorage.setItem('goto_arrival_bill', firstBillNo);
+    sessionStorage.setItem('goto_arrival_bill', firstBillNo || normPo || orderId);
 
     // 5. Dual-write only the newly injected items to Cloud Firestore asynchronously
     const cloudFormatted = newItemsToInject.map((row, idx) => {
@@ -1442,7 +1432,23 @@ export async function autoCreateArrivalEntryForIncomingLog(
         sheetName: targetSheetName
       };
     });
+    
+    // Explicitly write each document to ensure it immediately persists in Firestore
+    cloudFormatted.forEach(cf => {
+      setCollectionDoc('arrival_entries', cf.id, cf).catch(e => console.error('Cloud arrival entry set error:', e));
+    });
     syncCollection('arrival_entries', cloudFormatted).catch(e => console.error('Cloud arrival entry sync error:', e));
+
+    // Register this month sheet in Firestore
+    setCollectionDoc('arrival_sheets', targetSheetId, {
+      id: targetSheetId,
+      name: targetSheetName,
+      createdAt: Date.now()
+    }).catch(() => {});
+
+    // Notify all open tabs & components immediately
+    window.dispatchEvent(new CustomEvent('arrival-entry-updated', { detail: { sheetId: targetSheetId, billNo: firstBillNo || normPo || orderId } }));
+    window.dispatchEvent(new Event('storage'));
 
     return firstBillNo;
   } catch (error) {

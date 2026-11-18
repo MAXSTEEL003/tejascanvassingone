@@ -653,11 +653,27 @@ export default function ArrivalEntry() {
     const handleStakeholdersUpdated = () => {
       setStakeholdersVersion(v => v + 1);
     };
+    const handleArrivalDataUpdated = () => {
+      try {
+        const raw = localStorage.getItem('arrival_entry_sheets_v4');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setSheets(prev => {
+              const organized = organizeArrivalSheetsByMonth(parsed, [], INITIAL_ROWS, currentSheetId);
+              return organized.sheets;
+            });
+          }
+        }
+      } catch (e) {}
+    };
     window.addEventListener('stakeholders-updated', handleStakeholdersUpdated);
-    window.addEventListener('storage', handleStakeholdersUpdated);
+    window.addEventListener('arrival-entry-updated', handleArrivalDataUpdated);
+    window.addEventListener('storage', handleArrivalDataUpdated);
     return () => {
       window.removeEventListener('stakeholders-updated', handleStakeholdersUpdated);
-      window.removeEventListener('storage', handleStakeholdersUpdated);
+      window.removeEventListener('arrival-entry-updated', handleArrivalDataUpdated);
+      window.removeEventListener('storage', handleArrivalDataUpdated);
     };
   }, []);
 
@@ -702,9 +718,44 @@ export default function ArrivalEntry() {
         };
 
         setSheets(prevSheets => {
-          const filteredPrev = prevSheets.filter(s => !isSheetDeleted(s));
+          let baseSheets = prevSheets;
+          const freshLocal = localStorage.getItem('arrival_entry_sheets_v4');
+          if (freshLocal) {
+            try {
+              const parsed = JSON.parse(freshLocal);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                const sheetMap = new Map<string, any>();
+                parsed.forEach(s => { if (s && s.id) sheetMap.set(s.id, s); });
+                baseSheets.forEach(s => {
+                  if (s && s.id) {
+                    if (!sheetMap.has(s.id)) {
+                      sheetMap.set(s.id, s);
+                    } else {
+                      const localSheet = sheetMap.get(s.id);
+                      const combinedRowsMap = new Map<string, any>();
+                      (localSheet.data || []).forEach((r: any) => {
+                        if (r && r.id && !String(r.id).startsWith('row-empty-')) combinedRowsMap.set(r.id, r);
+                      });
+                      (s.data || []).forEach((r: any) => {
+                        if (r && r.id && !String(r.id).startsWith('row-empty-') && !combinedRowsMap.has(r.id)) {
+                          combinedRowsMap.set(r.id, r);
+                        }
+                      });
+                      sheetMap.set(s.id, {
+                        ...localSheet,
+                        data: [...Array.from(combinedRowsMap.values()), ...(localSheet.data || []).filter((r: any) => String(r.id || '').startsWith('row-empty-'))]
+                      });
+                    }
+                  }
+                });
+                baseSheets = Array.from(sheetMap.values());
+              }
+            } catch (e) {}
+          }
+
+          const filteredBase = baseSheets.filter(s => !isSheetDeleted(s));
           const organized = organizeArrivalSheetsByMonth(
-            filteredPrev, 
+            filteredBase, 
             cloudArrivals, 
             INITIAL_ROWS, 
             currentSheetId,
@@ -801,21 +852,26 @@ export default function ArrivalEntry() {
     return () => { isMounted = false; };
   }, []);
 
-  // Automatically navigate to the sheet and highlight the bill when coming from Placed Orders
+  // Automatically navigate to the sheet and highlight the bill/PO when coming from Placed Orders or Pending Loadings
   useEffect(() => {
-    const targetBill = sessionStorage.getItem('goto_arrival_bill');
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlPo = urlParams.get('po') || urlParams.get('bill');
+    const targetBill = sessionStorage.getItem('goto_arrival_bill') || urlPo;
     if (!targetBill) return;
 
-    const norm = targetBill.trim().toLowerCase();
+    const norm = targetBill.trim().toLowerCase().replace(/^#/, '');
 
-    // Check if the bill is in any sheet
+    // Check if the bill/PO is in any sheet
     const matchingSheet = sheets.find(s => 
-      Array.isArray(s.data) && s.data.some(r => 
-        isMeaningfulRow(r) && (
-          String(r.billNo || '').trim().toLowerCase() === norm ||
-          String(r.purchaseOrderNo || '').trim().toLowerCase() === norm
-        )
-      )
+      Array.isArray(s.data) && s.data.some(r => {
+        if (!isMeaningfulRow(r)) return false;
+        const rBill = String(r.billNo || '').trim().toLowerCase().replace(/^#/, '');
+        const rPo = String(r.purchaseOrderNo || '').trim().toLowerCase().replace(/^#/, '');
+        const rMainPo = String(r.mainPoNo || '').trim().toLowerCase().replace(/^#/, '');
+        const rSubId = String(r.subOrderId || '').trim().toLowerCase().replace(/^#/, '');
+        const rId = String(r.id || '').trim().toLowerCase().replace(/^#/, '');
+        return rBill === norm || rPo === norm || rMainPo === norm || rSubId === norm || rId.includes(norm);
+      })
     );
 
     const sheetToUse = matchingSheet || sheets.find(s => s.id === currentSheetId) || sheets[0];
@@ -824,34 +880,35 @@ export default function ArrivalEntry() {
       setCurrentSheetId(matchingSheet.id);
     }
 
-    // CRITICAL: NEVER filter quickSearch on deep-navigation so all normal 40 rows and all entries remain visible!
     // Clear any leftover search text to guarantee the full spreadsheet grid is shown
     setQuickSearch('');
 
     // Locate the row inside the target sheet's data
     if (sheetToUse && Array.isArray(sheetToUse.data)) {
-      const rowIdx = sheetToUse.data.findIndex(r => 
-        isMeaningfulRow(r) && (
-          String(r.billNo || '').trim().toLowerCase() === norm ||
-          String(r.purchaseOrderNo || '').trim().toLowerCase() === norm
-        )
-      );
+      const rowIdx = sheetToUse.data.findIndex(r => {
+        if (!isMeaningfulRow(r)) return false;
+        const rBill = String(r.billNo || '').trim().toLowerCase().replace(/^#/, '');
+        const rPo = String(r.purchaseOrderNo || '').trim().toLowerCase().replace(/^#/, '');
+        const rMainPo = String(r.mainPoNo || '').trim().toLowerCase().replace(/^#/, '');
+        const rSubId = String(r.subOrderId || '').trim().toLowerCase().replace(/^#/, '');
+        const rId = String(r.id || '').trim().toLowerCase().replace(/^#/, '');
+        return rBill === norm || rPo === norm || rMainPo === norm || rSubId === norm || rId.includes(norm);
+      });
 
       if (rowIdx !== -1) {
         const foundRow = sheetToUse.data[rowIdx];
         if (foundRow?.id) {
           setHighlightRowId(foundRow.id);
-          setTimeout(() => setHighlightRowId(null), 3500);
+          setTimeout(() => setHighlightRowId(null), 4000);
         }
 
         const billColIdx = Math.max(0, visibleColumns.findIndex(c => c.id === 'billNo'));
         const colIdx = billColIdx !== -1 ? billColIdx : 5;
         setActiveCell({ r: rowIdx, c: colIdx });
         setSelectionRange({ startR: rowIdx, startC: 0, endR: rowIdx, endC: visibleColumns.length - 1 });
+        sessionStorage.removeItem('goto_arrival_bill');
       }
     }
-
-    sessionStorage.removeItem('goto_arrival_bill');
   }, [sheets, currentSheetId, visibleColumns]);
 
   // Set Data Helper (updates local state & marks dirty)

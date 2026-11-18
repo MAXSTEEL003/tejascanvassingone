@@ -31,7 +31,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { cn, formatINR, getDeletedArrivalIds } from '../lib/utils';
+import { cn, formatINR, getDeletedArrivalIds, removeDeletedArrivalId, removeDeletedSheetId } from '../lib/utils';
 import { 
   OperationalPO, 
   fetchOperationalOrders, 
@@ -464,7 +464,7 @@ export default function PendingLoadings() {
     });
   }, [existingArrivalRows, existingArrivalSearch]);
 
-  const handleSaveManualArrival = async () => {
+  const handleSaveManualArrival = async (shouldNavigate: boolean = false) => {
     if (!arrivalModalPo) return;
     const qtyNum = parseFloat(manualArrivedQty);
     if (isNaN(qtyNum) || qtyNum <= 0) {
@@ -482,6 +482,22 @@ export default function PendingLoadings() {
       const canonicalEntryId = cleanBill 
         ? `row-${expectedSheetId}-${cleanBill}-${po.subOrderId || Date.now()}`
         : `row-${expectedSheetId}-manual-${Date.now()}`;
+
+      // Untombstone any previous deletions so this explicit arrival entry is NEVER blocked or filtered out
+      removeDeletedArrivalId(canonicalEntryId);
+      removeDeletedArrivalId(po.poNumber);
+      removeDeletedArrivalId(po.poNumber.toLowerCase().replace(/^#/, ''));
+      if (manualBillNo.trim()) {
+        const cBill = manualBillNo.trim().toLowerCase();
+        removeDeletedArrivalId(cBill);
+        removeDeletedArrivalId(`${po.poNumber.toLowerCase().replace(/^#/, '')}_${cBill}`);
+      }
+      if (po.subOrderId) {
+        removeDeletedArrivalId(po.subOrderId);
+        removeDeletedArrivalId(`${po.poNumber.toLowerCase().replace(/^#/, '')}_${po.subOrderId.toLowerCase()}`);
+      }
+      removeDeletedSheetId(expectedSheetId);
+      removeDeletedSheetId(targetMonthYear);
 
       const rateNum = parseFloat(manualRate) || po.rate || 0;
       const amountVal = qtyNum * rateNum;
@@ -556,9 +572,18 @@ export default function PendingLoadings() {
       }
 
       // Also persist entry in Firestore
-      setCollectionDoc('arrival_entries', canonicalEntryId, newArrivalRecord).catch(err => {
+      setCollectionDoc('arrival_entries', canonicalEntryId, {
+        ...newArrivalRecord,
+        sheetId: expectedSheetId,
+        sheetName: targetMonthYear
+      }).catch(err => {
         console.error('Cloud arrival entry save error:', err);
       });
+      setCollectionDoc('arrival_sheets', expectedSheetId, {
+        id: expectedSheetId,
+        name: targetMonthYear,
+        createdAt: Date.now()
+      }).catch(() => {});
 
       // 3. Update placed_orders in localStorage & Firestore
       let updatedTargetOrder: any = null;
@@ -650,7 +675,9 @@ export default function PendingLoadings() {
       invalidateOperationalOrdersCache();
       window.dispatchEvent(new CustomEvent('operational-orders-updated'));
       window.dispatchEvent(new CustomEvent('ledgers-updated'));
-      window.dispatchEvent(new CustomEvent('storage'));
+      sessionStorage.setItem('goto_arrival_bill', manualBillNo.trim() || po.poNumber);
+      window.dispatchEvent(new CustomEvent('arrival-entry-updated', { detail: { sheetId: expectedSheetId, billNo: manualBillNo.trim() || po.poNumber } }));
+      window.dispatchEvent(new Event('storage'));
 
       // 6. Optionally trigger WhatsApp
       if (manualSendWa) {
@@ -666,6 +693,9 @@ export default function PendingLoadings() {
       // 7. Close modal and reload
       setArrivalModalPo(null);
       await loadOrdersData(true);
+      if (shouldNavigate) {
+        navigate('/arrival-entry');
+      }
     } catch (err) {
       console.error('Failed to save manual arrival entry:', err);
       alert('Failed to save arrival entry. Please try again.');
@@ -2116,20 +2146,38 @@ export default function PendingLoadings() {
                   })()}
 
                   {/* Action Buttons */}
-                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-white/10">
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-white/10">
                     <button
                       type="button"
                       disabled={isSavingArrival}
                       onClick={() => setArrivalModalPo(null)}
-                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+                      className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
                     >
                       Cancel
                     </button>
                     <button
                       type="button"
                       disabled={isSavingArrival}
-                      onClick={handleSaveManualArrival}
-                      className="flex items-center gap-2 px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-black transition-all shadow-md btn-tactile cursor-pointer disabled:opacity-50"
+                      onClick={() => handleSaveManualArrival(false)}
+                      className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-purple-500/10 hover:bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-500/30 rounded-xl text-xs font-black transition-all btn-tactile cursor-pointer disabled:opacity-50"
+                    >
+                      {isSavingArrival ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span>Saving...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Check className="w-4 h-4" />
+                          <span>Save &amp; Stay</span>
+                        </>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isSavingArrival}
+                      onClick={() => handleSaveManualArrival(true)}
+                      className="flex items-center justify-center gap-2 px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-black transition-all shadow-md btn-tactile cursor-pointer disabled:opacity-50 shadow-purple-600/20"
                     >
                       {isSavingArrival ? (
                         <>
@@ -2138,8 +2186,9 @@ export default function PendingLoadings() {
                         </>
                       ) : (
                         <>
-                          <Check className="w-4 h-4" />
-                          <span>Save Arrival Entry &amp; Update PO</span>
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>Save &amp; Open in Arrival Entry</span>
+                          <ArrowUpRight className="w-3.5 h-3.5" />
                         </>
                       )}
                     </button>
