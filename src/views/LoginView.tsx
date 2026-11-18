@@ -77,6 +77,22 @@ export function TejasLogoEmblem({ className = "w-10 h-10" }: { className?: strin
 
 export const TejasBotanicalLogo = TejasLogoEmblem;
 
+// Luxury Golden Wheat Icon
+export function WheatIcon({ className = "h-5 w-5 text-gold" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
+      <path d="M12 2v20" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      <path d="M12 2.5C10.6 4.2 10.6 6 12 7.5C13.4 6 13.4 4.2 12 2.5Z" />
+      <path d="M11.2 6.8C8.8 6.5 7.6 8.5 8.7 10.5C10 9.8 10.8 8.6 11.2 6.8Z" />
+      <path d="M12.8 6.8C15.2 6.5 16.4 8.5 15.3 10.5C14 9.8 13.2 8.6 12.8 6.8Z" />
+      <path d="M11.2 11.2C8.8 10.9 7.6 12.9 8.7 14.9C10 14.2 10.8 13 11.2 11.2Z" />
+      <path d="M12.8 11.2C15.2 10.9 16.4 12.9 15.3 14.9C14 14.2 13.2 13 12.8 11.2Z" />
+      <path d="M11.2 15.6C8.8 15.3 7.6 17.3 8.7 19.3C10 18.4 10.8 17.2 11.2 15.6Z" />
+      <path d="M12.8 15.6C15.2 15.3 16.4 17.3 15.3 19.3C14 18.4 13.2 17.2 12.8 15.6Z" />
+    </svg>
+  );
+}
+
 interface LoginViewProps {
   defaultStep?: string;
   defaultTab?: 'signin' | 'signup';
@@ -89,6 +105,16 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
   const [searchParams] = useSearchParams();
   const rawRedirect = searchParams.get('redirect');
   const redirectTarget = rawRedirect && rawRedirect.startsWith('/') ? rawRedirect : null;
+
+  // Mount luxury dark theme for Login UI
+  useEffect(() => {
+    document.documentElement.classList.add('login-luxury-active');
+    document.body.classList.add('login-luxury-active');
+    return () => {
+      document.documentElement.classList.remove('login-luxury-active');
+      document.body.classList.remove('login-luxury-active');
+    };
+  }, []);
 
   // Theme state
   const [isDark, setIsDark] = useState(() => {
@@ -151,7 +177,11 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
   const staffRole = activePortal === 'admin' ? 'admin' : 'employee';
 
   // Input states
-  const [merchantAuthTab, setMerchantAuthTab] = useState<'signin' | 'signup'>(defaultTab);
+  const [merchantAuthTab, setMerchantAuthTab] = useState<'signin' | 'signup'>(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam === 'signup' || tabParam === 'signin') return tabParam;
+    return defaultTab;
+  });
   const [identifier, setIdentifier] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -749,45 +779,42 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
   };
 
   return (
-    <div className="min-h-dvh bg-[#FAFBFA] dark:bg-[#0A0A0A] flex flex-col items-center justify-center p-3 sm:p-5 font-sans antialiased text-neutral-900 dark:text-neutral-100 select-none overflow-x-hidden transition-colors duration-200">
+    <div className="min-h-dvh bg-ink flex flex-col items-center justify-center p-3 sm:p-5 relative font-sans antialiased text-ivory select-none overflow-x-hidden selection:bg-gold selection:text-ink">
       
+      {/* Ambient luxury radial glow */}
+      <div className="fixed inset-0 pointer-events-none bg-[radial-gradient(ellipse_at_50%_0%,rgba(217,164,65,0.15),transparent_65%)] z-0" />
+      <div className="fixed inset-0 pointer-events-none bg-[radial-gradient(ellipse_at_80%_100%,rgba(236,138,42,0.08),transparent_60%)] z-0" />
+
       {/* Invisible Recaptcha */}
       <div id="recaptcha-container"></div>
 
       {/* Main Authentication Card */}
-      <div className="w-full max-w-[420px] bg-white dark:bg-[#141414] border border-[#E5E7EB] dark:border-[#262626] rounded-2xl sm:rounded-3xl shadow-[0_10px_35px_rgba(0,0,0,0.05)] dark:shadow-[0_16px_50px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col relative pt-[max(env(safe-area-inset-top,0px),12px)] pb-[max(env(safe-area-inset-bottom,0px),16px)]">
+      <div className="relative z-10 w-full max-w-[440px] bg-[#12100c]/95 border border-gold/30 rounded-3xl shadow-[0_24px_64px_rgba(0,0,0,0.85),inset_0_1px_0_rgba(255,255,255,0.12)] overflow-hidden flex flex-col pt-[max(env(safe-area-inset-top,0px),12px)] pb-[max(env(safe-area-inset-bottom,0px),16px)] backdrop-blur-2xl">
         
         {/* Top Header Bar */}
-        <div className="px-5 pt-1.5 pb-2.5 flex items-center justify-between border-b border-[#F0F2F1] dark:border-[#1E1E1E]">
+        <div className="px-5 pt-1.5 pb-3 flex items-center justify-between border-b border-white/10">
           <button
             type="button"
             id="btn-login-back-to-about"
             onClick={() => navigate('/about')}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white transition-colors cursor-pointer py-1 px-2 -ml-1.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 group"
+            className="inline-flex items-center gap-1.5 text-[11px] font-mono tracking-widest text-sand hover:text-gold uppercase transition-colors py-1 px-3 rounded-full border border-white/10 bg-white/5 hover:bg-white/10 active:scale-95 group cursor-pointer"
             title="Go to Public About Page"
           >
-            <ArrowLeft className="w-3.5 h-3.5 text-[#C22424] transition-transform group-hover:-translate-x-0.5" />
+            <ArrowLeft className="w-3.5 h-3.5 text-gold transition-transform group-hover:-translate-x-0.5" />
             <span>About</span>
           </button>
 
           <div className="flex items-center gap-2">
             {secretRole ? (
-              <span className="text-[10px] font-bold uppercase tracking-wider text-[#C22424] dark:text-red-300 bg-[#FEF2F2] dark:bg-red-950/40 px-2 py-0.5 rounded-full border border-[#FECACA] dark:border-red-900/40 flex items-center gap-1">
-                <Lock className="w-3 h-3 text-[#C22424]" />
+              <span className="text-[10px] font-mono tracking-widest uppercase text-gold bg-gold/10 px-2.5 py-0.5 rounded-full border border-gold/40 flex items-center gap-1.5 shadow-2xs">
+                <Lock className="w-3 h-3 text-gold" />
                 {secretRole === 'admin' ? 'Admin Portal' : 'Employee Portal'}
               </span>
-            ) : null}
-
-            {/* Theme Toggle Button */}
-            <button
-              type="button"
-              onClick={toggleTheme}
-              className="w-7 h-7 rounded-lg bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 transition-all flex items-center justify-center cursor-pointer active:scale-95"
-              title={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
-              aria-label="Toggle Theme"
-            >
-              {isDark ? <Sun className="w-3.5 h-3.5 text-amber-400" /> : <Moon className="w-3.5 h-3.5 text-neutral-700" />}
-            </button>
+            ) : (
+              <span className="text-[10px] font-mono tracking-widest uppercase text-sand/80 bg-white/5 px-2.5 py-0.5 rounded-full border border-white/10">
+                APMC Hub
+              </span>
+            )}
           </div>
         </div>
 
@@ -795,32 +822,32 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
         <div className="px-5 sm:px-6 py-4 flex-1 flex flex-col justify-between overflow-y-auto no-scrollbar">
           
           {/* Brand Identity */}
-          <div className="flex flex-col items-center text-center pb-3">
-            <TejasLogoEmblem className="w-10 h-10 mb-2" />
-            <div className="flex items-center gap-1.5">
-              <span className="text-lg font-black tracking-tight text-neutral-900 dark:text-white">
-                Tejas
-              </span>
-              <span className="text-[11px] font-black tracking-widest text-[#C22424] uppercase bg-[#FEF2F2] dark:bg-red-950/40 border border-[#FECACA] dark:border-red-900/40 px-1.5 py-0.5 rounded-md">
-                CANVASSING
-              </span>
+          <div className="flex flex-col items-center text-center pb-3 pt-1">
+            <div className="grid h-12 w-12 place-items-center rounded-full border border-gold/40 bg-gold/10 shadow-[0_0_24px_rgba(217,164,65,0.25)] mb-2.5">
+              <WheatIcon className="h-6 w-6 text-gold" />
             </div>
-            <p className="text-[11px] font-medium text-neutral-500 dark:text-neutral-400 mt-1">
-              Wholesale Rice Canvassing Platform
+            <span className="font-mono text-[10px] sm:text-xs tracking-[0.28em] text-gold uppercase">
+              TEJAS CANVASSING
+            </span>
+            <h1 className="font-display text-2xl sm:text-3xl italic text-white tracking-tight mt-1 font-normal">
+              Commercial Portal
+            </h1>
+            <p className="font-sans text-xs text-sand/80 mt-1 max-w-xs leading-relaxed">
+              Direct access for Mandi wholesalers, millers & operational terminals.
             </p>
           </div>
 
           {/* 4-Role Segmented Selector (Merchant | Employee | Admin | Miller) */}
           {!secretRole && (
-            <div className="grid grid-cols-4 p-1 bg-neutral-100 dark:bg-[#1A1A1A] rounded-xl border border-neutral-200/80 dark:border-[#262626] text-xs font-bold mb-3.5 gap-0.5">
+            <div className="grid grid-cols-4 p-1 bg-[#1a160f] rounded-2xl border border-white/10 text-xs font-semibold mb-3.5 gap-1">
               <button
                 type="button"
                 onClick={() => { setActivePortal('merchant'); setErrorMsg(null); setSuccessMsg(null); }}
                 className={cn(
-                  "py-1.5 px-1 rounded-lg flex items-center justify-center gap-1 transition-all cursor-pointer text-[10.5px]",
+                  "py-2 px-1 rounded-xl flex items-center justify-center gap-1 transition-all cursor-pointer text-[10.5px]",
                   activePortal === 'merchant'
-                    ? "bg-[#C22424] text-white shadow-xs font-bold"
-                    : "text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"
+                    ? "bg-gold text-ink font-bold shadow-xs"
+                    : "text-sand hover:text-ivory hover:bg-white/5"
                 )}
               >
                 <ShoppingBag className="w-3.5 h-3.5 shrink-0" />
@@ -830,10 +857,10 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
                 type="button"
                 onClick={() => { setActivePortal('employee'); setErrorMsg(null); setSuccessMsg(null); }}
                 className={cn(
-                  "py-1.5 px-1 rounded-lg flex items-center justify-center gap-1 transition-all cursor-pointer text-[10.5px]",
+                  "py-2 px-1 rounded-xl flex items-center justify-center gap-1 transition-all cursor-pointer text-[10.5px]",
                   activePortal === 'employee'
-                    ? "bg-[#C22424] text-white shadow-xs font-bold"
-                    : "text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"
+                    ? "bg-gold text-ink font-bold shadow-xs"
+                    : "text-sand hover:text-ivory hover:bg-white/5"
                 )}
               >
                 <Warehouse className="w-3.5 h-3.5 shrink-0" />
@@ -843,10 +870,10 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
                 type="button"
                 onClick={() => { setActivePortal('admin'); setErrorMsg(null); setSuccessMsg(null); }}
                 className={cn(
-                  "py-1.5 px-1 rounded-lg flex items-center justify-center gap-1 transition-all cursor-pointer text-[10.5px]",
+                  "py-2 px-1 rounded-xl flex items-center justify-center gap-1 transition-all cursor-pointer text-[10.5px]",
                   activePortal === 'admin'
-                    ? "bg-[#C22424] text-white shadow-xs font-bold"
-                    : "text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"
+                    ? "bg-gold text-ink font-bold shadow-xs"
+                    : "text-sand hover:text-ivory hover:bg-white/5"
                 )}
               >
                 <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
@@ -856,10 +883,10 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
                 type="button"
                 onClick={() => { setActivePortal('miller'); setErrorMsg(null); setSuccessMsg(null); }}
                 className={cn(
-                  "py-1.5 px-1 rounded-lg flex items-center justify-center gap-1 transition-all cursor-pointer text-[10.5px]",
+                  "py-2 px-1 rounded-xl flex items-center justify-center gap-1 transition-all cursor-pointer text-[10.5px]",
                   activePortal === 'miller'
-                    ? "bg-[#C22424] text-white shadow-xs font-bold"
-                    : "text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"
+                    ? "bg-gold text-ink font-bold shadow-xs"
+                    : "text-sand hover:text-ivory hover:bg-white/5"
                 )}
               >
                 <Building2 className="w-3.5 h-3.5 shrink-0" />
@@ -875,9 +902,9 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
                 initial={{ opacity: 0, y: -6 }} 
                 animate={{ opacity: 1, y: 0 }} 
                 exit={{ opacity: 0 }}
-                className="p-2.5 mb-3 bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 text-xs rounded-xl flex items-center gap-2"
+                className="p-3 mb-3 bg-rose-950/40 border border-rose-500/40 text-rose-300 text-xs rounded-xl flex items-center gap-2"
               >
-                <AlertCircle className="w-4 h-4 shrink-0" />
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
                 <span className="leading-snug">{errorMsg}</span>
               </motion.div>
             )}
@@ -886,9 +913,9 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
                 initial={{ opacity: 0, y: -6 }} 
                 animate={{ opacity: 1, y: 0 }} 
                 exit={{ opacity: 0 }}
-                className="p-2.5 mb-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs rounded-xl flex items-center gap-2"
+                className="p-3 mb-3 bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 text-xs rounded-xl flex items-center gap-2"
               >
-                <Check className="w-4 h-4 shrink-0 text-emerald-600" />
+                <Check className="w-4 h-4 shrink-0 text-emerald-400" />
                 <span className="leading-snug">{successMsg}</span>
               </motion.div>
             )}
@@ -900,15 +927,15 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
           {activePortal === 'merchant' && (
             <div className="space-y-3.5 text-left">
               {/* Sign In vs Register Tabs */}
-              <div className="grid grid-cols-2 p-1 bg-neutral-100 dark:bg-[#1A1A1A] rounded-xl border border-neutral-200/80 dark:border-[#262626] text-xs font-bold">
+              <div className="grid grid-cols-2 p-1 bg-[#1a160f] rounded-xl border border-white/10 text-xs font-semibold">
                 <button
                   type="button"
                   onClick={() => { setMerchantAuthTab('signin'); setErrorMsg(null); setSuccessMsg(null); }}
                   className={cn(
                     "py-1.5 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer",
                     merchantAuthTab === 'signin'
-                      ? "bg-white dark:bg-[#262626] text-neutral-900 dark:text-white shadow-xs font-bold"
-                      : "text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"
+                      ? "bg-gold/20 text-gold border border-gold/40 shadow-2xs font-bold"
+                      : "text-sand hover:text-ivory"
                   )}
                 >
                   <span>Sign In</span>
@@ -919,8 +946,8 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
                   className={cn(
                     "py-1.5 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer",
                     merchantAuthTab === 'signup'
-                      ? "bg-white dark:bg-[#262626] text-neutral-900 dark:text-white shadow-xs font-bold"
-                      : "text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"
+                      ? "bg-gold/20 text-gold border border-gold/40 shadow-2xs font-bold"
+                      : "text-sand hover:text-ivory"
                   )}
                 >
                   <span>Create Account</span>
@@ -929,10 +956,10 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
 
               {/* Headline */}
               <div>
-                <h1 className="text-base font-bold text-neutral-900 dark:text-white tracking-tight">
+                <h2 className="text-base font-bold text-white tracking-tight">
                   {merchantAuthTab === 'signin' ? 'Merchant Sign In' : 'Register Account'}
-                </h1>
-                <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+                </h2>
+                <p className="text-xs text-sand/80 mt-0.5">
                   {merchantAuthTab === 'signin'
                     ? 'Enter your registered phone, email, or firm name.'
                     : 'Create a wholesale account to order rice and view live rates.'}
@@ -943,9 +970,9 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
               {merchantAuthTab === 'signin' && (
                 <form onSubmit={handleMerchantSignIn} className="space-y-3">
                   <div className="space-y-1">
-                    <label className="text-[11px] font-bold text-neutral-700 dark:text-neutral-300 flex items-center justify-between">
+                    <label className="text-[10.5px] font-mono tracking-wider uppercase text-sand flex items-center justify-between">
                       <span>Phone, Email, or Firm Name</span>
-                      <span className="text-[10px] text-[#C22424] font-medium">
+                      <span className="text-[10px] text-gold font-mono">
                         {/^[0-9+\s-]{8,15}$/.test(identifier) ? '📱 Mobile' : identifier.includes('@') ? '✉️ Email' : '🏢 Firm'}
                       </span>
                     </label>
@@ -956,15 +983,15 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
                         value={identifier}
                         onChange={(e) => setIdentifier(e.target.value)}
                         placeholder="e.g. 9945351166 or Firm Name"
-                        className="w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-[#1A1A1A] border border-neutral-200 dark:border-[#2A2A2A] text-xs text-neutral-900 dark:text-white outline-none focus:border-[#C22424] focus:ring-1 focus:ring-[#C22424] transition-all placeholder:text-neutral-400"
+                        className="w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-[#16120d] border border-white/15 text-xs text-ivory outline-none focus:border-gold focus:ring-1 focus:ring-gold/30 transition-all placeholder:text-sand/40 font-medium"
                       />
-                      <div className="absolute left-3 text-neutral-400 pointer-events-none">
+                      <div className="absolute left-3 text-gold/70 pointer-events-none">
                         {/^[0-9+\s-]{8,15}$/.test(identifier) ? (
-                          <Phone className="w-3.5 h-3.5 text-[#C22424]" />
+                          <Phone className="w-3.5 h-3.5 text-gold" />
                         ) : identifier.includes('@') ? (
-                          <Mail className="w-3.5 h-3.5 text-[#C22424]" />
+                          <Mail className="w-3.5 h-3.5 text-gold" />
                         ) : (
-                          <Building2 className="w-3.5 h-3.5 text-[#C22424]" />
+                          <Building2 className="w-3.5 h-3.5 text-gold" />
                         )}
                       </div>
                     </div>
@@ -972,13 +999,13 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
 
                   <div className="space-y-1">
                     <div className="flex items-center justify-between">
-                      <label className="text-[11px] font-bold text-neutral-700 dark:text-neutral-300">
+                      <label className="text-[10.5px] font-mono tracking-wider uppercase text-sand">
                         Password
                       </label>
                       <button
                         type="button"
                         onClick={() => alert("Password reset instructions will be sent to your registered contact.")}
-                        className="text-[10px] font-semibold text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 cursor-pointer"
+                        className="text-[10px] font-mono text-sand/70 hover:text-gold cursor-pointer"
                       >
                         Forgot password?
                       </button>
@@ -990,30 +1017,28 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         placeholder="••••••••"
-                        className="w-full pl-3.5 pr-9 py-2.5 rounded-xl bg-neutral-50 dark:bg-[#1A1A1A] border border-neutral-200 dark:border-[#2A2A2A] text-xs text-neutral-900 dark:text-white outline-none focus:border-[#C22424] focus:ring-1 focus:ring-[#C22424] transition-all placeholder:text-neutral-400"
+                        className="w-full pl-3.5 pr-9 py-2.5 rounded-xl bg-[#16120d] border border-white/15 text-xs text-ivory outline-none focus:border-gold focus:ring-1 focus:ring-gold/30 transition-all placeholder:text-sand/40 font-medium"
                       />
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 cursor-pointer"
+                        className="absolute right-3 text-sand/60 hover:text-gold cursor-pointer"
                       >
                         {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                       </button>
                     </div>
                   </div>
 
-
-
                   {/* Sign In CTA */}
                   <button
                     type="submit"
                     disabled={loading}
-                    className="w-full py-2.5 rounded-xl bg-[#C22424] hover:bg-[#A81C1C] text-white font-bold text-xs shadow-xs transition-all cursor-pointer active:scale-[0.98] flex items-center justify-center gap-2 mt-1"
+                    className="eyebrow w-full py-3.5 rounded-full border border-gold bg-gold hover:bg-gold-light text-ink font-semibold shadow-[0_4px_20px_rgba(217,164,65,0.28)] transition-all active:scale-[0.98] cursor-pointer flex items-center justify-center gap-2 mt-2 text-xs"
                   >
                     {loading ? (
-                      <div className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                      <div className="w-4 h-4 rounded-full border-2 border-ink border-t-transparent animate-spin" />
                     ) : (
-                      <span>Sign In</span>
+                      <span>Sign In & Enter</span>
                     )}
                   </button>
                 </form>
@@ -1023,42 +1048,42 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
               {merchantAuthTab === 'signup' && (
                 <form onSubmit={handleMerchantSignUp} className="space-y-2.5">
                   <div className="space-y-1">
-                    <label className="text-[11px] font-bold text-neutral-700 dark:text-neutral-300">
+                    <label className="text-[10.5px] font-mono tracking-wider uppercase text-sand">
                       Firm / Trader Name *
                     </label>
                     <div className="relative flex items-center">
-                      <Building2 className="w-3.5 h-3.5 text-neutral-400 absolute left-3" />
+                      <Building2 className="w-3.5 h-3.5 text-gold/70 absolute left-3" />
                       <input
                         type="text"
                         required
                         value={signupName}
                         onChange={(e) => setSignupName(e.target.value)}
                         placeholder="e.g. BALAJI RICE TRADERS"
-                        className="w-full pl-9 pr-3.5 py-2 rounded-xl bg-neutral-50 dark:bg-[#1A1A1A] border border-neutral-200 dark:border-[#2A2A2A] text-xs text-neutral-900 dark:text-white outline-none focus:border-[#C22424] focus:ring-1 focus:ring-[#C22424]"
+                        className="w-full pl-9 pr-3.5 py-2 rounded-xl bg-[#16120d] border border-white/15 text-xs text-ivory outline-none focus:border-gold focus:ring-1 focus:ring-gold/30 font-medium placeholder:text-sand/40"
                       />
                     </div>
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[11px] font-bold text-neutral-700 dark:text-neutral-300">
+                    <label className="text-[10.5px] font-mono tracking-wider uppercase text-sand">
                       Mobile Number *
                     </label>
                     <div className="relative flex items-center">
-                      <Phone className="w-3.5 h-3.5 text-neutral-400 absolute left-3" />
+                      <Phone className="w-3.5 h-3.5 text-gold/70 absolute left-3" />
                       <input
                         type="tel"
                         required
                         value={signupPhone}
                         onChange={(e) => setSignupPhone(e.target.value)}
                         placeholder="10-digit mobile number"
-                        className="w-full pl-9 pr-3.5 py-2 rounded-xl bg-neutral-50 dark:bg-[#1A1A1A] border border-neutral-200 dark:border-[#2A2A2A] text-xs text-neutral-900 dark:text-white outline-none focus:border-[#C22424] focus:ring-1 focus:ring-[#C22424]"
+                        className="w-full pl-9 pr-3.5 py-2 rounded-xl bg-[#16120d] border border-white/15 text-xs text-ivory outline-none focus:border-gold focus:ring-1 focus:ring-gold/30 font-medium placeholder:text-sand/40"
                       />
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-1">
-                      <label className="text-[11px] font-bold text-neutral-700 dark:text-neutral-300">
+                      <label className="text-[10.5px] font-mono tracking-wider uppercase text-sand">
                         Email (Optional)
                       </label>
                       <input
@@ -1066,11 +1091,11 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
                         value={signupEmail}
                         onChange={(e) => setSignupEmail(e.target.value)}
                         placeholder="firm@trade.com"
-                        className="w-full px-3 py-2 rounded-xl bg-neutral-50 dark:bg-[#1A1A1A] border border-neutral-200 dark:border-[#2A2A2A] text-xs text-neutral-900 dark:text-white outline-none focus:border-[#C22424]"
+                        className="w-full px-3 py-2 rounded-xl bg-[#16120d] border border-white/15 text-xs text-ivory outline-none focus:border-gold focus:ring-1 focus:ring-gold/30 placeholder:text-sand/40"
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[11px] font-bold text-neutral-700 dark:text-neutral-300">
+                      <label className="text-[10.5px] font-mono tracking-wider uppercase text-sand">
                         GSTIN (Optional)
                       </label>
                       <input
@@ -1078,13 +1103,13 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
                         value={signupGstin}
                         onChange={(e) => setSignupGstin(e.target.value.toUpperCase())}
                         placeholder="29AAAAA0000A1Z5"
-                        className="w-full px-3 py-2 rounded-xl bg-neutral-50 dark:bg-[#1A1A1A] border border-neutral-200 dark:border-[#2A2A2A] text-xs text-neutral-900 dark:text-white outline-none focus:border-[#C22424] uppercase"
+                        className="w-full px-3 py-2 rounded-xl bg-[#16120d] border border-white/15 text-xs text-ivory outline-none focus:border-gold focus:ring-1 focus:ring-gold/30 uppercase placeholder:text-sand/40"
                       />
                     </div>
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[11px] font-bold text-neutral-700 dark:text-neutral-300">
+                    <label className="text-[10.5px] font-mono tracking-wider uppercase text-sand">
                       Set Password *
                     </label>
                     <div className="relative flex items-center">
@@ -1094,12 +1119,12 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         placeholder="••••••••"
-                        className="w-full pl-3.5 pr-9 py-2 rounded-xl bg-neutral-50 dark:bg-[#1A1A1A] border border-neutral-200 dark:border-[#2A2A2A] text-xs text-neutral-900 dark:text-white outline-none focus:border-[#C22424] focus:ring-1 focus:ring-[#C22424]"
+                        className="w-full pl-3.5 pr-9 py-2 rounded-xl bg-[#16120d] border border-white/15 text-xs text-ivory outline-none focus:border-gold focus:ring-1 focus:ring-gold/30 placeholder:text-sand/40"
                       />
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 cursor-pointer"
+                        className="absolute right-3 text-sand/60 hover:text-gold cursor-pointer"
                       >
                         {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                       </button>
@@ -1109,10 +1134,10 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
                   <button
                     type="submit"
                     disabled={loading}
-                    className="w-full py-2.5 rounded-xl bg-[#C22424] hover:bg-[#A81C1C] text-white font-bold text-xs shadow-xs transition-all cursor-pointer active:scale-[0.98] flex items-center justify-center gap-2 mt-1"
+                    className="eyebrow w-full py-3.5 rounded-full border border-gold bg-gold hover:bg-gold-light text-ink font-semibold shadow-[0_4px_20px_rgba(217,164,65,0.28)] transition-all active:scale-[0.98] cursor-pointer flex items-center justify-center gap-2 mt-2 text-xs"
                   >
                     {loading ? (
-                      <div className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                      <div className="w-4 h-4 rounded-full border-2 border-ink border-t-transparent animate-spin" />
                     ) : (
                       <span>Register Account</span>
                     )}
@@ -1121,11 +1146,11 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
               )}
 
               {/* Divider */}
-              <div className="relative py-0.5 text-center">
+              <div className="relative py-1 text-center">
                 <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-neutral-200 dark:border-[#262626]" />
+                  <div className="w-full border-t border-white/10" />
                 </div>
-                <span className="relative px-3 bg-white dark:bg-[#141414] text-[10px] text-neutral-400 font-semibold uppercase tracking-wider">
+                <span className="relative px-3 bg-[#12100c] text-[10px] font-mono tracking-widest text-sand/60 uppercase">
                   or
                 </span>
               </div>
@@ -1135,7 +1160,7 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
                 type="button"
                 onClick={handleGoogleSignIn}
                 disabled={loading}
-                className="w-full py-2.5 px-4 rounded-xl bg-neutral-50 hover:bg-neutral-100 dark:bg-[#1A1A1A] dark:hover:bg-[#222222] border border-neutral-200 dark:border-[#2A2A2A] text-neutral-800 dark:text-neutral-200 font-semibold text-xs transition-all cursor-pointer flex items-center justify-center gap-2.5 active:scale-[0.98]"
+                className="w-full py-2.5 px-4 rounded-full bg-white/5 hover:bg-white/10 border border-white/15 text-ivory font-medium text-xs transition-all cursor-pointer flex items-center justify-center gap-2.5 active:scale-[0.98]"
               >
                 <GoogleGIcon className="w-4 h-4" />
                 <span>Continue with Google</span>
@@ -1149,65 +1174,63 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
           {activePortal === 'employee' && (
             <div className="space-y-3.5 text-left">
               <div>
-                <h1 className="text-base font-bold text-neutral-900 dark:text-white tracking-tight">
+                <h2 className="text-base font-bold text-white tracking-tight">
                   Employee Login
-                </h1>
-                <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+                </h2>
+                <p className="text-xs text-sand/80 mt-0.5">
                   Sign in to view your schedule and benchmark rates.
                 </p>
               </div>
 
               <form onSubmit={(e) => handleStaffSignIn(e, 'employee')} className="space-y-3">
                 <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-neutral-700 dark:text-neutral-300">
+                  <label className="text-[10.5px] font-mono tracking-wider uppercase text-sand">
                     Username
                   </label>
                   <div className="relative flex items-center">
-                    <Warehouse className="absolute left-3 w-3.5 h-3.5 text-[#C22424]" />
+                    <Warehouse className="absolute left-3 w-3.5 h-3.5 text-gold" />
                     <input
                       type="text"
                       required
                       value={staffUsername}
                       onChange={(e) => setStaffUsername(e.target.value)}
                       placeholder="e.g. employee"
-                      className="w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-[#1A1A1A] border border-neutral-200 dark:border-[#2A2A2A] text-xs text-neutral-900 dark:text-white outline-none focus:border-[#C22424] focus:ring-1 focus:ring-[#C22424] transition-all placeholder:text-neutral-400"
+                      className="w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-[#16120d] border border-white/15 text-xs text-ivory outline-none focus:border-gold focus:ring-1 focus:ring-gold/30 transition-all placeholder:text-sand/40 font-medium"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-neutral-700 dark:text-neutral-300">
+                  <label className="text-[10.5px] font-mono tracking-wider uppercase text-sand">
                     Password
                   </label>
                   <div className="relative flex items-center">
-                    <Lock className="absolute left-3 w-3.5 h-3.5 text-[#C22424]" />
+                    <Lock className="absolute left-3 w-3.5 h-3.5 text-gold" />
                     <input
                       type={showStaffPassword ? "text" : "password"}
                       required
                       value={staffPassword}
                       onChange={(e) => setStaffPassword(e.target.value)}
                       placeholder="••••••••"
-                      className="w-full pl-9 pr-9 py-2.5 rounded-xl bg-neutral-50 dark:bg-[#1A1A1A] border border-neutral-200 dark:border-[#2A2A2A] text-xs text-neutral-900 dark:text-white outline-none focus:border-[#C22424] focus:ring-1 focus:ring-[#C22424] transition-all placeholder:text-neutral-400"
+                      className="w-full pl-9 pr-9 py-2.5 rounded-xl bg-[#16120d] border border-white/15 text-xs text-ivory outline-none focus:border-gold focus:ring-1 focus:ring-gold/30 transition-all placeholder:text-sand/40 font-medium"
                     />
                     <button
                       type="button"
                       onClick={() => setShowStaffPassword(!showStaffPassword)}
-                      className="absolute right-3 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 cursor-pointer"
+                      className="absolute right-3 text-sand/60 hover:text-gold cursor-pointer"
                     >
                       {showStaffPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                     </button>
                   </div>
                 </div>
 
-
-
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full py-2.5 rounded-xl bg-[#C22424] hover:bg-[#A81C1C] text-white font-bold text-xs shadow-xs transition-all cursor-pointer active:scale-[0.98] flex items-center justify-center gap-2 mt-1"
+                  className="eyebrow w-full py-3.5 rounded-full border border-gold bg-gold hover:bg-gold-light text-ink font-semibold shadow-[0_4px_20px_rgba(217,164,65,0.28)] transition-all active:scale-[0.98] cursor-pointer flex items-center justify-center gap-2 mt-2 text-xs"
                 >
                   {loading ? (
-                    <div className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                    <div className="w-4 h-4 rounded-full border-2 border-ink border-t-transparent animate-spin" />
                   ) : (
                     <span>Sign In</span>
                   )}
@@ -1218,7 +1241,7 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
                 <button
                   type="button"
                   onClick={() => setShowEmployeeRequestModal(true)}
-                  className="text-xs font-semibold text-neutral-500 hover:text-neutral-900 dark:hover:text-white hover:underline cursor-pointer inline-flex items-center gap-1"
+                  className="text-xs font-mono text-sand/80 hover:text-gold hover:underline cursor-pointer inline-flex items-center gap-1"
                 >
                   <span>Need an employee account? Request Admin</span>
                   <ChevronRight className="w-3.5 h-3.5" />
@@ -1233,11 +1256,11 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
           {activePortal === 'admin' && (
             <div className="space-y-3.5 text-left">
               <div>
-                <h1 className="text-base font-bold text-neutral-900 dark:text-white tracking-tight">
+                <h2 className="text-base font-bold text-white tracking-tight">
                   Admin Sign In
-                </h1>
-                <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-                  Sign in with your authorized administrator credentials.
+                </h2>
+                <p className="text-xs text-sand/80 mt-0.5">
+                  Sign in with authorized administrator credentials or Google Workspace.
                 </p>
               </div>
 
@@ -1247,18 +1270,18 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
                 id="btn-admin-google-signin"
                 onClick={handleAdminGoogleSignIn}
                 disabled={loading}
-                className="w-full py-2.5 px-4 rounded-xl bg-neutral-50 hover:bg-neutral-100 dark:bg-[#1A1A1A] dark:hover:bg-[#222222] border border-neutral-200 dark:border-[#2A2A2A] text-neutral-900 dark:text-white font-semibold text-xs shadow-xs transition-all cursor-pointer flex items-center justify-center gap-2.5 active:scale-[0.98]"
+                className="eyebrow w-full py-3 px-4 rounded-full border border-gold/50 bg-gold/15 hover:bg-gold/25 text-gold font-semibold text-xs shadow-xs transition-all cursor-pointer flex items-center justify-center gap-2.5 active:scale-[0.98]"
               >
                 <GoogleGIcon className="w-4 h-4" />
                 <span>{loading ? 'Verifying...' : 'Sign In with Google'}</span>
               </button>
 
               {/* Divider */}
-              <div className="relative py-0.5 text-center">
+              <div className="relative py-1 text-center">
                 <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-neutral-200 dark:border-[#262626]" />
+                  <div className="w-full border-t border-white/10" />
                 </div>
-                <span className="relative px-3 bg-white dark:bg-[#141414] text-[10px] text-neutral-400 font-semibold uppercase tracking-wider">
+                <span className="relative px-3 bg-[#12100c] text-[10px] font-mono tracking-widest text-sand/60 uppercase">
                   or with password
                 </span>
               </div>
@@ -1266,55 +1289,53 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
               {/* Direct Username / Password Form for Admin */}
               <form onSubmit={(e) => handleStaffSignIn(e, 'admin')} className="space-y-3">
                 <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-neutral-700 dark:text-neutral-300">
+                  <label className="text-[10.5px] font-mono tracking-wider uppercase text-sand">
                     Admin Username
                   </label>
                   <div className="relative flex items-center">
-                    <ShieldCheck className="absolute left-3 w-3.5 h-3.5 text-[#C22424]" />
+                    <ShieldCheck className="absolute left-3 w-3.5 h-3.5 text-gold" />
                     <input
                       type="text"
                       required
                       value={staffUsername}
                       onChange={(e) => setStaffUsername(e.target.value)}
                       placeholder="Username"
-                      className="w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-[#1A1A1A] border border-neutral-200 dark:border-[#2A2A2A] text-xs text-neutral-900 dark:text-white outline-none focus:border-[#C22424] focus:ring-1 focus:ring-[#C22424] transition-all placeholder:text-neutral-400"
+                      className="w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-[#16120d] border border-white/15 text-xs text-ivory outline-none focus:border-gold focus:ring-1 focus:ring-gold/30 transition-all placeholder:text-sand/40 font-medium"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-neutral-700 dark:text-neutral-300">
+                  <label className="text-[10.5px] font-mono tracking-wider uppercase text-sand">
                     Password
                   </label>
                   <div className="relative flex items-center">
-                    <Lock className="absolute left-3 w-3.5 h-3.5 text-[#C22424]" />
+                    <Lock className="absolute left-3 w-3.5 h-3.5 text-gold" />
                     <input
                       type={showStaffPassword ? "text" : "password"}
                       required
                       value={staffPassword}
                       onChange={(e) => setStaffPassword(e.target.value)}
                       placeholder="••••••••"
-                      className="w-full pl-9 pr-9 py-2.5 rounded-xl bg-neutral-50 dark:bg-[#1A1A1A] border border-neutral-200 dark:border-[#2A2A2A] text-xs text-neutral-900 dark:text-white outline-none focus:border-[#C22424] focus:ring-1 focus:ring-[#C22424] transition-all placeholder:text-neutral-400"
+                      className="w-full pl-9 pr-9 py-2.5 rounded-xl bg-[#16120d] border border-white/15 text-xs text-ivory outline-none focus:border-gold focus:ring-1 focus:ring-gold/30 transition-all placeholder:text-sand/40 font-medium"
                     />
                     <button
                       type="button"
                       onClick={() => setShowStaffPassword(!showStaffPassword)}
-                      className="absolute right-3 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 cursor-pointer"
+                      className="absolute right-3 text-sand/60 hover:text-gold cursor-pointer"
                     >
                       {showStaffPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                     </button>
                   </div>
                 </div>
 
-
-
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full py-2.5 rounded-xl bg-[#C22424] hover:bg-[#A81C1C] text-white font-bold text-xs shadow-xs transition-all cursor-pointer active:scale-[0.98] flex items-center justify-center gap-2 mt-1"
+                  className="eyebrow w-full py-3.5 rounded-full border border-gold bg-gold hover:bg-gold-light text-ink font-semibold shadow-[0_4px_20px_rgba(217,164,65,0.28)] transition-all active:scale-[0.98] cursor-pointer flex items-center justify-center gap-2 mt-2 text-xs"
                 >
                   {loading ? (
-                    <div className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                    <div className="w-4 h-4 rounded-full border-2 border-ink border-t-transparent animate-spin" />
                   ) : (
                     <span>Sign In as Admin</span>
                   )}
@@ -1329,11 +1350,11 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
           {activePortal === 'miller' && (
             <div className="space-y-3.5 text-left">
               <div>
-                <h1 className="text-base font-bold text-neutral-900 dark:text-white tracking-tight flex items-center gap-2">
-                  <Building2 className="w-4 h-4 text-[#C22424]" />
+                <h2 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
+                  <Building2 className="w-4 h-4 text-gold" />
                   <span>Miller & Supplier Portal</span>
-                </h1>
-                <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+                </h2>
+                <p className="text-xs text-sand/80 mt-0.5">
                   Acknowledge POs, dispatch lorries, attach bills, and track payments.
                 </p>
               </div>
@@ -1341,41 +1362,41 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
               <form onSubmit={handleMillerSignIn} className="space-y-3">
                 {/* Miller Assigned Username / ID */}
                 <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-neutral-700 dark:text-neutral-300">
+                  <label className="text-[10.5px] font-mono tracking-wider uppercase text-sand">
                     Miller Username
                   </label>
                   <div className="relative flex items-center">
-                    <Building2 className="absolute left-3 w-3.5 h-3.5 text-[#C22424]" />
+                    <Building2 className="absolute left-3 w-3.5 h-3.5 text-gold" />
                     <input
                       type="text"
                       required
                       value={millerInput}
                       onChange={(e) => setMillerInput(e.target.value)}
                       placeholder="Username assigned by Admin"
-                      className="w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-[#1A1A1A] border border-neutral-200 dark:border-[#2A2A2A] text-xs text-neutral-900 dark:text-white outline-none focus:border-[#C22424] focus:ring-1 focus:ring-[#C22424] transition-all placeholder:text-neutral-400 font-semibold"
+                      className="w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-[#16120d] border border-white/15 text-xs text-ivory outline-none focus:border-gold focus:ring-1 focus:ring-gold/30 transition-all placeholder:text-sand/40 font-semibold"
                     />
                   </div>
                 </div>
 
                 {/* Miller Assigned Password */}
                 <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-neutral-700 dark:text-neutral-300">
+                  <label className="text-[10.5px] font-mono tracking-wider uppercase text-sand">
                     Password
                   </label>
                   <div className="relative flex items-center">
-                    <Lock className="absolute left-3 w-3.5 h-3.5 text-[#C22424]" />
+                    <Lock className="absolute left-3 w-3.5 h-3.5 text-gold" />
                     <input
                       type={showMillerPassword ? "text" : "password"}
                       required
                       value={millerPassword}
                       onChange={(e) => setMillerPassword(e.target.value)}
                       placeholder="••••••••"
-                      className="w-full pl-9 pr-9 py-2.5 rounded-xl bg-neutral-50 dark:bg-[#1A1A1A] border border-neutral-200 dark:border-[#2A2A2A] text-xs text-neutral-900 dark:text-white outline-none focus:border-[#C22424] focus:ring-1 focus:ring-[#C22424] transition-all placeholder:text-neutral-400"
+                      className="w-full pl-9 pr-9 py-2.5 rounded-xl bg-[#16120d] border border-white/15 text-xs text-ivory outline-none focus:border-gold focus:ring-1 focus:ring-gold/30 transition-all placeholder:text-sand/40 font-medium"
                     />
                     <button
                       type="button"
                       onClick={() => setShowMillerPassword(!showMillerPassword)}
-                      className="absolute right-3 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 cursor-pointer"
+                      className="absolute right-3 text-sand/60 hover:text-gold cursor-pointer"
                     >
                       {showMillerPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                     </button>
@@ -1385,10 +1406,10 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full py-2.5 rounded-xl bg-[#C22424] hover:bg-[#A81C1C] text-white font-bold text-xs shadow-xs transition-all cursor-pointer active:scale-[0.98] flex items-center justify-center gap-2 mt-2"
+                  className="eyebrow w-full py-3.5 rounded-full border border-gold bg-gold hover:bg-gold-light text-ink font-semibold shadow-[0_4px_20px_rgba(217,164,65,0.28)] transition-all active:scale-[0.98] cursor-pointer flex items-center justify-center gap-2 mt-2 text-xs"
                 >
                   {loading ? (
-                    <div className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                    <div className="w-4 h-4 rounded-full border-2 border-ink border-t-transparent animate-spin" />
                   ) : (
                     <>
                       <span>Sign In to Miller Portal</span>
@@ -1398,12 +1419,12 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
                 </button>
               </form>
 
-              <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-[11px] text-amber-800 dark:text-amber-300 space-y-1">
-                <p className="font-bold flex items-center gap-1.5">
-                  <Info className="w-3.5 h-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+              <div className="p-3 bg-gold/10 border border-gold/30 rounded-xl text-[11px] text-ivory space-y-1">
+                <p className="font-bold flex items-center gap-1.5 text-gold">
+                  <Info className="w-3.5 h-3.5 shrink-0 text-gold" />
                   <span>Direct Mill Operations Console</span>
                 </p>
-                <p className="text-[10.5px] text-neutral-600 dark:text-neutral-400 leading-relaxed">
+                <p className="text-[10.5px] text-sand/90 leading-relaxed font-sans">
                   Millers can instantly view contracts, submit driver phone & lorry number upon dispatch, upload consignment invoices, and track outstanding ledger balances.
                 </p>
               </div>
@@ -1411,8 +1432,8 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
           )}
 
           {/* Footer Note */}
-          <div className="text-center pt-4 pb-0.5 border-t border-neutral-100 dark:border-[#1E1E1E] mt-3">
-            <p className="text-[10.5px] text-neutral-400 dark:text-neutral-500 font-medium">
+          <div className="text-center pt-4 pb-0.5 border-t border-white/10 mt-3">
+            <p className="text-[10.5px] font-mono tracking-widest text-sand/60 uppercase">
               Tejas Canvassing • APMC Yard Bangalore
             </p>
           </div>
@@ -1422,41 +1443,41 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
 
       {/* Employee Credential Request Modal */}
       {showEmployeeRequestModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-[#141414] border border-neutral-200 dark:border-[#262626] rounded-2xl p-5 max-w-sm w-full shadow-xl space-y-3.5 text-left relative">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-[#14100b] border border-gold/30 rounded-3xl p-6 max-w-sm w-full shadow-[0_24px_64px_rgba(0,0,0,0.85)] space-y-4 text-left relative text-ivory">
             <button
               type="button"
               onClick={() => { setShowEmployeeRequestModal(false); setEmpRequestSuccess(false); }}
-              className="absolute top-4 right-4 p-1.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-400 hover:text-neutral-700 dark:hover:text-white"
+              className="absolute top-4 right-4 p-1.5 rounded-full bg-white/5 border border-white/10 text-sand hover:text-gold cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
 
-            <div className="space-y-0.5">
-              <span className="text-[9px] font-bold uppercase tracking-wider text-[#C22424] dark:text-red-300 bg-[#FEF2F2] dark:bg-red-950/40 px-2 py-0.5 rounded-full border border-[#FECACA] dark:border-red-900/40">
+            <div className="space-y-1">
+              <span className="text-[10px] font-mono tracking-widest uppercase text-gold bg-gold/10 px-2 py-0.5 rounded-full border border-gold/40">
                 Staff Request
               </span>
-              <h3 className="text-base font-bold text-neutral-900 dark:text-white pt-1">
+              <h3 className="text-lg font-display italic text-white pt-1">
                 Request Employee Login
               </h3>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400">
+              <p className="text-xs text-sand/80 font-sans">
                 Submit your details to request login credentials.
               </p>
             </div>
 
             {empRequestSuccess ? (
-              <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-center space-y-2">
-                <Check className="w-7 h-7 text-emerald-600 dark:text-emerald-400 mx-auto" />
-                <p className="text-xs font-bold text-emerald-800 dark:text-emerald-300">
+              <div className="p-4 bg-emerald-950/40 border border-emerald-500/30 rounded-2xl text-center space-y-2">
+                <Check className="w-7 h-7 text-emerald-400 mx-auto" />
+                <p className="text-xs font-bold text-emerald-300">
                   Request Submitted Successfully
                 </p>
-                <p className="text-[11px] text-neutral-600 dark:text-neutral-300">
+                <p className="text-[11px] text-sand/80">
                   Your request has been submitted to Admin.
                 </p>
                 <button
                   type="button"
                   onClick={() => { setShowEmployeeRequestModal(false); setEmpRequestSuccess(false); }}
-                  className="w-full py-2 bg-[#C22424] hover:bg-[#A81C1C] text-white font-bold text-xs rounded-xl mt-2 cursor-pointer"
+                  className="eyebrow w-full py-2.5 bg-gold text-ink font-semibold rounded-full mt-2 cursor-pointer"
                 >
                   Close Window
                 </button>
@@ -1477,7 +1498,7 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
                 className="space-y-3"
               >
                 <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-neutral-700 dark:text-neutral-300 block">
+                  <label className="text-[10.5px] font-mono tracking-wider uppercase text-sand block">
                     Full Name *
                   </label>
                   <input
@@ -1486,12 +1507,12 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
                     value={empRequestName}
                     onChange={(e) => setEmpRequestName(e.target.value)}
                     placeholder="e.g. Ramesh Kumar"
-                    className="w-full px-3 py-2 bg-neutral-50 dark:bg-[#1A1A1A] border border-neutral-200 dark:border-[#2A2A2A] rounded-xl text-xs font-medium text-neutral-900 dark:text-white outline-none focus:border-[#C22424] focus:ring-1 focus:ring-[#C22424]"
+                    className="w-full px-3.5 py-2.5 bg-[#16120d] border border-white/15 rounded-xl text-xs text-ivory outline-none focus:border-gold focus:ring-1 focus:ring-gold/30 placeholder:text-sand/40 font-medium"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-neutral-700 dark:text-neutral-300 block">
+                  <label className="text-[10.5px] font-mono tracking-wider uppercase text-sand block">
                     Mobile Phone Number *
                   </label>
                   <input
@@ -1500,13 +1521,13 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
                     value={empRequestPhone}
                     onChange={(e) => setEmpRequestPhone(e.target.value)}
                     placeholder="e.g. 9945351166"
-                    className="w-full px-3 py-2 bg-neutral-50 dark:bg-[#1A1A1A] border border-neutral-200 dark:border-[#2A2A2A] rounded-xl text-xs font-medium text-neutral-900 dark:text-white outline-none focus:border-[#C22424] focus:ring-1 focus:ring-[#C22424]"
+                    className="w-full px-3.5 py-2.5 bg-[#16120d] border border-white/15 rounded-xl text-xs text-ivory outline-none focus:border-gold focus:ring-1 focus:ring-gold/30 placeholder:text-sand/40 font-medium"
                   />
                 </div>
 
                 <button
                   type="submit"
-                  className="w-full py-2.5 bg-[#C22424] hover:bg-[#A81C1C] text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer"
+                  className="eyebrow w-full py-3 bg-gold hover:bg-gold-light text-ink font-semibold text-xs rounded-full shadow-xs transition-all cursor-pointer"
                 >
                   Send Request
                 </button>

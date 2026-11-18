@@ -7,5 +7,6 @@ coverage/
 !.env.example
 bun.lock*
 scratch/
+*.mp4
 data/gmail_oauth.json
 data/po_email_tracking.json

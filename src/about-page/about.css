@@ -1,0 +1,190 @@
+/* Tejas Canvassing Luxury About Us & Login UI Stylesheet */
+
+:root {
+  --pad: clamp(1rem, 3.5vw, 3.5rem);
+  --section: clamp(3.25rem, 8vw, 10rem);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+}
+
+html.about-active {
+  background: #0a0806;
+  -webkit-tap-highlight-color: transparent;
+  max-width: 100vw;
+  overflow-x: clip;
+}
+html.about-active.lenis, html.about-active.lenis body { height: auto; }
+.about-active .lenis.lenis-smooth { scroll-behavior: auto !important; }
+.about-active .lenis.lenis-stopped { overflow: hidden; }
+
+body.about-active {
+  font-family: 'Hanken Grotesk', system-ui, sans-serif;
+  color: #f6f1e6;
+  background: #0a0806;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  max-width: 100vw;
+  overflow-x: clip;
+  line-height: 1.6;
+  font-kerning: normal;
+  font-feature-settings: 'kern', 'liga', 'calt';
+  text-size-adjust: 100%;
+}
+html.about-active { scroll-padding-top: 72px; }
+.about-active ::selection { background: #d9a441; color: #0a0806; }
+
+/* Luxury typography in about and login */
+.about-active .font-display,
+.login-luxury-active .font-display {
+  font-family: 'Bodoni Moda', Georgia, serif;
+  font-optical-sizing: auto;
+  font-feature-settings: 'kern', 'liga', 'lnum';
+  text-rendering: optimizeLegibility;
+}
+.about-active .font-serif,
+.login-luxury-active .font-serif {
+  font-family: 'Bodoni Moda', Georgia, serif;
+}
+.about-active .font-sans,
+.login-luxury-active .font-sans {
+  font-family: 'Hanken Grotesk', system-ui, sans-serif;
+}
+.about-active .font-mono,
+.login-luxury-active .font-mono {
+  font-family: 'DM Mono', ui-monospace, monospace;
+}
+
+/* layout system */
+.wrap {
+  width: 100%;
+  max-width: 1480px;
+  margin-inline: auto;
+  padding-left: max(var(--pad), env(safe-area-inset-left));
+  padding-right: max(var(--pad), env(safe-area-inset-right));
+}
+.grid-12 { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); column-gap: clamp(0.75rem, 2vw, 2rem); }
+.section { padding-block: var(--section); position: relative; }
+
+/* responsive fluid type scale */
+.display-xl { font-family: 'Bodoni Moda', Georgia, serif; font-weight: 500; font-size: clamp(2.4rem, 8.5vw, 10.5rem); line-height: 0.95; letter-spacing: -0.03em; }
+.display-lg { font-family: 'Bodoni Moda', Georgia, serif; font-weight: 400; font-size: clamp(1.95rem, 5.2vw, 5.5rem); line-height: 1.02; letter-spacing: -0.025em; }
+.display-md { font-family: 'Bodoni Moda', Georgia, serif; font-weight: 400; font-size: clamp(1.5rem, 3.2vw, 3.2rem); line-height: 1.08; letter-spacing: -0.02em; }
+.lede { font-size: clamp(1rem, 1.25vw, 1.25rem); line-height: 1.65; font-weight: 300; max-width: 34em; }
+.eyebrow { font-family: 'DM Mono', ui-monospace, monospace; font-size: 0.7rem; letter-spacing: 0.28em; text-transform: uppercase; }
+.small-caps { font-variant-caps: all-small-caps; letter-spacing: 0.14em; }
+
+.gold-text {
+  background: linear-gradient(100deg, #f7e2a8 0%, #d9a441 35%, #ec8a2a 60%, #f7e2a8 100%);
+  background-size: 200% auto; -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: sheen 9s linear infinite;
+}
+.on-ivory .gold-text { background-image: linear-gradient(100deg, #8a5f12, #b9801f 40%, #7a5410 70%, #8a5f12); background-size: 200% auto; }
+@keyframes sheen { to { background-position: 200% center; } }
+@keyframes marquee { to { transform: translateX(-50%); } }
+@keyframes float { 0%,100% { transform: translateY(0) rotate(var(--r)); } 50% { transform: translateY(-14px) rotate(calc(var(--r) + 4deg)); } }
+@keyframes rise { from { opacity: 0; transform: translateY(36px); filter: blur(5px); } to { opacity: 1; transform: none; filter: blur(0); } }
+.reveal { opacity: 0; }
+.reveal.in { animation: rise 1.1s var(--ease-out) forwards; animation-delay: var(--d, 0ms); }
+.rise { animation: rise 1.1s var(--ease-out) both; }
+
+/* masked word reveal */
+.mask { display: inline-block; overflow: hidden; vertical-align: top; padding-bottom: 0.12em; margin-bottom: -0.12em; }
+.mask > span { display: inline-block; transform: translateY(112%); transition: transform 1.1s var(--ease-out); transition-delay: var(--d, 0ms); }
+.in-view .mask > span { transform: none; }
+
+/* surfaces */
+.hairline { height: 1px; background: linear-gradient(90deg, transparent, rgba(217,164,65,.55), transparent); }
+.vignette { background: radial-gradient(ellipse at center, transparent 55%, rgba(5,4,3,.55) 100%); }
+
+/* buttons */
+.btn { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: .9rem; min-height: 48px; padding: 0 1.9rem; border-radius: 999px; font-family: 'DM Mono', ui-monospace, monospace; font-size: .72rem; letter-spacing: .2em; text-transform: uppercase; overflow: hidden; isolation: isolate; border: 1px solid transparent; transition: color .5s var(--ease-out), border-color .5s var(--ease-out), box-shadow .5s var(--ease-out), transform .4s var(--ease-out); }
+.btn::before { content: ''; position: absolute; inset: -1px; z-index: -1; transform: translateY(101%); border-radius: 50% 50% 0 0 / 100% 100% 0 0; transition: transform .6s var(--ease-out), border-radius .6s var(--ease-out); }
+.btn:hover::before, .btn:focus-visible::before { transform: none; border-radius: 0; }
+.btn-gold { background: #d9a441; color: #0a0806; box-shadow: 0 0 0 0 rgba(217,164,65,0), inset 0 1px 0 rgba(255,255,255,.28); } .btn-gold::before { background: #f6f1e6; }
+.btn-gold:hover, .btn-gold:focus-visible { box-shadow: 0 14px 34px -12px rgba(217,164,65,.6), inset 0 1px 0 rgba(255,255,255,.4); }
+.btn-line:hover, .btn-line:focus-visible { box-shadow: 0 14px 34px -14px rgba(217,164,65,.45); }
+.btn:active { filter: brightness(.96); }
+.btn-line { border-color: rgba(217,164,65,.55); color: #d9a441; } .btn-line::before { background: #d9a441; } .btn-line:hover, .btn-line:focus-visible { color: #0a0806; }
+.btn-ink { background: #0a0806; color: #f6f1e6; } .btn-ink::before { background: #d9a441; } .btn-ink:hover, .btn-ink:focus-visible { color: #0a0806; }
+.btn-line-dark { border-color: rgba(10,8,6,.4); color: #0a0806; } .btn-line-dark::before { background: #0a0806; } .btn-line-dark:hover, .btn-line-dark:focus-visible { color: #f6f1e6; }
+
+.link-sweep { position: relative; display: inline-block; }
+.link-sweep::after { content: ''; position: absolute; left: 0; right: 0; bottom: -4px; height: 1px; background: currentColor; transform-origin: right; transform: scaleX(0); transition: transform .6s var(--ease-out); }
+.link-sweep:hover::after, .link-sweep:focus-visible::after { transform-origin: left; transform: scaleX(1); }
+
+.nav-progress { position: absolute; inset: auto 0 0 0; height: 1px; background: linear-gradient(90deg, #d9a441, #ffd770); transform: scaleX(0); transform-origin: 0 50%; pointer-events: none; }
+@supports (animation-timeline: scroll()) { .nav-progress { animation: nav-progress linear both; animation-timeline: scroll(root); } }
+@keyframes nav-progress { to { transform: scaleX(1); } }
+
+/* custom luxury cursor */
+.has-cursor, .has-cursor a, .has-cursor button, .has-cursor [role='tab'], .has-cursor label, .has-cursor [role='button'] { cursor: none; }
+.has-cursor input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]):not([type="file"]):not([type="color"]),
+.has-cursor textarea,
+.has-cursor select {
+  cursor: text;
+}
+.cursor-dot, .cursor-ring { position: fixed; left: 0; top: 0; z-index: 9999; pointer-events: none; border-radius: 50%; will-change: transform, opacity; }
+.cursor-dot {
+  width: 8px; height: 8px; margin: -4px 0 0 -4px;
+  background: #ffd770;
+  box-shadow: 0 0 8px rgba(255, 215, 112, 0.6);
+  transition: transform 0.15s var(--ease-out), opacity 0.25s ease-out;
+}
+.cursor-dot.down { transform: scale(0.65); }
+.cursor-ring {
+  width: 44px; height: 44px; margin: -22px 0 0 -22px;
+  border: 1.5px solid rgba(217, 164, 65, 0.7);
+  background: radial-gradient(circle, rgba(217, 164, 65, 0.08) 0%, transparent 70%);
+  box-shadow: 0 0 16px rgba(217, 164, 65, 0.15);
+  transition: width 0.32s var(--ease-out), height 0.32s var(--ease-out), margin 0.32s var(--ease-out), border-color 0.3s, background-color 0.3s, transform 0.2s var(--ease-out), opacity 0.3s ease-out;
+}
+.cursor-ring.hot {
+  width: 76px; height: 76px; margin: -38px 0 0 -38px;
+  border-color: rgba(255, 215, 112, 0.95);
+  background: radial-gradient(circle, rgba(217, 164, 65, 0.16) 0%, rgba(217, 164, 65, 0.04) 60%, transparent 80%);
+  box-shadow: 0 0 20px rgba(217, 164, 65, 0.25);
+}
+.cursor-ring.down { transform: scale(0.85); }
+.cursor-ring.hide, .cursor-dot.hide { opacity: 0 !important; }
+
+.ink-scroll { scrollbar-width: none; } .ink-scroll::-webkit-scrollbar { display: none; }
+.skip { position: fixed; left: 1rem; top: -4rem; z-index: 120; background: #d9a441; color: #0a0806; padding: .8rem 1.2rem; border-radius: 999px; font-family: 'DM Mono', ui-monospace, monospace; font-size: .75rem; letter-spacing: .15em; text-transform: uppercase; transition: top .3s; }
+.skip:focus { top: 1rem; }
+
+@keyframes grain-in { from { opacity: 0; transform: scale(.55) rotate(-24deg); filter: blur(14px); } to { opacity: 1; transform: none; filter: blur(0); } }
+.grain-in { animation: grain-in .9s var(--ease-out) both; }
+@keyframes slide-ghost { from { opacity: 0; transform: translateX(8%); } to { opacity: 1; transform: none; } }
+.ghost-in { animation: slide-ghost 1.1s var(--ease-out) both; }
+@keyframes drip { 0% { transform: scaleY(0); transform-origin: top; } 50% { transform: scaleY(1); transform-origin: top; } 51% { transform-origin: bottom; } 100% { transform: scaleY(0); transform-origin: bottom; } }
+.scroll-cue { animation: drip 2.2s cubic-bezier(.65,0,.35,1) infinite; }
+@keyframes fall { from { transform: translate3d(0,-10vh,0) rotate(0); opacity: 0; } 15% { opacity: .9; } to { transform: translate3d(var(--dx,0),110vh,0) rotate(300deg); opacity: 0; } }
+.dust { animation: fall linear infinite; }
+@keyframes scan { 0% { transform: translateX(-10vw); } 100% { transform: translateX(110vw); } }
+.scan { animation: scan 3.4s cubic-bezier(.45,0,.55,1) infinite alternate; }
+@keyframes nudge { 0%,100% { transform: translateX(-10px); } 50% { transform: translateX(10px); } }
+.nudge { animation: nudge 2.4s ease-in-out infinite; }
+@keyframes dashFlow { to { stroke-dashoffset: -20; } }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+.animate-fadeIn { animation: fadeIn 0.4s var(--ease-out) both; }
+
+/* Luxury Frosted Gold Scrollbars in About/Login */
+.about-active ::-webkit-scrollbar,
+.login-luxury-active ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.about-active ::-webkit-scrollbar-track,
+.login-luxury-active ::-webkit-scrollbar-track {
+  background: rgba(10, 8, 6, 0.4);
+  border: 1px solid rgba(217, 164, 65, 0.18);
+  border-radius: 9999px;
+}
+.about-active ::-webkit-scrollbar-thumb,
+.login-luxury-active ::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, rgba(240, 200, 117, 0.72) 0%, rgba(217, 164, 65, 0.5) 50%, rgba(184, 134, 42, 0.62) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 9999px;
+}

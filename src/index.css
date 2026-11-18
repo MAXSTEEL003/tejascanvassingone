@@ -1,4 +1,5 @@
 @import url('https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Geist+Mono:wght@100..900&family=Instrument+Serif:ital@0;1&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400;0,6..96,500;0,6..96,700;1,6..96,400;1,6..96,500&family=Hanken+Grotesk:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
 @import "tailwindcss";
 
 @variant dark (&:where(.dark, .dark *));
@@ -10,6 +11,22 @@
   --font-serif: "Instrument Serif", Georgia, serif;
   --font-display: "Instrument Serif", Georgia, serif;
   --font-mono: "Geist", -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  
+  /* Tejas Luxury Colors (About & Login UI) */
+  --color-ink: #0a0806;
+  --color-coal: #12100c;
+  --color-vault: #1a160f;
+  --color-gold: #d9a441;
+  --color-gold-light: #f7e2a8;
+  --color-saffron: #ec8a2a;
+  --color-brass: #7a5410;
+  --color-ivory: #f6f1e6;
+  --color-parchment: #ece3cf;
+  --color-rice: #fbf8f1;
+  --color-earth: #3b2f22;
+  --color-paddy: #5d6b43;
+  --color-sand: #a89a80;
+  --color-umber: #6b5d48;
   
   /* Light Theme (Porcelain, Crisp Translucent Glass & TC Crimson Red) */
   --color-surface: #ffffff;
