@@ -1,20 +1,6 @@
 import { useEffect, useState, useRef } from "react"
 import { prefersReducedMotion } from "../lib/perf"
 
-function WheatIcon({ className = "h-7 w-7 text-gold" }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
-      <path d="M12 2v20" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-      <path d="M12 2.5C10.6 4.2 10.6 6 12 7.5C13.4 6 13.4 4.2 12 2.5Z" />
-      <path d="M11.2 6.8C8.8 6.5 7.6 8.5 8.7 10.5C10 9.8 10.8 8.6 11.2 6.8Z" />
-      <path d="M12.8 6.8C15.2 6.5 16.4 8.5 15.3 10.5C14 9.8 13.2 8.6 12.8 6.8Z" />
-      <path d="M11.2 11.2C8.8 10.9 7.6 12.9 8.7 14.9C10 14.2 10.8 13 11.2 11.2Z" />
-      <path d="M12.8 11.2C15.2 10.9 16.4 12.9 15.3 14.9C14 14.2 13.2 13 12.8 11.2Z" />
-      <path d="M11.2 15.6C8.8 15.3 7.6 17.3 8.7 19.3C10 18.4 10.8 17.2 11.2 15.6Z" />
-      <path d="M12.8 15.6C15.2 15.3 16.4 17.3 15.3 19.3C14 18.4 13.2 17.2 12.8 15.6Z" />
-    </svg>
-  )
-}
 
 export default function Intro() {
   const [phase, setPhase] = useState<"in" | "out" | "gone">(() =>
@@ -112,9 +98,9 @@ export default function Intro() {
           {/* Rotating Specular Ring */}
           <div className="absolute -inset-1 rounded-full border border-gold/30 animate-[spin_12s_linear_infinite]" />
 
-          {/* Central Frosted Capsule */}
-          <div className="relative grid h-20 w-20 place-items-center rounded-full border border-gold/50 bg-[#16120d]/90 shadow-[0_0_36px_rgba(217,164,65,0.22)] backdrop-blur-md">
-            <WheatIcon className="h-9 w-9 text-gold transition-transform duration-500 hover:scale-105" />
+          {/* Central Frosted Capsule with Official Logo */}
+          <div className="relative w-20 h-20 rounded-2xl border border-gold/50 bg-white/10 p-2 shadow-[0_0_36px_rgba(217,164,65,0.25)] backdrop-blur-md flex items-center justify-center">
+            <img src="/logo.png" alt="Tejas Canvassing" className="w-full h-full object-contain drop-shadow" />
           </div>
         </div>
 

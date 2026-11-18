@@ -21,39 +21,6 @@ const navLinks = [
   { name: "VOICES", href: "#voices" },
 ]
 
-function WheatIcon({
-  className = "h-4 w-4 text-gold",
-}: {
-  className?: string
-}) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      className={className}
-      aria-hidden="true"
-    >
-      {/* Central spine */}
-      <path
-        d="M12 2v20"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-      />
-      {/* Top kernel */}
-      <path d="M12 2.5C10.6 4.2 10.6 6 12 7.5C13.4 6 13.4 4.2 12 2.5Z" />
-      {/* Top pair */}
-      <path d="M11.2 6.8C8.8 6.5 7.6 8.5 8.7 10.5C10 9.8 10.8 8.6 11.2 6.8Z" />
-      <path d="M12.8 6.8C15.2 6.5 16.4 8.5 15.3 10.5C14 9.8 13.2 8.6 12.8 6.8Z" />
-      {/* Middle pair */}
-      <path d="M11.2 11.2C8.8 10.9 7.6 12.9 8.7 14.9C10 14.2 10.8 13 11.2 11.2Z" />
-      <path d="M12.8 11.2C15.2 10.9 16.4 12.9 15.3 14.9C14 14.2 13.2 13 12.8 11.2Z" />
-      {/* Lower pair */}
-      <path d="M11.2 15.6C8.8 15.3 7.6 17.3 8.7 19.3C10 18.4 10.8 17.2 11.2 15.6Z" />
-      <path d="M12.8 15.6C15.2 15.3 16.4 17.3 15.3 19.3C14 18.4 13.2 17.2 12.8 15.6Z" />
-    </svg>
-  )
-}
 
 export default function Nav() {
   const navigate = useNavigate()
@@ -107,14 +74,16 @@ export default function Nav() {
               : "bg-black/20 backdrop-blur-md shadow-[0_4px_24px_rgba(0,0,0,0.2)]"
           }`}
         >
-          {/* Left Brand: Wheat Icon + TEJAS CANVASSING */}
+          {/* Left Brand: Official Logo + TEJAS CANVASSING */}
           <a
             href="#home"
-            className="group flex items-center gap-2 sm:gap-3 shrink-0 focus-visible:outline-none min-h-[44px]"
+            className="group flex items-center gap-2.5 sm:gap-3 shrink-0 focus-visible:outline-none min-h-[44px]"
             aria-label="Tejas Canvassing, back to top"
           >
-            <WheatIcon className="h-4 w-4 sm:h-5 sm:w-5 text-gold shrink-0 transition-transform duration-300 group-hover:scale-110" />
-            <span className="font-mono text-[10px] sm:text-xs text-ivory tracking-[0.16em] sm:tracking-[0.28em] uppercase transition-colors group-hover:text-gold whitespace-nowrap">
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-white/10 border border-gold/40 p-0.5 flex items-center justify-center shrink-0 shadow-xs transition-transform duration-300 group-hover:scale-105">
+              <img src="/logo.png" alt="Tejas Canvassing" className="w-full h-full object-contain" />
+            </div>
+            <span className="font-mono text-[10px] sm:text-xs text-ivory tracking-[0.16em] sm:tracking-[0.28em] uppercase transition-colors group-hover:text-gold whitespace-nowrap font-medium">
               TEJAS CANVASSING
             </span>
           </a>
@@ -215,7 +184,7 @@ export default function Nav() {
                 {/* Mobile Direct Portal Logins Section */}
                 <div className="mt-5 pt-3 border-t border-gold/20 flex flex-col gap-2.5">
                   <div className="flex items-center gap-2 mb-1 px-1">
-                    <WheatIcon className="w-3.5 h-3.5 text-gold" />
+                    <img src="/logo.png" alt="Tejas Canvassing" className="w-4 h-4 object-contain rounded-xs" />
                     <span className="eyebrow text-gold text-[10px] font-semibold tracking-[0.2em]">
                       LOGIN PORTALS
                     </span>
@@ -345,8 +314,8 @@ export default function Nav() {
 
             {/* Header */}
             <div className="flex items-center gap-3.5">
-              <div className="grid h-11 w-11 place-items-center rounded-2xl border border-gold/40 bg-gold/10 shadow-[0_0_20px_rgba(217,164,65,0.2)]">
-                <WheatIcon className="h-5 w-5 text-gold" />
+              <div className="w-12 h-12 rounded-2xl border border-gold/40 bg-white/10 p-1.5 flex items-center justify-center shadow-[0_0_20px_rgba(217,164,65,0.2)] shrink-0">
+                <img src="/logo.png" alt="Tejas Canvassing" className="w-full h-full object-contain" />
               </div>
               <div>
                 <span className="eyebrow text-gold text-[10px] sm:text-xs">TEJAS TRADING GATEWAY</span>

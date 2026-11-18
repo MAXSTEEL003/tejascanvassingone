@@ -472,11 +472,25 @@ export function Footer() {
     >
       <div className="mx-auto grid max-w-[1300px] gap-8 sm:gap-12 md:grid-cols-2 lg:grid-cols-[1.2fr_0.9fr_1fr_1fr]">
         <div>
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-xl border border-gold/40 bg-white/10 p-1 flex items-center justify-center shadow-md shrink-0">
+              <img
+                src="/logo.png"
+                alt="Tejas Canvassing"
+                className="w-full h-full object-contain"
+              />
+            </div>
+            <div>
+              <span className="font-mono text-sm tracking-wider uppercase text-white font-semibold block leading-tight">
+                TEJAS CANVASSING
+              </span>
+              <span className="font-mono text-[9px] text-gold/80 tracking-widest uppercase block mt-0.5">
+                Est. 2008 · M. Adinarayan
+              </span>
+            </div>
+          </div>
           <p className="max-w-xs font-display text-2xl sm:text-3xl italic leading-snug text-ivory/90">
             Carefully sourced. Thoughtfully processed. Delivered with trust.
-          </p>
-          <p className="mt-4 font-mono text-xs text-gold/80 tracking-widest uppercase">
-            Est. 2008 · APMC Yeshwanthpur
           </p>
         </div>
         <div>

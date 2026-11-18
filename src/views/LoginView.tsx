@@ -77,21 +77,6 @@ export function TejasLogoEmblem({ className = "w-10 h-10" }: { className?: strin
 
 export const TejasBotanicalLogo = TejasLogoEmblem;
 
-// Luxury Golden Wheat Icon
-export function WheatIcon({ className = "h-5 w-5 text-gold" }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
-      <path d="M12 2v20" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-      <path d="M12 2.5C10.6 4.2 10.6 6 12 7.5C13.4 6 13.4 4.2 12 2.5Z" />
-      <path d="M11.2 6.8C8.8 6.5 7.6 8.5 8.7 10.5C10 9.8 10.8 8.6 11.2 6.8Z" />
-      <path d="M12.8 6.8C15.2 6.5 16.4 8.5 15.3 10.5C14 9.8 13.2 8.6 12.8 6.8Z" />
-      <path d="M11.2 11.2C8.8 10.9 7.6 12.9 8.7 14.9C10 14.2 10.8 13 11.2 11.2Z" />
-      <path d="M12.8 11.2C15.2 10.9 16.4 12.9 15.3 14.9C14 14.2 13.2 13 12.8 11.2Z" />
-      <path d="M11.2 15.6C8.8 15.3 7.6 17.3 8.7 19.3C10 18.4 10.8 17.2 11.2 15.6Z" />
-      <path d="M12.8 15.6C15.2 15.3 16.4 17.3 15.3 19.3C14 18.4 13.2 17.2 12.8 15.6Z" />
-    </svg>
-  );
-}
 
 interface LoginViewProps {
   defaultStep?: string;
@@ -823,8 +808,8 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
           
           {/* Brand Identity */}
           <div className="flex flex-col items-center text-center pb-3 pt-1">
-            <div className="grid h-12 w-12 place-items-center rounded-full border border-gold/40 bg-gold/10 shadow-[0_0_24px_rgba(217,164,65,0.25)] mb-2.5">
-              <WheatIcon className="h-6 w-6 text-gold" />
+            <div className="w-14 h-14 rounded-2xl border border-gold/40 bg-white/10 p-1.5 shadow-[0_0_24px_rgba(217,164,65,0.25)] mb-2.5 flex items-center justify-center backdrop-blur-md">
+              <img src="/logo.png" alt="Tejas Canvassing" className="w-full h-full object-contain" />
             </div>
             <span className="font-mono text-[10px] sm:text-xs tracking-[0.28em] text-gold uppercase">
               TEJAS CANVASSING
