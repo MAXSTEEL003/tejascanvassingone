@@ -10,3 +10,5 @@ scratch/
 *.mp4
 data/gmail_oauth.json
 data/po_email_tracking.json
+data/supplier_portal_sync.json
+

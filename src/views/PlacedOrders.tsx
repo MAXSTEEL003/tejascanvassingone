@@ -23,6 +23,7 @@ import {
   X,
   MessageSquare,
   Building,
+  Building2,
   CheckCircle2,
   XCircle,
   Filter,
@@ -55,6 +56,7 @@ import { generateSupplierPOEmailHtml, generateSupplierPOA4PrintHtml, printPoDocu
 import { buildPoPdfDocument, getPoPdfFileName } from '../utils/poPdfGenerator';
 import { TC_COMPANY_LOGO_BASE64 } from '../utils/logoBase64';
 import EmailTrackingModal, { getStatusBadgeConfig } from '../components/EmailTrackingModal';
+import SupplierPortalSyncModal from '../components/SupplierPortalSyncModal';
 import BuyerLedgerModal from '../components/BuyerLedgerModal';
 import { 
   purgeOperationalAndLedgerRecords, 
@@ -820,6 +822,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
   // Email Tracking states (Section 7, 10)
   const [selectedBuyerForLedger, setSelectedBuyerForLedger] = useState<string | null>(null);
   const [selectedOrderForTracking, setSelectedOrderForTracking] = useState<any | null>(null);
+  const [selectedOrderForPortalSync, setSelectedOrderForPortalSync] = useState<any | null>(null);
   const [trackingRecordMap, setTrackingRecordMap] = useState<Record<string, any>>({});
   const [emailFilter, setEmailFilter] = useState<'all' | 'queued' | 'sent_unconfirmed' | 'delivered' | 'bounced' | 'awaiting_ack' | 'acknowledged'>('all');
 
@@ -3520,6 +3523,24 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                         Track Email
                       </button>
 
+                      {/* Supplier Portal Sync Modal trigger */}
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedOrderForPortalSync(order);
+                        }}
+                        className={cn(
+                          "btn-tactile inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all border cursor-pointer shadow-2xs",
+                          order.supplierPortalSynced
+                            ? "bg-purple-500/[0.08] hover:bg-purple-500/[0.18] text-purple-700 dark:text-purple-300 border-purple-500/25"
+                            : "bg-slate-500/[0.08] hover:bg-slate-500/[0.18] text-slate-700 dark:text-slate-300 border-slate-500/25"
+                        )}
+                        title="View or retry Supplier Portal synchronization status (Application B: Keshar Kali)"
+                      >
+                        <Building2 className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                        {order.supplierPortalSynced ? 'Portal Synced' : 'Portal Sync'}
+                      </button>
+
                       {/* Direct Print A4 PO for filing */}
                       <button 
                         onClick={(e) => handleOpenA4Preview(order, e)}
@@ -5594,6 +5615,17 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
           isOpen={Boolean(selectedOrderForTracking)}
           onClose={() => setSelectedOrderForTracking(null)}
           onRefresh={fetchTrackingRecords}
+        />
+      )}
+
+      {selectedOrderForPortalSync && (
+        <SupplierPortalSyncModal
+          order={selectedOrderForPortalSync}
+          isOpen={Boolean(selectedOrderForPortalSync)}
+          onClose={() => setSelectedOrderForPortalSync(null)}
+          onSyncSuccess={() => {
+            setCurrentPlacedOrders(prev => prev.map(o => o.id === selectedOrderForPortalSync.id ? { ...o, supplierPortalSynced: true } : o));
+          }}
         />
       )}
 

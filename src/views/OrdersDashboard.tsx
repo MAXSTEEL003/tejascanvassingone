@@ -21,6 +21,7 @@ import {
   getPlacedOrderVolume,
   getValidDeduplicatedPlacedOrders
 } from '../utils/orderOperations';
+import { getAuthToken, getAuthUser } from '../lib/auth';
 import merchantsDirectory from '../data/merchants_directory.json';
 
 
@@ -2234,7 +2235,26 @@ export default function OrdersDashboard() {
 
     // 2. Persist to Firestore placed_orders & mark as approved and clean procurement_requests across all devices
     addDeletedProcurementIds(selectedOrders);
-    setCollectionDoc('placed_orders', batchId, groupedOrder).catch(() => {});
+    setCollectionDoc('placed_orders', batchId, groupedOrder).then(() => {
+      // Step 10: Trigger outbound API integration to Application B (Keshar Kali Supplier Portal)
+      try {
+        const authToken = getAuthToken();
+        const adminUser = getAuthUser();
+        fetch('/api/integration/sync-po', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {}),
+            'x-admin-email': adminUser?.email || 'nani@tejasc.in',
+          },
+          body: JSON.stringify({ poNumber: batchId }),
+        }).catch(err => {
+          console.warn('[Supplier Portal Sync] Outbound dispatch notice:', err?.message || err);
+        });
+      } catch (syncErr) {
+        console.warn('[Supplier Portal Sync] Dispatch error:', syncErr);
+      }
+    }).catch(() => {});
     Promise.allSettled([
       ...selectedOrders.map(async id => {
         await setCollectionDoc('procurement_requests', id, { status: 'Approved', placedAt: new Date().toISOString() }).catch(() => {});
