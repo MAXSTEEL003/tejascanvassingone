@@ -1,17 +1,4 @@
 import { useEffect, useState } from "react"
-import { useNavigate } from "react-router-dom"
-import { 
-  Building2, 
-  Warehouse, 
-  Briefcase, 
-  ShieldCheck, 
-  ArrowRight, 
-  ChevronRight, 
-  X, 
-  LogIn, 
-  UserPlus, 
-  Lock 
-} from "lucide-react"
 import { onSmoothScroll } from "../lib/smooth"
 
 const navLinks = [
@@ -21,12 +8,63 @@ const navLinks = [
   { name: "VOICES", href: "#voices" },
 ]
 
+function WheatIcon({
+  className = "h-4 w-4 text-gold",
+}: {
+  className?: string
+}) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      className={className}
+      aria-hidden="true"
+    >
+      {/* Central spine */}
+      <path
+        d="M12 2v20"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+      {/* Top kernel */}
+      <path d="M12 2.5C10.6 4.2 10.6 6 12 7.5C13.4 6 13.4 4.2 12 2.5Z" />
+      {/* Top pair */}
+      <path d="M11.2 6.8C8.8 6.5 7.6 8.5 8.7 10.5C10 9.8 10.8 8.6 11.2 6.8Z" />
+      <path d="M12.8 6.8C15.2 6.5 16.4 8.5 15.3 10.5C14 9.8 13.2 8.6 12.8 6.8Z" />
+      {/* Middle pair */}
+      <path d="M11.2 11.2C8.8 10.9 7.6 12.9 8.7 14.9C10 14.2 10.8 13 11.2 11.2Z" />
+      <path d="M12.8 11.2C15.2 10.9 16.4 12.9 15.3 14.9C14 14.2 13.2 13 12.8 11.2Z" />
+      {/* Lower pair */}
+      <path d="M11.2 15.6C8.8 15.3 7.6 17.3 8.7 19.3C10 18.4 10.8 17.2 11.2 15.6Z" />
+      <path d="M12.8 15.6C15.2 15.3 16.4 17.3 15.3 19.3C14 18.4 13.2 17.2 12.8 15.6Z" />
+    </svg>
+  )
+}
+
+function LockIcon({ className = "h-3 w-3" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <rect x="4" y="11" width="16" height="11" rx="2.5" ry="2.5" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </svg>
+  )
+}
 
 export default function Nav() {
-  const navigate = useNavigate()
   const [solid, setSolid] = useState(false)
   const [open, setOpen] = useState(false)
   const [showSignIn, setShowSignIn] = useState(false)
+  const [signedIn, setSignedIn] = useState(false)
 
   useEffect(() => {
     const f = () => setSolid(window.scrollY > 40)
@@ -50,12 +88,6 @@ export default function Nav() {
     return () => removeEventListener("keydown", k)
   }, [])
 
-  const handlePortalNavigate = (path: string) => {
-    setShowSignIn(false)
-    setOpen(false)
-    navigate(path)
-  }
-
   return (
     <>
       <header
@@ -70,20 +102,18 @@ export default function Nav() {
         <div
           className={`pointer-events-auto relative flex w-full max-w-[1240px] items-center justify-between min-h-[48px] h-[52px] sm:h-[58px] md:h-[62px] px-3 sm:px-6 md:px-8 rounded-full border border-white/20 transition-all duration-500 ${
             solid
-              ? "bg-black/50 backdrop-blur-xl shadow-[0_12px_36px_rgba(0,0,0,0.5)] border-white/25"
-              : "bg-black/20 backdrop-blur-md shadow-[0_4px_24px_rgba(0,0,0,0.2)]"
+              ? "bg-black/40 backdrop-blur-xl shadow-[0_12px_36px_rgba(0,0,0,0.5)] border-white/25"
+              : "bg-black/15 backdrop-blur-md shadow-[0_4px_24px_rgba(0,0,0,0.2)]"
           }`}
         >
-          {/* Left Brand: Official Logo + TEJAS CANVASSING */}
+          {/* Left Brand: Wheat Icon + TEJAS CANVASSING */}
           <a
             href="#home"
-            className="group flex items-center gap-2.5 sm:gap-3 shrink-0 focus-visible:outline-none min-h-[44px]"
+            className="group flex items-center gap-2 sm:gap-3 shrink-0 focus-visible:outline-none min-h-[44px]"
             aria-label="Tejas Canvassing, back to top"
           >
-            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-white/10 border border-gold/40 p-0.5 flex items-center justify-center shrink-0 shadow-xs transition-transform duration-300 group-hover:scale-105">
-              <img src="/logo.png" alt="Tejas Canvassing" className="w-full h-full object-contain" />
-            </div>
-            <span className="font-mono text-[10px] sm:text-xs text-ivory tracking-[0.16em] sm:tracking-[0.28em] uppercase transition-colors group-hover:text-gold whitespace-nowrap font-medium">
+            <WheatIcon className="h-4 w-4 sm:h-5 sm:w-5 text-gold shrink-0 transition-transform duration-300 group-hover:scale-110" />
+            <span className="font-mono text-[10px] sm:text-xs text-ivory tracking-[0.16em] sm:tracking-[0.28em] uppercase transition-colors group-hover:text-gold whitespace-nowrap">
               TEJAS CANVASSING
             </span>
           </a>
@@ -119,18 +149,16 @@ export default function Nav() {
               </span>
             </a>
 
-            {/* Sign In / Portals Trigger Button */}
             <button
               type="button"
               onClick={() => setShowSignIn(true)}
-              className="eyebrow inline-flex items-center gap-1.5 rounded-full border border-gold/40 bg-gold/15 hover:bg-gold/25 hover:border-gold px-3 sm:px-4 min-h-[44px] py-2 text-gold-light hover:text-white transition-all duration-300 active:scale-95 whitespace-nowrap cursor-pointer shadow-[0_2px_12px_rgba(217,164,65,0.18)]"
-              aria-label="Open sign in options"
+              className="eyebrow inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-white/5 hover:bg-white/15 hover:border-white/40 px-3 sm:px-4 min-h-[44px] py-2 text-ivory transition-all duration-300 active:scale-95 whitespace-nowrap"
             >
-              <Lock className="h-3 w-3 text-gold" />
-              <span className="text-[10px] sm:text-xs font-semibold tracking-wider">SIGN IN</span>
+              <LockIcon className="h-3 w-3 text-ivory/80" />
+              <span className="text-[10px] sm:text-xs">SIGN IN</span>
             </button>
 
-            {/* Mobile Menu Toggle Button */}
+            {/* Mobile Menu Toggle Button (Accessible 44x44px touch area) */}
             <button
               type="button"
               aria-expanded={open}
@@ -166,7 +194,7 @@ export default function Nav() {
             />
             <div
               id="mobile-nav"
-              className="pointer-events-auto relative z-50 mt-2 w-full max-w-[1240px] max-h-[calc(100dvh-88px-env(safe-area-inset-top))] overflow-y-auto rounded-3xl border border-gold/25 bg-ink/95 backdrop-blur-2xl p-5 sm:p-6 shadow-2xl lg:hidden animate-fadeIn pb-[calc(1.5rem+env(safe-area-inset-bottom))]"
+              className="pointer-events-auto relative z-50 mt-2 w-full max-w-[1240px] max-h-[calc(100dvh-88px-env(safe-area-inset-top))] overflow-y-auto rounded-3xl border border-white/20 bg-ink/95 backdrop-blur-2xl p-5 sm:p-6 shadow-2xl lg:hidden animate-fadeIn pb-[calc(1.5rem+env(safe-area-inset-bottom))]"
             >
               <nav className="flex flex-col gap-1">
                 {navLinks.map((item) => (
@@ -180,99 +208,6 @@ export default function Nav() {
                     <span className="text-sm text-gold" aria-hidden="true">→</span>
                   </a>
                 ))}
-
-                {/* Mobile Direct Portal Logins Section */}
-                <div className="mt-5 pt-3 border-t border-gold/20 flex flex-col gap-2.5">
-                  <div className="flex items-center gap-2 mb-1 px-1">
-                    <img src="/logo.png" alt="Tejas Canvassing" className="w-4 h-4 object-contain rounded-xs" />
-                    <span className="eyebrow text-gold text-[10px] font-semibold tracking-[0.2em]">
-                      LOGIN PORTALS
-                    </span>
-                  </div>
-
-                  {/* Merchant Login */}
-                  <button
-                    type="button"
-                    onClick={() => handlePortalNavigate("/login?portal=merchant")}
-                    className="flex items-center justify-between p-3 rounded-2xl bg-coal/90 border border-gold/30 text-left hover:border-gold transition-colors"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-xl bg-gold/15 flex items-center justify-center text-gold">
-                        <Building2 className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <div className="text-xs font-semibold text-ivory">Merchant Login</div>
-                        <div className="text-[10px] text-sand/80 font-mono">Wholesale Mandi Orders</div>
-                      </div>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-gold" />
-                  </button>
-
-                  {/* Miller Login */}
-                  <button
-                    type="button"
-                    onClick={() => handlePortalNavigate("/login?portal=miller")}
-                    className="flex items-center justify-between p-3 rounded-2xl bg-coal/90 border border-white/15 text-left hover:border-gold transition-colors"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-xl bg-amber-500/15 flex items-center justify-center text-amber-400">
-                        <Warehouse className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <div className="text-xs font-semibold text-ivory">Miller Portal</div>
-                        <div className="text-[10px] text-sand/80 font-mono">Millers & Suppliers</div>
-                      </div>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-gold" />
-                  </button>
-
-                  {/* Staff Login */}
-                  <button
-                    type="button"
-                    onClick={() => handlePortalNavigate("/login?portal=employee")}
-                    className="flex items-center justify-between p-3 rounded-2xl bg-coal/90 border border-white/15 text-left hover:border-gold transition-colors"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-xl bg-sky-500/15 flex items-center justify-center text-sky-400">
-                        <Briefcase className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <div className="text-xs font-semibold text-ivory">Staff Operations</div>
-                        <div className="text-[10px] text-sand/80 font-mono">APMC Field & Dispatch</div>
-                      </div>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-gold" />
-                  </button>
-
-                  {/* Admin Login */}
-                  <button
-                    type="button"
-                    onClick={() => handlePortalNavigate("/admin")}
-                    className="flex items-center justify-between p-3 rounded-2xl bg-coal/90 border border-white/15 text-left hover:border-gold transition-colors"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-xl bg-emerald-500/15 flex items-center justify-center text-emerald-400">
-                        <ShieldCheck className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <div className="text-xs font-semibold text-ivory">Admin Console</div>
-                        <div className="text-[10px] text-sand/80 font-mono">Master Ledger & Analytics</div>
-                      </div>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-gold" />
-                  </button>
-
-                  {/* Register New Wholesale Buyer */}
-                  <button
-                    type="button"
-                    onClick={() => handlePortalNavigate("/login?portal=merchant&tab=signup")}
-                    className="mt-1 flex items-center justify-center gap-2 py-3 rounded-xl border border-gold/30 bg-gold/10 text-gold font-mono text-[11px] font-semibold tracking-wider hover:bg-gold/20 transition-colors"
-                  >
-                    <UserPlus className="w-3.5 h-3.5" />
-                    <span>REGISTER AS WHOLESALE BUYER</span>
-                  </button>
-                </div>
-
                 <div className="mt-4 flex flex-col gap-2.5 pt-1">
                   <a
                     href="#quote"
@@ -289,187 +224,137 @@ export default function Nav() {
         )}
       </header>
 
-      {/* Luxury Trade Portal & Sign In Dialog */}
+      {/* Trade Portal Sign In Dialog */}
       {showSignIn && (
         <div
           role="dialog"
           aria-modal="true"
           aria-labelledby="signin-title"
-          className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-5 bg-black/85 backdrop-blur-md animate-fadeIn"
+          className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-fadeIn"
           onClick={() => setShowSignIn(false)}
         >
           <div
-            className="relative w-full max-w-2xl max-h-[90dvh] overflow-y-auto rounded-3xl border border-gold/30 bg-[#12100c]/98 p-5 sm:p-8 text-ivory shadow-[0_24px_80px_rgba(0,0,0,0.85)] pb-[calc(1.5rem+env(safe-area-inset-bottom))]"
+            className="relative w-full max-w-md max-h-[88dvh] overflow-y-auto rounded-3xl border border-white/20 bg-[#14100b] p-5 sm:p-7 text-ivory shadow-[0_24px_64px_rgba(0,0,0,0.8)] pb-[calc(1.5rem+env(safe-area-inset-bottom))]"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Close Button */}
             <button
               type="button"
               onClick={() => setShowSignIn(false)}
-              className="absolute right-4 top-4 sm:right-6 sm:top-6 grid h-10 w-10 min-h-[40px] min-w-[40px] place-items-center rounded-full border border-white/15 bg-white/5 text-sand hover:text-ivory hover:border-gold/40 active:scale-95 transition-all cursor-pointer"
+              className="absolute right-4 top-4 grid h-11 w-11 min-h-[44px] min-w-[44px] place-items-center rounded-full border border-white/15 bg-white/5 text-sand hover:text-ivory hover:border-white/30 active:scale-95 transition-transform"
               aria-label="Close dialog"
             >
-              <X className="w-4 h-4" />
+              ✕
             </button>
 
             {/* Header */}
-            <div className="flex items-center gap-3.5">
-              <div className="w-12 h-12 rounded-2xl border border-gold/40 bg-white/10 p-1.5 flex items-center justify-center shadow-[0_0_20px_rgba(217,164,65,0.2)] shrink-0">
-                <img src="/logo.png" alt="Tejas Canvassing" className="w-full h-full object-contain" />
+            <div className="flex items-center gap-3">
+              <div className="grid h-10 w-10 place-items-center rounded-full border border-gold/40 bg-gold/10">
+                <WheatIcon className="h-5 w-5 text-gold" />
               </div>
               <div>
-                <span className="eyebrow text-gold text-[10px] sm:text-xs">TEJAS TRADING GATEWAY</span>
+                <span className="eyebrow text-gold">Trade Portal</span>
                 <h3
                   id="signin-title"
-                  className="font-display text-2xl sm:text-3xl italic text-white mt-0.5"
+                  className="font-display text-2xl italic text-white mt-1"
                 >
-                  Choose Your Workspace
+                  Commercial Sign In
                 </h3>
               </div>
             </div>
 
-            <p className="mt-3 text-xs sm:text-sm leading-relaxed text-sand/90">
-              Direct access for verified mandi wholesalers, rice millers, logistics staff, and executive administration.
+            <p className="mt-3 text-xs leading-relaxed text-sand">
+              Direct access for authorized Mandi wholesalers, export partners,
+              and institutional grain procurement teams.
             </p>
 
-            {/* 4 Role Portal Cards */}
-            <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-              {/* 1. Merchant / Buyer */}
-              <div className="group rounded-2xl border border-gold/30 bg-[#18140e] p-4 sm:p-5 flex flex-col justify-between hover:border-gold hover:shadow-[0_8px_24px_rgba(217,164,65,0.18)] transition-all">
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="font-mono text-[10px] tracking-wider uppercase text-gold bg-gold/10 px-2 py-0.5 rounded-full border border-gold/25">
-                      Wholesale Buyer
-                    </span>
-                    <div className="w-8 h-8 rounded-xl bg-gold/15 flex items-center justify-center text-gold group-hover:scale-110 transition-transform">
-                      <Building2 className="w-4 h-4" />
-                    </div>
-                  </div>
-                  <h4 className="font-display text-lg text-white font-medium">Merchant Portal</h4>
-                  <p className="mt-1.5 text-xs text-sand/80 leading-relaxed">
-                    Live APMC rates, bulk consignment booking, dispatch notifications, and bag tracking.
-                  </p>
-                </div>
-                <div className="mt-4 flex flex-col gap-2 pt-2 border-t border-white/10">
-                  <button
-                    type="button"
-                    onClick={() => handlePortalNavigate("/login?portal=merchant")}
-                    className="eyebrow flex items-center justify-center gap-1.5 w-full py-2.5 rounded-full bg-gold text-ink font-semibold text-xs hover:brightness-105 active:scale-95 transition-all cursor-pointer shadow-sm"
-                  >
-                    <LogIn className="w-3.5 h-3.5" />
-                    <span>Merchant Sign In</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handlePortalNavigate("/login?portal=merchant&tab=signup")}
-                    className="eyebrow flex items-center justify-center gap-1.5 w-full py-2 rounded-full border border-gold/40 text-gold text-[11px] hover:bg-gold/10 active:scale-95 transition-all cursor-pointer"
-                  >
-                    <UserPlus className="w-3 h-3" />
-                    <span>Register New Buyer</span>
-                  </button>
-                </div>
+            {signedIn ? (
+              <div className="mt-6 rounded-2xl border border-gold/30 bg-gold/10 p-5 text-center">
+                <p className="eyebrow text-gold">✓ Trade Account Verified</p>
+                <p className="mt-1 text-xs text-sand">
+                  Redirecting to live mandi allocations & pricing…
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowSignIn(false)
+                    window.location.href = "/login"
+                  }}
+                  className="eyebrow mt-4 min-h-[48px] w-full rounded-full bg-gold py-3 text-ink font-semibold active:scale-95 transition-transform"
+                >
+                  Enter Portal
+                </button>
               </div>
-
-              {/* 2. Miller & Supplier */}
-              <div className="group rounded-2xl border border-white/15 bg-[#18140e] p-4 sm:p-5 flex flex-col justify-between hover:border-amber-400 hover:shadow-[0_8px_24px_rgba(245,158,11,0.15)] transition-all">
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="font-mono text-[10px] tracking-wider uppercase text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-full border border-amber-400/25">
-                      Processors
-                    </span>
-                    <div className="w-8 h-8 rounded-xl bg-amber-500/15 flex items-center justify-center text-amber-400 group-hover:scale-110 transition-transform">
-                      <Warehouse className="w-4 h-4" />
-                    </div>
-                  </div>
-                  <h4 className="font-display text-lg text-white font-medium">Miller Portal</h4>
-                  <p className="mt-1.5 text-xs text-sand/80 leading-relaxed">
-                    Update mill rates, submit daily loading status, report dispatches, and review delivery orders.
-                  </p>
-                </div>
-                <div className="mt-4 pt-2 border-t border-white/10">
-                  <button
-                    type="button"
-                    onClick={() => handlePortalNavigate("/login?portal=miller")}
-                    className="eyebrow flex items-center justify-center gap-1.5 w-full py-2.5 rounded-full bg-white/10 border border-white/20 text-ivory hover:border-gold hover:text-gold text-xs font-semibold active:scale-95 transition-all cursor-pointer"
-                  >
-                    <LogIn className="w-3.5 h-3.5" />
-                    <span>Miller Login</span>
-                    <ArrowRight className="w-3 h-3 ml-0.5" />
-                  </button>
-                </div>
-              </div>
-
-              {/* 3. Operations & Staff */}
-              <div className="group rounded-2xl border border-white/15 bg-[#18140e] p-4 sm:p-5 flex flex-col justify-between hover:border-sky-400 hover:shadow-[0_8px_24px_rgba(56,189,248,0.15)] transition-all">
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="font-mono text-[10px] tracking-wider uppercase text-sky-400 bg-sky-400/10 px-2 py-0.5 rounded-full border border-sky-400/25">
-                      Operations Desk
-                    </span>
-                    <div className="w-8 h-8 rounded-xl bg-sky-500/15 flex items-center justify-center text-sky-400 group-hover:scale-110 transition-transform">
-                      <Briefcase className="w-4 h-4" />
-                    </div>
-                  </div>
-                  <h4 className="font-display text-lg text-white font-medium">Staff Operations</h4>
-                  <p className="mt-1.5 text-xs text-sand/80 leading-relaxed">
-                    Arrival entries, lorry loading sheets, dispatch tasks, and inventory checks in the yard.
-                  </p>
-                </div>
-                <div className="mt-4 pt-2 border-t border-white/10">
-                  <button
-                    type="button"
-                    onClick={() => handlePortalNavigate("/login?portal=employee")}
-                    className="eyebrow flex items-center justify-center gap-1.5 w-full py-2.5 rounded-full bg-white/10 border border-white/20 text-ivory hover:border-sky-400 hover:text-sky-300 text-xs font-semibold active:scale-95 transition-all cursor-pointer"
-                  >
-                    <LogIn className="w-3.5 h-3.5" />
-                    <span>Staff Sign In</span>
-                    <ArrowRight className="w-3 h-3 ml-0.5" />
-                  </button>
-                </div>
-              </div>
-
-              {/* 4. Executive Administration */}
-              <div className="group rounded-2xl border border-white/15 bg-[#18140e] p-4 sm:p-5 flex flex-col justify-between hover:border-emerald-400 hover:shadow-[0_8px_24px_rgba(52,211,153,0.15)] transition-all">
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="font-mono text-[10px] tracking-wider uppercase text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded-full border border-emerald-400/25">
-                      Executive Admin
-                    </span>
-                    <div className="w-8 h-8 rounded-xl bg-emerald-500/15 flex items-center justify-center text-emerald-400 group-hover:scale-110 transition-transform">
-                      <ShieldCheck className="w-4 h-4" />
-                    </div>
-                  </div>
-                  <h4 className="font-display text-lg text-white font-medium">Admin Console</h4>
-                  <p className="mt-1.5 text-xs text-sand/80 leading-relaxed">
-                    Executive ledger control, digital patti book, customer accounts, and master analytics.
-                  </p>
-                </div>
-                <div className="mt-4 pt-2 border-t border-white/10">
-                  <button
-                    type="button"
-                    onClick={() => handlePortalNavigate("/admin")}
-                    className="eyebrow flex items-center justify-center gap-1.5 w-full py-2.5 rounded-full bg-white/10 border border-white/20 text-ivory hover:border-emerald-400 hover:text-emerald-300 text-xs font-semibold active:scale-95 transition-all cursor-pointer"
-                  >
-                    <ShieldCheck className="w-3.5 h-3.5" />
-                    <span>Admin Console</span>
-                    <ArrowRight className="w-3 h-3 ml-0.5" />
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Bottom Direct Login Redirect */}
-            <div className="mt-6 pt-4 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-sand">
-              <span className="text-[11px] text-sand/80">Prefer the central unified login terminal?</span>
-              <button
-                type="button"
-                onClick={() => handlePortalNavigate("/login")}
-                className="eyebrow text-gold hover:text-gold-light hover:underline flex items-center gap-1 text-xs font-medium cursor-pointer"
+            ) : (
+              <form
+                className="mt-6 flex flex-col gap-4"
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  setSignedIn(true)
+                }}
               >
-                <span>Go to Central Login Page</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
+                <div>
+                  <label className="block eyebrow text-sand mb-1.5">
+                    Buyer ID / Registered Email
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. TC-9482 or buyer@trade.com"
+                    className="w-full min-h-[48px] rounded-xl border border-white/15 bg-coal/80 px-4 py-3 text-base sm:text-sm text-ivory placeholder:text-sand/40 focus:border-gold focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block eyebrow text-sand mb-1.5">
+                    Access Pin / Password
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    placeholder="••••••••"
+                    className="w-full min-h-[48px] rounded-xl border border-white/15 bg-coal/80 px-4 py-3 text-base sm:text-sm text-ivory placeholder:text-sand/40 focus:border-gold focus:outline-none"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between text-xs text-sand">
+                  <label className="flex items-center gap-2 cursor-pointer min-h-[36px]">
+                    <input
+                      type="checkbox"
+                      className="accent-gold rounded h-4 w-4"
+                      defaultChecked
+                    />
+                    <span className="eyebrow text-sand text-[10px] sm:text-xs">Remember terminal</span>
+                  </label>
+                  <a
+                    href="#quote"
+                    onClick={() => setShowSignIn(false)}
+                    className="eyebrow text-gold hover:underline text-[10px] sm:text-xs py-1"
+                  >
+                    Forgot PIN?
+                  </a>
+                </div>
+
+                <button
+                  type="submit"
+                  className="eyebrow mt-2 flex min-h-[48px] w-full items-center justify-center gap-2 rounded-full border border-gold bg-gold py-3.5 text-ink font-semibold shadow-sm transition-transform hover:brightness-105 active:scale-95"
+                >
+                  <LockIcon className="h-3.5 w-3.5 text-ink" />
+                  <span>Authenticate & Enter</span>
+                </button>
+
+                <p className="text-center font-mono text-[10px] text-sand/70 pt-2">
+                  Not a verified buyer yet?{" "}
+                  <a
+                    href="#quote"
+                    onClick={() => setShowSignIn(false)}
+                    className="text-gold underline underline-offset-2"
+                  >
+                    Request trade allotment
+                  </a>
+                </p>
+              </form>
+            )}
           </div>
         </div>
       )}

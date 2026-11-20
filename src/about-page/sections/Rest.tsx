@@ -470,29 +470,10 @@ export function Footer() {
       aria-label="Site footer"
       className="relative overflow-hidden border-t border-gold/20 bg-coal px-5 sm:px-6 pb-[calc(2.5rem+env(safe-area-inset-bottom))] pt-14 sm:pt-20 md:px-12 md:pt-28"
     >
-      <div className="mx-auto grid max-w-[1300px] gap-8 sm:gap-12 md:grid-cols-2 lg:grid-cols-[1.2fr_0.9fr_1fr_1fr]">
-        <div>
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 rounded-xl border border-gold/40 bg-white/10 p-1 flex items-center justify-center shadow-md shrink-0">
-              <img
-                src="/logo.png"
-                alt="Tejas Canvassing"
-                className="w-full h-full object-contain"
-              />
-            </div>
-            <div>
-              <span className="font-mono text-sm tracking-wider uppercase text-white font-semibold block leading-tight">
-                TEJAS CANVASSING
-              </span>
-              <span className="font-mono text-[9px] text-gold/80 tracking-widest uppercase block mt-0.5">
-                Est. 2008 · M. Adinarayan
-              </span>
-            </div>
-          </div>
-          <p className="max-w-xs font-display text-2xl sm:text-3xl italic leading-snug text-ivory/90">
-            Carefully sourced. Thoughtfully processed. Delivered with trust.
-          </p>
-        </div>
+      <div className="mx-auto grid max-w-[1300px] gap-8 sm:gap-12 md:grid-cols-[1.4fr_1fr_1fr]">
+        <p className="max-w-xs font-display text-2xl sm:text-3xl italic leading-snug text-ivory/90">
+          Carefully sourced. Thoughtfully processed. Delivered with trust.
+        </p>
         <div>
           <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-sand">
             Explore
@@ -509,30 +490,7 @@ export function Footer() {
               <li key={l}>
                 <a
                   href={h}
-                  className="inline-flex items-center min-h-[36px] py-1 text-ivory/80 transition-colors hover:text-gold"
-                >
-                  {l}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </div>
-        <div>
-          <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-gold">
-            Trade Portals
-          </p>
-          <ul className="mt-4 space-y-2.5 sm:space-y-3 text-sm">
-            {[
-              ["Merchant / Buyer Login", "/login?portal=merchant"],
-              ["Register Wholesale Buyer", "/login?portal=merchant&tab=signup"],
-              ["Miller & Supplier Desk", "/login?portal=miller"],
-              ["Operations Staff Desk", "/login?portal=employee"],
-              ["Executive Admin Console", "/admin"],
-            ].map(([l, h]) => (
-              <li key={l}>
-                <a
-                  href={h}
-                  className="inline-flex items-center min-h-[36px] py-1 text-ivory/80 transition-colors hover:text-gold"
+                  className="inline-flex items-center min-h-[44px] py-1 text-ivory/80 transition-colors hover:text-gold"
                 >
                   {l}
                 </a>
@@ -542,15 +500,15 @@ export function Footer() {
         </div>
         <div>
           <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-sand">
-            APMC Trade Desk
+            Trade desk
           </p>
           <ul className="mt-4 space-y-2.5 sm:space-y-3 text-sm text-ivory/80">
-            <li className="font-mono text-gold">nani@tejasc.in</li>
-            <li>+91 99453 51166</li>
+            <li>trade@tejascanvassing.in</li>
+            <li>+91 98110 22334</li>
             <li>
-              APMC Yard, Yeshwanthpur,
+              Grain Market Road, Karnal,
               <br />
-              Bengaluru, Karnataka 560022
+              Haryana 132001, India
             </li>
           </ul>
         </div>

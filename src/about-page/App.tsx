@@ -11,16 +11,15 @@ import Nav from "./components/Nav"
 import Cursor from "./components/Cursor"
 import Intro from "./components/Intro"
 import { initSmooth, scrollToHash } from "./lib/smooth"
-import "./about.css"
+import "./index.css"
 
-export default function AboutPage() {
+export default function App() {
   const [sel, setSel] = useState(0)
-  
+
   useEffect(() => {
-    // Add scoped class to html & body
-    document.documentElement.classList.add('about-active')
-    document.body.classList.add('about-active')
-    
+    document.documentElement.classList.add("about-page-active")
+    document.body.classList.add("about-page-active")
+
     const stop = initSmooth()
     const click = (e: MouseEvent) => {
       const a = (e.target as HTMLElement).closest(
@@ -34,15 +33,15 @@ export default function AboutPage() {
     }
     document.addEventListener("click", click)
     return () => {
-      document.documentElement.classList.remove('about-active')
-      document.body.classList.remove('about-active')
+      document.documentElement.classList.remove("about-page-active")
+      document.body.classList.remove("about-page-active")
       stop()
       document.removeEventListener("click", click)
     }
   }, [])
 
   return (
-    <div className="tejas-luxury-theme bg-ink text-ivory min-h-screen selection:bg-gold selection:text-ink">
+    <div className="tejas-luxury-about-root bg-ink text-ivory min-h-screen selection:bg-gold selection:text-ink">
       <a href="#main" className="skip">
         Skip to content
       </a>
