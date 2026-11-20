@@ -756,8 +756,8 @@ export async function revertArrivalInPlacedOrders(opts: {
 
           // Does this sub-order match the deleted arrival?
           const matchSubId = normSub && (subId === normSub || subSeq === normSub || subIdxStr === normSub);
-          const matchBill = normBill && subBill && (subBill === normBill);
-          const matchPartyAndPo = isTargetOrder && normParty && (subParty === normParty);
+          const matchBill = normBill && (subBill === normBill || (order.supplierBillNos && Object.values(order.supplierBillNos).some(b => String(b).trim().toLowerCase() === normBill)));
+          const matchPartyAndPo = (isTargetOrder || (!normPo && normParty && subParty === normParty)) && normParty && (subParty === normParty);
 
           if (matchSubId || matchBill || matchPartyAndPo) {
             subModified = true;
@@ -822,6 +822,38 @@ export async function revertArrivalInPlacedOrders(opts: {
 
     if (modified) {
       localStorage.setItem('placed_orders', JSON.stringify(updatedOrders));
+
+      // Revert matching buyer ledger in ledgers collection to 'Placed'
+      try {
+        const rawLedgers = localStorage.getItem('ledgers');
+        if (rawLedgers) {
+          const ledgers = JSON.parse(rawLedgers);
+          if (Array.isArray(ledgers)) {
+            let ledgersModified = false;
+            const updatedLedgers = ledgers.map((l: any) => {
+              if (!l) return l;
+              const lPo = String(l.purchaseOrderNo || '').trim().toLowerCase().replace(/^#/, '');
+              const lParty = String(l.partyName || '').trim().toLowerCase();
+              const poMatches = normPo ? (lPo === normPo) : true;
+              const partyMatches = normParty ? (lParty === normParty) : false;
+              if (poMatches && partyMatches && l.partyType === 'Buyer' && l.status === 'Arrived') {
+                ledgersModified = true;
+                const updL = { ...l, status: 'Placed' };
+                setCollectionDoc('ledgers', l.id, updL).catch(() => {});
+                return updL;
+              }
+              return l;
+            });
+            if (ledgersModified) {
+              localStorage.setItem('ledgers', JSON.stringify(updatedLedgers));
+              window.dispatchEvent(new Event('ledgers-updated'));
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Error reverting ledgers:', e);
+      }
+
       window.dispatchEvent(new Event('placed-orders-updated'));
       window.dispatchEvent(new Event('operational-orders-updated'));
       window.dispatchEvent(new Event('storage'));

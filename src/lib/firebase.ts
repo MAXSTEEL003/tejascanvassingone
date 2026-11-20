@@ -874,16 +874,18 @@ export async function createLedgerEntriesForOrder(groupedOrder: any): Promise<vo
     const ledgerEntries: any[] = [];
     
     if (groupedOrder.originalOrders && groupedOrder.originalOrders.length > 0) {
-      groupedOrder.originalOrders.forEach((sub: any) => {
+      groupedOrder.originalOrders.forEach((sub: any, sIdx: number) => {
         const qty = sub.qty || 10;
         const rate = sub.rate || 4200;
         const amount = qty * rate;
         const subBrand = sub.brand || sub.product || sub.variety || groupedOrder.brand || groupedOrder.product || "Standard Rice";
+        const subId = sub.id || sub.subOrderId || sub.subOrderNo || sub.orderNo || `sub-${sIdx}`;
 
         // 1. Buyer/Shop entry
         const buyerEntry = {
           id: `LEDG-B-${Math.floor(100000 + Math.random() * 900000)}`,
           purchaseOrderNo: poNo,
+          subOrderId: subId,
           date,
           partyName: sub.buyer || groupedOrder.buyer || "Standard Buyer",
           partyType: 'Buyer',
@@ -898,6 +900,7 @@ export async function createLedgerEntriesForOrder(groupedOrder: any): Promise<vo
         const supplierEntry = {
           id: `LEDG-S-${Math.floor(100000 + Math.random() * 900000)}`,
           purchaseOrderNo: poNo,
+          subOrderId: subId,
           date,
           partyName: sub.supplier || groupedOrder.supplier || "Amritsar Grain Export Ltd.",
           partyType: 'Supplier',
@@ -992,41 +995,43 @@ export async function markLedgerEntriesAsArrived(
 
       if (targetOrder && targetOrder.originalOrders && targetOrder.originalOrders.length > 0) {
         const matchingSub = targetOrder.originalOrders.find((sub: any, sIdx: number) => {
-          const sId = sub.id || `sub-${sIdx}`;
+          const sId = sub.id || sub.subOrderId || `sub-${sIdx}`;
+          if (l.subOrderId) {
+            return l.subOrderId === sId || l.subOrderId === sub.id;
+          }
           if (targetSubId && sId !== targetSubId && sub.id !== targetSubId) {
             return false;
           }
           if (l.partyType === 'Buyer') {
             return sub.buyer === l.partyName;
           } else {
-            return (sub.supplier || sub.seller || targetOrder.origin) === l.partyName;
+            if (targetSubId) {
+              return sId === targetSubId || sub.id === targetSubId;
+            }
+            return (sub.supplier || sub.seller || targetOrder.origin) === l.partyName && (Number(sub.qty) === Number(l.qty));
           }
         });
 
         // If an individual sub-order was targeted and this ledger entry does not belong to it, skip
-        if (targetSubId && !matchingSub) {
+        if (!matchingSub) {
           return;
         }
 
-        // If in batch mode, only process ledger entries for sub-orders that are actually marked arrived
-        if (!targetSubId && matchingSub) {
-          const isArrived = Boolean(matchingSub.isArrived === true || matchingSub.status === 'Arrived');
-          if (!isArrived) {
-            return;
-          }
+        // Only process ledger entries for sub-orders that are actually marked arrived
+        const isArrived = Boolean(matchingSub.isArrived === true || matchingSub.status === 'Arrived');
+        if (!isArrived) {
+          return;
         }
 
-        if (matchingSub) {
-          const subId = matchingSub.id || '';
-          originalQty = parseFloat(matchingSub.qty) || parseFloat(matchingSub.totalQty) || originalQty;
-          originalRate = parseFloat(matchingSub.rate) || originalRate;
+        const subId = matchingSub.id || '';
+        originalQty = parseFloat(matchingSub.qty) || parseFloat(matchingSub.totalQty) || originalQty;
+        originalRate = parseFloat(matchingSub.rate) || originalRate;
 
-          if (customQtys && customQtys[subId] !== undefined) {
-            arrivedQty = customQtys[subId];
-          }
-          if (customRates && customRates[subId] !== undefined) {
-            arrivedRate = customRates[subId];
-          }
+        if (customQtys && customQtys[subId] !== undefined) {
+          arrivedQty = customQtys[subId];
+        }
+        if (customRates && customRates[subId] !== undefined) {
+          arrivedRate = customRates[subId];
         }
       } else if (targetOrder) {
         if (customQtys && customQtys[poNo] !== undefined) {

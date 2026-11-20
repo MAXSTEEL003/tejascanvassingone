@@ -17,8 +17,8 @@ export default function App() {
   const [sel, setSel] = useState(0)
 
   useEffect(() => {
-    document.documentElement.classList.add("about-page-active")
-    document.body.classList.add("about-page-active")
+    document.documentElement.classList.add("about-page-active", "about-active")
+    document.body.classList.add("about-page-active", "about-active")
 
     const stop = initSmooth()
     const click = (e: MouseEvent) => {
@@ -33,8 +33,8 @@ export default function App() {
     }
     document.addEventListener("click", click)
     return () => {
-      document.documentElement.classList.remove("about-page-active")
-      document.body.classList.remove("about-page-active")
+      document.documentElement.classList.remove("about-page-active", "about-active")
+      document.body.classList.remove("about-page-active", "about-active")
       stop()
       document.removeEventListener("click", click)
     }

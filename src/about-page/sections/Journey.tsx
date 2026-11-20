@@ -727,23 +727,28 @@ function Processing({
   const [explicitlyPaused, setExplicitlyPaused] = useState(false)
   const idleTimerRef = useRef<number | null>(null)
 
-  // Mark video ready on metadata load
+  // Mark video ready on metadata/data load
   const handleLoadedMetadata = () => {
     const video = videoRef.current
-    if (video && Number.isFinite(video.duration) && video.duration > 0) {
-      if (!isPlaying) video.pause()
+    if (video) {
       setVideoLoaded(true)
       setVideoError(false)
+      if (video.duration && Number.isFinite(video.duration) && !isPlaying) {
+        try { video.pause() } catch {}
+      }
     }
   }
 
   // Handle cached or already-ready video element
   useEffect(() => {
     const video = videoRef.current
-    if (video && video.readyState >= 1 && Number.isFinite(video.duration) && video.duration > 0) {
-      if (!isPlaying) video.pause()
-      setVideoLoaded(true)
-      setVideoError(false)
+    if (video) {
+      video.muted = true
+      video.defaultMuted = true
+      if (video.readyState >= 1 || (video.duration && Number.isFinite(video.duration))) {
+        setVideoLoaded(true)
+        setVideoError(false)
+      }
     }
   }, [isPlaying])
 
@@ -788,28 +793,31 @@ function Processing({
   // Auto-start playback on entering Scene 3
   useEffect(() => {
     if (
-      p >= 0.73 &&
-      p <= 0.76 &&
-      videoLoaded &&
-      !videoError &&
+      p >= 0.70 &&
+      p <= 0.88 &&
       !hasAutoStartedRef.current &&
       !explicitlyPaused &&
       !isPlaying
     ) {
-      hasAutoStartedRef.current = true
       const video = videoRef.current
       if (video) {
+        hasAutoStartedRef.current = true
+        video.muted = true
+        video.defaultMuted = true
         video
           .play()
           .then(() => {
             setIsPlaying(true)
+            setVideoLoaded(true)
           })
-          .catch(() => {})
+          .catch((err) => {
+            console.debug("Autoplay prevented:", err)
+          })
       }
     }
 
-    // Reset auto-start flag when scrolled back above Scene 3
-    if (p < 0.65) {
+    // Reset auto-start flag when scrolled away from Scene 3
+    if (p < 0.65 || p > 0.92) {
       hasAutoStartedRef.current = false
       setExplicitlyPaused(false)
     }
@@ -1005,16 +1013,29 @@ function Processing({
           src="/processing.mp4"
           poster={IMG.sack}
           muted
+          defaultMuted
           playsInline
           preload="auto"
           onLoadedMetadata={handleLoadedMetadata}
+          onLoadedData={handleLoadedMetadata}
+          onCanPlay={handleLoadedMetadata}
+          onCanPlayThrough={handleLoadedMetadata}
+          onPlay={() => {
+            setVideoLoaded(true)
+            setIsPlaying(true)
+          }}
+          onTimeUpdate={() => {
+            if (!videoLoaded) setVideoLoaded(true)
+          }}
           onError={() => setVideoError(true)}
           className="absolute inset-0 h-full w-full object-cover transition-opacity duration-700 will-change-transform"
           style={{
-            opacity: videoLoaded ? 0.65 : 0,
+            opacity: videoLoaded ? 0.75 : 0.4,
             filter: "brightness(.9) contrast(1.05)",
           }}
-        />
+        >
+          <source src="/processing.mp4" type="video/mp4" />
+        </video>
       )}
 
       <div className="absolute inset-0 bg-gradient-to-b from-earth/85 via-earth/25 to-earth/95" />

@@ -384,7 +384,11 @@ body.about-page-active {
 }
 
 .about-page-active,
-.about-page-active * {
+.about-page-active *,
+.about-active,
+.about-active *,
+.login-luxury-active,
+.login-luxury-active * {
   --font-display: 'Bodoni Moda', Georgia, serif;
   --font-serif: 'Bodoni Moda', Georgia, serif;
   --font-sans: 'Hanken Grotesk', system-ui, sans-serif;
@@ -395,17 +399,23 @@ body.about-page-active {
 .about-page-active .display-xl,
 .about-page-active .display-lg,
 .about-page-active .display-md,
-.about-page-active .display {
+.about-page-active .display,
+.about-active .font-display,
+.login-luxury-active .font-display {
   font-family: 'Bodoni Moda', Georgia, serif !important;
 }
 
 .about-page-active .font-sans,
 .about-page-active p,
-.about-page-active .lede {
+.about-page-active .lede,
+.about-active .font-sans,
+.login-luxury-active .font-sans {
   font-family: 'Hanken Grotesk', system-ui, sans-serif !important;
 }
 
 .about-page-active .font-mono,
-.about-page-active .eyebrow {
+.about-page-active .eyebrow,
+.about-active .font-mono,
+.login-luxury-active .font-mono {
   font-family: 'DM Mono', ui-monospace, monospace !important;
 }

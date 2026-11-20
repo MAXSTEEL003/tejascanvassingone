@@ -763,6 +763,9 @@ export default function PaymentTracking() {
   useEffect(() => {
     loadData();
     window.addEventListener('storage', loadData);
+    window.addEventListener('arrival-entry-updated', loadData);
+    window.addEventListener('operational-orders-updated', loadData);
+    window.addEventListener('ledgers-updated', loadData);
 
     // Command palette listen event
     const handleGotoArrival = () => {
@@ -772,6 +775,9 @@ export default function PaymentTracking() {
 
     return () => {
       window.removeEventListener('storage', loadData);
+      window.removeEventListener('arrival-entry-updated', loadData);
+      window.removeEventListener('operational-orders-updated', loadData);
+      window.removeEventListener('ledgers-updated', loadData);
       window.removeEventListener('goto-arrival-event', handleGotoArrival);
     };
   }, [loadData]);
@@ -814,11 +820,15 @@ export default function PaymentTracking() {
             const rBill = row.billNo ? String(row.billNo).trim().toLowerCase().replace(/^(bill[-.\s]*|bil[-.\s]*|tc[-.\s]*)/i, '') : '';
             const rPo = String(row.purchaseOrderNo || row.mainPoNo || '').trim().toLowerCase().replace(/^#/, '');
             const rParty = String(row.partyName || row.buyer || '').trim().toLowerCase();
+            const rSub = String(row.subOrderId || '').trim().toLowerCase();
 
             if (rId && deletedArrivalIds.has(rId)) return;
             if (rBill && deletedArrivalIds.has(rBill)) return;
+            if (rSub && deletedArrivalIds.has(rSub)) return;
             if (rPo && rBill && deletedArrivalIds.has(`${rPo}_${rBill}`)) return;
             if (rPo && rParty && deletedArrivalIds.has(`${rPo}_${rParty}`)) return;
+            if (rPo && rSub && deletedArrivalIds.has(`${rPo}_${rSub}`)) return;
+            if (rBill && rSub && deletedArrivalIds.has(`${rBill}_${rSub}`)) return;
 
             rows.push({
               ...row,
@@ -985,7 +995,8 @@ export default function PaymentTracking() {
           } else if (hasLftInBill) {
             isLifted = true;
             redirectedShop = rowParty;
-            originalBuyer = rOriginal || (matchingOrder?.buyer && matchingOrder.buyer.toLowerCase() !== rowParty.toLowerCase() ? matchingOrder.buyer : '');
+            const fallbackMatchingBuyer = matchingOrder?.buyer && !matchingOrder.buyer.includes('&') && !matchingOrder.buyer.toLowerCase().includes('other') && matchingOrder.buyer.toLowerCase() !== rowParty.toLowerCase() ? matchingOrder.buyer : '';
+            originalBuyer = rOriginal || fallbackMatchingBuyer;
             liftingRecord = row.liftingRecord || null;
           }
         }
@@ -1013,9 +1024,10 @@ export default function PaymentTracking() {
 
         // Primary buyer name to collect payment from
         const resolvedBuyer = isLifted && redirectedShop ? redirectedShop : (rowParty || 'Not Assigned');
-        if (originalBuyer && resolvedBuyer && originalBuyer.toLowerCase() === resolvedBuyer.toLowerCase()) {
+        if (!originalBuyer || (resolvedBuyer && originalBuyer.toLowerCase().trim() === resolvedBuyer.toLowerCase().trim())) {
           isLifted = false;
           originalBuyer = '';
+          redirectedShop = '';
         }
 
         return {
@@ -1099,7 +1111,7 @@ export default function PaymentTracking() {
     let count = 0;
 
     contractTxns.forEach(txn => {
-      if (txn.isLifted) {
+      if (txn.isLifted && txn.originalBuyer && txn.buyer?.toLowerCase().trim() !== txn.originalBuyer?.toLowerCase().trim()) {
         count++;
         totalAmt += txn.amount;
         if (txn.status === 'Cleared') {
@@ -1150,7 +1162,7 @@ export default function PaymentTracking() {
         return txn.isDiscrepancy;
       }
       if (statusFilter === 'lifted') {
-        return txn.isLifted;
+        return Boolean(txn.isLifted && txn.originalBuyer && txn.buyer?.toLowerCase().trim() !== txn.originalBuyer?.toLowerCase().trim());
       }
 
       return true;
@@ -1987,7 +1999,7 @@ export default function PaymentTracking() {
                             <td className="py-2 px-3 font-bold text-neutral-800 dark:text-neutral-200">
                               <div className="flex items-center gap-1.5">
                                 <span className="truncate max-w-[200px]">{txn.buyer}</span>
-                                {txn.isLifted && (
+                                {txn.isLifted && txn.originalBuyer && txn.buyer?.toLowerCase().trim() !== txn.originalBuyer?.toLowerCase().trim() && (
                                   <span className="text-[8px] bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300 px-1 py-0.2 rounded font-black uppercase tracking-tight">
                                     Lifted
                                   </span>
@@ -2504,7 +2516,7 @@ export default function PaymentTracking() {
 
                 {/* Ledger Summary Info Drawer */}
                 <div className="p-4 bg-neutral-50 dark:bg-neutral-1000 border border-neutral-250/20 dark:border-neutral-800 rounded-2xl text-xs space-y-2 text-left">
-                  {selectedTxn.isLifted && (
+                  {selectedTxn.isLifted && selectedTxn.originalBuyer && selectedTxn.buyer?.toLowerCase().trim() !== selectedTxn.originalBuyer?.toLowerCase().trim() && (
                     <div className="p-2.5 mb-2 rounded-xl bg-purple-500/10 border border-purple-500/20 text-xs text-purple-900 dark:text-purple-200 space-y-1">
                       <div className="flex items-center gap-1.5 font-black uppercase text-[10px] text-purple-700 dark:text-purple-300">
                         <Truck className="w-3.5 h-3.5 text-purple-600 shrink-0" />

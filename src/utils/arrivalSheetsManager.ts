@@ -152,10 +152,17 @@ export function organizeArrivalSheetsByMonth(
     const rId = r.id ? String(r.id).trim().toLowerCase().replace(/^#/, '') : '';
     const rBill = r.billNo ? String(r.billNo).trim().toLowerCase().replace(/^(bill[-.\s]*|bil[-.\s]*|tc[-.\s]*)/i, '') : '';
     const rPo = String(r.purchaseOrderNo || r.mainPoNo || '').trim().toLowerCase().replace(/^#/, '');
+    const rParty = String(r.partyName || r.buyer || '').trim().toLowerCase();
+    const rSub = String(r.subOrderId || '').trim().toLowerCase();
 
-    // Only tombstone by exact unique row ID, or specific PO+Bill combination
+    // Check unique row ID, bill alone, subOrder alone, or composite combinations
     if (rId && deletedArrivalIds.has(rId)) return true;
+    if (rBill && deletedArrivalIds.has(rBill)) return true;
+    if (rSub && deletedArrivalIds.has(rSub)) return true;
     if (rPo && rBill && deletedArrivalIds.has(`${rPo}_${rBill}`)) return true;
+    if (rPo && rParty && deletedArrivalIds.has(`${rPo}_${rParty}`)) return true;
+    if (rPo && rSub && deletedArrivalIds.has(`${rPo}_${rSub}`)) return true;
+    if (rBill && rSub && deletedArrivalIds.has(`${rBill}_${rSub}`)) return true;
     return false;
   };
 

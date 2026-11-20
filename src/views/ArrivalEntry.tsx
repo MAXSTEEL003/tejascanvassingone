@@ -2544,7 +2544,7 @@ export default function ArrivalEntry() {
     const idsToDelete: string[] = [];
     if (rowId) idsToDelete.push(rowId);
     if (cleanBill) idsToDelete.push(cleanBill);
-    if (targetPo) idsToDelete.push(targetPo);
+    if (targetPo && !targetSub) idsToDelete.push(targetPo);
     if (targetSub) idsToDelete.push(targetSub);
     if (targetPo && cleanBill) idsToDelete.push(`${targetPo}_${cleanBill}`);
     if (targetPo && targetParty) idsToDelete.push(`${targetPo}_${targetParty}`);
@@ -2584,6 +2584,7 @@ export default function ArrivalEntry() {
       });
 
       localStorage.setItem('arrival_entry_sheets_v4', JSON.stringify(updated));
+      localStorage.setItem('arrival_sheets', JSON.stringify(updated));
       const activeSheet = updated.find(s => s.id === currentSheetId) || updated[0];
       if (activeSheet) {
         localStorage.setItem('arrival_entry_data_v4', JSON.stringify(activeSheet.data));
@@ -2623,6 +2624,8 @@ export default function ArrivalEntry() {
         }
         invalidateCollectionCache('arrival_entries');
         window.dispatchEvent(new Event('arrival-entry-updated'));
+        window.dispatchEvent(new Event('operational-orders-updated'));
+        window.dispatchEvent(new Event('ledgers-updated'));
         window.dispatchEvent(new Event('storage'));
       } catch (err) {
         console.error("Cloud purge failed for deleted arrival row:", err);
