@@ -1013,7 +1013,6 @@ function Processing({
           src="/processing.mp4"
           poster={IMG.sack}
           muted
-          defaultMuted
           playsInline
           preload="auto"
           onLoadedMetadata={handleLoadedMetadata}
