@@ -133,8 +133,8 @@ export default function MillerUpdatesView() {
   const [activeTab, setActiveTab] = useState<'stream' | 'chat'>('stream');
 
   // Miller Ingest Feed State
+  // Standalone updates stream for Miller Updates (App B feed - decoupled from this app's placed_orders)
   const [rawUpdates, setRawUpdates] = useState<MillerUpdateItem[]>([]);
-  const [orders, setOrders] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isLiveConnected, setIsLiveConnected] = useState(true);
 
@@ -210,7 +210,7 @@ export default function MillerUpdatesView() {
   const loadOrdersAndChats = async () => {
     setIsLoading(true);
     try {
-      // 1. Local updates cache
+      // 1. Local updates cache (App B updates)
       const cachedUpdates = localStorage.getItem('miller_updates');
       if (cachedUpdates) {
         try {
@@ -218,18 +218,7 @@ export default function MillerUpdatesView() {
         } catch {}
       }
 
-      // 2. Fetch Placed Orders
-      const localOrders = localStorage.getItem('placed_orders');
-      if (localOrders) {
-        setOrders(JSON.parse(localOrders));
-      }
-      const remoteOrders = await getCollectionDocs('placed_orders');
-      if (remoteOrders && remoteOrders.length > 0) {
-        setOrders(remoteOrders);
-        localStorage.setItem('placed_orders', JSON.stringify(remoteOrders));
-      }
-
-      // 3. Fetch from remote updates collection
+      // 2. Fetch from remote updates collection (App B updates feed - decoupled from this app's orders)
       const remoteUpdates = await getCollectionDocs('miller_updates').catch(() => []);
       if (remoteUpdates && remoteUpdates.length > 0) {
         setRawUpdates(prev => {
@@ -302,106 +291,19 @@ export default function MillerUpdatesView() {
 
     window.addEventListener('storage', handleSync);
     window.addEventListener('miller-updates-changed', handleSync);
-    window.addEventListener('placed-orders-updated', loadOrdersAndChats);
 
     return () => {
       unsubscribeUpdates();
       clearInterval(pollInterval);
       window.removeEventListener('storage', handleSync);
       window.removeEventListener('miller-updates-changed', handleSync);
-      window.removeEventListener('placed-orders-updated', loadOrdersAndChats);
     };
   }, []);
 
-  // Consolidate updates from both explicit webhook events and placed order master records
+  // Updates stream from incoming App B webhook/events (standalone, decoupled from this app's orders)
   const allUpdatesStream = useMemo(() => {
-    const list: MillerUpdateItem[] = [...rawUpdates];
-    const seenKeys = new Set<string>();
-
-    rawUpdates.forEach(u => {
-      seenKeys.add(`${u.type}_${u.poNumber}_${u.subOrderNo || ''}_${u.billNo || u.vehicleNumber || ''}`);
-    });
-
-    // Synthesize entries from placed_orders so existing fulfillments are visible
-    orders.forEach((ord: any) => {
-      const poNum = resolveGroupedPoNumber(ord);
-      const supplier = String(ord.supplier || ord.millerName || 'Bhagwathi Rice and Agro Industries').trim();
-      const orderDate = ord.date || ord.createdAt || new Date().toISOString();
-      const rawSubs = Array.isArray(ord.originalOrders) && ord.originalOrders.length > 0 ? ord.originalOrders : [ord];
-
-      // A. Synthesize bill uploads
-      rawSubs.forEach((sub: any, sIdx: number) => {
-        const subNo = resolveSubOrderNumber(sub, sIdx, supplier);
-        const subBill = sub.billNo || sub.actualSupplierBillNo || (ord.supplierBillNos && ord.supplierBillNos[subNo]) || ord.actualSupplierBillNo || ord.billNo;
-        const subBillPhoto = sub.billUrl || sub.billPhotoUrl || sub.billPhoto || (ord.supplierBillPhotos && ord.supplierBillPhotos[subNo]) || ord.billPhotoUrl || ord.billPhoto;
-
-        if (subBill) {
-          const key = `BILL_UPLOADED_${poNum}_${subNo}_${subBill}`;
-          if (!seenKeys.has(key)) {
-            seenKeys.add(key);
-            list.push({
-              id: `synth_bill_${poNum}_${subNo}_${subBill}`,
-              type: 'BILL_UPLOADED',
-              poNumber: poNum,
-              subOrderNo: subNo,
-              buyerName: sub.buyer || ord.buyer || 'Consignee',
-              billNo: subBill,
-              billUrl: subBillPhoto || undefined,
-              fileName: `mill_bill_${subBill}.pdf`,
-              millerName: supplier,
-              timestamp: sub.billedAt || ord.billedAt || orderDate,
-              read: true,
-            });
-          }
-        }
-      });
-
-      // B. Synthesize vehicle loadings
-      const truck = ord.vehicleNumber || ord.truckNo || ord.vehicleNo || ord.lorryNo;
-      if (truck) {
-        const key = `TRUCK_LOADED_${poNum}__${truck}`;
-        if (!seenKeys.has(key)) {
-          seenKeys.add(key);
-          list.push({
-            id: `synth_load_${poNum}_${truck}`,
-            type: 'TRUCK_LOADED',
-            poNumber: poNum,
-            subOrderNo: rawSubs.length === 1 ? resolveSubOrderNumber(rawSubs[0], 0, supplier) : undefined,
-            buyerName: ord.buyer || (rawSubs.length === 1 ? rawSubs[0]?.buyer : 'Consolidated Buyers'),
-            vehicleNumber: truck,
-            driverPhone: ord.driverPhone || '',
-            weighbridgeSlip: ord.weighbridgeSlip || '',
-            loadedQuantity: parseFloat(ord.loadedQuantity) || parseFloat(ord.totalVolume) || parseFloat(ord.qty) || 0,
-            loadingDate: ord.loadingDate || (ord.dispatchedAt ? ord.dispatchedAt.split('T')[0] : orderDate.split('T')[0]),
-            millerName: supplier,
-            timestamp: ord.dispatchedAt || orderDate,
-            read: true,
-          });
-        }
-      }
-
-      // C. Synthesize PO Acceptances
-      if (ord.isAcknowledged || ord.status === 'Accepted') {
-        const key = `PO_ACCEPTED_${poNum}__`;
-        if (!seenKeys.has(key)) {
-          seenKeys.add(key);
-          list.push({
-            id: `synth_ack_${poNum}`,
-            type: 'PO_ACCEPTED',
-            poNumber: poNum,
-            millerName: supplier,
-            buyerName: ord.buyer || 'Authorized Buyer',
-            status: 'Accepted',
-            timestamp: ord.acknowledgedAt || orderDate,
-            read: true,
-          });
-        }
-      }
-    });
-
-    // Sort descending by timestamp
-    return list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  }, [rawUpdates, orders]);
+    return [...rawUpdates].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }, [rawUpdates]);
 
   // Compute Summary Statistics
   const summaryStats = useMemo(() => {
@@ -557,57 +459,26 @@ export default function MillerUpdatesView() {
       });
     });
 
-    orders.forEach(order => {
-      const rawSup = (order.supplier || 'DIRECT MILL').trim();
-      const normOrder = normalizeSupplier(rawSup);
-
-      let matchedKey: string | null = null;
-      for (const [key] of millsMap.entries()) {
-        if (normalizeSupplier(key) === normOrder || key.includes(normOrder) || normOrder.includes(key)) {
-          matchedKey = key;
-          break;
-        }
-      }
-
-      if (!matchedKey) {
-        const profile = resolveSupplierProfile(rawSup);
-        matchedKey = rawSup.toUpperCase();
-        millsMap.set(matchedKey, {
-          id: `sup-${matchedKey.replace(/\s+/g, '-').toLowerCase()}`,
-          name: rawSup,
-          code: '',
-          phone: profile.phone || '',
-          email: profile.email || '',
-          address: profile.address || '',
-          orders: [],
-          lastActivityTime: 0,
-          pendingAckCount: 0,
-          dispatchedCount: 0,
-          hasBillsCount: 0,
-          snippet: 'Direct Mill'
-        });
-      }
-
-      const millObj = millsMap.get(matchedKey)!;
-      millObj.orders.push(order);
-
-      if (!order.isAcknowledged) millObj.pendingAckCount++;
-      if (order.truckNo || order.vehicleNo) millObj.dispatchedCount++;
-      if (order.actualSupplierBillNo || order.billPhoto || order.billPhotoUrl || (order.supplierBillPhotos && Object.keys(order.supplierBillPhotos).length > 0)) {
-        millObj.hasBillsCount++;
-      }
-
-      const orderDateMs = order.date ? new Date(order.date).getTime() : 0;
-      if (orderDateMs > millObj.lastActivityTime) {
-        millObj.lastActivityTime = orderDateMs;
-        if (order.truckNo || order.vehicleNo) {
-          millObj.snippet = `🚚 Lorry: ${order.truckNo || order.vehicleNo} (PO #${order.id})`;
-        } else if (order.actualSupplierBillNo || order.billPhoto || order.billPhotoUrl) {
-          millObj.snippet = `🧾 Mill Invoice attached for PO #${order.id}`;
-        } else if (order.isAcknowledged) {
-          millObj.snippet = `✅ Acknowledged PO #${order.id}`;
-        } else {
-          millObj.snippet = `📄 New PO #${order.id} issued (${order.qty || order.totalVolume || 600} QTLS)`;
+    // Update mills with activities from App B feeds (decoupled from this app's orders)
+    rawUpdates.forEach(update => {
+      const millName = update.millerName || '';
+      if (!millName) return;
+      const normMill = normalizeSupplier(millName);
+      for (const [key, millObj] of millsMap.entries()) {
+        if (normalizeSupplier(key) === normMill || key.includes(normMill) || normMill.includes(key)) {
+          const uTime = new Date(update.timestamp).getTime();
+          if (uTime > millObj.lastActivityTime) {
+            millObj.lastActivityTime = uTime;
+            if (update.type === 'TRUCK_LOADED') {
+              millObj.snippet = `🚚 Lorry: ${update.vehicleNumber || 'Dispatched'} (PO #${update.poNumber})`;
+              millObj.dispatchedCount++;
+            } else if (update.type === 'BILL_UPLOADED') {
+              millObj.snippet = `🧾 Mill Invoice attached for PO #${update.poNumber}`;
+              millObj.hasBillsCount++;
+            } else if (update.type === 'PO_ACCEPTED') {
+              millObj.snippet = `✅ Acknowledged PO #${update.poNumber}`;
+            }
+          }
         }
       }
     });
@@ -630,7 +501,7 @@ export default function MillerUpdatesView() {
       if (a.pendingAckCount !== b.pendingAckCount) return b.pendingAckCount - a.pendingAckCount;
       return b.lastActivityTime - a.lastActivityTime;
     });
-  }, [orders, customMessages]);
+  }, [rawUpdates, customMessages]);
 
   useEffect(() => {
     const urlMill = searchParams.get('mill');
@@ -667,101 +538,51 @@ export default function MillerUpdatesView() {
     const messages: ChatMessage[] = [];
     const normSelected = normalizeSupplier(currentMill.name);
 
-    currentMill.orders.forEach(order => {
-      const baseDate = order.date ? new Date(order.date).toISOString() : new Date().toISOString();
-      const subOrders = Array.isArray(order.originalOrders) && order.originalOrders.length > 0
-        ? order.originalOrders
-        : [{
-            id: 'sub-0',
-            buyer: order.buyer || 'Direct Consignee',
-            product: order.product || 'Rice Brand',
-            brand: order.brand || order.product || 'Rice Brand',
-            qty: order.qty || order.totalVolume || 600,
-            rate: order.rate || 8000,
-            unloadingPoint: order.unloadingPoint || 'shop'
-          }];
-
-      const totalVolume = subOrders.reduce((s: number, sub: any) => s + (parseFloat(sub.qty) || 0), 0);
-
-      messages.push({
-        id: `po-issue-${order.id}`,
-        millName: currentMill.name,
-        sender: 'tejas',
-        senderName: 'Tejas Canvassing',
-        type: 'po',
-        poId: String(order.id),
-        timestamp: baseDate,
-        poData: { ...order, subOrders, totalVolume },
-        status: 'read'
-      });
-
-      if (order.isAcknowledged) {
-        messages.push({
-          id: `po-ack-${order.id}`,
-          millName: currentMill.name,
-          sender: 'miller',
-          senderName: currentMill.name,
-          type: 'ack',
-          poId: String(order.id),
-          timestamp: order.acknowledgedAt || new Date(new Date(baseDate).getTime() + 15 * 60000).toISOString(),
-          text: `We acknowledge receipt of Purchase Order #${order.id}. Order is booked for loading as per schedule.`,
-          status: 'read'
-        });
-      }
-
-      if (order.truckNo || order.vehicleNo) {
-        messages.push({
-          id: `po-disp-${order.id}`,
-          millName: currentMill.name,
-          sender: 'miller',
-          senderName: currentMill.name,
-          type: 'dispatch',
-          poId: String(order.id),
-          timestamp: order.dispatchedAt || new Date(new Date(baseDate).getTime() + 45 * 60000).toISOString(),
-          vehicleNo: order.truckNo || order.vehicleNo,
-          driverPhone: order.driverPhone || '',
-          dispatchDate: order.dispatchedAt ? order.dispatchedAt.split('T')[0] : order.date,
-          dispatchNotes: order.dispatchNotes || 'Lorry loaded and dispatched from mill weighbridge directly to buyer.',
-          status: 'read'
-        });
-      }
-
-      const subBillsWithAttachments: Array<{ buyer: string; billNo: string; photoUrl: string }> = [];
-      subOrders.forEach((sub: any, sIdx: number) => {
-        const subKey = String(sub.id || sub.buyer || `sub-${sIdx}`);
-        const sBillNo = sub.actualSupplierBillNo || sub.billNo || (order.supplierBillNos && order.supplierBillNos[subKey]) || '';
-        const sPhoto = sub.billPhoto || sub.billPhotoUrl || sub.billAttachment || (order.supplierBillPhotos && order.supplierBillPhotos[subKey]) || null;
-        if (sPhoto) {
-          subBillsWithAttachments.push({
-            buyer: sub.buyer || 'Consignee',
-            billNo: sBillNo || `BIL-${order.id}`,
-            photoUrl: sPhoto
+    // Timeline messages constructed exclusively from App B updates
+    rawUpdates.forEach(update => {
+      const normMill = normalizeSupplier(update.millerName || '');
+      if (normMill === normSelected || currentMill.name.toUpperCase().includes(normMill) || normMill.includes(currentMill.name.toUpperCase())) {
+        if (update.type === 'PO_ACCEPTED') {
+          messages.push({
+            id: `upd-ack-${update.id}`,
+            millName: currentMill.name,
+            sender: 'miller',
+            senderName: currentMill.name,
+            type: 'ack',
+            poId: update.poNumber,
+            timestamp: update.timestamp,
+            text: `Acknowledged Purchase Order #${update.poNumber} (Application B).`,
+            status: 'read'
+          });
+        } else if (update.type === 'TRUCK_LOADED') {
+          messages.push({
+            id: `upd-disp-${update.id}`,
+            millName: currentMill.name,
+            sender: 'miller',
+            senderName: currentMill.name,
+            type: 'dispatch',
+            poId: update.poNumber,
+            timestamp: update.timestamp,
+            vehicleNo: update.vehicleNumber,
+            driverPhone: update.driverPhone || '',
+            dispatchDate: update.loadingDate || (update.timestamp ? update.timestamp.split('T')[0] : ''),
+            dispatchNotes: `Lorry ${update.vehicleNumber || ''} dispatched with ${update.loadedQuantity || 0} QTLS.`,
+            status: 'read'
+          });
+        } else if (update.type === 'BILL_UPLOADED') {
+          messages.push({
+            id: `upd-bill-${update.id}`,
+            millName: currentMill.name,
+            sender: 'miller',
+            senderName: currentMill.name,
+            type: 'bill',
+            poId: update.poNumber,
+            timestamp: update.timestamp,
+            billNo: update.billNo,
+            photoUrl: update.billUrl,
+            status: 'read'
           });
         }
-      });
-
-      const mainBillNo = order.actualSupplierBillNo || order.billNo;
-      const mainPhoto = order.billPhoto || order.billPhotoUrl || order.billAttachment;
-      if (mainPhoto && subBillsWithAttachments.length === 0) {
-        subBillsWithAttachments.push({
-          buyer: order.buyer || 'Consignee',
-          billNo: mainBillNo || `BIL-${order.id}`,
-          photoUrl: mainPhoto
-        });
-      }
-
-      if (subBillsWithAttachments.length > 0) {
-        messages.push({
-          id: `po-bill-${order.id}`,
-          millName: currentMill.name,
-          sender: 'miller',
-          senderName: currentMill.name,
-          type: 'bill',
-          poId: String(order.id),
-          timestamp: order.dispatchedAt || new Date(new Date(baseDate).getTime() + 50 * 60000).toISOString(),
-          subBills: subBillsWithAttachments,
-          status: 'read'
-        });
       }
     });
 
@@ -772,7 +593,7 @@ export default function MillerUpdatesView() {
     });
 
     return messages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-  }, [currentMill, customMessages]);
+  }, [currentMill, rawUpdates, customMessages]);
 
   useEffect(() => {
     if (activeTab === 'chat') {
@@ -1414,7 +1235,7 @@ export default function MillerUpdatesView() {
                       <div className="flex items-center gap-2 text-[10px] text-slate-500 dark:text-secondary">
                         <span>{currentMill.phone || 'Direct Mill Yard'}</span>
                         <span>•</span>
-                        <span>{currentMill.orders.length} Placed POs</span>
+                        <span>App B Direct Feed</span>
                       </div>
                     </div>
                   </div>

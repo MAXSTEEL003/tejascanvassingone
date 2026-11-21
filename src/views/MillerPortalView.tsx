@@ -961,6 +961,15 @@ export default function MillerPortalView() {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
+                  onClick={() => navigate('/miller-updates')}
+                  className="px-3 py-1.5 rounded-xl bg-primary hover:bg-primary/90 text-on-primary font-bold text-xs shadow-xs transition-all cursor-pointer flex items-center gap-1.5"
+                  title="Return to WhatsApp Miller Updates Desk"
+                >
+                  <MessageSquare className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Miller Updates</span>
+                </button>
+                <button
+                  type="button"
                   onClick={() => navigate('/admin')}
                   className="px-3 py-1.5 rounded-xl bg-neutral-900 text-white dark:bg-white dark:text-neutral-900 font-bold text-xs shadow-xs hover:opacity-90 transition-all cursor-pointer flex items-center gap-1.5"
                 >
