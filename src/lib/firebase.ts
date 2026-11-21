@@ -16,7 +16,8 @@ import {
   getDoc,
   getDocFromServer,
   writeBatch,
-  Firestore
+  Firestore,
+  onSnapshot
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { sanitizeSupplierName, getDeletedArrivalIds, removeDeletedArrivalId, removeDeletedSheetId } from './utils';
@@ -674,6 +675,24 @@ export async function setCollectionDoc(collectionName: string, docId: string, da
   } catch (error) {
     console.warn(`Firestore setDoc warning for ${collectionName}/${docId}:`, error);
     throw error;
+  }
+}
+
+// Helper: Real-time listener on a collection
+export function subscribeCollectionDocs(collectionName: string, callback: (docs: any[]) => void): () => void {
+  try {
+    return onSnapshot(collection(db, collectionName), (snapshot) => {
+      const docs = snapshot.docs.map(d => {
+        const rawId = d.id.replace(/^#/, '');
+        return { id: rawId, ...d.data() };
+      });
+      callback(docs);
+    }, (err) => {
+      console.warn(`Firestore snapshot listener notice on ${collectionName}:`, err);
+    });
+  } catch (e) {
+    console.warn(`Failed to attach snapshot listener to ${collectionName}:`, e);
+    return () => {};
   }
 }
 

@@ -61,6 +61,69 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
     }
   });
 
+  const [unreadUpdates, setUnreadUpdates] = useState<number>(() => {
+    try {
+      const stored = localStorage.getItem('miller_updates_unread_count');
+      if (stored !== null) return parseInt(stored, 10) || 0;
+      const updates = localStorage.getItem('miller_updates');
+      if (updates) {
+        const parsed = JSON.parse(updates);
+        return Array.isArray(parsed) ? parsed.filter((u: any) => !u.read).length : 0;
+      }
+      return 0;
+    } catch {
+      return 0;
+    }
+  });
+
+  useEffect(() => {
+    const updateUnread = () => {
+      try {
+        const stored = localStorage.getItem('miller_updates_unread_count');
+        if (stored !== null) {
+          setUnreadUpdates(parseInt(stored, 10) || 0);
+          return;
+        }
+        const updates = localStorage.getItem('miller_updates');
+        if (updates) {
+          const parsed = JSON.parse(updates);
+          if (Array.isArray(parsed)) {
+            setUnreadUpdates(parsed.filter((u: any) => !u.read).length);
+          }
+        }
+      } catch {}
+    };
+
+    const fetchBackendUnread = async () => {
+      try {
+        const res = await fetch('/api/integration/miller-updates');
+        if (res.ok) {
+          const data = await res.json();
+          if (data && typeof data.unreadCount === 'number') {
+            setUnreadUpdates(data.unreadCount);
+            localStorage.setItem('miller_updates_unread_count', String(data.unreadCount));
+            if (Array.isArray(data.updates)) {
+              localStorage.setItem('miller_updates', JSON.stringify(data.updates));
+            }
+          }
+        }
+      } catch {}
+    };
+
+    updateUnread();
+    fetchBackendUnread();
+
+    const interval = setInterval(fetchBackendUnread, 8000);
+    window.addEventListener('storage', updateUnread);
+    window.addEventListener('miller-updates-changed', updateUnread);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('storage', updateUnread);
+      window.removeEventListener('miller-updates-changed', updateUnread);
+    };
+  }, []);
+
   useEffect(() => {
     const handleSync = () => {
       try {
@@ -157,6 +220,15 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
                 "group-hover:scale-110 group-active:scale-95"
               )} />
               {!isCollapsed && <span className="text-sm tracking-tight whitespace-nowrap">{item.label}</span>}
+              {item.path === '/miller-updates' && unreadUpdates > 0 && (
+                isCollapsed ? (
+                  <span className="absolute top-2 right-2 w-2.5 h-2.5 rounded-full bg-red-600 ring-2 ring-white dark:ring-neutral-900 animate-pulse" />
+                ) : (
+                  <span className="ml-auto px-1.5 py-0.5 text-[10px] font-black rounded-full bg-red-600 text-white shadow-sm animate-pulse">
+                    {unreadUpdates > 99 ? '99+' : unreadUpdates}
+                  </span>
+                )
+              )}
             </NavLink>
           );
         })}

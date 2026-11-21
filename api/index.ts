@@ -34,6 +34,13 @@ import {
   getSyncRecord,
   getAllSyncRecords,
 } from "./supplierPortalSyncStore.js";
+import { processSupplierUpdateWebhook } from "./millerUpdatesService.js";
+import {
+  getAllMillerUpdates,
+  getUnreadUpdatesCount,
+  markUpdateAsRead,
+  markAllUpdatesAsRead,
+} from "./millerUpdatesStore.js";
 
 const currentDir = typeof __dirname !== "undefined" ? __dirname : process.cwd();
 
@@ -1892,6 +1899,81 @@ app.get(["/api/integration/sync-records", "/integration/sync-records"], (req, re
     records,
   });
 });
+
+/* ==========================================================================
+   SECTION 9D: APPLICATION B (SUPPLIER UPDATES WEBHOOK & FEED)
+   ========================================================================== */
+
+/**
+ * Inbound webhook receiving Mill Bills, Truck Loadings, and PO Confirmations from Milling Partners
+ */
+app.post(
+  ["/api/integration/supplier-update-webhook", "/integration/supplier-update-webhook"],
+  async (req: any, res) => {
+    try {
+      const result = await processSupplierUpdateWebhook(
+        req.body,
+        req.headers,
+        req.rawBody
+      );
+      return res.status(result.code).json(result);
+    } catch (err: any) {
+      console.error("[Supplier Update Webhook Route Error]:", err);
+      return res.status(500).json({
+        success: false,
+        error: err?.message || "Internal server error processing supplier update webhook.",
+      });
+    }
+  }
+);
+
+/**
+ * Feed of recent miller updates (bills, loadings, confirmations)
+ */
+app.get(
+  ["/api/integration/miller-updates", "/integration/miller-updates"],
+  (_req, res) => {
+    try {
+      const updates = getAllMillerUpdates();
+      const unreadCount = getUnreadUpdatesCount();
+      return res.json({
+        success: true,
+        count: updates.length,
+        unreadCount,
+        updates,
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        success: false,
+        error: err?.message || "Failed to retrieve miller updates.",
+      });
+    }
+  }
+);
+
+/**
+ * Mark a single update as read
+ */
+app.post(
+  ["/api/integration/miller-updates/mark-read", "/integration/miller-updates/mark-read"],
+  (req, res) => {
+    const { id } = req.body || {};
+    if (!id) return res.status(400).json({ success: false, error: "Missing update 'id'." });
+    const ok = markUpdateAsRead(id);
+    return res.json({ success: ok, unreadCount: getUnreadUpdatesCount() });
+  }
+);
+
+/**
+ * Mark all updates as read
+ */
+app.post(
+  ["/api/integration/miller-updates/mark-all-read", "/integration/miller-updates/mark-all-read"],
+  (_req, res) => {
+    const marked = markAllUpdatesAsRead();
+    return res.json({ success: true, marked, unreadCount: 0 });
+  }
+);
 
 
 // 9B. COMMERCIAL QUOTE DETAILS DISPATCHER (TRANSMITS DETAILS TO EMAIL)
