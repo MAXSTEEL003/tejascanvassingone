@@ -183,19 +183,14 @@ export default function EmailTrackingModal({
 
   if (!isOpen) return null;
 
-  const currentStatus: PoEmailStatus = record?.status || (order?.poEmailStatus as PoEmailStatus) || (order?.purchaseOrderSent && !order?.poEmailNeedsSending ? 'Sent' : 'Queued');
+  const currentStatus: PoEmailStatus = record?.status || (order?.purchaseOrderSent ? 'Sent' : 'Queued');
   const badgeConfig = getStatusBadgeConfig(currentStatus);
   const StatusIcon = badgeConfig.icon;
 
   const recipientEmail = record?.recipientEmail || order?.sellerEmail || '';
-  const subOrders = order?.originalOrders && Array.isArray(order.originalOrders) ? order.originalOrders : [];
-  const subOrdersText = subOrders.length > 0
-    ? subOrders.map((s: any) => `- ${s.buyer}: ${s.product || s.brand || 'Rice'} (${s.qty} QTLS @ ₹${s.rate}/QTL) [Sub-PO: ${s.orderNo || s.subOrderNo || s.id}]`).join('\n')
-    : `Volume: ${order?.items || order?.qty}`;
   const remarksStr = order?.remarks || (order?.originalOrders && order?.originalOrders[0]?.remarks) || 'Standard dispatch';
-  const poBodyText = `Official Purchase Order: ${orderId}\nSupplier: ${record?.supplierName || order?.supplier || 'Supplier'}\nTotal Value: ${order?.total || ''}\n\nSub-Orders:\n${subOrdersText}\n\nRemarks: ${remarksStr}\n\nPlease confirm receipt and dispatch schedule.\n\n--\nTejas Canvassing`;
   const gmailComposeUrl = recipientEmail 
-    ? `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(recipientEmail)}&cc=nani@tejasc.in&su=${encodeURIComponent(`Tejas Canvassing: Purchase Order ${orderId} - ${record?.supplierName || order?.supplier || 'Supplier'}`)}&body=${encodeURIComponent(poBodyText)}` 
+    ? `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(recipientEmail)}&cc=nani@tejasc.in&su=${encodeURIComponent(`Tejas Canvassing: Purchase Order ${orderId} - ${record?.supplierName || order?.supplier || 'Supplier'}`)}&body=${encodeURIComponent(`Official Purchase Order ${orderId}\nSupplier: ${record?.supplierName || order?.supplier || 'Supplier'}\nTotal: ${order?.total || ''}\nRemarks: ${remarksStr}\n\nPlease confirm delivery.`)}` 
     : '';
 
   const handleCopyAckLink = () => {
@@ -235,11 +230,11 @@ export default function EmailTrackingModal({
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        setFeedbackMessage("Retry transmitted to Gmail API successfully!");
+        setFeedbackMessage(data.message || "PO Email transmitted successfully!");
         fetchRecord();
         if (onRefresh) onRefresh();
       } else {
-        setFeedbackMessage(data.error || "Retry transmission failed.");
+        setFeedbackMessage(data.error || data.message || "Email dispatch failed.");
       }
     } catch (e: any) {
       setFeedbackMessage(e?.message || "Error initiating retry.");
@@ -327,12 +322,12 @@ export default function EmailTrackingModal({
             </div>
 
             <div className="p-3.5 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 space-y-1">
-              <span className="text-neutral-400 text-[10px] uppercase font-bold tracking-wider">Sender Account (OAuth 2.0)</span>
+              <span className="text-neutral-400 text-[10px] uppercase font-bold tracking-wider">Sender Account</span>
               <p className="font-bold text-neutral-900 dark:text-neutral-100 text-xs">
                 nani@tejasc.in
               </p>
               <p className="text-neutral-500 text-[11px]">
-                Official Google Workspace Gmail API
+                Google Workspace (Gmail SMTP Relay)
               </p>
             </div>
 
@@ -470,15 +465,15 @@ export default function EmailTrackingModal({
               </a>
             )}
 
-            {currentStatus === 'Bounced/Failed' && (
+            {(currentStatus === 'Queued' || currentStatus === 'Sending' || currentStatus === 'Bounced/Failed') && (
               <button
                 type="button"
                 onClick={handleRetrySending}
                 disabled={retrying}
-                className="px-3.5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold text-xs transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
+                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
               >
                 <Send className="w-3.5 h-3.5" />
-                <span>{retrying ? "Retrying..." : "Retry Sending"}</span>
+                <span>{retrying ? "Dispatching..." : currentStatus === 'Queued' ? "Dispatch via Gmail SMTP" : "Retry Sending"}</span>
               </button>
             )}
           </div>
