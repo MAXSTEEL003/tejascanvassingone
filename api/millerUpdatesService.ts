@@ -11,6 +11,8 @@ import {
 import firebaseConfig from "../firebase-applet-config.json";
 import {
   addMillerUpdate,
+  removeTestUpdates,
+  getAllMillerUpdates,
   MillerUpdateRecord,
   MillerUpdateType,
 } from "./millerUpdatesStore.js";
@@ -475,4 +477,197 @@ async function updatePlacedOrderFromWebhook(
   } catch (fsErr: any) {
     console.warn(`[Supplier Webhook] Non-critical notice writing placed_orders/${targetDocId}:`, fsErr?.message || fsErr);
   }
+}
+
+/**
+ * Synchronizes accepted purchase orders, attached bills, and loadings from Application B (Supplier Portal)
+ */
+export async function syncAcceptedOrdersFromAppB(): Promise<{
+  success: boolean;
+  countAccepted: number;
+  countLoadings: number;
+  countBills: number;
+  totalUpdates: number;
+  message: string;
+}> {
+  const appBUrl = (process.env.APP_B_URL || "https://kesharkali.vercel.app").replace(/\/$/, "");
+
+  // 1. Remove any lingering test updates from the store
+  removeTestUpdates();
+
+  let countAccepted = 0;
+  let countLoadings = 0;
+  let countBills = 0;
+
+  try {
+    // 2. Query Purchase Orders from Application B
+    const poRes = await fetch(`${appBUrl}/api/purchase-orders`, {
+      headers: { Accept: "application/json" },
+    });
+    if (poRes.ok) {
+      const poData = (await poRes.json()) as any;
+      const pos = Array.isArray(poData?.purchaseOrders) ? poData.purchaseOrders : [];
+
+      const syncPromises: Promise<any>[] = [];
+      for (const po of pos) {
+        const poNumber = String(po.po_number || "").trim();
+        // Ignore test POs
+        if (!poNumber || poNumber === "TC-5693" || poNumber.includes("5693")) continue;
+
+        if (po.is_accepted === 1) {
+          countAccepted++;
+          const updateId = `appb_accept_${poNumber}`;
+          const millerName =
+            po.notes && po.notes.includes("Supplier:")
+              ? po.notes.split("Supplier:")[1].trim()
+              : "Bhagwathi Rice and Agro Industries";
+          const buyerName = po.customer_name || po.customer_name_text || "Authorized Consignee";
+          const subOrderNo = po.sub_order_no || undefined;
+          const acceptedTime =
+            po.accepted_at || po.updated_at || po.created_at || new Date().toISOString();
+
+          const updateRecord: MillerUpdateRecord = {
+            id: updateId,
+            type: "PO_ACCEPTED",
+            poNumber,
+            subOrderNo,
+            buyerName,
+            millerName,
+            status: "Accepted",
+            timestamp: acceptedTime,
+            read: false,
+            createdAt: new Date().toISOString(),
+            rawPayload: {
+              source: "APP_B_SYNC",
+              appB_poId: po.id,
+              poDate: po.po_date || po.order_date || po.date,
+              customerName: buyerName,
+              orderedQuantity: po.ordered_quantity,
+              productName: po.product_name,
+              subOrders: po.sub_orders || [],
+            },
+          };
+
+          addMillerUpdate(updateRecord);
+
+          // Persist update in Firestore collection 'miller_updates'
+          setDoc(doc(db, "miller_updates", updateRecord.id), updateRecord, { merge: true }).catch(
+            () => {}
+          );
+
+          // Update placed_orders in Firestore asynchronously
+          syncPromises.push(
+            withTimeout(updatePlacedOrderFromWebhook(poNumber, updateRecord, po), 800).catch(
+              () => {}
+            )
+          );
+        }
+      }
+      if (syncPromises.length > 0) {
+        await Promise.allSettled(syncPromises);
+      }
+    }
+  } catch (err) {
+    console.warn("[Sync App B] Error fetching purchase orders from App B:", err);
+  }
+
+  // 3. Query Loadings from Application B
+  try {
+    const loadRes = await fetch(`${appBUrl}/api/loading-register`, {
+      headers: { Accept: "application/json" },
+    });
+    if (loadRes.ok) {
+      const loadData = (await loadRes.json()) as any;
+      const loadings = Array.isArray(loadData?.loadingEntries) ? loadData.loadingEntries : [];
+
+      for (const item of loadings) {
+        const poNumber = String(item.po_number || item.poNumber || "").trim();
+        if (!poNumber || poNumber === "TC-5693" || poNumber.includes("5693")) continue;
+
+        countLoadings++;
+        const updateId = `appb_load_${item.id || item.loading_id || item.loadingId || Date.now()}`;
+        const updateRecord: MillerUpdateRecord = {
+          id: updateId,
+          type: "TRUCK_LOADED",
+          poNumber,
+          subOrderNo: item.sub_order_no || item.subOrderNo,
+          vehicleNumber: item.vehicle_number || item.vehicleNumber || item.truck_number,
+          driverPhone: item.driver_phone || item.driverPhone,
+          weighbridgeSlip: item.weighbridge_slip || item.weighbridgeSlip || item.slip_no,
+          loadedQuantity:
+            parseFloat(item.loaded_quantity || item.loading_quantity || item.quantity) || 0,
+          loadingDate: item.loading_date || item.loadingDate,
+          loadingNumber: item.loading_number || item.loadingNumber,
+          loadingId: String(item.id || item.loading_id || ""),
+          millerName: item.supplier_name || "Bhagwathi Rice and Agro Industries",
+          buyerName: item.customer_name || item.buyer_name,
+          timestamp: item.created_at || new Date().toISOString(),
+          read: false,
+          createdAt: new Date().toISOString(),
+          rawPayload: item,
+        };
+
+        addMillerUpdate(updateRecord);
+
+        try {
+          await withTimeout(updatePlacedOrderFromWebhook(poNumber, updateRecord, item), 1200);
+        } catch {}
+      }
+    }
+  } catch (err) {
+    console.warn("[Sync App B] Error fetching loadings from App B:", err);
+  }
+
+  // 4. Query Documents / Bills from Application B
+  try {
+    const docRes = await fetch(`${appBUrl}/api/documents`, {
+      headers: { Accept: "application/json" },
+    });
+    if (docRes.ok) {
+      const docData = (await docRes.json()) as any;
+      const docs = Array.isArray(docData?.documents) ? docData.documents : [];
+
+      for (const d of docs) {
+        const poNumber = String(d.po_number || d.poNumber || "").trim();
+        if (!poNumber || poNumber === "TC-5693" || poNumber.includes("5693")) continue;
+
+        countBills++;
+        const updateId = `appb_bill_${d.id || d.bill_no || Date.now()}`;
+        const updateRecord: MillerUpdateRecord = {
+          id: updateId,
+          type: "BILL_UPLOADED",
+          poNumber,
+          subOrderNo: d.sub_order_no || d.subOrderNo,
+          billNo: d.bill_no || d.billNo,
+          billUrl: d.file_url || d.billUrl || d.url,
+          fileName: d.file_name || d.fileName || `mill_bill_${d.bill_no || "doc"}.pdf`,
+          buyerName: d.customer_name || d.buyerName,
+          millerName: d.supplier_name || "Bhagwathi Rice and Agro Industries",
+          timestamp: d.uploaded_at || d.created_at || new Date().toISOString(),
+          read: false,
+          createdAt: new Date().toISOString(),
+          rawPayload: d,
+        };
+
+        addMillerUpdate(updateRecord);
+
+        try {
+          await withTimeout(updatePlacedOrderFromWebhook(poNumber, updateRecord, d), 1200);
+        } catch {}
+      }
+    }
+  } catch (err) {
+    console.warn("[Sync App B] Error fetching documents from App B:", err);
+  }
+
+  const allUpdates = getAllMillerUpdates();
+
+  return {
+    success: true,
+    countAccepted,
+    countLoadings,
+    countBills,
+    totalUpdates: allUpdates.length,
+    message: `Synchronized ${countAccepted} accepted POs, ${countLoadings} loadings, and ${countBills} bills from App B.`,
+  };
 }

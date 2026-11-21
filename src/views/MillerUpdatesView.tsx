@@ -32,7 +32,9 @@ import {
   Copy,
   Layers,
   Sparkles,
-  Phone
+  Phone,
+  Calendar,
+  MapPin
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, formatINR, getRegisteredSuppliers } from '../lib/utils';
@@ -61,6 +63,7 @@ export interface MillerUpdateItem {
   timestamp: string; // ISO string
   read?: boolean;
   createdAt?: string;
+  rawPayload?: any;
 }
 
 export interface ChatMessage {
@@ -77,7 +80,11 @@ export interface ChatMessage {
   driverPhone?: string;
   dispatchDate?: string;
   dispatchNotes?: string;
+  loadedQuantity?: number;
+  weighbridgeSlip?: string;
+  loadingNumber?: string;
   billNo?: string;
+  subOrderNo?: string;
   buyerName?: string;
   photoUrl?: string;
   subBills?: Array<{ buyer: string; billNo: string; photoUrl: string }>;
@@ -125,6 +132,187 @@ function resolveBillDocumentUrl(url?: string): string {
   return `${appBBase}${trimmed.startsWith('/') ? '' : '/'}${trimmed}`;
 }
 
+export interface ResolvedSubOrder {
+  subOrderNo: string;
+  buyerName: string;
+  productName: string;
+  quantity: number;
+  rate: number;
+  amount: number;
+  unloadingPoint: string;
+  billNo?: string;
+  billUrl?: string;
+  status: string;
+}
+
+/**
+ * Robust date parser converting diverse formats ("2026-11-21", "21-Nov-2026", "21/11/2026", Timestamps) to epoch ms
+ */
+export function parseDateToTime(val: any): number {
+  if (!val) return 0;
+  if (typeof val === 'number') return val;
+  if (val instanceof Date) return val.getTime();
+  if (typeof val === 'object') {
+    if (typeof val.toDate === 'function') {
+      try {
+        const d = val.toDate();
+        if (d instanceof Date && !isNaN(d.getTime())) return d.getTime();
+      } catch {}
+    }
+    if (typeof val.seconds === 'number') {
+      return val.seconds * 1000;
+    }
+  }
+
+  const str = String(val).trim();
+  if (!str) return 0;
+
+  // 1. DD-MMM-YYYY or DD/MMM/YYYY e.g. "21-Nov-2026", "09-Nov-2026"
+  const dMmmYMatch = str.match(/^(\d{1,2})[-/ ]([A-Za-z]{3})[-/ ](\d{2,4})$/i);
+  if (dMmmYMatch) {
+    const months: Record<string, number> = {
+      jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
+      jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11
+    };
+    const day = parseInt(dMmmYMatch[1], 10);
+    const mStr = dMmmYMatch[2].toLowerCase();
+    const mIdx = months[mStr];
+    let yr = parseInt(dMmmYMatch[3], 10);
+    if (yr < 100) yr += 2000;
+    if (mIdx !== undefined && !isNaN(day) && !isNaN(yr)) {
+      return new Date(yr, mIdx, day, 12, 0, 0).getTime();
+    }
+  }
+
+  // 2. YYYY-MM-DD or YYYY-MM-DD HH:mm:ss
+  const ymdMatch = str.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
+  if (ymdMatch) {
+    const [, y, m, d] = ymdMatch.map(Number);
+    return new Date(y, m - 1, d, 12, 0, 0).getTime();
+  }
+
+  // 3. DD/MM/YYYY or DD-MM-YYYY
+  const dmyMatch = str.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+  if (dmyMatch) {
+    const [, d, m, y] = dmyMatch.map(Number);
+    return new Date(y, m - 1, d, 12, 0, 0).getTime();
+  }
+
+  const parsed = new Date(str).getTime();
+  return isNaN(parsed) ? 0 : parsed;
+}
+
+/**
+ * Returns formatted PO Placed date string and timestamp for chronological sorting
+ */
+export function getPlacedDateInfo(item: MillerUpdateItem, matchedOrder?: any): {
+  placedDateStr: string;
+  timestampMs: number;
+} {
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  const formatMs = (ms: number) => {
+    const d = new Date(ms);
+    const day = String(d.getDate()).padStart(2, '0');
+    const mon = MONTHS[d.getMonth()] || 'Nov';
+    const yr = d.getFullYear();
+    return `${day}-${mon}-${yr}`;
+  };
+
+  // 1. Matched Order placed date from App A
+  if (matchedOrder?.date) {
+    const ms = parseDateToTime(matchedOrder.date);
+    if (ms > 0) return { placedDateStr: formatMs(ms), timestampMs: ms };
+  }
+
+  // 2. Raw payload poDate from App B
+  const rawDate = item.rawPayload?.poDate || item.rawPayload?.order_date || item.rawPayload?.po_date || item.rawPayload?.orderDate || item.rawPayload?.orderAcceptanceDate;
+  if (rawDate) {
+    const ms = parseDateToTime(rawDate);
+    if (ms > 0) return { placedDateStr: formatMs(ms), timestampMs: ms };
+  }
+
+  // 3. Matched order createdAt
+  if (matchedOrder?.createdAt) {
+    const ms = parseDateToTime(matchedOrder.createdAt);
+    if (ms > 0) return { placedDateStr: formatMs(ms), timestampMs: ms };
+  }
+
+  // 4. Item timestamp fallback
+  const fallbackMs = parseDateToTime(item.timestamp || item.createdAt);
+  if (fallbackMs > 0) {
+    return { placedDateStr: formatMs(fallbackMs), timestampMs: fallbackMs };
+  }
+
+  return { placedDateStr: '--', timestampMs: 0 };
+}
+
+/**
+ * Resolves all constituent sub-orders for a PO
+ */
+export function getSubOrdersForPO(item: MillerUpdateItem, matchedOrder?: any): ResolvedSubOrder[] {
+  // 1. Check matchedOrder.originalOrders
+  if (matchedOrder && Array.isArray(matchedOrder.originalOrders) && matchedOrder.originalOrders.length > 0) {
+    return matchedOrder.originalOrders.map((so: any, idx: number) => {
+      const subNo = so.supplierSubOrderNo || so.subOrderNo || resolveSubOrderNumber(so, idx, matchedOrder.supplier || item.millerName);
+      const qty = parseFloat(so.qty) || parseFloat(so.totalQty) || 0;
+      const rate = parseFloat(so.rate) || 0;
+      const amount = parseFloat(so.amount) || parseFloat(so.totalAmount) || Math.round(qty * rate);
+      return {
+        subOrderNo: subNo || `SUB-${idx + 1}`,
+        buyerName: String(so.buyer || matchedOrder.buyer || item.buyerName || 'Consignee').trim(),
+        productName: String(so.product || matchedOrder.product || 'Rice Brand').trim(),
+        quantity: qty,
+        rate,
+        amount,
+        unloadingPoint: String(so.unloadingPoint || so.destination || matchedOrder.destination || 'shop').trim(),
+        billNo: so.actualSupplierBillNo || so.billNo || item.billNo || undefined,
+        billUrl: so.billUrl || so.billPhotoUrl || item.billUrl || undefined,
+        status: so.status || item.status || 'Accepted',
+      };
+    });
+  }
+
+  // 2. Check item.rawPayload.subOrders
+  const rawSubs = item.rawPayload?.subOrders || item.rawPayload?.sub_orders;
+  if (Array.isArray(rawSubs) && rawSubs.length > 0) {
+    return rawSubs.map((so: any, idx: number) => {
+      const subNo = so.subOrderNo || so.sub_order_no || resolveSubOrderNumber(so, idx, item.millerName);
+      const qty = parseFloat(so.orderedQuantity ?? so.ordered_quantity ?? so.qty ?? 0);
+      const rate = parseFloat(so.rate || 0);
+      const amount = parseFloat(so.amount || Math.round(qty * rate) || 0);
+      return {
+        subOrderNo: subNo || `SUB-${idx + 1}`,
+        buyerName: String(so.buyerName || so.buyer_name || item.buyerName || 'Consignee').trim(),
+        productName: String(so.productName || so.product_name || 'Rice Brand').trim(),
+        quantity: qty,
+        rate,
+        amount,
+        unloadingPoint: String(so.deliveryLocation || so.delivery_location || so.unloadingPoint || 'shop').trim(),
+        billNo: so.billNo || so.bill_no || item.billNo || undefined,
+        billUrl: so.billUrl || so.bill_url || item.billUrl || undefined,
+        status: so.status || item.status || 'Accepted',
+      };
+    });
+  }
+
+  // 3. Fallback to single sub-order
+  const singleQty = matchedOrder?.totalVolume || matchedOrder?.qty || item.loadedQuantity || item.rawPayload?.orderedQuantity || 0;
+  const singleRate = matchedOrder?.rate || item.rawPayload?.agreedRate || 0;
+  return [{
+    subOrderNo: item.subOrderNo || matchedOrder?.subOrderNo || `SUB-01`,
+    buyerName: item.buyerName || matchedOrder?.buyer || 'Authorized Consignee',
+    productName: matchedOrder?.product || item.rawPayload?.productName || 'Rice Brand',
+    quantity: parseFloat(singleQty) || 0,
+    rate: parseFloat(singleRate) || 0,
+    amount: Math.round((parseFloat(singleQty) || 0) * (parseFloat(singleRate) || 0)),
+    unloadingPoint: matchedOrder?.destination || 'shop',
+    billNo: item.billNo || matchedOrder?.billNo || undefined,
+    billUrl: item.billUrl || matchedOrder?.billUrl || undefined,
+    status: item.status || 'Accepted',
+  }];
+}
+
 export default function MillerUpdatesView() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -133,10 +321,38 @@ export default function MillerUpdatesView() {
   const [activeTab, setActiveTab] = useState<'stream' | 'chat'>('stream');
 
   // Miller Ingest Feed State
-  // Standalone updates stream for Miller Updates (App B feed - decoupled from this app's placed_orders)
-  const [rawUpdates, setRawUpdates] = useState<MillerUpdateItem[]>([]);
+  // Standalone updates stream for Miller Updates (App B feed)
+  const [rawUpdates, setRawUpdates] = useState<MillerUpdateItem[]>(() => {
+    try {
+      const cached = localStorage.getItem('miller_updates');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        const filtered = (parsed || []).filter(
+          (u: any) => u && u.poNumber !== 'TC-5693' && !u.poNumber?.includes('5693')
+        );
+        return filtered.sort((a: any, b: any) => {
+          const timeA = getPlacedDateInfo(a).timestampMs;
+          const timeB = getPlacedDateInfo(b).timestampMs;
+          if (timeB !== timeA) return timeB - timeA;
+          return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+        });
+      }
+    } catch {}
+    return [];
+  });
+  // Placed orders loaded strictly to display rich PO details in Mill Chat Desk and cross-link App B acceptances
+  const [orders, setOrders] = useState<any[]>(() => {
+    try {
+      const cached = localStorage.getItem('placed_orders');
+      if (cached) {
+        return JSON.parse(cached) || [];
+      }
+    } catch {}
+    return [];
+  });
   const [isLoading, setIsLoading] = useState(false);
   const [isLiveConnected, setIsLiveConnected] = useState(true);
+  const [isSyncingAppB, setIsSyncingAppB] = useState(false);
 
   // Filters for Activity Stream
   const [streamFilter, setStreamFilter] = useState<'all' | 'bills' | 'loadings' | 'acceptances'>('all');
@@ -186,6 +402,13 @@ export default function MillerUpdatesView() {
       .replace(/[^A-Z0-9]/g, '');
   };
 
+  // Helper to filter out synthetic test data (e.g., test order TC-5693)
+  const filterOutTestData = (list: MillerUpdateItem[]): MillerUpdateItem[] => {
+    return (list || []).filter(
+      u => u && u.poNumber !== 'TC-5693' && !u.poNumber?.includes('5693') && !u.id?.includes('5693')
+    );
+  };
+
   // Fetch updates from backend API & local cache
   const fetchBackendUpdates = async () => {
     try {
@@ -193,12 +416,26 @@ export default function MillerUpdatesView() {
       if (res.ok) {
         const data = await res.json();
         if (data && Array.isArray(data.updates)) {
-          setRawUpdates(data.updates);
-          localStorage.setItem('miller_updates', JSON.stringify(data.updates));
-          if (typeof data.unreadCount === 'number') {
-            localStorage.setItem('miller_updates_unread_count', String(data.unreadCount));
+          const cleaned = filterOutTestData(data.updates);
+          if (cleaned.length > 0) {
+            setRawUpdates(prev => {
+              const map = new Map<string, MillerUpdateItem>();
+              prev.forEach(u => map.set(u.id, u));
+              cleaned.forEach(u => map.set(u.id, u));
+              const merged = filterOutTestData(Array.from(map.values())).sort((a, b) => {
+                const timeA = getPlacedDateInfo(a).timestampMs;
+                const timeB = getPlacedDateInfo(b).timestampMs;
+                if (timeB !== timeA) return timeB - timeA;
+                return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+              });
+              localStorage.setItem('miller_updates', JSON.stringify(merged));
+              return merged;
+            });
+            if (typeof data.unreadCount === 'number') {
+              localStorage.setItem('miller_updates_unread_count', String(data.unreadCount));
+            }
+            window.dispatchEvent(new CustomEvent('miller-updates-changed'));
           }
-          window.dispatchEvent(new CustomEvent('miller-updates-changed'));
         }
       }
     } catch (err) {
@@ -206,37 +443,256 @@ export default function MillerUpdatesView() {
     }
   };
 
+  // Sync accepted orders, loadings, and bills from App B (Keshar Kali Supplier Portal)
+  // Implements dual-channel sync (Server endpoint + Direct CORS client fallback)
+  const triggerAppBSync = async (isManual = false) => {
+    try {
+      if (isManual) setIsSyncingAppB(true);
+
+      let syncedCount = 0;
+      let loadingsCount = 0;
+      let billsCount = 0;
+
+      // 1. Attempt backend proxy sync first
+      try {
+        const res = await fetch('/api/integration/sync-app-b', { method: 'POST' });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.success) {
+            syncedCount = data.countAccepted || 0;
+            loadingsCount = data.countLoadings || 0;
+            billsCount = data.countBills || 0;
+            await fetchBackendUpdates();
+          }
+        }
+      } catch (e) {
+        console.warn('Backend sync route notice, proceeding with direct client-side sync:', e);
+      }
+
+      // 2. Direct client-side sync (App B kesharkali.vercel.app has Access-Control-Allow-Origin: *)
+      try {
+        const appBUrl = 'https://kesharkali.vercel.app';
+        const poRes = await fetch(`${appBUrl}/api/purchase-orders`);
+        if (poRes.ok) {
+          const poData = await poRes.json();
+          const pos = (poData?.purchaseOrders || []).filter(
+            (p: any) => p && p.po_number && p.po_number !== 'TC-5693' && !p.po_number.includes('5693')
+          );
+
+          const clientUpdates: MillerUpdateItem[] = [];
+          for (const po of pos) {
+            if (po.is_accepted === 1) {
+              const poNumber = String(po.po_number).trim();
+              const updateId = `appb_accept_${poNumber}`;
+              const millerName =
+                po.notes && po.notes.includes('Supplier:')
+                  ? po.notes.split('Supplier:')[1].trim()
+                  : 'Bhagwathi Rice and Agro Industries';
+              const buyerName = po.customer_name || po.customer_name_text || 'Authorized Consignee';
+              const updateRecord: MillerUpdateItem = {
+                id: updateId,
+                type: 'PO_ACCEPTED',
+                poNumber,
+                subOrderNo: po.sub_order_no || undefined,
+                buyerName,
+                millerName,
+                status: 'Accepted',
+                timestamp: po.accepted_at || po.updated_at || po.created_at || new Date().toISOString(),
+                read: false,
+                createdAt: new Date().toISOString(),
+                rawPayload: {
+                  source: 'APP_B_DIRECT_SYNC',
+                  appB_poId: po.id,
+                  customerName: buyerName,
+                  orderedQuantity: po.ordered_quantity,
+                  productName: po.product_name,
+                  subOrders: po.sub_orders || [],
+                },
+              };
+              clientUpdates.push(updateRecord);
+
+              // Non-blocking Firestore persistence
+              setCollectionDoc('miller_updates', updateRecord.id, updateRecord).catch(() => {});
+            }
+          }
+
+          if (clientUpdates.length > 0) {
+            syncedCount = Math.max(syncedCount, clientUpdates.length);
+            setRawUpdates(prev => {
+              const map = new Map<string, MillerUpdateItem>();
+              prev.forEach(u => map.set(u.id, u));
+              clientUpdates.forEach(u => map.set(u.id, u));
+              const merged = filterOutTestData(Array.from(map.values())).sort((a, b) => {
+                const timeA = getPlacedDateInfo(a).timestampMs;
+                const timeB = getPlacedDateInfo(b).timestampMs;
+                if (timeB !== timeA) return timeB - timeA;
+                return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+              });
+              localStorage.setItem('miller_updates', JSON.stringify(merged));
+              return merged;
+            });
+            window.dispatchEvent(new CustomEvent('miller-updates-changed'));
+          }
+        }
+      } catch (clientErr) {
+        console.warn('Direct client-side PO fetch notice:', clientErr);
+      }
+
+      // 3. Direct client-side fetch for loadings from App B
+      try {
+        const loadRes = await fetch('https://kesharkali.vercel.app/api/loading-register');
+        if (loadRes.ok) {
+          const loadData = await loadRes.json();
+          const loadings = loadData?.loadingEntries || [];
+          for (const item of loadings) {
+            const poNumber = String(item.po_number || item.poNumber || '').trim();
+            if (!poNumber || poNumber === 'TC-5693' || poNumber.includes('5693')) continue;
+            loadingsCount++;
+            const updateRecord: MillerUpdateItem = {
+              id: `appb_load_${item.id || Date.now()}`,
+              type: 'TRUCK_LOADED',
+              poNumber,
+              subOrderNo: item.sub_order_no || item.subOrderNo,
+              vehicleNumber: item.vehicle_number || item.vehicleNumber,
+              driverPhone: item.driver_phone || item.driverPhone,
+              weighbridgeSlip: item.weighbridge_slip || item.weighbridgeSlip,
+              loadedQuantity: parseFloat(item.loaded_quantity || item.quantity) || 0,
+              loadingDate: item.loading_date,
+              loadingNumber: item.loading_number,
+              millerName: item.supplier_name || 'Bhagwathi Rice and Agro Industries',
+              buyerName: item.customer_name || item.buyer_name,
+              timestamp: item.created_at || new Date().toISOString(),
+              read: false,
+              createdAt: new Date().toISOString(),
+              rawPayload: item,
+            };
+            setRawUpdates(prev => {
+              const map = new Map(prev.map(u => [u.id, u]));
+              map.set(updateRecord.id, updateRecord);
+              return Array.from(map.values());
+            });
+            setCollectionDoc('miller_updates', updateRecord.id, updateRecord).catch(() => {});
+          }
+        }
+      } catch {}
+
+      // 4. Direct client-side fetch for documents / bills from App B
+      try {
+        const docRes = await fetch('https://kesharkali.vercel.app/api/documents');
+        if (docRes.ok) {
+          const docData = await docRes.json();
+          const docs = docData?.documents || [];
+          for (const d of docs) {
+            const poNumber = String(d.po_number || d.poNumber || '').trim();
+            if (!poNumber || poNumber === 'TC-5693' || poNumber.includes('5693')) continue;
+            billsCount++;
+            const updateRecord: MillerUpdateItem = {
+              id: `appb_bill_${d.id || Date.now()}`,
+              type: 'BILL_UPLOADED',
+              poNumber,
+              subOrderNo: d.sub_order_no || d.subOrderNo,
+              billNo: d.bill_no || d.billNo,
+              billUrl: d.file_url || d.billUrl || d.url,
+              fileName: d.file_name || d.fileName || `mill_bill_${d.bill_no || 'doc'}.pdf`,
+              buyerName: d.customer_name || d.buyerName,
+              millerName: d.supplier_name || 'Bhagwathi Rice and Agro Industries',
+              timestamp: d.uploaded_at || d.created_at || new Date().toISOString(),
+              read: false,
+              createdAt: new Date().toISOString(),
+              rawPayload: d,
+            };
+            setRawUpdates(prev => {
+              const map = new Map(prev.map(u => [u.id, u]));
+              map.set(updateRecord.id, updateRecord);
+              return Array.from(map.values());
+            });
+            setCollectionDoc('miller_updates', updateRecord.id, updateRecord).catch(() => {});
+          }
+        }
+      } catch {}
+
+      if (isManual) {
+        showToast(
+          `✓ App B Synced: ${syncedCount} accepted POs, ${loadingsCount} loadings, ${billsCount} bills.`
+        );
+      }
+    } catch (e) {
+      console.warn('App B sync error:', e);
+      if (isManual) {
+        showToast('App B sync completed with local cached updates.');
+      }
+    } finally {
+      if (isManual) setIsSyncingAppB(false);
+    }
+  };
+
   // Load orders and chats
   const loadOrdersAndChats = async () => {
     setIsLoading(true);
     try {
-      // 1. Local updates cache (App B updates)
+      // 1. Local updates cache (App B updates) - purge any test entries
       const cachedUpdates = localStorage.getItem('miller_updates');
       if (cachedUpdates) {
         try {
-          setRawUpdates(JSON.parse(cachedUpdates));
+          const parsed = JSON.parse(cachedUpdates);
+          const cleaned = filterOutTestData(parsed);
+          if (cleaned.length > 0) {
+            setRawUpdates(prev => {
+              const map = new Map<string, MillerUpdateItem>();
+              prev.forEach(u => map.set(u.id, u));
+              cleaned.forEach(u => map.set(u.id, u));
+              return filterOutTestData(Array.from(map.values())).sort((a, b) => {
+                const timeA = getPlacedDateInfo(a).timestampMs;
+                const timeB = getPlacedDateInfo(b).timestampMs;
+                if (timeB !== timeA) return timeB - timeA;
+                return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+              });
+            });
+          }
+          if (cleaned.length !== parsed.length) {
+            localStorage.setItem('miller_updates', JSON.stringify(cleaned));
+          }
         } catch {}
       }
 
-      // 2. Fetch from remote updates collection (App B updates feed - decoupled from this app's orders)
+      // 2. Fetch from remote updates collection (App B updates feed)
       const remoteUpdates = await getCollectionDocs('miller_updates').catch(() => []);
       if (remoteUpdates && remoteUpdates.length > 0) {
         setRawUpdates(prev => {
           const merged = new Map<string, MillerUpdateItem>();
           prev.forEach(u => merged.set(u.id, u));
           remoteUpdates.forEach(u => merged.set(u.id, u));
-          const list = Array.from(merged.values()).sort(
-            (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-          );
+          const list = filterOutTestData(Array.from(merged.values())).sort((a, b) => {
+            const timeA = getPlacedDateInfo(a).timestampMs;
+            const timeB = getPlacedDateInfo(b).timestampMs;
+            if (timeB !== timeA) return timeB - timeA;
+            return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+          });
           localStorage.setItem('miller_updates', JSON.stringify(list));
           return list;
         });
       }
 
+      // 3. Fetch Placed Orders strictly for displaying rich PO views in the Chat Desk
+      const localOrders = localStorage.getItem('placed_orders');
+      if (localOrders) {
+        try {
+          setOrders(JSON.parse(localOrders));
+        } catch {}
+      }
+      const remoteOrders = await getCollectionDocs('placed_orders').catch(() => []);
+      if (remoteOrders && remoteOrders.length > 0) {
+        setOrders(remoteOrders);
+        localStorage.setItem('placed_orders', JSON.stringify(remoteOrders));
+      }
+
       // 4. Fetch backend API
       await fetchBackendUpdates();
 
-      // 5. Load Chat Messages
+      // 5. Trigger seamless background sync with App B
+      triggerAppBSync(false).catch(() => {});
+
+      // 6. Load Chat Messages
       const localChats = localStorage.getItem('miller_chats');
       if (localChats) {
         setCustomMessages(JSON.parse(localChats));
@@ -264,9 +720,12 @@ export default function MillerUpdatesView() {
           const map = new Map<string, MillerUpdateItem>();
           prev.forEach(u => map.set(u.id, u));
           docs.forEach(u => map.set(u.id, u as MillerUpdateItem));
-          const sorted = Array.from(map.values()).sort(
-            (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-          );
+          const sorted = filterOutTestData(Array.from(map.values())).sort((a, b) => {
+            const timeA = getPlacedDateInfo(a).timestampMs;
+            const timeB = getPlacedDateInfo(b).timestampMs;
+            if (timeB !== timeA) return timeB - timeA;
+            return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+          });
           localStorage.setItem('miller_updates', JSON.stringify(sorted));
           return sorted;
         });
@@ -284,26 +743,58 @@ export default function MillerUpdatesView() {
       const cached = localStorage.getItem('miller_updates');
       if (cached) {
         try {
-          setRawUpdates(JSON.parse(cached));
+          const parsed = JSON.parse(cached);
+          const cleaned = filterOutTestData(parsed);
+          if (cleaned.length > 0) {
+            setRawUpdates(prev => {
+              const map = new Map<string, MillerUpdateItem>();
+              prev.forEach(u => map.set(u.id, u));
+              cleaned.forEach(u => map.set(u.id, u));
+              return filterOutTestData(Array.from(map.values())).sort((a, b) => {
+                const timeA = getPlacedDateInfo(a).timestampMs;
+                const timeB = getPlacedDateInfo(b).timestampMs;
+                if (timeB !== timeA) return timeB - timeA;
+                return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+              });
+            });
+          }
         } catch {}
       }
     };
 
     window.addEventListener('storage', handleSync);
     window.addEventListener('miller-updates-changed', handleSync);
+    window.addEventListener('placed-orders-updated', loadOrdersAndChats);
 
     return () => {
       unsubscribeUpdates();
       clearInterval(pollInterval);
       window.removeEventListener('storage', handleSync);
       window.removeEventListener('miller-updates-changed', handleSync);
+      window.removeEventListener('placed-orders-updated', loadOrdersAndChats);
     };
   }, []);
 
-  // Updates stream from incoming App B webhook/events (standalone, decoupled from this app's orders)
+  // Updates stream from incoming App B webhook/events (standalone, authentic App B events, test data purged)
+  // Chronologically sorted by PO Placed Date (newest placed on top)
   const allUpdatesStream = useMemo(() => {
-    return [...rawUpdates].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  }, [rawUpdates]);
+    return filterOutTestData(rawUpdates).sort((a, b) => {
+      const matchedA = orders.find(o =>
+        resolveGroupedPoNumber(o) === a.poNumber ||
+        String(o.id) === a.poNumber ||
+        (o.id && String(o.id).includes(a.poNumber))
+      );
+      const matchedB = orders.find(o =>
+        resolveGroupedPoNumber(o) === b.poNumber ||
+        String(o.id) === b.poNumber ||
+        (o.id && String(o.id).includes(b.poNumber))
+      );
+      const timeA = getPlacedDateInfo(a, matchedA).timestampMs;
+      const timeB = getPlacedDateInfo(b, matchedB).timestampMs;
+      if (timeB !== timeA) return timeB - timeA;
+      return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+    });
+  }, [rawUpdates, orders]);
 
   // Compute Summary Statistics
   const summaryStats = useMemo(() => {
@@ -322,14 +813,18 @@ export default function MillerUpdatesView() {
     const todayBills = billsUploaded.filter(u => isToday(u.timestamp));
     const trucksLoaded = allUpdatesStream.filter(u => u.type === 'TRUCK_LOADED');
     const todayTrucks = trucksLoaded.filter(u => isToday(u.timestamp));
+    const acceptedOrders = allUpdatesStream.filter(u => u.type === 'PO_ACCEPTED');
+    const todayAccepted = acceptedOrders.filter(u => isToday(u.timestamp));
 
     return {
-      totalToday: todayUpdates.length > 0 ? todayUpdates.length : allUpdatesStream.slice(0, 15).length,
+      totalToday: todayUpdates.length > 0 ? todayUpdates.length : allUpdatesStream.length,
       isFallbackTotal: todayUpdates.length === 0,
       billsCount: billsUploaded.length,
       todayBillsCount: todayBills.length,
       trucksCount: trucksLoaded.length,
       todayTrucksCount: todayTrucks.length,
+      acceptancesCount: acceptedOrders.length,
+      todayAcceptancesCount: todayAccepted.length,
       unreadCount: allUpdatesStream.filter(u => !u.read).length,
     };
   }, [allUpdatesStream]);
@@ -459,7 +954,28 @@ export default function MillerUpdatesView() {
       });
     });
 
-    // Update mills with activities from App B feeds (decoupled from this app's orders)
+    // Populate each mill's issued orders from placed_orders so POs are visible in the chat desk
+    orders.forEach(order => {
+      const supplier = String(order.supplier || order.millerName || '').trim();
+      if (!supplier) return;
+      const normSup = normalizeSupplier(supplier);
+      for (const [key, millObj] of millsMap.entries()) {
+        if (normalizeSupplier(key) === normSup || key.includes(normSup) || normSup.includes(key)) {
+          millObj.orders.push(order);
+          const oTime = new Date(order.date || order.createdAt || Date.now()).getTime();
+          if (oTime > millObj.lastActivityTime) {
+            millObj.lastActivityTime = oTime;
+            millObj.snippet = `PO #${resolveGroupedPoNumber(order)} issued (${order.product || 'Rice Brand'})`;
+          }
+          if (!order.isAcknowledged) {
+            millObj.pendingAckCount++;
+          }
+          break;
+        }
+      }
+    });
+
+    // Update mills with activities from App B feeds
     rawUpdates.forEach(update => {
       const millName = update.millerName || '';
       if (!millName) return;
@@ -501,7 +1017,7 @@ export default function MillerUpdatesView() {
       if (a.pendingAckCount !== b.pendingAckCount) return b.pendingAckCount - a.pendingAckCount;
       return b.lastActivityTime - a.lastActivityTime;
     });
-  }, [rawUpdates, customMessages]);
+  }, [orders, rawUpdates, customMessages]);
 
   useEffect(() => {
     const urlMill = searchParams.get('mill');
@@ -538,7 +1054,54 @@ export default function MillerUpdatesView() {
     const messages: ChatMessage[] = [];
     const normSelected = normalizeSupplier(currentMill.name);
 
-    // Timeline messages constructed exclusively from App B updates
+    // 1. Synthesize PO cards for current mill (restoring original PO view)
+    currentMill.orders.forEach(order => {
+      const baseDate = order.date ? new Date(order.date).toISOString() : (order.createdAt || new Date().toISOString());
+      const subOrders = Array.isArray(order.originalOrders) && order.originalOrders.length > 0
+        ? order.originalOrders
+        : [{
+            id: 'sub-0',
+            buyer: order.buyer || 'Direct Consignee',
+            product: order.product || 'Rice Brand',
+            brand: order.brand || order.product || 'Rice Brand',
+            qty: order.qty || order.totalVolume || 600,
+            rate: order.rate || 8000,
+            unloadingPoint: order.unloadingPoint || 'shop'
+          }];
+
+      const totalVolume = subOrders.reduce((s: number, sub: any) => s + (parseFloat(sub.qty) || 0), 0);
+      const poNum = resolveGroupedPoNumber(order);
+
+      // Check if this PO was accepted via App B
+      const isAcceptedByAppB = rawUpdates.some(
+        u => u.type === 'PO_ACCEPTED' && (
+          u.poNumber === poNum ||
+          u.poNumber === String(order.id) ||
+          (u.poNumber && String(order.id).includes(u.poNumber))
+        )
+      );
+
+      // A) PO Issued Bubble (From Tejas)
+      messages.push({
+        id: `po-issue-${order.id}`,
+        millName: currentMill.name,
+        sender: 'tejas',
+        senderName: 'Tejas Canvassing',
+        type: 'po',
+        poId: poNum || String(order.id),
+        timestamp: baseDate,
+        poData: {
+          ...order,
+          poNumber: poNum || String(order.id),
+          subOrders,
+          totalVolume,
+          isAcceptedByAppB: isAcceptedByAppB || order.isAcknowledged
+        },
+        status: 'read'
+      });
+    });
+
+    // 2. Timeline messages from App B updates
     rawUpdates.forEach(update => {
       const normMill = normalizeSupplier(update.millerName || '');
       if (normMill === normSelected || currentMill.name.toUpperCase().includes(normMill) || normMill.includes(currentMill.name.toUpperCase())) {
@@ -551,7 +1114,7 @@ export default function MillerUpdatesView() {
             type: 'ack',
             poId: update.poNumber,
             timestamp: update.timestamp,
-            text: `Acknowledged Purchase Order #${update.poNumber} (Application B).`,
+            text: `We acknowledge receipt and have accepted Purchase Order #${update.poNumber} (Application B).`,
             status: 'read'
           });
         } else if (update.type === 'TRUCK_LOADED') {
@@ -565,8 +1128,12 @@ export default function MillerUpdatesView() {
             timestamp: update.timestamp,
             vehicleNo: update.vehicleNumber,
             driverPhone: update.driverPhone || '',
+            loadedQuantity: update.loadedQuantity,
+            weighbridgeSlip: update.weighbridgeSlip,
+            loadingNumber: update.loadingNumber,
+            subOrderNo: update.subOrderNo,
             dispatchDate: update.loadingDate || (update.timestamp ? update.timestamp.split('T')[0] : ''),
-            dispatchNotes: `Lorry ${update.vehicleNumber || ''} dispatched with ${update.loadedQuantity || 0} QTLS.`,
+            dispatchNotes: `Lorry ${update.vehicleNumber || ''} loaded with ${update.loadedQuantity || 0} QTLS and dispatched directly from mill yard.`,
             status: 'read'
           });
         } else if (update.type === 'BILL_UPLOADED') {
@@ -577,6 +1144,8 @@ export default function MillerUpdatesView() {
             senderName: currentMill.name,
             type: 'bill',
             poId: update.poNumber,
+            subOrderNo: update.subOrderNo,
+            buyerName: update.buyerName,
             timestamp: update.timestamp,
             billNo: update.billNo,
             photoUrl: update.billUrl,
@@ -593,7 +1162,7 @@ export default function MillerUpdatesView() {
     });
 
     return messages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-  }, [currentMill, rawUpdates, customMessages]);
+  }, [currentMill, orders, rawUpdates, customMessages]);
 
   useEffect(() => {
     if (activeTab === 'chat') {
@@ -709,6 +1278,18 @@ export default function MillerUpdatesView() {
             </button>
           </div>
 
+          {/* App B Live Sync Trigger */}
+          <button
+            type="button"
+            onClick={() => triggerAppBSync(true)}
+            disabled={isSyncingAppB}
+            className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
+            title="Sync accepted purchase orders, attached bills, and lorry dispatches from App B"
+          >
+            <RefreshCw className={cn("w-3.5 h-3.5", isSyncingAppB && "animate-spin")} />
+            <span>{isSyncingAppB ? "Syncing App B..." : "Sync App B"}</span>
+          </button>
+
           {activeTab === 'stream' && (
             <button
               type="button"
@@ -739,12 +1320,20 @@ export default function MillerUpdatesView() {
       {activeTab === 'stream' && (
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
           {/* 1. Header & Summary Stats */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Total Updates Today */}
-            <div className="p-4 rounded-2xl bg-white dark:bg-[#0f1113] border border-slate-200 dark:border-white/5 shadow-xs relative overflow-hidden group">
+            <div
+              onClick={() => setStreamFilter('all')}
+              className={cn(
+                "p-4 rounded-2xl border shadow-xs relative overflow-hidden group cursor-pointer transition-all",
+                streamFilter === 'all'
+                  ? "bg-red-500/10 border-red-500/40 ring-2 ring-red-500/20"
+                  : "bg-white dark:bg-[#0f1113] border-slate-200 dark:border-white/5 hover:border-red-500/30"
+              )}
+            >
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-secondary">
-                  Total Updates Today
+                  Real-Time Updates
                 </span>
                 <div className="w-8 h-8 rounded-xl bg-red-500/10 text-red-600 dark:text-red-400 flex items-center justify-center">
                   <Radio className="w-4 h-4" />
@@ -755,20 +1344,28 @@ export default function MillerUpdatesView() {
                   {summaryStats.totalToday}
                 </span>
                 <span className="text-xs font-bold text-slate-500 dark:text-secondary">
-                  {summaryStats.isFallbackTotal ? 'recent updates' : 'events today'}
+                  {summaryStats.isFallbackTotal ? 'recent' : 'today'}
                 </span>
               </div>
               <p className="mt-1 text-[11px] text-slate-400 dark:text-neutral-500">
-                {allUpdatesStream.length} total fulfillment records recorded
+                {allUpdatesStream.length} total App B events received
               </p>
               <div className="absolute -right-4 -bottom-4 w-20 h-20 rounded-full bg-red-500/5 group-hover:scale-125 transition-transform duration-500" />
             </div>
 
-            {/* New Bills Uploaded */}
-            <div className="p-4 rounded-2xl bg-white dark:bg-[#0f1113] border border-slate-200 dark:border-white/5 shadow-xs relative overflow-hidden group">
+            {/* Attached Bills */}
+            <div
+              onClick={() => setStreamFilter('bills')}
+              className={cn(
+                "p-4 rounded-2xl border shadow-xs relative overflow-hidden group cursor-pointer transition-all",
+                streamFilter === 'bills'
+                  ? "bg-emerald-500/10 border-emerald-500/40 ring-2 ring-emerald-500/20"
+                  : "bg-white dark:bg-[#0f1113] border-slate-200 dark:border-white/5 hover:border-emerald-500/30"
+              )}
+            >
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-secondary">
-                  New Bills Uploaded
+                  Attached Bills
                 </span>
                 <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
                   <FileText className="w-4 h-4" />
@@ -785,16 +1382,24 @@ export default function MillerUpdatesView() {
                 )}
               </div>
               <p className="mt-1 text-[11px] text-slate-400 dark:text-neutral-500">
-                Authentic Mill Tax Invoices verified & attached
+                Mill tax invoices attached by App B
               </p>
               <div className="absolute -right-4 -bottom-4 w-20 h-20 rounded-full bg-emerald-500/5 group-hover:scale-125 transition-transform duration-500" />
             </div>
 
-            {/* Trucks Loaded Today */}
-            <div className="p-4 rounded-2xl bg-white dark:bg-[#0f1113] border border-slate-200 dark:border-white/5 shadow-xs relative overflow-hidden group">
+            {/* Created Loadings */}
+            <div
+              onClick={() => setStreamFilter('loadings')}
+              className={cn(
+                "p-4 rounded-2xl border shadow-xs relative overflow-hidden group cursor-pointer transition-all",
+                streamFilter === 'loadings'
+                  ? "bg-blue-500/10 border-blue-500/40 ring-2 ring-blue-500/20"
+                  : "bg-white dark:bg-[#0f1113] border-slate-200 dark:border-white/5 hover:border-blue-500/30"
+              )}
+            >
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-secondary">
-                  Trucks Loaded Today
+                  Created Loadings
                 </span>
                 <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
                   <Truck className="w-4 h-4" />
@@ -811,9 +1416,43 @@ export default function MillerUpdatesView() {
                 )}
               </div>
               <p className="mt-1 text-[11px] text-slate-400 dark:text-neutral-500">
-                Loaded at mill yard • En route directly to consignee shop
+                Loaded at mill weighbridge by App B
               </p>
               <div className="absolute -right-4 -bottom-4 w-20 h-20 rounded-full bg-blue-500/5 group-hover:scale-125 transition-transform duration-500" />
+            </div>
+
+            {/* Accepted Orders */}
+            <div
+              onClick={() => setStreamFilter('acceptances')}
+              className={cn(
+                "p-4 rounded-2xl border shadow-xs relative overflow-hidden group cursor-pointer transition-all",
+                streamFilter === 'acceptances'
+                  ? "bg-purple-500/10 border-purple-500/40 ring-2 ring-purple-500/20"
+                  : "bg-white dark:bg-[#0f1113] border-slate-200 dark:border-white/5 hover:border-purple-500/30"
+              )}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-secondary">
+                  Accepted Orders
+                </span>
+                <div className="w-8 h-8 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center">
+                  <CheckCircle2 className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="mt-2 flex items-baseline gap-2">
+                <span className="text-2xl sm:text-3xl font-black text-purple-600 dark:text-purple-400 tracking-tight">
+                  {summaryStats.acceptancesCount} POs
+                </span>
+                {summaryStats.todayAcceptancesCount > 0 && (
+                  <span className="text-xs font-bold text-purple-600 dark:text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded-full">
+                    +{summaryStats.todayAcceptancesCount} today
+                  </span>
+                )}
+              </div>
+              <p className="mt-1 text-[11px] text-slate-400 dark:text-neutral-500">
+                Confirmed & accepted by mills in App B
+              </p>
+              <div className="absolute -right-4 -bottom-4 w-20 h-20 rounded-full bg-purple-500/5 group-hover:scale-125 transition-transform duration-500" />
             </div>
           </div>
 
@@ -890,6 +1529,348 @@ export default function MillerUpdatesView() {
             </div>
           </div>
 
+          {/* DEDICATED VIEW: ATTACHED BILLS (APP B) */}
+          {streamFilter === 'bills' && (
+            <div className="space-y-3">
+              <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-black">
+                    <FileText className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-black text-sm text-slate-900 dark:text-white">
+                      Attached Bills & Mill Invoices from App B ({filteredStream.length})
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-secondary">
+                      Authentic supplier tax invoices attached for direct consignment shipments.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredStream.length === 0 ? (
+                  <div className="col-span-full p-8 text-center bg-white dark:bg-[#0f1113] rounded-2xl border border-slate-200 dark:border-white/5 text-slate-400">
+                    <FileText className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                    <p className="font-bold text-xs">No attached bills found</p>
+                  </div>
+                ) : (
+                  filteredStream.map(item => (
+                    <div
+                      key={item.id}
+                      className="p-4 rounded-2xl bg-white dark:bg-[#0f1113] border border-emerald-500/20 shadow-xs space-y-3 hover:border-emerald-500/40 transition-colors"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="px-2.5 py-1 rounded-xl bg-emerald-600 text-white font-mono font-black text-xs shadow-xs">
+                          BILL #{item.billNo || 'INVOICE'}
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-mono">
+                          {formatDateTime(item.timestamp)}
+                        </span>
+                      </div>
+
+                      <div className="space-y-1">
+                        <span className="text-[10px] font-black uppercase text-slate-400 dark:text-secondary">Consignee Buyer</span>
+                        <p className="font-black text-sm text-slate-900 dark:text-white leading-tight">
+                          {item.buyerName || 'Authorized Consignee'}
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 p-2.5 rounded-xl bg-slate-50 dark:bg-white/[0.02] border border-slate-100 dark:border-white/5 text-[11px]">
+                        <div>
+                          <span className="text-[10px] uppercase text-slate-400 font-bold">PO Number</span>
+                          <p className="font-mono font-bold text-slate-800 dark:text-white">#{item.poNumber}</p>
+                        </div>
+                        <div>
+                          <span className="text-[10px] uppercase text-slate-400 font-bold">Sub-Order</span>
+                          <p className="font-mono font-bold text-amber-600 dark:text-amber-400">{item.subOrderNo || '--'}</p>
+                        </div>
+                        <div className="col-span-2 pt-1 border-t border-slate-200/50 dark:border-white/5">
+                          <span className="text-[10px] uppercase text-slate-400 font-bold">Milling Partner</span>
+                          <p className="font-bold text-slate-700 dark:text-secondary truncate">{item.millerName}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => handleViewBill(item)}
+                          className="flex-1 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-95"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>View Bill</span>
+                        </button>
+                        {item.billUrl && (
+                          <a
+                            href={resolveBillDocumentUrl(item.billUrl)}
+                            download={item.fileName || `Mill_Bill_${item.billNo || 'doc'}.pdf`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/20 text-slate-700 dark:text-white cursor-pointer transition-colors"
+                            title="Download invoice document"
+                          >
+                            <Download className="w-4 h-4" />
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* DEDICATED VIEW: CREATED LOADINGS (APP B) */}
+          {streamFilter === 'loadings' && (
+            <div className="space-y-3">
+              <div className="p-4 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center font-black">
+                    <Truck className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-black text-sm text-slate-900 dark:text-white">
+                      Created Loadings by App B ({filteredStream.length})
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-secondary">
+                      Vehicle dispatches loaded at mill weighbridge en route directly to buyer shops.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredStream.length === 0 ? (
+                  <div className="col-span-full p-8 text-center bg-white dark:bg-[#0f1113] rounded-2xl border border-slate-200 dark:border-white/5 text-slate-400">
+                    <Truck className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                    <p className="font-bold text-xs">No vehicle loadings recorded yet</p>
+                  </div>
+                ) : (
+                  filteredStream.map(item => (
+                    <div
+                      key={item.id}
+                      className="p-4 rounded-2xl bg-white dark:bg-[#0f1113] border border-blue-500/20 shadow-xs space-y-3 hover:border-blue-500/40 transition-colors"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="px-2.5 py-1 rounded-xl bg-blue-600 text-white font-mono font-black text-xs shadow-xs tracking-wider">
+                          {item.vehicleNumber || 'LORRY ASSIGNED'}
+                        </span>
+                        <span className="px-2 py-0.5 rounded-lg bg-blue-500/10 text-blue-700 dark:text-blue-300 font-mono text-[10px] font-bold">
+                          {item.loadingNumber || item.loadingId || 'DIRECT'}
+                        </span>
+                      </div>
+
+                      <div className="flex items-baseline justify-between pt-1 border-b border-slate-100 dark:border-white/5 pb-2">
+                        <div>
+                          <span className="text-[10px] font-black uppercase text-slate-400 dark:text-secondary">Loaded Quantity</span>
+                          <p className="text-2xl font-black text-blue-600 dark:text-blue-400 font-sans">
+                            {item.loadedQuantity || 0} <span className="text-xs font-bold text-slate-400 dark:text-secondary">QTLS</span>
+                          </p>
+                        </div>
+                        {item.weighbridgeSlip && (
+                          <div className="text-right">
+                            <span className="text-[10px] font-black uppercase text-slate-400 dark:text-secondary">Weighbridge Slip</span>
+                            <p className="font-mono font-bold text-slate-900 dark:text-white text-xs">{item.weighbridgeSlip}</p>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="space-y-1.5 text-[11px]">
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400">PO Reference:</span>
+                          <span className="font-mono font-bold text-slate-800 dark:text-white">#{item.poNumber}</span>
+                        </div>
+                        {item.subOrderNo && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-400">Sub-Order:</span>
+                            <span className="font-mono font-bold text-amber-600 dark:text-amber-400">{item.subOrderNo}</span>
+                          </div>
+                        )}
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400">Mill Facility:</span>
+                          <span className="font-bold text-slate-700 dark:text-secondary truncate max-w-[180px]">{item.millerName}</span>
+                        </div>
+                        {item.loadingDate && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-400">Loading Date:</span>
+                            <span className="font-medium text-slate-600 dark:text-neutral-300">{item.loadingDate}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {item.driverPhone && (
+                        <div className="pt-2 border-t border-slate-100 dark:border-white/5 flex items-center justify-between">
+                          <span className="text-[10px] uppercase font-bold text-slate-400">Driver Contact</span>
+                          <a
+                            href={`tel:${item.driverPhone.replace(/[^0-9+]/g, '')}`}
+                            className="font-mono font-bold text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
+                          >
+                            <Phone className="w-3.5 h-3.5" />
+                            {item.driverPhone}
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* DEDICATED VIEW: ACCEPTED ORDERS (APP B) */}
+          {streamFilter === 'acceptances' && (
+            <div className="space-y-3">
+              <div className="p-4 rounded-2xl bg-purple-500/10 border border-purple-500/20 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-purple-500/20 text-purple-600 dark:text-purple-400 flex items-center justify-center font-black">
+                    <CheckCircle2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-black text-sm text-slate-900 dark:text-white">
+                      Orders Accepted by App B ({filteredStream.length})
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-secondary">
+                      Purchase Orders acknowledged and confirmed for milling & dispatch by milling partners.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredStream.length === 0 ? (
+                  <div className="col-span-full p-8 text-center bg-white dark:bg-[#0f1113] rounded-2xl border border-slate-200 dark:border-white/5 text-slate-400">
+                    <CheckCircle2 className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                    <p className="font-bold text-xs">No accepted orders recorded yet</p>
+                  </div>
+                ) : (
+                  filteredStream.map(item => {
+                    const matchedOrder = orders.find(o =>
+                      resolveGroupedPoNumber(o) === item.poNumber ||
+                      String(o.id) === item.poNumber ||
+                      (o.id && String(o.id).includes(item.poNumber))
+                    );
+                    const placedInfo = getPlacedDateInfo(item, matchedOrder);
+                    const subOrders = getSubOrdersForPO(item, matchedOrder);
+                    const totalSubQty = subOrders.reduce((sum, s) => sum + s.quantity, 0);
+
+                    return (
+                      <div
+                        key={item.id}
+                        className="p-4 rounded-2xl bg-white dark:bg-[#0f1113] border border-purple-500/20 shadow-xs space-y-3 hover:border-purple-500/40 transition-colors"
+                      >
+                        {/* 1. Header: PO Number & Placed Date on Left, Mill Confirmed Badge on Right */}
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="px-2.5 py-1 rounded-xl bg-purple-600 text-white font-mono font-black text-xs shadow-xs">
+                              PO #{item.poNumber}
+                            </span>
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-white/5 px-2 py-0.5 rounded-lg border border-slate-200 dark:border-white/5">
+                              <Calendar className="w-3 h-3 text-indigo-500 shrink-0" />
+                              <span>Placed: <strong className="font-black text-slate-900 dark:text-white">{placedInfo.placedDateStr}</strong></span>
+                            </span>
+                          </div>
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                            <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                            <span>Mill Confirmed: {formatDateTime(item.timestamp)}</span>
+                          </span>
+                        </div>
+
+                        {/* 2. Milling Facility */}
+                        <div className="space-y-0.5">
+                          <span className="text-[10px] font-black uppercase text-slate-400 dark:text-secondary">Milling Facility</span>
+                          <p className="font-bold text-sm text-slate-900 dark:text-white">
+                            {item.millerName}
+                          </p>
+                        </div>
+
+                        {/* 3. Summary Overview */}
+                        <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-white/[0.02] border border-slate-100 dark:border-white/5 space-y-1.5 text-[11px]">
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-400">Total Volume:</span>
+                            <span className="font-black text-slate-900 dark:text-white">
+                              {(matchedOrder?.totalVolume || matchedOrder?.qty || item.rawPayload?.orderedQuantity || totalSubQty)} QTLS
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-400">Product:</span>
+                            <span className="font-semibold text-slate-800 dark:text-neutral-200">
+                              {matchedOrder?.product || item.rawPayload?.productName || 'Keshar Kali'}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-400">Sub-Orders Count:</span>
+                            <span className="font-mono font-bold text-purple-600 dark:text-purple-400">
+                              {subOrders.length} {subOrders.length === 1 ? 'sub-order' : 'sub-orders'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* 4. Sub-orders Breakdown (Per PO) */}
+                        <div className="space-y-1.5 pt-1 border-t border-slate-100 dark:border-white/5">
+                          <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-wider text-slate-400">
+                            <span>Sub-Orders Breakdown ({subOrders.length})</span>
+                            <span>Destination</span>
+                          </div>
+                          <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
+                            {subOrders.map((sub, sIdx) => (
+                              <div
+                                key={sIdx}
+                                className="p-2 rounded-xl bg-slate-50 dark:bg-white/[0.03] border border-slate-100 dark:border-white/5 text-[11px] space-y-1"
+                              >
+                                <div className="flex items-center justify-between gap-1">
+                                  <div className="flex items-center gap-1.5 min-w-0">
+                                    <span className="px-1.5 py-0.5 rounded-md font-mono font-black text-[10px] bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20 shrink-0">
+                                      {sub.subOrderNo}
+                                    </span>
+                                    <span className="font-bold text-slate-900 dark:text-white truncate">
+                                      {sub.buyerName}
+                                    </span>
+                                  </div>
+                                  <span className="font-mono font-black text-slate-800 dark:text-slate-200 shrink-0">
+                                    {sub.quantity} QTL
+                                  </span>
+                                </div>
+                                <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-neutral-400">
+                                  <span className="truncate">
+                                    {sub.productName} • ₹{formatINR(sub.rate)}/QTL
+                                  </span>
+                                  <span className="capitalize px-1.5 py-0.2 rounded bg-slate-200/50 dark:bg-white/5 font-semibold text-[10px]">
+                                    {sub.unloadingPoint || 'shop'}
+                                  </span>
+                                </div>
+                                {sub.billNo && (
+                                  <div className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                                    <FileCheck className="w-3 h-3" />
+                                    <span>Mill Bill #{sub.billNo}</span>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* 5. Footer: Open in Chat Desk */}
+                        <div className="flex items-center justify-end pt-1 border-t border-slate-100 dark:border-white/5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedMillName(item.millerName);
+                              setActiveTab('chat');
+                            }}
+                            className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/20 text-slate-800 dark:text-white font-bold text-xs cursor-pointer flex items-center gap-1.5 transition-colors"
+                          >
+                            <MessageSquare className="w-3.5 h-3.5 text-emerald-500" />
+                            <span>Open in Chat Desk</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
+
           {/* 3. Miller Updates Activity Table / Stream */}
           <div className="rounded-2xl bg-white dark:bg-[#0f1113] border border-slate-200 dark:border-white/5 shadow-xs overflow-hidden">
             <div className="px-5 py-3.5 border-b border-slate-200 dark:border-white/5 flex items-center justify-between">
@@ -932,6 +1913,13 @@ export default function MillerUpdatesView() {
                   ) : (
                     filteredStream.map((item) => {
                       const isUnread = !item.read;
+                      const matchedOrder = orders.find(o =>
+                        resolveGroupedPoNumber(o) === item.poNumber ||
+                        String(o.id) === item.poNumber ||
+                        (o.id && String(o.id).includes(item.poNumber))
+                      );
+                      const placedInfo = getPlacedDateInfo(item, matchedOrder);
+                      const subOrders = getSubOrdersForPO(item, matchedOrder);
 
                       return (
                         <tr
@@ -941,19 +1929,21 @@ export default function MillerUpdatesView() {
                             isUnread && "bg-red-500/[0.03] dark:bg-red-500/[0.05]"
                           )}
                         >
-                          {/* Column 1: Timestamp */}
+                          {/* Column 1: Placed Date & Accepted Timestamp */}
                           <td className="py-3 px-4 whitespace-nowrap">
                             <div className="flex items-center gap-2">
                               {isUnread && (
                                 <span className="w-2 h-2 rounded-full bg-red-600 shrink-0 animate-ping" title="New update" />
                               )}
-                              <div>
-                                <p className="font-bold text-slate-900 dark:text-white">
-                                  {formatDateTime(item.timestamp)}
-                                </p>
-                                <span className="text-[10px] text-slate-400 dark:text-neutral-500 font-mono">
-                                  {item.id.startsWith('synth') ? 'Synced' : 'Webhook Ingest'}
-                                </span>
+                              <div className="space-y-0.5">
+                                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900 dark:text-white">
+                                  <Calendar className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                                  <span>Placed: {placedInfo.placedDateStr}</span>
+                                </div>
+                                <div className="flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
+                                  <CheckCircle2 className="w-2.5 h-2.5 shrink-0" />
+                                  <span>Accepted: {formatDateTime(item.timestamp)}</span>
+                                </div>
                               </div>
                             </div>
                           </td>
@@ -976,16 +1966,36 @@ export default function MillerUpdatesView() {
                           </td>
 
                           {/* Column 3: PO # & Sub-PO */}
-                          <td className="py-3 px-4 whitespace-nowrap">
-                            <div className="flex items-center gap-1.5 flex-wrap">
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-1.5 flex-wrap max-w-[220px]">
                               <span className="px-2 py-0.5 rounded-md text-[11px] font-black font-mono bg-slate-100 dark:bg-white/10 text-slate-800 dark:text-white border border-slate-200 dark:border-white/5">
                                 #{item.poNumber}
                               </span>
-                              {item.subOrderNo && (
-                                <span className="px-2 py-0.5 rounded-md text-[11px] font-black font-mono bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
+                              {subOrders.length > 0 ? (
+                                subOrders.length <= 2 ? (
+                                  subOrders.map((so, sIdx) => (
+                                    <span key={sIdx} className="px-1.5 py-0.5 rounded text-[10px] font-black font-mono bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
+                                      {so.subOrderNo}
+                                    </span>
+                                  ))
+                                ) : (
+                                  <>
+                                    <span className="px-1.5 py-0.5 rounded text-[10px] font-black font-mono bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
+                                      {subOrders[0].subOrderNo}
+                                    </span>
+                                    <span
+                                      title={subOrders.map(s => `${s.subOrderNo} (${s.buyerName})`).join(', ')}
+                                      className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-white/5 cursor-help"
+                                    >
+                                      +{subOrders.length - 1} subs
+                                    </span>
+                                  </>
+                                )
+                              ) : item.subOrderNo ? (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-black font-mono bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
                                   {item.subOrderNo}
                                 </span>
-                              )}
+                              ) : null}
                             </div>
                           </td>
 
@@ -993,10 +2003,12 @@ export default function MillerUpdatesView() {
                           <td className="py-3 px-4">
                             <div>
                               <p className="font-bold text-slate-900 dark:text-white leading-tight">
-                                {item.buyerName || 'Authorized Consignee'}
+                                {subOrders.length > 1
+                                  ? `${subOrders[0].buyerName} (+${subOrders.length - 1} buyers)`
+                                  : (item.buyerName || (subOrders[0]?.buyerName) || 'Authorized Consignee')}
                               </p>
                               <span className="text-[10px] text-slate-400 dark:text-secondary flex items-center gap-1">
-                                <span>Shop / Consignee Hub</span>
+                                <span>{subOrders.length > 1 ? 'Multiple Delivery Destinations' : (subOrders[0]?.unloadingPoint || 'Shop / Consignee Hub')}</span>
                               </span>
                             </div>
                           </td>
@@ -1298,83 +2310,230 @@ export default function MillerUpdatesView() {
                           )}
 
                           {msg.type === 'po' && msg.poData && (
-                            <div className="p-4 rounded-2xl bg-white dark:bg-surface-container border border-slate-200 dark:border-white/5 shadow-xs space-y-2 w-full max-w-md">
-                              <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-white/5">
-                                <span className="text-xs font-black text-red-600 dark:text-red-400">
-                                  Official PO #{msg.poData.id}
-                                </span>
-                                <span className="text-[10px] font-bold text-slate-500">
-                                  {msg.poData.totalVolume} QTLS
-                                </span>
+                            <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-neutral-900 border border-slate-200 dark:border-white/10 shadow-md overflow-hidden">
+                              {/* PO Card Header */}
+                              <div className="px-4 py-2.5 bg-red-600 text-white flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <FileText className="w-4 h-4" />
+                                  <span className="font-mono font-black text-xs uppercase tracking-wider">
+                                    PURCHASE ORDER #{msg.poId}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  {msg.poData.isAcceptedByAppB && (
+                                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-white/20 text-white flex items-center gap-1">
+                                      <CheckCircle2 className="w-3 h-3 text-emerald-300" />
+                                      Accepted by App B
+                                    </span>
+                                  )}
+                                  <span className="text-[10px] font-bold opacity-90">
+                                    {msg.poData.date || 'Issued'}
+                                  </span>
+                                </div>
                               </div>
-                              <p className="text-xs font-bold text-slate-800 dark:text-white">
-                                {msg.poData.product || 'Commercial Grain Batch'}
-                              </p>
-                              <div className="text-[11px] text-slate-500 space-y-0.5">
-                                <p>Rate: ₹{msg.poData.rate || 0}/QTL</p>
-                                <p>Destination: {msg.poData.destination || 'Consignee Shop'}</p>
+
+                              {/* PO Card Body */}
+                              <div className="p-4 space-y-3 text-xs">
+                                <div className="flex items-center justify-between border-b border-slate-100 dark:border-white/5 pb-2">
+                                  <div>
+                                    <span className="text-[10px] font-black uppercase text-slate-400 dark:text-secondary">Consolidated Volume</span>
+                                    <p className="text-xl font-black text-slate-900 dark:text-white font-sans">
+                                      {(msg.poData.totalVolume || msg.poData.qty || 0).toFixed(2)}{' '}
+                                      <span className="text-xs font-bold text-slate-400 dark:text-secondary">QTLS</span>
+                                    </p>
+                                  </div>
+                                  <div className="text-right">
+                                    <span className="text-[10px] font-black uppercase text-slate-400 dark:text-secondary">Loading Terms</span>
+                                    <p className="font-bold text-slate-800 dark:text-on-surface">{msg.poData.loadingDays || 5} Days</p>
+                                  </div>
+                                </div>
+
+                                {/* Sub-orders List */}
+                                <div className="space-y-1.5">
+                                  <span className="text-[10px] font-black uppercase text-slate-400 dark:text-secondary tracking-wider">
+                                    Sub-Orders ({msg.poData.subOrders?.length || 1})
+                                  </span>
+                                  {msg.poData.subOrders?.map((sub: any, sIdx: number) => (
+                                    <div key={sIdx} className="p-2.5 rounded-xl bg-slate-50 dark:bg-white/[0.03] border border-slate-100 dark:border-white/5 flex items-center justify-between gap-2">
+                                      <div>
+                                        <p className="font-bold text-slate-900 dark:text-white text-xs leading-tight">{sub.buyer}</p>
+                                        <p className="text-[10px] text-red-600 dark:text-red-400 font-semibold">{sub.brand || sub.product || 'Rice Brand'}</p>
+                                      </div>
+                                      <div className="text-right">
+                                        <p className="font-black font-sans text-xs text-slate-900 dark:text-white">
+                                          {(parseFloat(sub.qty) || 0).toFixed(2)} QTLS
+                                        </p>
+                                        <p className="text-[10px] text-slate-500 dark:text-secondary font-mono">
+                                          ₹{formatINR(sub.rate || 0)} / QTL
+                                        </p>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+
+                                {/* Actions inside PO Card */}
+                                <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-white/5">
+                                  <div className="flex items-center gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => printPoDocument(msg.poData.supplier || currentMill?.name || 'DIRECT MILL', msg.poData, msg.poData.subOrders || [])}
+                                      className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-surface-container hover:bg-slate-200 dark:hover:bg-surface-container-high text-slate-700 dark:text-secondary hover:text-slate-900 dark:hover:text-white font-bold text-[10px] cursor-pointer flex items-center gap-1"
+                                    >
+                                      <Printer className="w-3 h-3" />
+                                      <span>Print PDF</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => navigate('/placed-orders')}
+                                      className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-surface-container hover:bg-slate-200 dark:hover:bg-surface-container-high text-slate-700 dark:text-secondary hover:text-slate-900 dark:hover:text-white font-bold text-[10px] cursor-pointer flex items-center gap-1"
+                                    >
+                                      <ExternalLink className="w-3 h-3" />
+                                      <span>Orders Desk</span>
+                                    </button>
+                                  </div>
+
+                                  <div className="flex items-center gap-1 text-[10px] text-slate-400 dark:text-secondary font-mono">
+                                    <span>{formatDateTime(msg.timestamp)}</span>
+                                    <CheckCheck className="w-3.5 h-3.5 text-blue-500" />
+                                  </div>
+                                </div>
                               </div>
                             </div>
                           )}
 
                           {msg.type === 'ack' && (
-                            <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-300 text-xs font-bold space-y-1">
-                              <div className="flex items-center gap-1.5 font-black text-emerald-600 dark:text-emerald-400">
-                                <CheckCheck className="w-4 h-4" />
-                                <span>PO Confirmed & Acknowledged</span>
+                            <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-900 dark:text-emerald-200 text-xs font-bold space-y-1.5 w-full max-w-md">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1.5 font-black text-emerald-600 dark:text-emerald-400">
+                                  <CheckCheck className="w-4 h-4" />
+                                  <span>PO Confirmed & Accepted (App B)</span>
+                                </div>
+                                {msg.poId && (
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] bg-emerald-600 text-white font-mono">
+                                    #{msg.poId}
+                                  </span>
+                                )}
                               </div>
-                              <p>{msg.text}</p>
+                              <p className="text-[11px] leading-relaxed font-normal">{msg.text || `Milling unit confirmed receipt and accepted Purchase Order #${msg.poId}.`}</p>
                             </div>
                           )}
 
                           {msg.type === 'dispatch' && (
-                            <div className="p-3.5 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-800 dark:text-blue-300 text-xs font-bold space-y-1.5">
-                              <div className="flex items-center gap-1.5 font-black text-blue-600 dark:text-blue-400">
-                                <Truck className="w-4 h-4" />
-                                <span>Lorry Dispatched: {msg.vehicleNo}</span>
+                            <div className="p-3.5 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-900 dark:text-blue-200 text-xs font-bold space-y-2 w-full max-w-md">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1.5 font-black text-blue-600 dark:text-blue-400">
+                                  <Truck className="w-4 h-4" />
+                                  <span>Lorry Loaded & Dispatched (App B)</span>
+                                </div>
+                                <span className="px-2 py-0.5 rounded-md bg-blue-600 text-white font-mono font-black text-[11px]">
+                                  {msg.vehicleNo}
+                                </span>
                               </div>
-                              {msg.driverPhone && (
-                                <p className="text-[11px] font-mono">Driver Contact: {msg.driverPhone}</p>
+
+                              <div className="grid grid-cols-2 gap-2 p-2 rounded-xl bg-blue-500/5 text-[11px]">
+                                <div>
+                                  <span className="text-[9px] uppercase text-blue-500 dark:text-blue-400 font-bold">Loaded Qty</span>
+                                  <p className="font-black text-blue-900 dark:text-white">{msg.loadedQuantity || '18'} QTLS</p>
+                                </div>
+                                <div>
+                                  <span className="text-[9px] uppercase text-blue-500 dark:text-blue-400 font-bold">Weighbridge Slip</span>
+                                  <p className="font-mono font-bold text-blue-900 dark:text-white">{msg.weighbridgeSlip || '--'}</p>
+                                </div>
+                                {msg.driverPhone && (
+                                  <div className="col-span-2 flex items-center justify-between pt-1 border-t border-blue-500/20">
+                                    <span className="text-[9px] uppercase text-blue-500 dark:text-blue-400 font-bold">Driver Phone</span>
+                                    <a
+                                      href={`tel:${msg.driverPhone.replace(/[^0-9+]/g, '')}`}
+                                      className="font-mono font-bold text-blue-600 dark:text-blue-300 hover:underline flex items-center gap-1"
+                                    >
+                                      <Phone className="w-3 h-3" />
+                                      {msg.driverPhone}
+                                    </a>
+                                  </div>
+                                )}
+                              </div>
+
+                              {msg.dispatchNotes && (
+                                <p className="text-[11px] text-blue-700 dark:text-blue-300 font-medium">{msg.dispatchNotes}</p>
                               )}
-                              <p className="text-[11px]">{msg.dispatchNotes}</p>
                             </div>
                           )}
 
-                          {msg.type === 'bill' && msg.subBills && (
-                            <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-xs font-bold space-y-2">
-                              <div className="flex items-center gap-1.5 font-black text-emerald-600 dark:text-emerald-400">
-                                <FileText className="w-4 h-4" />
-                                <span>Authentic Mill Tax Invoices Uploaded</span>
+                          {msg.type === 'bill' && (
+                            <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-xs font-bold space-y-2.5 w-full max-w-md">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1.5 font-black text-emerald-600 dark:text-emerald-400">
+                                  <FileText className="w-4 h-4" />
+                                  <span>Authentic Mill Tax Invoice Attached</span>
+                                </div>
+                                {msg.billNo && (
+                                  <span className="px-2 py-0.5 rounded-md bg-emerald-600 text-white font-mono font-black text-[11px]">
+                                    Bill #{msg.billNo}
+                                  </span>
+                                )}
                               </div>
-                              <div className="space-y-1.5">
-                                {msg.subBills.map((sb, sbIdx) => (
-                                  <div key={sbIdx} className="flex items-center justify-between p-2 rounded-xl bg-white/60 dark:bg-black/30 border border-emerald-500/20">
-                                    <div>
-                                      <p className="text-[11px] font-black text-slate-900 dark:text-white">
-                                        Bill #{sb.billNo}
-                                      </p>
-                                      <span className="text-[10px] text-slate-500">{sb.buyer}</span>
+
+                              {msg.subBills && msg.subBills.length > 0 ? (
+                                <div className="space-y-1.5">
+                                  {msg.subBills.map((sb, sbIdx) => (
+                                    <div key={sbIdx} className="flex items-center justify-between p-2 rounded-xl bg-white/60 dark:bg-black/30 border border-emerald-500/20">
+                                      <div>
+                                        <p className="text-[11px] font-black text-slate-900 dark:text-white">
+                                          Bill #{sb.billNo}
+                                        </p>
+                                        <span className="text-[10px] text-slate-500">{sb.buyer}</span>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleViewBill({
+                                          id: `sb-${sb.billNo}`,
+                                          type: 'BILL_UPLOADED',
+                                          poNumber: msg.poId || '',
+                                          buyerName: sb.buyer,
+                                          billNo: sb.billNo,
+                                          billUrl: sb.photoUrl,
+                                          millerName: currentMill.name,
+                                          timestamp: msg.timestamp,
+                                          read: true
+                                        })}
+                                        className="px-2.5 py-1 rounded-lg bg-emerald-600 text-white text-[11px] font-bold cursor-pointer hover:bg-emerald-700"
+                                      >
+                                        View Bill
+                                      </button>
                                     </div>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleViewBill({
-                                        id: `sb-${sb.billNo}`,
-                                        type: 'BILL_UPLOADED',
-                                        poNumber: msg.poId || '',
-                                        buyerName: sb.buyer,
-                                        billNo: sb.billNo,
-                                        billUrl: sb.photoUrl,
-                                        millerName: currentMill.name,
-                                        timestamp: msg.timestamp,
-                                        read: true
-                                      })}
-                                      className="px-2.5 py-1 rounded-lg bg-emerald-600 text-white text-[11px] font-bold cursor-pointer hover:bg-emerald-700"
-                                    >
-                                      View Bill
-                                    </button>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="p-2.5 rounded-xl bg-white/60 dark:bg-black/30 border border-emerald-500/20 flex items-center justify-between gap-3">
+                                  <div>
+                                    <p className="text-xs font-black text-slate-900 dark:text-white">
+                                      {msg.buyerName ? `${msg.buyerName}` : `PO #${msg.poId}`}
+                                    </p>
+                                    <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-mono">
+                                      {msg.subOrderNo ? `Sub-Order: ${msg.subOrderNo}` : `Invoice attached`}
+                                    </span>
                                   </div>
-                                ))}
-                              </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleViewBill({
+                                      id: msg.id,
+                                      type: 'BILL_UPLOADED',
+                                      poNumber: msg.poId || '',
+                                      subOrderNo: msg.subOrderNo,
+                                      buyerName: msg.buyerName,
+                                      billNo: msg.billNo,
+                                      billUrl: msg.photoUrl,
+                                      millerName: currentMill.name,
+                                      timestamp: msg.timestamp,
+                                      read: true
+                                    })}
+                                    className="px-3 py-1.5 rounded-xl bg-emerald-600 text-white text-xs font-bold cursor-pointer hover:bg-emerald-700 flex items-center gap-1.5 shadow-xs"
+                                  >
+                                    <Eye className="w-3.5 h-3.5" />
+                                    <span>View Bill</span>
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
@@ -1415,6 +2574,70 @@ export default function MillerUpdatesView() {
               </div>
             )}
           </main>
+
+          {/* RIGHT SIDE DRAWER: MILL PROFILE & DETAILS */}
+          <AnimatePresence>
+            {showInfoDrawer && currentMill && (
+              <motion.aside
+                initial={{ width: 0, opacity: 0 }}
+                animate={{ width: 320, opacity: 1 }}
+                exit={{ width: 0, opacity: 0 }}
+                className="border-l border-slate-200 dark:border-white/10 bg-white dark:bg-[#0c0d0e] flex flex-col shrink-0 overflow-hidden shadow-2xl z-20"
+              >
+                <div className="p-4 border-b border-slate-200 dark:border-white/10 flex items-center justify-between">
+                  <h3 className="font-black text-xs uppercase tracking-wider text-slate-900 dark:text-white">Mill Profile</h3>
+                  <button
+                    type="button"
+                    onClick={() => setShowInfoDrawer(false)}
+                    className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 text-slate-500 cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
+                  <div className="text-center pb-3 border-b border-slate-200 dark:border-white/10 space-y-1.5">
+                    <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-600 font-black text-base flex items-center justify-center mx-auto shadow-inner">
+                      {currentMill.name.slice(0, 2).toUpperCase()}
+                    </div>
+                    <h4 className="font-black text-sm text-slate-900 dark:text-white">{currentMill.name}</h4>
+                    <p className="text-[11px] text-slate-500 dark:text-secondary">{currentMill.address || 'APMC Registered Hub'}</p>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="p-3 rounded-xl bg-slate-50 dark:bg-white/[0.03] border border-slate-100 dark:border-white/5 space-y-1">
+                      <span className="text-[10px] font-black uppercase text-slate-400 dark:text-secondary">Supplier Code</span>
+                      <p className="font-mono font-black text-slate-900 dark:text-white">{currentMill.code || 'SUP-DIRECT'}</p>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-slate-50 dark:bg-white/[0.03] border border-slate-100 dark:border-white/5 space-y-1">
+                      <span className="text-[10px] font-black uppercase text-slate-400 dark:text-secondary">Dispatch Contact</span>
+                      <p className="font-bold text-slate-900 dark:text-white">{currentMill.phone || 'Not configured'}</p>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-slate-50 dark:bg-white/[0.03] border border-slate-100 dark:border-white/5 space-y-1">
+                      <span className="text-[10px] font-black uppercase text-slate-400 dark:text-secondary">Email</span>
+                      <p className="font-bold text-slate-900 dark:text-white truncate">{currentMill.email || 'orders@mill.com'}</p>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-slate-50 dark:bg-white/[0.03] border border-slate-100 dark:border-white/5 space-y-1">
+                      <span className="text-[10px] font-black uppercase text-slate-400 dark:text-secondary">Total POs Issued</span>
+                      <p className="text-lg font-black text-red-600 dark:text-red-400 font-sans">{currentMill.orders?.length || 0}</p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/miller?mill=${encodeURIComponent(currentMill.name)}`)}
+                    className="w-full py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-black text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    <Eye className="w-4 h-4" />
+                    <span>Open Miller Portal View</span>
+                  </button>
+                </div>
+              </motion.aside>
+            )}
+          </AnimatePresence>
         </div>
       )}
 

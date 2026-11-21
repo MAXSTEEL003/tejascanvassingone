@@ -80,9 +80,31 @@ export function addMillerUpdate(update: MillerUpdateRecord): MillerUpdateRecord 
 }
 
 export function getAllMillerUpdates(): MillerUpdateRecord[] {
-  return Array.from(updatesStore.values()).sort(
-    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-  );
+  loadFromDisk();
+  return Array.from(updatesStore.values())
+    .filter(u => u.poNumber !== "TC-5693" && !u.poNumber?.includes("5693"))
+    .sort(
+      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
+}
+
+export function removeTestUpdates(): number {
+  let removed = 0;
+  for (const [id, item] of updatesStore.entries()) {
+    if (item.poNumber === "TC-5693" || item.poNumber?.includes("5693") || id.includes("5693")) {
+      updatesStore.delete(id);
+      removed++;
+    }
+  }
+  if (removed > 0) {
+    persistToDisk();
+  }
+  return removed;
+}
+
+export function clearAllMillerUpdates(): void {
+  updatesStore.clear();
+  persistToDisk();
 }
 
 export function getMillerUpdateById(id: string): MillerUpdateRecord | undefined {

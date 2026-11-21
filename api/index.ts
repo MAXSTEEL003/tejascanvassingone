@@ -34,12 +34,17 @@ import {
   getSyncRecord,
   getAllSyncRecords,
 } from "./supplierPortalSyncStore.js";
-import { processSupplierUpdateWebhook } from "./millerUpdatesService.js";
+import {
+  processSupplierUpdateWebhook,
+  syncAcceptedOrdersFromAppB,
+} from "./millerUpdatesService.js";
 import {
   getAllMillerUpdates,
   getUnreadUpdatesCount,
   markUpdateAsRead,
   markAllUpdatesAsRead,
+  removeTestUpdates,
+  clearAllMillerUpdates,
 } from "./millerUpdatesStore.js";
 
 const currentDir = typeof __dirname !== "undefined" ? __dirname : process.cwd();
@@ -2060,6 +2065,40 @@ app.post(
   (_req, res) => {
     const marked = markAllUpdatesAsRead();
     return res.json({ success: true, marked, unreadCount: 0 });
+  }
+);
+
+/**
+ * Synchronize accepted purchase orders, attached bills, and loadings directly from Application B
+ */
+app.all(
+  ["/api/integration/sync-app-b", "/integration/sync-app-b"],
+  async (_req, res) => {
+    try {
+      const result = await syncAcceptedOrdersFromAppB();
+      return res.json(result);
+    } catch (err: any) {
+      console.error("[Sync App B Route Error]:", err);
+      return res.status(500).json({
+        success: false,
+        error: err?.message || "Failed to sync updates from Application B",
+      });
+    }
+  }
+);
+
+/**
+ * Clear test data from miller updates store and data/miller_updates.json
+ */
+app.post(
+  ["/api/integration/miller-updates/clear-test-data", "/integration/miller-updates/clear-test-data"],
+  (_req, res) => {
+    try {
+      const removed = removeTestUpdates();
+      return res.json({ success: true, removed, count: getAllMillerUpdates().length });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || "Failed to clear test data." });
+    }
   }
 );
 
