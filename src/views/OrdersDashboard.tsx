@@ -2176,8 +2176,10 @@ export default function OrdersDashboard() {
       buyer: buyerName,
       supplier: assignedBatchSupplier,
       originalOrders: enrichedSelected,
-      purchaseOrderSent: hasAuthenticSupplierEmail,
-      purchaseOrderSentAt: hasAuthenticSupplierEmail ? new Date().toISOString() : undefined,
+      purchaseOrderSent: false,
+      purchaseOrderSentAt: undefined as string | undefined,
+      poEmailStatus: (hasAuthenticSupplierEmail ? 'Queued' : 'Missing Email') as string | undefined,
+      gmailWebComposeUrl: undefined as string | undefined,
       companyEmail: (localStorage.getItem('companyEmail') && !localStorage.getItem('companyEmail')?.includes('riceaggregator.com')) ? localStorage.getItem('companyEmail')! : 'nani@tejasc.in',
       sellerEmail: hasAuthenticSupplierEmail ? supplierProfile.email : '',
       qty: totalSelectedQty,
@@ -2281,24 +2283,55 @@ export default function OrdersDashboard() {
 
       const poPlainText = `Official Purchase Order: ${groupedOrder.id}\nSupplier: ${assignedBatchSupplier}\nTotal Quantity: ${groupedOrder.qty} QTLS\nTotal Value: ${groupedOrder.total}\n\nSub-Order Particulars:\n${subOrdersSummaryText}\n\n--\nTejas Canvassing Grain Brokerage`;
 
-      fetch('/api/dispatch-po', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          to: supplierProfile.email,
-          from: localStorage.getItem('companyEmail') || 'nani@tejasc.in',
-          subject: poSubject,
-          html: emailHtml,
-          htmlContent: emailHtml,
-          textContent: poPlainText,
-          batchId: groupedOrder.id,
-          poNumber: groupedOrder.id,
-          orderId: groupedOrder.id,
-          supplierName: assignedBatchSupplier,
-          orderDetails: groupedOrder,
-          accessToken: (typeof window !== 'undefined' ? (localStorage.getItem('google_access_token') || sessionStorage.getItem('google_access_token')) : undefined)
-        })
-      }).catch(err => console.warn(`Supplier PO email error for ${assignedBatchSupplier}:`, err?.message || err));
+      try {
+        const poRes = await fetch('/api/dispatch-po', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          keepalive: true,
+          body: JSON.stringify({
+            to: supplierProfile.email,
+            from: localStorage.getItem('companyEmail') || 'nani@tejasc.in',
+            subject: poSubject,
+            html: emailHtml,
+            htmlContent: emailHtml,
+            textContent: poPlainText,
+            batchId: groupedOrder.id,
+            poNumber: groupedOrder.id,
+            orderId: groupedOrder.id,
+            supplierName: assignedBatchSupplier,
+            orderDetails: groupedOrder,
+            accessToken: (typeof window !== 'undefined' ? (localStorage.getItem('google_access_token') || sessionStorage.getItem('google_access_token')) : undefined)
+          })
+        });
+
+        if (poRes.ok) {
+          const poData = await poRes.json().catch(() => ({}));
+          const isLiveSent = poData.isLiveSent === true || poData.status === 'Sent';
+          if (isLiveSent) {
+            groupedOrder.purchaseOrderSent = true;
+            groupedOrder.purchaseOrderSentAt = new Date().toISOString();
+            groupedOrder.poEmailStatus = 'Sent';
+            await setCollectionDoc('placed_orders', batchId, {
+              purchaseOrderSent: true,
+              purchaseOrderSentAt: groupedOrder.purchaseOrderSentAt,
+              poEmailStatus: 'Sent'
+            }).catch(() => {});
+          } else {
+            groupedOrder.purchaseOrderSent = false;
+            groupedOrder.poEmailStatus = 'Queued';
+            if (poData.gmailWebComposeUrl) {
+              groupedOrder.gmailWebComposeUrl = poData.gmailWebComposeUrl;
+            }
+            await setCollectionDoc('placed_orders', batchId, {
+              purchaseOrderSent: false,
+              poEmailStatus: 'Queued',
+              ...(poData.gmailWebComposeUrl ? { gmailWebComposeUrl: poData.gmailWebComposeUrl } : {})
+            }).catch(() => {});
+          }
+        }
+      } catch (err: any) {
+        console.warn(`Supplier PO email error for ${assignedBatchSupplier}:`, err?.message || err);
+      }
     } else {
       console.warn(`[PO Dispatch Skipped] Supplier "${assignedBatchSupplier}" has no verified email address configured. PO email dispatch prevented to avoid sending to random email addresses.`);
     }

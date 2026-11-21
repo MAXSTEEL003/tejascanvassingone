@@ -183,14 +183,19 @@ export default function EmailTrackingModal({
 
   if (!isOpen) return null;
 
-  const currentStatus: PoEmailStatus = record?.status || (order?.purchaseOrderSent ? 'Sent' : 'Queued');
+  const currentStatus: PoEmailStatus = record?.status || (order?.poEmailStatus as PoEmailStatus) || (order?.purchaseOrderSent && !order?.poEmailNeedsSending ? 'Sent' : 'Queued');
   const badgeConfig = getStatusBadgeConfig(currentStatus);
   const StatusIcon = badgeConfig.icon;
 
   const recipientEmail = record?.recipientEmail || order?.sellerEmail || '';
+  const subOrders = order?.originalOrders && Array.isArray(order.originalOrders) ? order.originalOrders : [];
+  const subOrdersText = subOrders.length > 0
+    ? subOrders.map((s: any) => `- ${s.buyer}: ${s.product || s.brand || 'Rice'} (${s.qty} QTLS @ ₹${s.rate}/QTL) [Sub-PO: ${s.orderNo || s.subOrderNo || s.id}]`).join('\n')
+    : `Volume: ${order?.items || order?.qty}`;
   const remarksStr = order?.remarks || (order?.originalOrders && order?.originalOrders[0]?.remarks) || 'Standard dispatch';
+  const poBodyText = `Official Purchase Order: ${orderId}\nSupplier: ${record?.supplierName || order?.supplier || 'Supplier'}\nTotal Value: ${order?.total || ''}\n\nSub-Orders:\n${subOrdersText}\n\nRemarks: ${remarksStr}\n\nPlease confirm receipt and dispatch schedule.\n\n--\nTejas Canvassing`;
   const gmailComposeUrl = recipientEmail 
-    ? `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(recipientEmail)}&cc=nani@tejasc.in&su=${encodeURIComponent(`Tejas Canvassing: Purchase Order ${orderId} - ${record?.supplierName || order?.supplier || 'Supplier'}`)}&body=${encodeURIComponent(`Official Purchase Order ${orderId}\nSupplier: ${record?.supplierName || order?.supplier || 'Supplier'}\nTotal: ${order?.total || ''}\nRemarks: ${remarksStr}\n\nPlease confirm delivery.`)}` 
+    ? `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(recipientEmail)}&cc=nani@tejasc.in&su=${encodeURIComponent(`Tejas Canvassing: Purchase Order ${orderId} - ${record?.supplierName || order?.supplier || 'Supplier'}`)}&body=${encodeURIComponent(poBodyText)}` 
     : '';
 
   const handleCopyAckLink = () => {

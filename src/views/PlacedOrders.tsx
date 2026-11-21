@@ -829,6 +829,17 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
   const handleMarkPoEmailSent = async (orderId: string) => {
     try {
       await fetch(`/api/po-tracking/${encodeURIComponent(orderId)}/mark-sent`, { method: 'POST' }).catch(() => {});
+      const nowIso = new Date().toISOString();
+      await setCollectionDoc('placed_orders', orderId, {
+        purchaseOrderSent: true,
+        purchaseOrderSentAt: nowIso,
+        poEmailStatus: 'Sent',
+        poEmailNeedsSending: false
+      }).catch(() => {});
+      setCurrentPlacedOrders(prev => prev.map(o => o.id === orderId ? { ...o, purchaseOrderSent: true, purchaseOrderSentAt: nowIso, poEmailStatus: 'Sent', poEmailNeedsSending: false } : o));
+      const saved = JSON.parse(localStorage.getItem('placed_orders') || '[]');
+      const updatedSaved = saved.map((o: any) => o.id === orderId ? { ...o, purchaseOrderSent: true, purchaseOrderSentAt: nowIso, poEmailStatus: 'Sent', poEmailNeedsSending: false } : o);
+      localStorage.setItem('placed_orders', JSON.stringify(updatedSaved));
       fetchTrackingRecords();
     } catch {}
   };
@@ -1021,7 +1032,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
 
     currentPlacedOrders.forEach(o => {
       const trk = trackingRecordMap[o.id];
-      const status = trk?.status || (o.purchaseOrderSent ? 'Sent' : 'Queued');
+      const status = trk?.status || o.poEmailStatus || (o.purchaseOrderSent && !o.poEmailNeedsSending ? 'Sent' : 'Queued');
       const acked = Boolean(trk?.acknowledgedAt);
 
       if (status === 'Queued' || status === 'Sending') queued++;
@@ -1057,7 +1068,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
     if (emailFilter !== 'all') {
       list = list.filter(o => {
         const trk = trackingRecordMap[o.id];
-        const status = trk?.status || (o.purchaseOrderSent ? 'Sent' : 'Queued');
+        const status = trk?.status || o.poEmailStatus || (o.purchaseOrderSent && !o.poEmailNeedsSending ? 'Sent' : 'Queued');
         const acked = Boolean(trk?.acknowledgedAt);
 
         if (emailFilter === 'queued') {
@@ -3287,12 +3298,17 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                           )}
                           {(() => {
                             const trk = trackingRecordMap[order.id];
-                            const status = (order.purchaseOrderSent || trk?.status === 'Sent') ? 'Sent' : (trk?.status || 'Sent');
+                            const status = trk?.status || order.poEmailStatus || (order.purchaseOrderSent && !order.poEmailNeedsSending ? 'Sent' : 'Queued');
                             const cfg = getStatusBadgeConfig(status);
                             const supplierEmail = trk?.recipientEmail || order.sellerEmail || '';
-                            const isQueued = status === 'Queued' || status === 'Ready' || status === 'Pending';
+                            const isQueued = status === 'Queued' || status === 'Ready' || status === 'Pending' || status === 'Bounced/Failed';
+                            const subOrders = order.originalOrders && Array.isArray(order.originalOrders) ? order.originalOrders : [];
+                            const subOrdersText = subOrders.length > 0
+                              ? subOrders.map((s: any) => `- ${s.buyer}: ${s.product || s.brand || 'Rice'} (${s.qty} QTLS @ ₹${s.rate}/QTL) [Sub-PO: ${s.orderNo || s.subOrderNo || s.id}]`).join('\n')
+                              : `Volume: ${order.items || order.qty}`;
                             const remarksStr = order.remarks || (order.originalOrders && order.originalOrders[0]?.remarks) || 'Standard dispatch';
-                            const gmailComposeUrl = supplierEmail ? `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(supplierEmail)}&cc=nani@tejasc.in&su=${encodeURIComponent(`Tejas Canvassing: Purchase Order ${order.id} - ${order.supplier || 'Supplier'}`)}&body=${encodeURIComponent(`Official Purchase Order ${order.id}\nSupplier: ${order.supplier || 'Supplier'}\nTotal: ${order.total}\nRemarks: ${remarksStr}\n\nPlease confirm delivery.`)}` : '';
+                            const poBodyText = `DEAR ${(order.supplier || 'SUPPLIER').toUpperCase()},\n\nPlease find Purchase Order ${order.id} for ${order.items || order.qty} compiled by Tejas Canvassing.\n\nSub-Orders:\n${subOrdersText}\n\nRemarks: ${remarksStr}\n\nPlease confirm receipt and dispatch schedule.\n\n--\nTejas Canvassing`;
+                            const gmailComposeUrl = supplierEmail ? `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(supplierEmail)}&cc=nani@tejasc.in&su=${encodeURIComponent(`Tejas Canvassing: Purchase Order ${order.id} - ${order.supplier || 'Supplier'}`)}&body=${encodeURIComponent(poBodyText)}` : '';
 
                             return (
                               <div className="flex items-center gap-1.5">
@@ -3321,7 +3337,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                                       e.stopPropagation();
                                       handleMarkPoEmailSent(order.id);
                                     }}
-                                    className="px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-red-600 hover:bg-red-700 text-white flex items-center gap-1 transition-colors cursor-pointer shadow-sm"
+                                    className="px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-red-600 hover:bg-red-700 text-white flex items-center gap-1 transition-colors cursor-pointer shadow-sm animate-pulse"
                                     title={`Open pre-filled Gmail compose directly for ${supplierEmail}`}
                                   >
                                     <Send className="w-2.5 h-2.5" />
@@ -3509,6 +3525,45 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                         <FileText className="w-3.5 h-3.5" />
                         View / Edit PO
                       </button>
+
+                      {/* Send via Gmail Direct Action */}
+                      {(() => {
+                        const trk = trackingRecordMap[order.id];
+                        const status = trk?.status || order.poEmailStatus || (order.purchaseOrderSent && !order.poEmailNeedsSending ? 'Sent' : 'Queued');
+                        const isQueued = status === 'Queued' || status === 'Ready' || status === 'Pending' || status === 'Bounced/Failed';
+                        const supplierEmail = trk?.recipientEmail || order.sellerEmail || '';
+                        if (!supplierEmail) return null;
+
+                        const subOrders = order.originalOrders && Array.isArray(order.originalOrders) ? order.originalOrders : [];
+                        const subOrdersText = subOrders.length > 0
+                          ? subOrders.map((s: any) => `- ${s.buyer}: ${s.product || s.brand || 'Rice'} (${s.qty} QTLS @ ₹${s.rate}/QTL) [Sub-PO: ${s.orderNo || s.subOrderNo || s.id}]`).join('\n')
+                          : `Volume: ${order.items || order.qty}`;
+                        const remarksStr = order.remarks || (order.originalOrders && order.originalOrders[0]?.remarks) || 'Standard dispatch';
+                        const poBodyText = `DEAR ${(order.supplier || 'SUPPLIER').toUpperCase()},\n\nPlease find Purchase Order ${order.id} for ${order.items || order.qty} compiled by Tejas Canvassing.\n\nSub-Orders:\n${subOrdersText}\n\nRemarks: ${remarksStr}\n\nPlease confirm receipt and dispatch schedule.\n\n--\nTejas Canvassing`;
+                        const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(supplierEmail)}&cc=nani@tejasc.in&su=${encodeURIComponent(`Tejas Canvassing: Purchase Order ${order.id} - ${order.supplier || 'Supplier'}`)}&body=${encodeURIComponent(poBodyText)}`;
+
+                        return (
+                          <a
+                            href={gmailUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleMarkPoEmailSent(order.id);
+                            }}
+                            className={cn(
+                              "btn-tactile inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all border cursor-pointer shadow-2xs no-underline",
+                              isQueued 
+                                ? "bg-red-600 hover:bg-red-700 text-white border-red-700 font-black animate-pulse" 
+                                : "bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 border-red-500/25"
+                            )}
+                            title={`Open pre-filled Gmail compose directly for ${supplierEmail}`}
+                          >
+                            <Send className="w-3.5 h-3.5" />
+                            {isQueued ? "Send via Gmail" : "Resend PO Email"}
+                          </a>
+                        );
+                      })()}
                         
                       {/* PO Email Tracking Modal trigger */}
                       <button 
