@@ -2157,7 +2157,7 @@ export default function OrdersDashboard() {
     const targetSupplierEmail = supplierProfile.email || 'bhagwatirice@gmail.com';
     const sentTimestamp = new Date().toISOString();
 
-    const groupedOrder = {
+    const groupedOrder: any = {
       id: batchId,
       poNumber: batchId,
       purchaseOrderNo: batchId,
@@ -2187,6 +2187,9 @@ export default function OrdersDashboard() {
       purchaseOrderSent: false,
       purchaseOrderSentAt: undefined,
       poEmailStatus: 'Queued',
+      whatsappSent: false,
+      whatsappSentAt: undefined,
+      whatsappMessageId: undefined,
       companyEmail: (localStorage.getItem('companyEmail') && !localStorage.getItem('companyEmail')?.includes('riceaggregator.com')) ? localStorage.getItem('companyEmail')! : 'nani@tejasc.in',
       sellerEmail: targetSupplierEmail,
       qty: totalSelectedQty,

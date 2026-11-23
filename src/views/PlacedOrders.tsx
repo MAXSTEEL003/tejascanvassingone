@@ -66,7 +66,8 @@ import {
   resolveGroupedPoNumber, 
   normalizePlacedOrdersSequential, 
   invalidateOperationalOrdersCache,
-  getPlacedOrderVolume 
+  getPlacedOrderVolume,
+  parseOperationalDate
 } from '../utils/orderOperations';
 
 const BUYER_PROFILES: Record<string, { address: string; gstin: string; phone: string; email: string }> = {};
@@ -1157,7 +1158,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
     if (typeof dateStr === 'number') return dateStr;
     const parsed = Date.parse(dateStr);
     if (!isNaN(parsed)) return parsed;
-    return parseOperationalDate(dateStr) || 0;
+    return parseOperationalDate(dateStr)?.timestamp || 0;
   };
 
   const sortNewestFirst = (arr: any[]) => {
