@@ -1002,9 +1002,21 @@ const app = express();
 
 // Normalize req.url when rewritten by Vercel serverless proxy (/api/(.*) -> /api)
 app.use((req, _res, next) => {
-  const invokePath = (req.headers["x-invoke-path"] || req.headers["x-forwarded-uri"] || req.headers["x-matched-path"] || req.headers["x-vercel-matched-path"]) as string | undefined;
-  if (invokePath && invokePath !== "/" && invokePath !== "/api" && invokePath !== "") {
-    req.url = invokePath;
+  const customPath = (
+    req.headers["x-requested-path"] || 
+    req.headers["x-original-url"] || 
+    req.headers["x-forwarded-uri"] || 
+    req.headers["x-invoke-path"] || 
+    (req.query?._path ? String(req.query._path) : undefined)
+  ) as string | undefined;
+
+  if (customPath && typeof customPath === "string" && customPath.startsWith("/")) {
+    req.url = customPath;
+  } else {
+    const invokePath = (req.headers["x-invoke-path"] || req.headers["x-forwarded-uri"] || req.headers["x-matched-path"] || req.headers["x-vercel-matched-path"]) as string | undefined;
+    if (invokePath && invokePath !== "/" && invokePath !== "/api" && invokePath !== "") {
+      req.url = invokePath;
+    }
   }
   next();
 });
@@ -1018,6 +1030,18 @@ app.use(
     },
   })
 );
+
+// Payload-based route resolver for Vercel/proxies that collapse subpaths to / or /api
+app.use((req, _res, next) => {
+  if (req.method === "POST" && (req.url === "/" || req.url === "/api" || req.url === "/api/" || req.path === "/" || req.path === "/api")) {
+    if (req.body?.to && (req.body?.poNumber || req.body?.supplierName || req.body?.htmlContent || req.body?.html || req.body?.batchId)) {
+      req.url = "/api/dispatch-po";
+    } else if (req.body?.to && (req.body?.templateName || req.body?.brand || req.body?.buyerName || req.body?.message || req.body?.phoneNumberId)) {
+      req.url = "/api/dispatch-whatsapp";
+    }
+  }
+  next();
+});
 
 // Server-side Authentication & Session Authorization routes
 app.use(["/api/auth", "/auth"], authRouter);
@@ -2536,6 +2560,21 @@ app.post(["/api/dispatch-whatsapp", "/dispatch-whatsapp"], async (req, res) => {
           details: `Successfully dispatched to Meta Graph API (Message ID: ${messageId}, Destination: ${digits}). Pending delivery confirmation from Webhook.`,
           directLink: waDirectUrl
         });
+
+        const trackingRef = String(poNumber || orderId || "").trim();
+        if (trackingRef) {
+          try {
+            updateTrackingStatus(trackingRef, {
+              whatsappSent: true,
+              whatsappSentAt: new Date().toISOString(),
+              whatsappMessageId: messageId,
+            }, {
+              event: "WhatsApp Notification Sent",
+              details: `Automated WhatsApp confirmation delivered to ${digits} (Message ID: ${messageId})`,
+              source: "backend",
+            });
+          } catch {}
+        }
 
         return res.status(200).json({
           success: true,

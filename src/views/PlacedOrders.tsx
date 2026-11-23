@@ -838,7 +838,9 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
 
   const fetchTrackingRecords = async () => {
     try {
-      const res = await fetch('/api/po-tracking');
+      const res = await fetch('/api/po-tracking?_path=/api/po-tracking', {
+        headers: { 'x-requested-path': '/api/po-tracking' }
+      });
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data.records)) {
@@ -855,15 +857,24 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
               let changed = false;
               const updated = placed.map((p: any) => {
                 const trkRec = map[p.id];
-                if (trkRec && (trkRec.status === 'Sent' || trkRec.gmailMessageId) && (!p.purchaseOrderSent || p.poEmailStatus !== 'Sent')) {
-                  changed = true;
-                  return {
-                    ...p,
-                    purchaseOrderSent: true,
-                    purchaseOrderSentAt: trkRec.sentAt || p.purchaseOrderSentAt || new Date().toISOString(),
-                    poEmailStatus: 'Sent',
-                    smtpMessageId: trkRec.gmailMessageId || p.smtpMessageId
-                  };
+                if (trkRec) {
+                  const emailSent = Boolean(trkRec.status === 'Sent' || trkRec.gmailMessageId);
+                  const waSent = Boolean(trkRec.whatsappSent || trkRec.whatsappMessageId || (emailSent && trkRec.status === 'Sent'));
+                  const needsEmailUpdate = emailSent && (!p.purchaseOrderSent || p.poEmailStatus !== 'Sent');
+                  const needsWaUpdate = waSent && !p.whatsappSent;
+                  if (needsEmailUpdate || needsWaUpdate) {
+                    changed = true;
+                    return {
+                      ...p,
+                      purchaseOrderSent: emailSent ? true : p.purchaseOrderSent,
+                      purchaseOrderSentAt: trkRec.sentAt || p.purchaseOrderSentAt || new Date().toISOString(),
+                      poEmailStatus: emailSent ? 'Sent' : p.poEmailStatus,
+                      smtpMessageId: trkRec.gmailMessageId || p.smtpMessageId,
+                      whatsappSent: waSent ? true : p.whatsappSent,
+                      whatsappSentAt: trkRec.whatsappSentAt || p.whatsappSentAt || (waSent ? new Date().toISOString() : undefined),
+                      whatsappMessageId: trkRec.whatsappMessageId || p.whatsappMessageId || (waSent ? 'sent' : undefined)
+                    };
+                  }
                 }
                 return p;
               });
@@ -3259,6 +3270,9 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                         order.whatsappSent || 
                         order.whatsappSentAt || 
                         order.whatsappMessageId ||
+                        trk?.whatsappSent ||
+                        trk?.whatsappMessageId ||
+                        (trk && (trk.status === 'Sent' || trk.gmailMessageId)) ||
                         (order.originalOrders && order.originalOrders.some((s: any) => s.whatsappSent || s.purchaseOrderSent))
                       );
 

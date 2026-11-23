@@ -2045,14 +2045,17 @@ export default function OrdersDashboard() {
         if (remaining.length === 0) setSelectionWarning(null);
         return remaining;
       } else {
+        const currentSupplier = sanitizeSupplierName(order.supplier, 'DIRECT MILL');
         if (prev.length > 0) {
           const firstSelected = currentOrders.find(o => prev.includes(o.id));
           const firstSupplier = firstSelected ? (sanitizeSupplierName(firstSelected.supplier, 'DIRECT MILL')) : null;
-          const currentSupplier = sanitizeSupplierName(order.supplier, 'DIRECT MILL');
           if (firstSupplier && firstSupplier !== currentSupplier) {
             setSelectionWarning(`Grouping is restricted to a single supplier. Cannot group "${currentSupplier}" with "${firstSupplier}".`);
             return prev;
           }
+        }
+        if (currentSupplier) {
+          setAssignedBatchSupplier(currentSupplier);
         }
         setSelectionWarning(null);
         return [...prev, id];
@@ -2117,9 +2120,10 @@ export default function OrdersDashboard() {
     const firstColor = selected[0]?.color || 'zinc';
     const firstUrgency = selected[0]?.urgency || 'Standard';
 
+    const effectiveSupplier = sanitizeSupplierName(selected[0]?.supplier || assignedBatchSupplier, 'DIRECT MILL');
     const usedBatchSubRefs = new Set<string>();
     const enrichedSelected = selected.map((s: any, idx: number) => {
-      const subSupplier = sanitizeSupplierName(s.supplier || assignedBatchSupplier, 'DIRECT MILL');
+      const subSupplier = sanitizeSupplierName(s.supplier || effectiveSupplier, 'DIRECT MILL');
       const subCode = s.supplierCode || getSupplierCode(subSupplier);
       let subRef = s.supplierSubOrderNo;
       if (!subRef || usedBatchSubRefs.has(subRef) || !new RegExp(`^${subCode}-\\d{4}$`, 'i').test(subRef)) {
@@ -2153,7 +2157,7 @@ export default function OrdersDashboard() {
       return { name: b, email: prof.email, phone: `91${cleanPhone}` };
     });
 
-    const supplierProfile = resolveSupplierProfile(assignedBatchSupplier);
+    const supplierProfile = resolveSupplierProfile(effectiveSupplier);
     const targetSupplierEmail = supplierProfile.email || 'bhagwatirice@gmail.com';
     const sentTimestamp = new Date().toISOString();
 
@@ -2182,7 +2186,7 @@ export default function OrdersDashboard() {
       origin: 'Consolidated Hub',
       destination: 'Multiple Destinations',
       buyer: buyerName,
-      supplier: assignedBatchSupplier,
+      supplier: effectiveSupplier,
       originalOrders: enrichedSelected,
       purchaseOrderSent: false,
       purchaseOrderSentAt: undefined,
@@ -2282,14 +2286,14 @@ export default function OrdersDashboard() {
 
     // 4. AUTOMATICALLY DISPATCH SUPPLIER PO EMAIL IN BACKGROUND
     const subOrders = enrichedSelected;
-    const emailHtml = generateSupplierPOEmailHtml(assignedBatchSupplier, groupedOrder, subOrders);
-    const poSubject = `Tejas Canvassing: Purchase Order ${groupedOrder.id} - ${assignedBatchSupplier}`;
+    const emailHtml = generateSupplierPOEmailHtml(effectiveSupplier, groupedOrder, subOrders);
+    const poSubject = `Tejas Canvassing: Purchase Order ${groupedOrder.id} - ${effectiveSupplier}`;
 
     const subOrdersSummaryText = subOrders.map((so: any) =>
       `Order Ref: ${so.orderNo || so.subOrderNo || so.id}\nBuyer: ${so.buyer}\nBrand/Product: ${so.product}\nQuantity: ${so.qty} QTLS @ ₹${so.rate}/QTL\nLoading Days: ${so.loadingDays} | Unloading Point: ${so.unloadingPoint}\nRemarks: ${so.remarks || 'None'}`
     ).join('\n\n');
 
-    const poPlainText = `Official Purchase Order: ${groupedOrder.id}\nSupplier: ${assignedBatchSupplier}\nTotal Quantity: ${groupedOrder.qty} QTLS\nTotal Value: ${groupedOrder.total}\n\nSub-Order Particulars:\n${subOrdersSummaryText}\n\n--\nTejas Canvassing Grain Brokerage`;
+    const poPlainText = `Official Purchase Order: ${groupedOrder.id}\nSupplier: ${effectiveSupplier}\nTotal Quantity: ${groupedOrder.qty} QTLS\nTotal Value: ${groupedOrder.total}\n\nSub-Order Particulars:\n${subOrdersSummaryText}\n\n--\nTejas Canvassing Grain Brokerage`;
 
     try {
       const dispatchRes = await dispatchPurchaseOrderEmail({
@@ -2301,7 +2305,7 @@ export default function OrdersDashboard() {
         batchId: groupedOrder.id,
         poNumber: groupedOrder.id,
         orderId: groupedOrder.id,
-        supplierName: assignedBatchSupplier,
+        supplierName: effectiveSupplier,
         orderDetails: groupedOrder,
       });
 

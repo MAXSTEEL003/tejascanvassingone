@@ -131,9 +131,12 @@ export async function dispatchPurchaseOrderEmail(payload: DispatchPoPayload): Pr
 
   // Path 1: Dispatch via Backend API endpoint (/api/dispatch-po)
   try {
-    const res = await fetch('/api/dispatch-po', {
+    const res = await fetch('/api/dispatch-po?_path=/api/dispatch-po', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'x-requested-path': '/api/dispatch-po'
+      },
       keepalive: true,
       body: JSON.stringify({
         to: recipientEmail,

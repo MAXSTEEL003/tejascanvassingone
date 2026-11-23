@@ -46,6 +46,9 @@ export interface PoEmailTrackingRecord {
   lastUpdated: string;
   acknowledgementUrl?: string;
   notes?: string;
+  whatsappSent?: boolean;
+  whatsappSentAt?: string;
+  whatsappMessageId?: string;
 }
 
 const DATA_DIR = process.env.VERCEL ? "/tmp" : path.join(process.cwd(), "data");

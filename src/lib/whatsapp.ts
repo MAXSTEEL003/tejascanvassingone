@@ -65,9 +65,12 @@ export async function dispatchOrderPlacedWhatsApp(
   console.log(`[WhatsApp Auto-Dispatch] Sending order notification to ${targetPhone} for ${cleanBuyer} (Order ${orderRef})...`);
 
   try {
-    const res = await fetch('/api/dispatch-whatsapp', {
+    const res = await fetch('/api/dispatch-whatsapp?_path=/api/dispatch-whatsapp', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'x-requested-path': '/api/dispatch-whatsapp'
+      },
       keepalive: true,
       body: JSON.stringify({
         to: targetPhone,
