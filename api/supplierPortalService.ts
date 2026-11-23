@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getFirestore, doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
-import firebaseConfig from "../firebase-applet-config.json";
+import firebaseConfig from "./firebaseAppletConfig.js";
 import {
   initSyncRecord,
   updateSyncRecord,
@@ -9,7 +9,7 @@ import {
   SupplierPortalSyncRecord,
   PortalSyncStatus,
 } from "./supplierPortalSyncStore.js";
-import { resolveSubOrderNumber, resolveGroupedPoNumber } from "../src/utils/orderOperations.js";
+import { resolveSubOrderNumber, resolveGroupedPoNumber } from "./orderNumbering.js";
 
 // Initialize Firebase client for backend Firestore access
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);

@@ -342,10 +342,10 @@ async function runSecurityTests() {
   // 15. Service account parsing & initialization support
   await test("15. Service account parsing handles JSON with escaped newlines and initializes with project tejascanavssingstore", async () => {
     const { cert, initializeApp, deleteApp } = await import('firebase-admin/app');
-    const { privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048, privateKeyEncoding: { type: 'pkcs8', format: 'pem' } });
+    const { privateKey } = (crypto as any).generateKeyPairSync('rsa', { modulusLength: 2048, privateKeyEncoding: { type: 'pkcs8', format: 'pem' } });
     
     // Simulate Vercel environment variable with escaped \n characters
-    const escapedKey = privateKey.replace(/\n/g, '\\n');
+    const escapedKey = (privateKey as string).replace(/\n/g, '\\n');
     const serviceAccountObj = {
       project_id: "tejascanavssingstore",
       client_email: "firebase-adminsdk@tejascanavssingstore.iam.gserviceaccount.com",
@@ -366,7 +366,7 @@ async function runSecurityTests() {
     const { cert } = await import('firebase-admin/app');
     let threw = false;
     try {
-      cert({ project_id: 'bad', client_email: 'bad@bad.com', private_key: 'not-a-valid-key' });
+      cert({ project_id: 'bad', client_email: 'bad@bad.com', private_key: 'not-a-valid-key' } as any);
     } catch {
       threw = true;
     }

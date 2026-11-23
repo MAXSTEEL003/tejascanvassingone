@@ -19,7 +19,7 @@ import {
   Firestore,
   onSnapshot
 } from 'firebase/firestore';
-import firebaseConfig from '../../firebase-applet-config.json';
+import firebaseConfig from './firebaseAppletConfig';
 import { sanitizeSupplierName, getDeletedArrivalIds, removeDeletedArrivalId, removeDeletedSheetId } from './utils';
 import { getMonthYearFromDate, normalizeDate } from '../utils/dateUtils';
 import { getCurrentMonthYearSheetName } from '../utils/arrivalSheetsManager';

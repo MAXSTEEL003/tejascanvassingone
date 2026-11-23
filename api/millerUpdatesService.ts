@@ -8,7 +8,7 @@ import {
   collection,
   getDocs,
 } from "firebase/firestore";
-import firebaseConfig from "../firebase-applet-config.json";
+import firebaseConfig from "./firebaseAppletConfig.js";
 import {
   addMillerUpdate,
   removeTestUpdates,
@@ -16,7 +16,7 @@ import {
   MillerUpdateRecord,
   MillerUpdateType,
 } from "./millerUpdatesStore.js";
-import { resolveSubOrderNumber } from "../src/utils/orderOperations.js";
+import { resolveSubOrderNumber } from "./orderNumbering.js";
 
 // Initialize Firebase client for backend Firestore access
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
