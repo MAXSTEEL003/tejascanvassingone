@@ -35,6 +35,7 @@ import {
   addDeliveryLocation
 } from '../utils/deliveryLocations';
 import { generateSupplierPOEmailHtml, resolveSupplierProfile, isAuthenticSupplierEmail } from '../utils/poEmailTemplate';
+import { dispatchPurchaseOrderEmail } from '../services/poEmailClient';
 
 const BUYER_PROFILES_LOOKUP: Record<string, { email: string; phone: string }> = {
   'TEJAS': { email: 'nani@tejasc.in', phone: '9945351166' },
@@ -350,30 +351,28 @@ export default function CheckoutView() {
       setDirectWaLink(`https://wa.me/${finalCustomerWaPhone}?text=${waMsg}`);
       setDirectSmsLink(`sms:+${finalCustomerWaPhone}?body=${waMsg}`);
 
-      // 1. Automatic Official PO Email Trigger (via Gmail API OAuth 2.0 / nani@tejasc.in)
-      fetch('/api/dispatch-po', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          orderId: newOrder.id,
-          poNumber: newOrder.id,
-          batchId: newOrder.id,
-          to: supplierProf.email,
-          supplierName: supplierVal,
-          subject,
-          html: emailHtml,
-          htmlContent: emailHtml,
-          textContent: `Tejas Canvassing: New purchase orders\n\nDear ${supplierVal.toUpperCase()},\n\nToday's orders for ${orderQty} QTL.`,
-          orderDetails: newOrder,
-        }),
+      // 1. Automatic Official PO Email Trigger (via robust multi-path dispatch)
+      dispatchPurchaseOrderEmail({
+        orderId: newOrder.id,
+        poNumber: newOrder.id,
+        batchId: newOrder.id,
+        to: supplierProf.email,
+        supplierName: supplierVal,
+        subject,
+        html: emailHtml,
+        text: `Tejas Canvassing: New purchase orders\n\nDear ${supplierVal.toUpperCase()},\n\nToday's orders for ${orderQty} QTL.`,
+        orderDetails: newOrder,
       })
       .then((res) => {
-        if (res.ok) setEmailStatus('sent');
-        else setEmailStatus('idle');
+        if (res.success && (res.isLiveSent || res.status === 'Sent')) {
+          setEmailStatus('sent');
+        } else {
+          setEmailStatus('idle');
+        }
       })
       .catch((err) => {
-        console.warn('Silent fallback for PO email:', err);
-        setEmailStatus('sent');
+        console.warn('[PO Email Dispatch] Silent fallback for checkout:', err);
+        setEmailStatus('idle');
       });
 
       // Note: Automatic WhatsApp confirmation is dispatched strictly when the admin approves and places the order from Orders Dashboard

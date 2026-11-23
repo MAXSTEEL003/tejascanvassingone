@@ -23,6 +23,7 @@ import {
 } from '../utils/orderOperations';
 import { getAuthToken, getAuthUser } from '../lib/auth';
 import merchantsDirectory from '../data/merchants_directory.json';
+import { dispatchPurchaseOrderEmail } from '../services/poEmailClient';
 
 
 // Default base suppliers and buyers fallback
@@ -2173,9 +2174,9 @@ export default function OrdersDashboard() {
       buyer: buyerName,
       supplier: assignedBatchSupplier,
       originalOrders: enrichedSelected,
-      purchaseOrderSent: true,
-      purchaseOrderSentAt: sentTimestamp,
-      poEmailStatus: 'Sent',
+      purchaseOrderSent: false,
+      purchaseOrderSentAt: undefined,
+      poEmailStatus: 'Queued',
       companyEmail: (localStorage.getItem('companyEmail') && !localStorage.getItem('companyEmail')?.includes('riceaggregator.com')) ? localStorage.getItem('companyEmail')! : 'nani@tejasc.in',
       sellerEmail: targetSupplierEmail,
       qty: totalSelectedQty,
@@ -2278,57 +2279,69 @@ export default function OrdersDashboard() {
     const poPlainText = `Official Purchase Order: ${groupedOrder.id}\nSupplier: ${assignedBatchSupplier}\nTotal Quantity: ${groupedOrder.qty} QTLS\nTotal Value: ${groupedOrder.total}\n\nSub-Order Particulars:\n${subOrdersSummaryText}\n\n--\nTejas Canvassing Grain Brokerage`;
 
     try {
-      fetch('/api/dispatch-po', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        keepalive: true,
-        body: JSON.stringify({
-          to: targetSupplierEmail,
-          from: localStorage.getItem('companyEmail') || 'nani@tejasc.in',
-          subject: poSubject,
-          html: emailHtml,
-          htmlContent: emailHtml,
-          textContent: poPlainText,
-          batchId: groupedOrder.id,
-          poNumber: groupedOrder.id,
-          orderId: groupedOrder.id,
-          supplierName: assignedBatchSupplier,
-          orderDetails: groupedOrder,
-          accessToken: (typeof window !== 'undefined' ? (localStorage.getItem('google_access_token') || sessionStorage.getItem('google_access_token')) : undefined)
-        })
-      }).then(async (poRes) => {
-        const sentTime = new Date().toISOString();
-        groupedOrder.purchaseOrderSent = true;
-        groupedOrder.purchaseOrderSentAt = sentTime;
-        groupedOrder.poEmailStatus = 'Sent';
+      dispatchPurchaseOrderEmail({
+        to: targetSupplierEmail,
+        from: localStorage.getItem('companyEmail') || 'nani@tejasc.in',
+        subject: poSubject,
+        html: emailHtml,
+        text: poPlainText,
+        batchId: groupedOrder.id,
+        poNumber: groupedOrder.id,
+        orderId: groupedOrder.id,
+        supplierName: assignedBatchSupplier,
+        orderDetails: groupedOrder,
+      }).then(async (dispatchRes) => {
+        if (dispatchRes.success && (dispatchRes.isLiveSent || dispatchRes.status === 'Sent')) {
+          const sentTime = new Date().toISOString();
+          groupedOrder.purchaseOrderSent = true;
+          groupedOrder.purchaseOrderSentAt = sentTime;
+          groupedOrder.poEmailStatus = 'Sent';
 
-        await setCollectionDoc('placed_orders', batchId, {
-          purchaseOrderSent: true,
-          purchaseOrderSentAt: sentTime,
-          poEmailStatus: 'Sent'
-        }).catch(() => { });
+          await setCollectionDoc('placed_orders', batchId, {
+            purchaseOrderSent: true,
+            purchaseOrderSentAt: sentTime,
+            poEmailStatus: 'Sent',
+            emailDispatchMethod: dispatchRes.method,
+            smtpMessageId: dispatchRes.messageId
+          }).catch(() => { });
 
-        try {
-          const savedPlaced = JSON.parse(localStorage.getItem('placed_orders') || '[]');
-          const updated = savedPlaced.map((p: any) => {
-            if (p.id === batchId) {
-              return {
-                ...p,
-                purchaseOrderSent: true,
-                purchaseOrderSentAt: sentTime,
-                poEmailStatus: 'Sent',
-                sellerEmail: targetSupplierEmail
-              };
-            }
-            return p;
-          });
-          localStorage.setItem('placed_orders', JSON.stringify(updated));
-          setPlacedOrdersList(getValidDeduplicatedPlacedOrders(updated));
-          window.dispatchEvent(new CustomEvent('placed-orders-updated'));
-          window.dispatchEvent(new Event('storage'));
-        } catch {}
-      }).catch(err => {
+          try {
+            const savedPlaced = JSON.parse(localStorage.getItem('placed_orders') || '[]');
+            const updated = savedPlaced.map((p: any) => {
+              if (p.id === batchId) {
+                return {
+                  ...p,
+                  purchaseOrderSent: true,
+                  purchaseOrderSentAt: sentTime,
+                  poEmailStatus: 'Sent',
+                  sellerEmail: targetSupplierEmail
+                };
+              }
+              return p;
+            });
+            localStorage.setItem('placed_orders', JSON.stringify(updated));
+            setPlacedOrdersList(getValidDeduplicatedPlacedOrders(updated));
+            window.dispatchEvent(new CustomEvent('placed-orders-updated'));
+            window.dispatchEvent(new Event('storage'));
+          } catch {}
+        } else {
+          console.warn(`[PO Dispatch Notice] Auto-dispatch not confirmed: ${dispatchRes.error}`);
+          // Keep status as Queued, do NOT falsely mark Sent!
+          groupedOrder.purchaseOrderSent = false;
+          groupedOrder.poEmailStatus = 'Queued';
+          await setCollectionDoc('placed_orders', batchId, {
+            purchaseOrderSent: false,
+            poEmailStatus: 'Queued'
+          }).catch(() => { });
+        }
+      }).catch(async (err) => {
         console.warn(`Supplier PO email error for ${assignedBatchSupplier}:`, err?.message || err);
+        groupedOrder.purchaseOrderSent = false;
+        groupedOrder.poEmailStatus = 'Queued';
+        await setCollectionDoc('placed_orders', batchId, {
+          purchaseOrderSent: false,
+          poEmailStatus: 'Queued'
+        }).catch(() => { });
       });
     } catch (err: any) {
       console.warn(`Supplier PO email trigger error for ${assignedBatchSupplier}:`, err?.message || err);

@@ -1357,9 +1357,22 @@ app.post(["/api/dispatch-po", "/api/send-po-email", "/dispatch-po", "/send-po-em
     const rawSmtpPass = (process.env.SMTP_PASS || process.env.GMAIL_APP_PASSWORD || process.env.GMAIL_PASS || "").trim();
     const smtpPass = rawSmtpPass.replace(/\s+/g, "");
     const hasSmtpConfig = Boolean(smtpUser && smtpPass);
-    const hasOAuthConfig = Boolean(effectiveToken || isGmailOAuthConfigured());
+    const isServerOAuthConfigured = isGmailOAuthConfigured();
+    const hasClientToken = Boolean(effectiveToken);
+    const isTestEnv = process.env.NODE_ENV === "test" || Boolean(process.env.VITEST);
 
-    if (hasOAuthConfig) {
+    let sentMessageId = "";
+    let dispatchMethod = "";
+    let lastError = "";
+
+    // Test environment shortcut
+    if (isTestEnv) {
+      sentMessageId = `test_smtp_${Date.now()}@gmail.com`;
+      dispatchMethod = "test_environment";
+    }
+
+    // Try Method 1: Gmail API OAuth (if server has OAuth configured or client provided a token)
+    if (!sentMessageId && (isServerOAuthConfigured || hasClientToken)) {
       try {
         const sendResult = await sendEmailViaGmailApi({
           to: recipientEmail,
@@ -1369,223 +1382,90 @@ app.post(["/api/dispatch-po", "/api/send-po-email", "/dispatch-po", "/send-po-em
           textContent: finalText,
           accessToken: effectiveToken,
         });
-
-        const updatedRecord = updateTrackingStatus(orderId, {
-          status: "Sent",
-          sentAt: new Date().toISOString(),
-          gmailMessageId: sendResult.id,
-          threadId: sendResult.threadId,
-        }, {
-          event: "Email Accepted by Gmail API",
-          details: `Gmail API accepted message for delivery to ${recipientEmail} (CC: ${uniqueCc || 'nani@tejasc.in'}) from ${sendResult.sender || 'nani@tejasc.in'}. Message ID: ${sendResult.id}.`,
-          source: "gmail_api",
-        });
-
-        recordDispatch({
-          type: "po_email",
-          target: recipientEmail,
-          recipientName: supplier,
-          subject: finalSubject,
-          message: finalText,
-          status: "sent",
-          details: `Sent via Gmail API OAuth 2.0 (ID: ${sendResult.id}). Sender: ${sendResult.sender || 'nani@tejasc.in'}. CC: ${uniqueCc}`,
-        });
-
-        return res.status(200).json({
-          success: true,
-          status: "Sent",
-          isLiveSent: true,
-          messageId: sendResult.id,
-          gmailMessageId: sendResult.id,
-          threadId: sendResult.threadId,
-          record: updatedRecord,
-          message: `Purchase Order ${poRef} successfully accepted by Gmail API for transmission to ${recipientEmail}.`,
-        });
+        sentMessageId = sendResult.id;
+        dispatchMethod = "gmail_api";
       } catch (gmailErr: any) {
-        console.error("[Gmail API Error]:", gmailErr);
-        const errMsg = gmailErr?.message || "Failed to send email via Gmail API.";
-
-        // Attempt SMTP fallback if configured
-        if (hasSmtpConfig) {
-          try {
-            console.log(`[Email Dispatcher] Gmail API failed (${errMsg}). Attempting SMTP fallback for ${recipientEmail}...`);
-            const isTestEnv = process.env.NODE_ENV === "test" || Boolean(process.env.VITEST);
-            let infoMessageId = "";
-
-            if (isTestEnv) {
-              infoMessageId = `test_smtp_${Date.now()}@gmail.com`;
-            } else {
-              const nodemailer = await import("nodemailer");
-              const cleanHost = (process.env.SMTP_HOST || "smtp.gmail.com").trim();
-              const cleanPort = parseInt(process.env.SMTP_PORT || "465", 10);
-              const transporter = cleanHost.includes("gmail")
-                ? nodemailer.createTransport({
-                    service: "gmail",
-                    auth: { user: smtpUser, pass: smtpPass },
-                  })
-                : nodemailer.createTransport({
-                    host: cleanHost,
-                    port: cleanPort,
-                    secure: cleanPort === 465,
-                    auth: { user: smtpUser, pass: smtpPass },
-                  });
-
-              const info = await transporter.sendMail({
-                from: `"Tejas Canvassing" <${process.env.SMTP_FROM || smtpUser}>`,
-                to: recipientEmail,
-                cc: uniqueCc || process.env.SMTP_FROM || smtpUser,
-                subject: finalSubject,
-                html: finalHtml,
-                text: finalText,
-              });
-              infoMessageId = info.messageId;
-            }
-
-            const updatedRecord = updateTrackingStatus(orderId, {
-              status: "Sent",
-              sentAt: new Date().toISOString(),
-              gmailMessageId: infoMessageId,
-            }, {
-              event: "Email Sent via SMTP Fallback",
-              details: `Sent via SMTP to ${recipientEmail}. Message ID: ${infoMessageId}`,
-              source: "backend",
-            });
-
-            recordDispatch({
-              type: "po_email",
-              target: recipientEmail,
-              recipientName: supplier,
-              subject: finalSubject,
-              message: finalText,
-              status: "sent",
-              details: `Sent via SMTP fallback (${smtpUser}) after Gmail OAuth issue.`,
-            });
-
-            return res.status(200).json({
-              success: true,
-              status: "Sent",
-              isLiveSent: true,
-              messageId: infoMessageId,
-              record: updatedRecord,
-              message: `Purchase Order ${poRef} successfully sent via SMTP to ${recipientEmail}.`,
-            });
-          } catch (smtpErr: any) {
-            console.error("[SMTP Fallback Error]:", smtpErr);
-          }
-        }
-
-        // Live Google OAuth failed; fallback to automated background dispatch queue
-        console.warn(`[Gmail API Notice] ${errMsg}. Automatically dispatching PO via background delivery queue...`);
-        const fallbackMsgId = `po_auto_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
-        const sentIsoTime = new Date().toISOString();
-        const updatedRecord = updateTrackingStatus(orderId, {
-          status: "Sent",
-          sentAt: sentIsoTime,
-          gmailMessageId: fallbackMsgId,
-        }, {
-          event: "Automated PO Email Dispatched (Background Queue)",
-          details: `Purchase Order ${poRef} automatically dispatched to ${recipientEmail} from nani@tejasc.in. Message ID: ${fallbackMsgId}.`,
-          source: "backend",
-        });
-
-        recordDispatch({
-          type: "po_email",
-          target: recipientEmail,
-          recipientName: supplier,
-          subject: finalSubject,
-          message: finalText,
-          status: "sent",
-          details: `Automated background dispatch to ${recipientEmail} (ID: ${fallbackMsgId}).`,
-        });
-
-        return res.status(200).json({
-          success: true,
-          status: "Sent",
-          isLiveSent: true,
-          messageId: fallbackMsgId,
-          record: updatedRecord,
-          message: `Purchase Order ${poRef} automatically dispatched to ${recipientEmail}.`,
-        });
-      }
-    } else if (hasSmtpConfig) {
-      // SMTP is configured even if Gmail OAuth is not
-      try {
-        console.log(`[Email Dispatcher] Transmitting PO via SMTP transporter (${smtpUser})...`);
-        const isTestEnv = process.env.NODE_ENV === "test" || Boolean(process.env.VITEST);
-        let infoMessageId = "";
-
-        if (isTestEnv) {
-          infoMessageId = `test_smtp_${Date.now()}@gmail.com`;
-        } else {
-          const nodemailer = await import("nodemailer");
-          const cleanHost = (process.env.SMTP_HOST || "smtp.gmail.com").trim();
-          const cleanPort = parseInt(process.env.SMTP_PORT || "465", 10);
-          const transporter = cleanHost.includes("gmail")
-            ? nodemailer.createTransport({
-                service: "gmail",
-                auth: { user: smtpUser, pass: smtpPass },
-              })
-            : nodemailer.createTransport({
-                host: cleanHost,
-                port: cleanPort,
-                secure: cleanPort === 465,
-                auth: { user: smtpUser, pass: smtpPass },
-              });
-
-          const info = await transporter.sendMail({
-            from: `"Tejas Canvassing" <${process.env.SMTP_FROM || smtpUser}>`,
-            to: recipientEmail,
-            cc: uniqueCc || process.env.SMTP_FROM || smtpUser,
-            subject: finalSubject,
-            html: finalHtml,
-            text: finalText,
-          });
-          infoMessageId = info.messageId;
-        }
-
-        const updatedRecord = updateTrackingStatus(orderId, {
-          status: "Sent",
-          sentAt: new Date().toISOString(),
-          gmailMessageId: infoMessageId,
-        }, {
-          event: "Email Sent via SMTP",
-          details: `Transmitted to ${recipientEmail} via SMTP. ID: ${infoMessageId}`,
-          source: "backend",
-        });
-
-        recordDispatch({
-          type: "po_email",
-          target: recipientEmail,
-          recipientName: supplier,
-          subject: finalSubject,
-          message: finalText,
-          status: "sent",
-          details: `Sent via SMTP (${smtpUser}).`,
-        });
-
-        return res.status(200).json({
-          success: true,
-          status: "Sent",
-          isLiveSent: true,
-          messageId: infoMessageId,
-          record: updatedRecord,
-          message: `Purchase Order ${poRef} sent to ${recipientEmail} via SMTP.`,
-        });
-      } catch (smtpErr: any) {
-        console.error("[SMTP Send Error]:", smtpErr);
+        lastError = gmailErr?.message || "Gmail API failed";
+        console.warn(`[Email Dispatcher] Gmail API attempt failed: ${lastError}`);
       }
     }
 
-    // Automated background PO dispatch execution
-    const autoMessageId = `po_auto_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
-    const sentIsoTime = new Date().toISOString();
-    const updatedRecord = updateTrackingStatus(orderId, {
-      status: "Sent",
-      sentAt: sentIsoTime,
-      gmailMessageId: autoMessageId,
+    // Try Method 2: Verified SMTP transporter (primary/fallback)
+    if (!sentMessageId && hasSmtpConfig) {
+      try {
+        console.log(`[Email Dispatcher] Transmitting PO via SMTP transporter (${smtpUser}) to ${recipientEmail}...`);
+        const nodemailer = await import("nodemailer");
+        const cleanHost = (process.env.SMTP_HOST || "smtp.gmail.com").trim();
+        const cleanPort = parseInt(process.env.SMTP_PORT || "465", 10);
+        const transporter = cleanHost.includes("gmail")
+          ? nodemailer.createTransport({
+              service: "gmail",
+              auth: { user: smtpUser, pass: smtpPass },
+            })
+          : nodemailer.createTransport({
+              host: cleanHost,
+              port: cleanPort,
+              secure: cleanPort === 465,
+              auth: { user: smtpUser, pass: smtpPass },
+            });
+
+        const info = await transporter.sendMail({
+          from: `"Tejas Canvassing" <${process.env.SMTP_FROM || smtpUser}>`,
+          to: recipientEmail,
+          cc: uniqueCc || process.env.SMTP_FROM || smtpUser,
+          subject: finalSubject,
+          html: finalHtml,
+          text: finalText,
+        });
+        sentMessageId = info.messageId;
+        dispatchMethod = "smtp";
+      } catch (smtpErr: any) {
+        lastError = smtpErr?.message || "SMTP dispatch failed";
+        console.error(`[Email Dispatcher] SMTP attempt failed:`, smtpErr);
+      }
+    }
+
+    // If an actual email was successfully transmitted:
+    if (sentMessageId) {
+      const updatedRecord = updateTrackingStatus(orderId, {
+        status: "Sent",
+        sentAt: new Date().toISOString(),
+        gmailMessageId: sentMessageId,
+      }, {
+        event: dispatchMethod === "gmail_api" ? "Email Accepted by Gmail API" : "Email Sent via SMTP",
+        details: `Dispatched to ${recipientEmail} via ${dispatchMethod}. Message ID: ${sentMessageId}`,
+        source: dispatchMethod === "gmail_api" ? "gmail_api" : "backend",
+      });
+
+      recordDispatch({
+        type: "po_email",
+        target: recipientEmail,
+        recipientName: supplier,
+        subject: finalSubject,
+        message: finalText,
+        status: "sent",
+        details: `Sent via ${dispatchMethod} to ${recipientEmail}. Message ID: ${sentMessageId}`,
+      });
+
+      return res.status(200).json({
+        success: true,
+        status: "Sent",
+        isLiveSent: true,
+        messageId: sentMessageId,
+        gmailMessageId: sentMessageId,
+        record: updatedRecord,
+        message: `Purchase Order ${poRef} successfully delivered to ${recipientEmail} via ${dispatchMethod}.`,
+      });
+    }
+
+    // Both methods failed: NEVER return fake 200 "Sent"! Return 500 error!
+    const failureReason = lastError || "Neither Gmail API nor SMTP transporter could deliver the message.";
+    const failedRecord = updateTrackingStatus(orderId, {
+      status: "Bounced/Failed",
+      failureReason,
     }, {
-      event: "Automated PO Email Dispatched",
-      details: `Purchase Order ${poRef} automatically dispatched to ${recipientEmail} from nani@tejasc.in. Message ID: ${autoMessageId}.`,
+      event: "Email Dispatch Failed",
+      details: `Delivery to ${recipientEmail} failed: ${failureReason}`,
       source: "backend",
     });
 
@@ -1595,17 +1475,16 @@ app.post(["/api/dispatch-po", "/api/send-po-email", "/dispatch-po", "/send-po-em
       recipientName: supplier,
       subject: finalSubject,
       message: finalText,
-      status: "sent",
-      details: `Automated PO Email dispatched to ${recipientEmail} (ID: ${autoMessageId}).`,
+      status: "failed",
+      details: `Delivery failure: ${failureReason}`,
     });
 
-    return res.status(200).json({
-      success: true,
-      status: "Sent",
-      isLiveSent: true,
-      messageId: autoMessageId,
-      record: updatedRecord,
-      message: `Purchase Order ${poRef} successfully dispatched automatically to ${recipientEmail}.`,
+    return res.status(500).json({
+      success: false,
+      status: "failed",
+      isLiveSent: false,
+      error: `Email dispatch failed: ${failureReason}`,
+      record: failedRecord,
     });
   } catch (err: any) {
     console.error("[Email Dispatcher Fatal Error]:", err);

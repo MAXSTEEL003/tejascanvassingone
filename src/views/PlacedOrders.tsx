@@ -56,6 +56,7 @@ import { generateSupplierPOEmailHtml, generateSupplierPOA4PrintHtml, printPoDocu
 import { buildPoPdfDocument, getPoPdfFileName } from '../utils/poPdfGenerator';
 import { TC_COMPANY_LOGO_BASE64 } from '../utils/logoBase64';
 import EmailTrackingModal, { getStatusBadgeConfig } from '../components/EmailTrackingModal';
+import { dispatchPurchaseOrderEmail } from '../services/poEmailClient';
 import SupplierPortalSyncModal from '../components/SupplierPortalSyncModal';
 import BuyerLedgerModal from '../components/BuyerLedgerModal';
 import { 
@@ -2176,49 +2177,53 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
       // Generate exact visual layout matching reference specification
       const emailHtml = generateSupplierPOEmailHtml(supplierName, poOrder, subOrders);
 
-      // 1. Dispatch PO to supplier via backend
-      const poRes = await fetch('/api/dispatch-po', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          to: poRecipient,
-          from: poSender || 'nani@tejasc.in',
-          subject: poSubject,
-          html: emailHtml,
-          batchId: poOrder.id,
-          supplierName: supplierName,
-          accessToken: (typeof window !== 'undefined' ? (localStorage.getItem('google_access_token') || sessionStorage.getItem('google_access_token')) : undefined)
-        })
+      // 1. Dispatch PO to supplier via robust multi-path client
+      const dispatchRes = await dispatchPurchaseOrderEmail({
+        to: poRecipient,
+        from: poSender || 'nani@tejasc.in',
+        subject: poSubject,
+        html: emailHtml,
+        orderId: poOrder.id,
+        poNumber: poOrder.id,
+        batchId: poOrder.id,
+        supplierName: supplierName,
+        orderDetails: poOrder,
       });
-      const poData = await poRes.json();
-      setPoLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] SMTP Dispatch: ${poData.message || 'Success'} (Status: ${poData.status || 'OK'})`]);
-      if (poData.confirmationEmail) {
-        setPoLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Mail Confirmation Copy routed to: ${poData.confirmationEmail}`]);
+
+      if (dispatchRes.success && (dispatchRes.isLiveSent || dispatchRes.status === 'Sent')) {
+        setPoLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Dispatch Success: PO email transmitted (${dispatchRes.method || 'SMTP'}) - ID: ${dispatchRes.messageId || 'OK'}`]);
+
+        const updatedOrder = {
+          ...poOrder,
+          purchaseOrderSent: true,
+          purchaseOrderSentAt: new Date().toISOString(),
+          poEmailStatus: 'Sent',
+          companyEmail: poSender || 'nani@tejasc.in',
+          sellerEmail: poRecipient
+        };
+
+        await setCollectionDoc('placed_orders', poOrder.id, updatedOrder);
+        setCurrentPlacedOrders(prev => prev.map(o => o.id === poOrder.id ? updatedOrder : o));
+        
+        const saved = JSON.parse(localStorage.getItem('placed_orders') || '[]');
+        const updatedSaved = saved.map((o: any) => o.id === poOrder.id ? updatedOrder : o);
+        localStorage.setItem('placed_orders', JSON.stringify(updatedSaved));
+        localStorage.setItem('companyEmail', poSender || 'nani@tejasc.in');
+
+        setSendingSuccess(true);
+      } else {
+        const errorDetail = dispatchRes.error || 'Live email transmission failed.';
+        setPoLogs(prev => [
+          ...prev,
+          `[${new Date().toLocaleTimeString()}] Error: ${errorDetail}`,
+          `[${new Date().toLocaleTimeString()}] You can open Gmail Web Compose using the button below to dispatch instantly.`
+        ]);
+        setSendingSuccess(false);
       }
-
-      // Supplier only receives official PO Email; no WhatsApp is sent to supplier.
-
-      const updatedOrder = {
-        ...poOrder,
-        purchaseOrderSent: true,
-        purchaseOrderSentAt: new Date().toISOString(),
-        companyEmail: poSender || 'nani@tejasc.in',
-        sellerEmail: poRecipient
-      };
-
-      await setCollectionDoc('placed_orders', poOrder.id, updatedOrder);
-      setCurrentPlacedOrders(prev => prev.map(o => o.id === poOrder.id ? updatedOrder : o));
-      
-      const saved = JSON.parse(localStorage.getItem('placed_orders') || '[]');
-      const updatedSaved = saved.map((o: any) => o.id === poOrder.id ? updatedOrder : o);
-      localStorage.setItem('placed_orders', JSON.stringify(updatedSaved));
-      localStorage.setItem('companyEmail', poSender || 'nani@tejasc.in');
-
-      setSendingSuccess(true);
     } catch (e: any) {
       console.error(e);
-      setPoLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Warning: ${e.message || 'Communication logged locally'}`]);
-      setSendingSuccess(true);
+      setPoLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Error: ${e.message || 'Communication error'}`]);
+      setSendingSuccess(false);
     } finally {
       setIsSendingPO(false);
     }
@@ -4419,6 +4424,18 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                     >
                       Cancel
                     </button>
+                    {poRecipient && (
+                      <a
+                        href={`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(poRecipient)}&cc=tejasadinarayan@gmail.com,nani@tejasc.in&su=${encodeURIComponent(poSubject)}&body=${encodeURIComponent(`Official Purchase Order ${poOrder.id}\nSupplier: ${poOrder.supplier || 'Supplier'}\nTotal: ${poOrder.total || ''}\nRemarks: ${poOrder.remarks || 'Standard dispatch'}\n\nPlease confirm delivery.`)}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md flex items-center gap-1.5 cursor-pointer no-underline"
+                        title="Open prefilled official PO draft in Gmail Web Compose"
+                      >
+                        <Mail className="w-4 h-4" />
+                        Open in Gmail
+                      </a>
+                    )}
                     <button
                       type="button"
                       onClick={handleSendPO}
