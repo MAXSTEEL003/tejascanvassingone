@@ -134,12 +134,14 @@ export async function dispatchPurchaseOrderEmail(payload: DispatchPoPayload): Pr
     const res = await fetch('/api/dispatch-po', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      keepalive: true,
       body: JSON.stringify({
         to: recipientEmail,
         from: adminSender,
         subject: payload.subject,
         html: payload.html,
         htmlContent: payload.html,
+        text: payload.text,
         textContent: payload.text,
         batchId: poRef,
         poNumber: poRef,

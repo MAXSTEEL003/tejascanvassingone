@@ -1152,12 +1152,12 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
   // Load orders from Firestore + local fallback
   const parseCustomDate = (obj: any): number => {
     if (!obj) return 0;
-    const dateStr = obj.purchaseOrderSentAt || obj.createdAt || obj.date;
+    const dateStr = obj.purchaseOrderSentAt || obj.createdAt || obj.placedAt || obj.date;
     if (!dateStr) return 0;
     if (typeof dateStr === 'number') return dateStr;
     const parsed = Date.parse(dateStr);
     if (!isNaN(parsed)) return parsed;
-    return 0;
+    return parseOperationalDate(dateStr) || 0;
   };
 
   const sortNewestFirst = (arr: any[]) => {
@@ -1766,7 +1766,13 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
 
       if (cloudPlaced.length > 0) {
         try {
-          localStorage.setItem('placed_orders', JSON.stringify(cloudPlaced));
+          const localExisting = JSON.parse(localStorage.getItem('placed_orders') || '[]');
+          const cloudIds = new Set(cloudPlaced.map((c: any) => String(c.id).trim().toLowerCase().replace(/^#/, '')));
+          const localUnsynced = Array.isArray(localExisting)
+            ? localExisting.filter((loc: any) => loc && loc.id && !cloudIds.has(String(loc.id).trim().toLowerCase().replace(/^#/, '')))
+            : [];
+          const mergedToSave = [...localUnsynced, ...cloudPlaced];
+          localStorage.setItem('placed_orders', JSON.stringify(mergedToSave));
         } catch (e) {}
       }
 
@@ -1795,7 +1801,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
         finalArrivals = grid.filter(g => g && Object.keys(g).length > 0);
       }
 
-      const mergedPlaced = [...cloudPlaced, ...effectiveSavedPlaced];
+      const mergedPlaced = [...effectiveSavedPlaced, ...cloudPlaced];
       const mergedProc = [...cloudProcurements, ...savedProcurements];
 
       const cloudOrders = isMerchant
