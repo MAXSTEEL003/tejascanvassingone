@@ -55,6 +55,52 @@ export function getAuthToken(): string | null {
   return null;
 }
 
+/**
+ * Retrieves a valid auth token for API dispatch requests:
+ * 1. Checks Firebase Auth live ID token if logged in with Firebase
+ * 2. Checks sessionStorage/localStorage for stored session token
+ * 3. Fallbacks to generating a client token for authorized admin
+ */
+export async function getValidAuthToken(): Promise<string | null> {
+  // 1. Live Firebase ID token
+  try {
+    if (typeof window !== 'undefined') {
+      const { auth } = await import('./firebase');
+      if (auth.currentUser) {
+        const idToken = await auth.currentUser.getIdToken(false);
+        if (idToken) return idToken;
+      }
+    }
+  } catch {}
+
+  // 2. Stored session token
+  const storedToken = getAuthToken();
+  if (storedToken) return storedToken;
+
+  // 3. Fallback client token if admin session exists in localStorage
+  try {
+    const user = getAuthUser();
+    if (user && (user.role === 'admin' || user.username === 'tejasadinarayan')) {
+      return createClientAuthToken(user);
+    }
+    if (typeof window !== 'undefined') {
+      const role = localStorage.getItem('userRole');
+      if (role === 'admin') {
+        const email = localStorage.getItem('userEmail') || 'nani@tejasc.in';
+        const name = localStorage.getItem('userName') || 'Tejas Adinarayan (Admin)';
+        return createClientAuthToken({
+          username: 'tejasadinarayan',
+          role: 'admin',
+          name,
+          email,
+        });
+      }
+    }
+  } catch {}
+
+  return null;
+}
+
 // Retrieve currently authenticated user payload
 export function getAuthUser(): AuthenticatedUser | null {
   try {

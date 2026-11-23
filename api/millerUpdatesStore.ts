@@ -79,10 +79,10 @@ export function addMillerUpdate(update: MillerUpdateRecord): MillerUpdateRecord 
   return update;
 }
 
-export function getAllMillerUpdates(): MillerUpdateRecord[] {
+export function getAllMillerUpdates(includeTest: boolean = process.env.NODE_ENV === "test"): MillerUpdateRecord[] {
   loadFromDisk();
   return Array.from(updatesStore.values())
-    .filter(u => u.poNumber !== "TC-5693" && !u.poNumber?.includes("5693"))
+    .filter(u => includeTest || (u.poNumber !== "TC-5693" && !u.poNumber?.includes("5693")))
     .sort(
       (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     );

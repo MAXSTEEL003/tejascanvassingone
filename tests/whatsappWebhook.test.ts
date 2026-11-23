@@ -375,11 +375,28 @@ async function runTests() {
     assert.strictEqual(data.status, "ok");
   });
 
-  // 13. Existing /api/dispatch-whatsapp remains functional
-  await test("13. Existing /api/dispatch-whatsapp remains functional", async () => {
-    const res = await fetch(`${baseUrl}/api/dispatch-whatsapp`, {
+  // 13. Security & functionality of /api/dispatch-whatsapp
+  await test("13. /api/dispatch-whatsapp requires admin authentication and dispatches correctly", async () => {
+    // 13A. Unauthorized request must be rejected with 401
+    const unauthRes = await fetch(`${baseUrl}/api/dispatch-whatsapp`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        to: "9945351166",
+        buyerName: "Test Merchant",
+        message: "PO notification test message",
+      }),
+    });
+    assert.strictEqual(unauthRes.status, 401, `Expected 401 for unauthorized dispatch, got ${unauthRes.status}`);
+
+    // 13B. Authorized admin request succeeds with 200
+    const res = await fetch(`${baseUrl}/api/dispatch-whatsapp`, {
+      method: "POST",
+      headers: { 
+        "Content-Type": "application/json",
+        "Authorization": "Bearer test-admin-token",
+        "x-admin-email": "nani@tejasc.in"
+      },
       body: JSON.stringify({
         to: "9945351166",
         buyerName: "Test Merchant",
@@ -391,6 +408,21 @@ async function runTests() {
     const data = await res.json();
     assert.strictEqual(data.success, true);
     assert.ok(data.directUrl, "Expected directUrl in response");
+
+    // 13C. Missing recipient phone returns 400
+    const invalidRes = await fetch(`${baseUrl}/api/dispatch-whatsapp`, {
+      method: "POST",
+      headers: { 
+        "Content-Type": "application/json",
+        "Authorization": "Bearer test-admin-token"
+      },
+      body: JSON.stringify({
+        to: "",
+        buyerName: "Test Merchant",
+        message: "PO notification test message",
+      }),
+    });
+    assert.strictEqual(invalidRes.status, 400, `Expected 400 for missing recipient, got ${invalidRes.status}`);
   });
 
   // 14. Existing authentication and administrative endpoints remain appropriately protected

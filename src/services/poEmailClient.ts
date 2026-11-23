@@ -9,6 +9,8 @@
  *           and provides direct Gmail Web Compose URL.
  */
 
+import { getValidAuthToken, getAuthUser } from '../lib/auth';
+
 export interface DispatchPoPayload {
   to: string;
   from?: string;
@@ -131,12 +133,22 @@ export async function dispatchPurchaseOrderEmail(payload: DispatchPoPayload): Pr
 
   // Path 1: Dispatch via Backend API endpoint (/api/dispatch-po)
   try {
+    const authToken = await getValidAuthToken();
+    const currentUser = getAuthUser();
+    const adminUserEmail = currentUser?.email || (typeof window !== 'undefined' ? (localStorage.getItem('userEmail') || 'nani@tejasc.in') : 'nani@tejasc.in');
+
+    const headers: Record<string, string> = { 
+      'Content-Type': 'application/json',
+      'x-requested-path': '/api/dispatch-po',
+      'x-admin-email': adminUserEmail,
+    };
+    if (authToken) {
+      headers['Authorization'] = `Bearer ${authToken}`;
+    }
+
     const res = await fetch('/api/dispatch-po?_path=/api/dispatch-po', {
       method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'x-requested-path': '/api/dispatch-po'
-      },
+      headers,
       keepalive: true,
       body: JSON.stringify({
         to: recipientEmail,
@@ -166,70 +178,47 @@ export async function dispatchPurchaseOrderEmail(payload: DispatchPoPayload): Pr
           isLiveSent: true,
           status: 'Sent',
           messageId: data.messageId || data.gmailMessageId,
-          method: 'backend_smtp',
+          method: data.method || 'backend_gmail',
           gmailComposeUrl: composeUrl
         };
       }
+      return {
+        success: false,
+        isLiveSent: false,
+        status: 'Failed',
+        error: data.error || data.message || 'PO email dispatch was rejected by backend.',
+        gmailComposeUrl: composeUrl
+      };
     }
-    // If backend returned HTML (SPA rewrite fallback) or failed with error status, proceed to client fallback
+
+    // Backend returned an error response - do not silently discard and switch to browser auth
+    let backendErrorMessage = '';
+    if (contentType.includes('application/json')) {
+      const errData = await res.json().catch(() => ({}));
+      backendErrorMessage = errData.error || errData.message || `Backend dispatch returned HTTP ${res.status}`;
+    } else {
+      // Backend returned HTML or non-JSON (e.g. routing error or server crash)
+      backendErrorMessage = `Backend returned non-JSON response (HTTP ${res.status}, ${contentType}). Check Vercel API routing.`;
+    }
+
+    console.warn('[PO Email Dispatch] Backend dispatch failed:', backendErrorMessage);
+
+    return {
+      success: false,
+      isLiveSent: false,
+      status: 'Failed',
+      error: backendErrorMessage,
+      gmailComposeUrl: composeUrl
+    };
   } catch (apiErr: any) {
-    console.warn('[PO Email Dispatch] Backend API unreachable, checking client fallback:', apiErr?.message || apiErr);
+    const networkErrMsg = `Failed to connect to backend PO dispatch endpoint: ${apiErr?.message || 'Network error'}`;
+    console.error('[PO Email Dispatch] Backend API error:', networkErrMsg);
+    return {
+      success: false,
+      isLiveSent: false,
+      status: 'Failed',
+      error: networkErrMsg,
+      gmailComposeUrl: composeUrl
+    };
   }
-
-  // Path 2: Direct Client-Side Gmail API REST transmission
-  if (clientToken) {
-    try {
-      const mime = buildMimeMessage({
-        to: recipientEmail,
-        cc: ccEmails,
-        from: adminSender,
-        subject: payload.subject,
-        html: payload.html,
-        text: payload.text
-      });
-
-      const raw = base64UrlEncode(mime);
-      const gmailRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${clientToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ raw })
-      });
-
-      if (gmailRes.ok) {
-        const gmailData = await gmailRes.json();
-        return {
-          success: true,
-          isLiveSent: true,
-          status: 'Sent',
-          messageId: gmailData.id,
-          method: 'client_gmail_api',
-          gmailComposeUrl: composeUrl
-        };
-      } else {
-        const errJson = await gmailRes.json().catch(() => ({}));
-        if (gmailRes.status === 401 || errJson.error?.code === 401) {
-          // Token expired, clear from storage
-          try {
-            localStorage.removeItem('google_access_token');
-            sessionStorage.removeItem('google_access_token');
-          } catch {}
-        }
-        console.warn('[PO Email Dispatch] Client Gmail API error:', errJson?.error?.message || gmailRes.statusText);
-      }
-    } catch (clientErr: any) {
-      console.warn('[PO Email Dispatch] Client Gmail API transmission failed:', clientErr?.message || clientErr);
-    }
-  }
-
-  // Both paths exhausted without live delivery confirmation
-  return {
-    success: false,
-    isLiveSent: false,
-    status: 'Queued',
-    error: 'Live automatic dispatch was not confirmed. Please click "Send PO Email" or "Open in Gmail" to dispatch.',
-    gmailComposeUrl: composeUrl
-  };
 }

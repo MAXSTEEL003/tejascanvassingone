@@ -4,16 +4,20 @@ import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 
 const currentDir = typeof __dirname !== "undefined" ? __dirname : process.cwd();
+const isVercel = Boolean(process.env.VERCEL || process.env.NOW_REGION || process.env.AWS_LAMBDA_FUNCTION_NAME);
 
-const envCandidates = [
-  path.join(process.cwd(), ".env"),
-  path.join(process.cwd(), "tejascanvassingone-main", ".env"),
-  path.join(currentDir, ".env"),
-  path.join(currentDir, "..", ".env"),
-];
-for (const envFile of envCandidates) {
-  if (fs.existsSync(envFile)) {
-    dotenv.config({ path: envFile, override: true });
+// Local environment: Load ONLY the inner project's .env file (never parent ../.env).
+// In Vercel Production, environment variables injected by Vercel are authoritative and never overridden.
+if (!isVercel) {
+  const projectRoot = fs.existsSync(path.join(process.cwd(), "package.json")) && fs.existsSync(path.join(process.cwd(), "server.ts"))
+    ? process.cwd()
+    : fs.existsSync(path.join(currentDir, "package.json"))
+      ? currentDir
+      : path.join(process.cwd(), "tejascanvassingone-main");
+
+  const projectEnv = path.join(projectRoot, ".env");
+  if (fs.existsSync(projectEnv)) {
+    dotenv.config({ path: projectEnv, override: true });
   }
 }
 

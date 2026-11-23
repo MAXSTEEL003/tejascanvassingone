@@ -9,7 +9,7 @@ import { getCollectionDocs, syncCollection, setCollectionDoc, deleteCollectionDo
 import { doc, deleteDoc, collection, getDocs, onSnapshot } from 'firebase/firestore';
 import SearchableSelect from '../components/SearchableSelect';
 import { generateSupplierPOEmailHtml, resolveSupplierProfile, isAuthenticSupplierEmail } from '../utils/poEmailTemplate';
-import { dispatchOrderPlacedWhatsApp } from '../lib/whatsapp';
+import { dispatchOrderPlacedWhatsApp, sanitizeBrandName } from '../lib/whatsapp';
 import {
   invalidateOperationalOrdersCache,
   generateRandomPoNumber,
@@ -2150,15 +2150,16 @@ export default function OrdersDashboard() {
       const prof = resolveBuyerProfile(b);
       const matchedOrder = selected.find(s => (s.buyer || '').trim().toLowerCase() === b.trim().toLowerCase());
       const orderPhone = (matchedOrder?.phone || '').replace(/[^0-9]/g, '');
-      const rawFinalPhone = (orderPhone && orderPhone.length >= 10 && orderPhone !== '9845012345' && orderPhone !== '9845000000' && orderPhone !== '919845000000')
+      const rawFinalPhone = (orderPhone && orderPhone.length >= 10 && !orderPhone.startsWith('000') && orderPhone !== '9845012345' && orderPhone !== '9845000000')
         ? orderPhone
         : (prof.phone || '').replace(/[^0-9]/g, '');
-      const cleanPhone = rawFinalPhone.length >= 10 ? rawFinalPhone.slice(-10) : '9945351166';
-      return { name: b, email: prof.email, phone: `91${cleanPhone}` };
+      const cleanPhone = rawFinalPhone.length >= 10 ? `91${rawFinalPhone.slice(-10)}` : '';
+      return { name: b, email: prof.email || '', phone: cleanPhone };
     });
 
     const supplierProfile = resolveSupplierProfile(effectiveSupplier);
-    const targetSupplierEmail = supplierProfile.email || 'bhagwatirice@gmail.com';
+    const targetSupplierEmail = (supplierProfile?.email || '').trim();
+    const isSupplierEmailValid = isAuthenticSupplierEmail(targetSupplierEmail);
     const sentTimestamp = new Date().toISOString();
 
     const groupedOrder: any = {
@@ -2190,10 +2191,13 @@ export default function OrdersDashboard() {
       originalOrders: enrichedSelected,
       purchaseOrderSent: false,
       purchaseOrderSentAt: undefined,
-      poEmailStatus: 'Queued',
+      poEmailStatus: isSupplierEmailValid ? 'Pending' : 'Failed',
+      poEmailError: isSupplierEmailValid ? undefined : `Supplier email is missing or not configured for "${effectiveSupplier}".`,
       whatsappSent: false,
       whatsappSentAt: undefined,
       whatsappMessageId: undefined,
+      whatsappStatus: 'Pending',
+      whatsappError: undefined,
       companyEmail: (localStorage.getItem('companyEmail') && !localStorage.getItem('companyEmail')?.includes('riceaggregator.com')) ? localStorage.getItem('companyEmail')! : 'nani@tejasc.in',
       sellerEmail: targetSupplierEmail,
       qty: totalSelectedQty,
@@ -2284,7 +2288,7 @@ export default function OrdersDashboard() {
       console.error("Failed to automatically generate commercial ledger entries:", err);
     });
 
-    // 4. AUTOMATICALLY DISPATCH SUPPLIER PO EMAIL IN BACKGROUND
+    // 4. INDEPENDENT NOTIFICATION EXECUTION (Promise.allSettled: Email cannot block WhatsApp)
     const subOrders = enrichedSelected;
     const emailHtml = generateSupplierPOEmailHtml(effectiveSupplier, groupedOrder, subOrders);
     const poSubject = `Tejas Canvassing: Purchase Order ${groupedOrder.id} - ${effectiveSupplier}`;
@@ -2295,99 +2299,122 @@ export default function OrdersDashboard() {
 
     const poPlainText = `Official Purchase Order: ${groupedOrder.id}\nSupplier: ${effectiveSupplier}\nTotal Quantity: ${groupedOrder.qty} QTLS\nTotal Value: ${groupedOrder.total}\n\nSub-Order Particulars:\n${subOrdersSummaryText}\n\n--\nTejas Canvassing Grain Brokerage`;
 
-    try {
-      const dispatchRes = await dispatchPurchaseOrderEmail({
-        to: targetSupplierEmail,
-        from: localStorage.getItem('companyEmail') || 'nani@tejasc.in',
-        subject: poSubject,
-        html: emailHtml,
-        text: poPlainText,
-        batchId: groupedOrder.id,
-        poNumber: groupedOrder.id,
-        orderId: groupedOrder.id,
-        supplierName: effectiveSupplier,
-        orderDetails: groupedOrder,
-      });
-
-      if (dispatchRes.success && (dispatchRes.isLiveSent || dispatchRes.status === 'Sent' || dispatchRes.messageId)) {
-        const sentTime = new Date().toISOString();
-        groupedOrder.purchaseOrderSent = true;
-        groupedOrder.purchaseOrderSentAt = sentTime;
-        groupedOrder.poEmailStatus = 'Sent';
-
-        await setCollectionDoc('placed_orders', batchId, {
-          purchaseOrderSent: true,
-          purchaseOrderSentAt: sentTime,
-          poEmailStatus: 'Sent',
-          emailDispatchMethod: dispatchRes.method,
-          smtpMessageId: dispatchRes.messageId
-        }).catch(() => { });
-
-        try {
-          const savedPlaced = JSON.parse(localStorage.getItem('placed_orders') || '[]');
-          const updated = savedPlaced.map((p: any) => {
-            if (p.id === batchId) {
-              return {
-                ...p,
-                purchaseOrderSent: true,
-                purchaseOrderSentAt: sentTime,
-                poEmailStatus: 'Sent',
-                sellerEmail: targetSupplierEmail
-              };
-            }
-            return p;
-          });
-          localStorage.setItem('placed_orders', JSON.stringify(updated));
-          setPlacedOrdersList(getValidDeduplicatedPlacedOrders(updated));
-          window.dispatchEvent(new CustomEvent('placed-orders-updated'));
-          window.dispatchEvent(new Event('storage'));
-        } catch {}
-      } else {
-        console.warn(`[PO Dispatch Notice] Auto-dispatch not confirmed: ${dispatchRes.error}`);
-        groupedOrder.purchaseOrderSent = false;
-        groupedOrder.poEmailStatus = 'Queued';
-        await setCollectionDoc('placed_orders', batchId, {
-          purchaseOrderSent: false,
-          poEmailStatus: 'Queued'
-        }).catch(() => { });
+    // 4A. Task: Supplier PO Email Dispatch
+    const emailDispatchPromise = (async () => {
+      if (!isSupplierEmailValid || !targetSupplierEmail) {
+        const errorMsg = `Supplier email is missing or not configured for "${effectiveSupplier}".`;
+        console.warn(`[PO Email Dispatch] ${errorMsg}`);
+        return {
+          type: 'email' as const,
+          success: false,
+          status: 'Failed' as const,
+          error: errorMsg,
+          recipient: targetSupplierEmail || 'None'
+        };
       }
-    } catch (err: any) {
-      console.warn(`Supplier PO email trigger error for ${assignedBatchSupplier}:`, err?.message || err);
-      groupedOrder.purchaseOrderSent = false;
-      groupedOrder.poEmailStatus = 'Queued';
-      await setCollectionDoc('placed_orders', batchId, {
-        purchaseOrderSent: false,
-        poEmailStatus: 'Queued'
-      }).catch(() => { });
-    }
-
-    // 4B. DISPATCH SEPARATE BUYER WHATSAPP ALERTS FOR EACH SEPARATE ORDER
-    // Even if from the same supplier or for the same buyer, each distinct product & rate gets its own separate WhatsApp confirmation
-    for (const subOrder of enrichedSelected) {
-      const buyerName = (subOrder.buyer || 'Valued Merchant').trim();
-      const prof = resolveBuyerProfile(buyerName);
-      const orderPhone = (subOrder.phone || '').replace(/[^0-9]/g, '');
-      const rawFinalPhone = (orderPhone.length >= 10 && orderPhone !== '9845012345' && orderPhone !== '9845000000' && orderPhone !== '919845000000')
-        ? orderPhone
-        : (prof.phone || '').replace(/[^0-9]/g, '');
-      const cleanPhone = rawFinalPhone.length >= 10 ? rawFinalPhone.slice(-10) : '9945351166';
-      const targetPhone = `91${cleanPhone}`;
-
-      const adminRawPhone = (typeof window !== 'undefined' ? localStorage.getItem('userPhone') : '') || '9945351166';
-      const adminCleanPhone = adminRawPhone.replace(/[^0-9]/g, '').slice(-10) || '9945351166';
-      const adminTargetPhone = `91${adminCleanPhone}`;
-
-      const itemBrand = (subOrder.product || subOrder.brand || 'keshar kali').replace(/\(\d+.*$/, '').trim();
-      const itemQty = Number(subOrder.qty) || 0;
-      const itemRate = Number(subOrder.rate) || 0;
-      const itemRef = subOrder.supplierSubOrderNo || subOrder.orderNo || subOrder.buyerRequestNo || subOrder.id || groupedOrder.id;
-
-      const buyerWhatsappMsg = `Hello ${buyerName},\n\nOrder placed successfully.\n\nBrand: ${itemBrand}\nQuantity: ${itemQty} QTL\nRate: ₹${itemRate}/QTL\n\nThank you,\nTejas Canvassing`;
 
       try {
-        const waRes = await dispatchOrderPlacedWhatsApp({
+        const dispatchRes = await dispatchPurchaseOrderEmail({
+          to: targetSupplierEmail,
+          from: localStorage.getItem('companyEmail') || 'nani@tejasc.in',
+          subject: poSubject,
+          html: emailHtml,
+          text: poPlainText,
+          batchId: groupedOrder.id,
+          poNumber: groupedOrder.id,
+          orderId: groupedOrder.id,
+          supplierName: effectiveSupplier,
+          orderDetails: groupedOrder,
+        });
+
+        if (dispatchRes.success && (dispatchRes.isLiveSent || dispatchRes.status === 'Sent' || dispatchRes.messageId)) {
+          return {
+            type: 'email' as const,
+            success: true,
+            status: 'Sent' as const,
+            messageId: dispatchRes.messageId,
+            method: dispatchRes.method,
+            recipient: targetSupplierEmail
+          };
+        } else {
+          return {
+            type: 'email' as const,
+            success: false,
+            status: 'Failed' as const,
+            error: dispatchRes.error || 'Server email dispatch failed.',
+            recipient: targetSupplierEmail
+          };
+        }
+      } catch (err: any) {
+        return {
+          type: 'email' as const,
+          success: false,
+          status: 'Failed' as const,
+          error: err?.message || 'Email dispatch exception occurred.',
+          recipient: targetSupplierEmail
+        };
+      }
+    })();
+
+    // 4B. Tasks: Buyer WhatsApp Dispatches (one per unique subOrder)
+    const adminRawPhone = (typeof window !== 'undefined' ? localStorage.getItem('userPhone') : '')?.replace(/[^0-9]/g, '');
+    const adminTargetPhone = adminRawPhone && adminRawPhone.length >= 10 ? `91${adminRawPhone.slice(-10)}` : '';
+
+    const whatsappDispatchPromises = enrichedSelected.map(async (subOrder: any) => {
+      const subBuyer = (subOrder.buyer || '').trim();
+      const prof = resolveBuyerProfile(subBuyer);
+      const orderPhoneDigits = (subOrder.phone || '').replace(/[^0-9]/g, '');
+      const profPhoneDigits = (prof.phone || '').replace(/[^0-9]/g, '');
+      
+      let targetPhone = '';
+      if (orderPhoneDigits.length >= 10 && !orderPhoneDigits.startsWith('000') && orderPhoneDigits !== '9845012345' && orderPhoneDigits !== '9845000000') {
+        targetPhone = `91${orderPhoneDigits.slice(-10)}`;
+      } else if (profPhoneDigits.length >= 10 && !profPhoneDigits.startsWith('000')) {
+        targetPhone = `91${profPhoneDigits.slice(-10)}`;
+      }
+
+      const itemBrand = sanitizeBrandName(subOrder.product || subOrder.brand);
+      const itemQty = parseFloat(String(subOrder.qty || ''));
+      const itemRate = parseFloat(String(subOrder.rate || ''));
+      const itemRef = subOrder.supplierSubOrderNo || subOrder.orderNo || subOrder.buyerRequestNo || subOrder.id || groupedOrder.id;
+
+      if (!targetPhone) {
+        const errorMsg = `Buyer phone number is missing or invalid for "${subBuyer || 'Buyer'}".`;
+        console.warn(`[WhatsApp Dispatch] ${errorMsg}`);
+        return {
+          subOrderId: subOrder.id,
+          subOrderNo: itemRef,
+          buyerName: subBuyer,
+          recipient: '',
+          success: false,
+          status: 'Failed' as const,
+          error: errorMsg,
+          adminCopySent: false
+        };
+      }
+
+      if (!subBuyer || !itemBrand || isNaN(itemQty) || itemQty <= 0 || isNaN(itemRate) || itemRate <= 0) {
+        const errorMsg = `Order particulars incomplete (brand, quantity, or rate) for buyer "${subBuyer}".`;
+        console.warn(`[WhatsApp Dispatch] ${errorMsg}`);
+        return {
+          subOrderId: subOrder.id,
+          subOrderNo: itemRef,
+          buyerName: subBuyer,
+          recipient: targetPhone,
+          success: false,
+          status: 'Failed' as const,
+          error: errorMsg,
+          adminCopySent: false
+        };
+      }
+
+      const buyerWhatsappMsg = `Hello ${subBuyer},\n\nOrder placed successfully.\n\nBrand: ${itemBrand}\nQuantity: ${itemQty} QTL\nRate: ₹${itemRate}/QTL\n\nThank you,\nTejas Canvassing`;
+
+      let waRes: any = null;
+      try {
+        waRes = await dispatchOrderPlacedWhatsApp({
           to: targetPhone,
-          buyerName: buyerName,
+          buyerName: subBuyer,
           brand: itemBrand,
           qty: itemQty,
           rate: itemRate,
@@ -2395,64 +2422,151 @@ export default function OrdersDashboard() {
           poNumber: groupedOrder.id,
           customMessage: buyerWhatsappMsg
         });
-
-        // Also notify user/admin phone (+919945351166) immediately so placement confirmation arrives on user's personal phone
-        let adminWaRes: any = null;
-        if (targetPhone !== adminTargetPhone) {
-          try {
-            adminWaRes = await dispatchOrderPlacedWhatsApp({
-              to: adminTargetPhone,
-              buyerName: 'Tejas (Admin Copy)',
-              brand: itemBrand,
-              qty: itemQty,
-              rate: itemRate,
-              orderId: itemRef,
-              poNumber: groupedOrder.id,
-              customMessage: `Hello Tejas,\n\nOrder placed successfully.\n\nBuyer: ${buyerName}\nBrand: ${itemBrand}\nQuantity: ${itemQty} QTL\nRate: ₹${itemRate}/QTL\nPO Ref: ${groupedOrder.id}\n\nThank you,\nTejas Canvassing`
-            });
-          } catch {}
-        }
-
-        const isWaSuccess = Boolean((waRes && waRes.success) || (adminWaRes && adminWaRes.success));
-        if (isWaSuccess) {
-          groupedOrder.whatsappSent = true;
-          groupedOrder.whatsappSentAt = new Date().toISOString();
-          groupedOrder.whatsappMessageId = waRes?.messageId || adminWaRes?.messageId || 'sent';
-
-          await setCollectionDoc('placed_orders', batchId, {
-            whatsappSent: true,
-            whatsappSentAt: new Date().toISOString(),
-            whatsappMessageId: waRes?.messageId || adminWaRes?.messageId || 'sent'
-          }).catch(() => {});
-
-          try {
-            const savedPlaced = JSON.parse(localStorage.getItem('placed_orders') || '[]');
-            const updated = savedPlaced.map((p: any) => {
-              if (p.id === batchId) {
-                return {
-                  ...p,
-                  whatsappSent: true,
-                  whatsappSentAt: new Date().toISOString(),
-                  whatsappMessageId: waRes?.messageId || adminWaRes?.messageId || 'sent'
-                };
-              }
-              return p;
-            });
-            localStorage.setItem('placed_orders', JSON.stringify(updated));
-            setPlacedOrdersList(getValidDeduplicatedPlacedOrders(updated));
-            window.dispatchEvent(new CustomEvent('placed-orders-updated'));
-            window.dispatchEvent(new Event('storage'));
-          } catch {}
-        }
-
-        // Small delay between sequential WhatsApp dispatches to prevent rate-limiting and ensure delivery order
-        await new Promise(resolve => setTimeout(resolve, 350));
       } catch (err: any) {
-        console.warn(`WhatsApp dispatch note for ${buyerName} (Order ${itemRef}):`, err?.message || err);
+        waRes = { success: false, status: 0, error: err?.message || 'WhatsApp network dispatch failed' };
       }
-    }
 
-    // 5. Directly navigate to Placed Orders without overlay
+      // Admin copy dispatch (completely independent, does NOT determine customer delivery status!)
+      let adminCopySent = false;
+      if (adminTargetPhone && adminTargetPhone !== targetPhone) {
+        try {
+          const adminRes = await dispatchOrderPlacedWhatsApp({
+            to: adminTargetPhone,
+            buyerName: 'Tejas (Admin Copy)',
+            brand: itemBrand,
+            qty: itemQty,
+            rate: itemRate,
+            orderId: itemRef,
+            poNumber: groupedOrder.id,
+            customMessage: `Hello Tejas,\n\nOrder placed successfully.\n\nBuyer: ${subBuyer}\nBrand: ${itemBrand}\nQuantity: ${itemQty} QTL\nRate: ₹${itemRate}/QTL\nPO Ref: ${groupedOrder.id}\n\nThank you,\nTejas Canvassing`
+          });
+          adminCopySent = Boolean(adminRes?.success);
+        } catch {}
+      }
+
+      const customerSuccess = Boolean(waRes && waRes.success);
+      return {
+        subOrderId: subOrder.id,
+        subOrderNo: itemRef,
+        buyerName: subBuyer,
+        recipient: targetPhone,
+        success: customerSuccess,
+        status: customerSuccess ? ('Accepted' as const) : ('Failed' as const),
+        messageId: waRes?.messageId,
+        errorCode: waRes?.errorCode,
+        error: customerSuccess ? undefined : (waRes?.error || 'WhatsApp message rejected by provider'),
+        adminCopySent
+      };
+    });
+
+    // Execute independent notifications with Promise.allSettled
+    Promise.allSettled([
+      emailDispatchPromise,
+      ...whatsappDispatchPromises
+    ]).then(async (outcomes) => {
+      const emailOutcome = outcomes[0];
+      const waOutcomes = outcomes.slice(1);
+
+      // 1. Process Email Outcome
+      let finalEmailStatus: 'Sent' | 'Failed' | 'Pending' = 'Pending';
+      let finalEmailError: string | undefined = undefined;
+      let emailMessageId: string | undefined = undefined;
+      let emailMethod: string | undefined = undefined;
+
+      if (emailOutcome.status === 'fulfilled') {
+        const val = emailOutcome.value;
+        if (val.success) {
+          finalEmailStatus = 'Sent';
+          emailMessageId = val.messageId;
+          emailMethod = val.method;
+        } else {
+          finalEmailStatus = 'Failed';
+          finalEmailError = val.error;
+        }
+      } else {
+        finalEmailStatus = 'Failed';
+        finalEmailError = emailOutcome.reason?.message || 'Email dispatch failed';
+      }
+
+      // 2. Process WhatsApp Outcomes per recipient
+      const updatedSubOrders = enrichedSelected.map((sub: any, idx: number) => {
+        const outcome = waOutcomes[idx];
+        if (outcome && outcome.status === 'fulfilled') {
+          const val = outcome.value as any;
+          return {
+            ...sub,
+            whatsappStatus: val.status,
+            whatsappSent: val.success,
+            whatsappSentAt: val.success ? new Date().toISOString() : undefined,
+            whatsappMessageId: val.messageId,
+            whatsappError: val.error,
+            adminCopySent: val.adminCopySent
+          };
+        } else {
+          const errReason = outcome && outcome.status === 'rejected' ? outcome.reason?.message : 'WhatsApp dispatch failed';
+          return {
+            ...sub,
+            whatsappStatus: 'Failed',
+            whatsappSent: false,
+            whatsappError: errReason
+          };
+        }
+      });
+
+      const failedWaRecipients = updatedSubOrders.filter((s: any) => s.whatsappStatus === 'Failed');
+      const acceptedWaRecipients = updatedSubOrders.filter((s: any) => s.whatsappStatus === 'Accepted');
+
+      let finalWaStatus: 'Accepted' | 'Delivered' | 'Failed' | 'Pending' = 'Pending';
+      let finalWaError: string | undefined = undefined;
+
+      if (failedWaRecipients.length === 0 && acceptedWaRecipients.length > 0) {
+        finalWaStatus = 'Accepted';
+      } else if (failedWaRecipients.length > 0) {
+        finalWaStatus = 'Failed';
+        finalWaError = failedWaRecipients.map((s: any) => `${s.buyer || 'Buyer'}: ${s.whatsappError}`).join('; ');
+      }
+
+      // 3. Persist notification diagnostics back to Firestore placed_orders
+      const notificationUpdate = {
+        purchaseOrderSent: finalEmailStatus === 'Sent',
+        purchaseOrderSentAt: finalEmailStatus === 'Sent' ? new Date().toISOString() : undefined,
+        poEmailStatus: finalEmailStatus,
+        poEmailError: finalEmailError,
+        smtpMessageId: emailMessageId,
+        emailDispatchMethod: emailMethod,
+        whatsappSent: acceptedWaRecipients.length > 0,
+        whatsappSentAt: acceptedWaRecipients.length > 0 ? new Date().toISOString() : undefined,
+        whatsappStatus: finalWaStatus,
+        whatsappError: finalWaError,
+        originalOrders: updatedSubOrders
+      };
+
+      await setCollectionDoc('placed_orders', batchId, notificationUpdate).catch(err => {
+        console.warn('[OrdersDashboard] Could not update notification status in Firestore:', err);
+      });
+
+      // 4. Update localStorage and active state
+      try {
+        const savedPlaced = JSON.parse(localStorage.getItem('placed_orders') || '[]');
+        const updated = savedPlaced.map((p: any) => {
+          if (p.id === batchId) {
+            return {
+              ...p,
+              ...notificationUpdate
+            };
+          }
+          return p;
+        });
+        localStorage.setItem('placed_orders', JSON.stringify(updated));
+        setPlacedOrdersList(getValidDeduplicatedPlacedOrders(updated));
+        window.dispatchEvent(new CustomEvent('placed-orders-updated'));
+        window.dispatchEvent(new Event('storage'));
+      } catch {}
+    }).catch(err => {
+      console.error('[OrdersDashboard] Unexpected error in notification settlement:', err);
+    });
+
+    // 5. Directly navigate to Placed Orders without blocking
     navigate('/placed-orders');
   };
 

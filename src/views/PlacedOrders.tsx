@@ -57,6 +57,7 @@ import { buildPoPdfDocument, getPoPdfFileName } from '../utils/poPdfGenerator';
 import { TC_COMPANY_LOGO_BASE64 } from '../utils/logoBase64';
 import EmailTrackingModal, { getStatusBadgeConfig } from '../components/EmailTrackingModal';
 import { dispatchPurchaseOrderEmail } from '../services/poEmailClient';
+import { dispatchOrderPlacedWhatsApp } from '../lib/whatsapp';
 import SupplierPortalSyncModal from '../components/SupplierPortalSyncModal';
 import BuyerLedgerModal from '../components/BuyerLedgerModal';
 import { 
@@ -828,6 +829,8 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
   const [selectedOrderForPortalSync, setSelectedOrderForPortalSync] = useState<any | null>(null);
   const [trackingRecordMap, setTrackingRecordMap] = useState<Record<string, any>>({});
   const [emailFilter, setEmailFilter] = useState<'all' | 'queued' | 'sent_unconfirmed' | 'delivered' | 'bounced' | 'awaiting_ack' | 'acknowledged'>('all');
+  const [retryingOrderEmail, setRetryingOrderEmail] = useState<string | null>(null);
+  const [retryingOrderWhatsApp, setRetryingOrderWhatsApp] = useState<string | null>(null);
 
   const handleMarkPoEmailSent = async (orderId: string) => {
     try {
@@ -859,18 +862,23 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                 const trkRec = map[p.id];
                 if (trkRec) {
                   const emailSent = Boolean(trkRec.status === 'Sent' || trkRec.gmailMessageId);
-                  const waSent = Boolean(trkRec.whatsappSent || trkRec.whatsappMessageId || (emailSent && trkRec.status === 'Sent'));
-                  const needsEmailUpdate = emailSent && (!p.purchaseOrderSent || p.poEmailStatus !== 'Sent');
-                  const needsWaUpdate = waSent && !p.whatsappSent;
+                  const emailFailed = Boolean(trkRec.status === 'Failed');
+                  const waSent = Boolean(trkRec.whatsappSent || trkRec.whatsappMessageId || trkRec.whatsappStatus === 'Accepted' || trkRec.whatsappStatus === 'Delivered');
+                  const waFailed = Boolean(trkRec.whatsappStatus === 'Failed');
+                  const needsEmailUpdate = (emailSent && (!p.purchaseOrderSent || p.poEmailStatus !== 'Sent')) || (emailFailed && p.poEmailStatus !== 'Failed');
+                  const needsWaUpdate = (waSent && !p.whatsappSent) || (waFailed && p.whatsappStatus !== 'Failed');
                   if (needsEmailUpdate || needsWaUpdate) {
                     changed = true;
                     return {
                       ...p,
-                      purchaseOrderSent: emailSent ? true : p.purchaseOrderSent,
-                      purchaseOrderSentAt: trkRec.sentAt || p.purchaseOrderSentAt || new Date().toISOString(),
-                      poEmailStatus: emailSent ? 'Sent' : p.poEmailStatus,
+                      purchaseOrderSent: emailSent ? true : (emailFailed ? false : p.purchaseOrderSent),
+                      purchaseOrderSentAt: trkRec.sentAt || p.purchaseOrderSentAt || (emailSent ? new Date().toISOString() : undefined),
+                      poEmailStatus: emailSent ? 'Sent' : (emailFailed ? 'Failed' : p.poEmailStatus),
+                      poEmailError: emailFailed ? (trkRec.error || p.poEmailError) : (emailSent ? undefined : p.poEmailError),
                       smtpMessageId: trkRec.gmailMessageId || p.smtpMessageId,
-                      whatsappSent: waSent ? true : p.whatsappSent,
+                      whatsappSent: waSent ? true : (waFailed ? false : p.whatsappSent),
+                      whatsappStatus: trkRec.whatsappStatus || (waSent ? 'Accepted' : (waFailed ? 'Failed' : p.whatsappStatus)),
+                      whatsappError: waFailed ? (trkRec.whatsappError || p.whatsappError) : p.whatsappError,
                       whatsappSentAt: trkRec.whatsappSentAt || p.whatsappSentAt || (waSent ? new Date().toISOString() : undefined),
                       whatsappMessageId: trkRec.whatsappMessageId || p.whatsappMessageId || (waSent ? 'sent' : undefined)
                     };
@@ -907,6 +915,185 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
       setToastMessage("Failed to check Gmail for bounce notices.");
     } finally {
       setIsCheckingBounces(false);
+    }
+  };
+
+  const handleRetryEmail = async (order: any, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!order || !order.id) return;
+
+    setRetryingOrderEmail(order.id);
+    try {
+      const supplierName = sanitizeSupplierName(order.supplier || (order.originalOrders && order.originalOrders[0]?.supplier), 'Direct Mill');
+      const supplierProfile = resolveSupplierProfile(supplierName);
+      const poRecipient = (order.sellerEmail || supplierProfile.email || '').trim();
+
+      if (!poRecipient || !isAuthenticSupplierEmail(poRecipient)) {
+        const errorMsg = `Cannot send PO email: No valid authentic email configured for supplier "${supplierName}". Please configure an authentic email in Supplier Settings.`;
+        const updatedOrder = {
+          ...order,
+          poEmailStatus: 'Failed',
+          poEmailError: errorMsg,
+          purchaseOrderSent: false
+        };
+        await setCollectionDoc('placed_orders', order.id, updatedOrder);
+        setCurrentPlacedOrders(prev => prev.map(o => o.id === order.id ? updatedOrder : o));
+        alert(errorMsg);
+        return;
+      }
+
+      const subOrders = order.originalOrders && Array.isArray(order.originalOrders) && order.originalOrders.length > 0
+        ? order.originalOrders
+        : [{
+            id: order.id,
+            buyer: order.buyer || 'Valued Merchant',
+            product: order.product || order.brand || "KESHAR KALI",
+            qty: parseFloat(order.qty || '80'),
+            rate: parseFloat(order.rate || '8400') || 8400,
+            date: order.date || new Date(),
+            loadingDays: order.loadingDays !== undefined ? order.loadingDays : 0,
+            unloadingPoint: order.unloadingPoint || 'shop',
+            remarks: order.remarks || ''
+          }];
+
+      const emailHtml = generateSupplierPOEmailHtml(supplierName, order, subOrders);
+      const poSender = order.companyEmail || localStorage.getItem('companyEmail') || 'nani@tejasc.in';
+
+      const dispatchRes = await dispatchPurchaseOrderEmail({
+        to: poRecipient,
+        from: poSender,
+        subject: `Tejas Canvassing: Purchase Order #${order.id} - ${supplierName}`,
+        html: emailHtml,
+        orderId: order.id,
+        poNumber: order.id,
+        batchId: order.id,
+        supplierName: supplierName,
+        orderDetails: order,
+      });
+
+      if (dispatchRes.success && (dispatchRes.isLiveSent || dispatchRes.status === 'Sent')) {
+        const updatedOrder = {
+          ...order,
+          purchaseOrderSent: true,
+          purchaseOrderSentAt: new Date().toISOString(),
+          poEmailStatus: 'Sent',
+          poEmailError: undefined,
+          smtpMessageId: dispatchRes.messageId,
+          sellerEmail: poRecipient
+        };
+        await setCollectionDoc('placed_orders', order.id, updatedOrder);
+        setCurrentPlacedOrders(prev => prev.map(o => o.id === order.id ? updatedOrder : o));
+        fetchTrackingRecords();
+      } else {
+        const errorMsg = dispatchRes.error || 'Live email transmission failed.';
+        const updatedOrder = {
+          ...order,
+          purchaseOrderSent: false,
+          poEmailStatus: 'Failed',
+          poEmailError: errorMsg
+        };
+        await setCollectionDoc('placed_orders', order.id, updatedOrder);
+        setCurrentPlacedOrders(prev => prev.map(o => o.id === order.id ? updatedOrder : o));
+        alert(`PO Email Retry Failed: ${errorMsg}`);
+      }
+    } catch (err: any) {
+      console.error('Error retrying PO email:', err);
+      const errorMsg = err.message || 'PO email dispatch error';
+      const updatedOrder = {
+        ...order,
+        purchaseOrderSent: false,
+        poEmailStatus: 'Failed',
+        poEmailError: errorMsg
+      };
+      await setCollectionDoc('placed_orders', order.id, updatedOrder);
+      setCurrentPlacedOrders(prev => prev.map(o => o.id === order.id ? updatedOrder : o));
+      alert(`PO Email Retry Failed: ${errorMsg}`);
+    } finally {
+      setRetryingOrderEmail(null);
+    }
+  };
+
+  const handleRetryWhatsApp = async (order: any, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!order || !order.id) return;
+
+    setRetryingOrderWhatsApp(order.id);
+    try {
+      const subs = order.originalOrders && Array.isArray(order.originalOrders) && order.originalOrders.length > 0
+        ? order.originalOrders
+        : [order];
+
+      const updatedSubs = await Promise.all(subs.map(async (sub: any) => {
+        const buyerName = (sub.buyer || order.buyer || '').trim();
+        const prof = buyerName ? resolveBuyerProfile(buyerName) : null;
+        const rawPhone = String(sub.phone || (prof ? prof.phone : '') || '').replace(/\D/g, '');
+        let targetPhone = '';
+        if (rawPhone.length === 10) targetPhone = `91${rawPhone}`;
+        else if (rawPhone.length === 12 && rawPhone.startsWith('91')) targetPhone = rawPhone;
+
+        if (!targetPhone) {
+          return {
+            ...sub,
+            whatsappSent: false,
+            whatsappStatus: 'Failed',
+            whatsappError: `No valid 10-digit phone number found for buyer "${buyerName || 'Unknown'}"`
+          };
+        }
+
+        const brand = (sub.brand || sub.product || order.brand || order.product || 'Rice').replace(/\(\d+.*$/, '').trim();
+        const qty = parseFloat(sub.qty || order.qty || 0);
+        const rate = parseFloat(sub.rate || order.rate || 0);
+        const poNum = order.id;
+
+        const waRes = await dispatchOrderPlacedWhatsApp({
+          phone: targetPhone,
+          buyerName: buyerName || 'Valued Buyer',
+          orderId: poNum,
+          brand,
+          qty,
+          rate,
+          poNumber: poNum
+        });
+
+        const isAccepted = waRes.success && (waRes.deliveryStatus === 'Accepted' || waRes.status === 200);
+        return {
+          ...sub,
+          phone: targetPhone,
+          whatsappSent: isAccepted,
+          whatsappStatus: waRes.deliveryStatus || (isAccepted ? 'Accepted' : 'Failed'),
+          whatsappError: waRes.error,
+          whatsappMessageId: waRes.messageId,
+          whatsappSentAt: isAccepted ? new Date().toISOString() : sub.whatsappSentAt
+        };
+      }));
+
+      const allAcceptedOrDelivered = updatedSubs.every((s: any) => s.whatsappStatus === 'Accepted' || s.whatsappStatus === 'Delivered');
+      const anyDelivered = updatedSubs.some((s: any) => s.whatsappStatus === 'Delivered');
+      const anyFailed = updatedSubs.some((s: any) => s.whatsappStatus === 'Failed');
+      const overallWaStatus = anyDelivered ? 'Delivered' : (allAcceptedOrDelivered ? 'Accepted' : (anyFailed ? 'Failed' : 'Pending'));
+      const overallWaError = updatedSubs.find((s: any) => s.whatsappError)?.whatsappError;
+
+      const updatedOrder = {
+        ...order,
+        originalOrders: updatedSubs,
+        whatsappSent: allAcceptedOrDelivered,
+        whatsappStatus: overallWaStatus,
+        whatsappError: overallWaError,
+        whatsappSentAt: allAcceptedOrDelivered ? new Date().toISOString() : order.whatsappSentAt
+      };
+
+      await setCollectionDoc('placed_orders', order.id, updatedOrder);
+      setCurrentPlacedOrders(prev => prev.map(o => o.id === order.id ? updatedOrder : o));
+
+      if (anyFailed && overallWaError) {
+        alert(`Customer WhatsApp Retry issue: ${overallWaError}`);
+      }
+    } catch (err: any) {
+      console.error('Error retrying WhatsApp:', err);
+      const errorMsg = err.message || 'WhatsApp dispatch error';
+      alert(`Customer WhatsApp Retry Failed: ${errorMsg}`);
+    } finally {
+      setRetryingOrderWhatsApp(null);
     }
   };
 
@@ -2263,11 +2450,31 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
           `[${new Date().toLocaleTimeString()}] Error: ${errorDetail}`,
           `[${new Date().toLocaleTimeString()}] You can open Gmail Web Compose using the button below to dispatch instantly.`
         ]);
+        const failedOrder = {
+          ...poOrder,
+          purchaseOrderSent: false,
+          poEmailStatus: 'Failed',
+          poEmailError: errorDetail
+        };
+        await setCollectionDoc('placed_orders', poOrder.id, failedOrder).catch(() => {});
+        setCurrentPlacedOrders(prev => prev.map(o => o.id === poOrder.id ? failedOrder : o));
+        const saved = JSON.parse(localStorage.getItem('placed_orders') || '[]');
+        const updatedSaved = saved.map((o: any) => o.id === poOrder.id ? failedOrder : o);
+        localStorage.setItem('placed_orders', JSON.stringify(updatedSaved));
         setSendingSuccess(false);
       }
     } catch (e: any) {
       console.error(e);
-      setPoLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Error: ${e.message || 'Communication error'}`]);
+      const errorMsg = e.message || 'Communication error';
+      setPoLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Error: ${errorMsg}`]);
+      const failedOrder = {
+        ...poOrder,
+        purchaseOrderSent: false,
+        poEmailStatus: 'Failed',
+        poEmailError: errorMsg
+      };
+      await setCollectionDoc('placed_orders', poOrder.id, failedOrder).catch(() => {});
+      setCurrentPlacedOrders(prev => prev.map(o => o.id === poOrder.id ? failedOrder : o));
       setSendingSuccess(false);
     } finally {
       setIsSendingPO(false);
@@ -3258,79 +3465,118 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                     {/* Dispatch Notification Status Icons (Mail & WhatsApp) positioned directly under the icon */}
                     {(() => {
                       const trk = trackingRecordMap[order.id];
-                      const isEmailSent = Boolean(
-                        order.purchaseOrderSent || 
-                        order.poEmailStatus === 'Sent' ||
+
+                      // 1. MAIL NOTIFICATION STATUS:
+                      // Green: Gmail API confirms successful email submission.
+                      // Blue: Email dispatch is currently in progress.
+                      // Red: Email dispatch failed.
+                      // Grey: Email has not been attempted.
+                      const isEmailInProgress = retryingOrderEmail === order.id || order.poEmailStatus === 'Sending' || order.poEmailStatus === 'In Progress';
+                      const isEmailSent = !isEmailInProgress && Boolean(
+                        order.poEmailStatus === 'Sent' || 
                         trk?.status === 'Sent' || 
                         trk?.gmailMessageId || 
-                        trk?.acknowledgedAt || 
-                        order.purchaseOrderSentAt
+                        (order.purchaseOrderSent && order.poEmailStatus !== 'Failed' && trk?.status !== 'Failed')
                       );
-                      const isWhatsAppSent = Boolean(
-                        order.whatsappSent || 
-                        order.whatsappSentAt || 
-                        order.whatsappMessageId ||
-                        trk?.whatsappSent ||
-                        trk?.whatsappMessageId ||
-                        (trk && (trk.status === 'Sent' || trk.gmailMessageId)) ||
-                        (order.originalOrders && order.originalOrders.some((s: any) => s.whatsappSent || s.purchaseOrderSent))
+                      const isEmailFailed = !isEmailInProgress && !isEmailSent && Boolean(
+                        order.poEmailStatus === 'Failed' || 
+                        trk?.status === 'Failed'
                       );
+                      const emailState: 'green' | 'blue' | 'red' | 'grey' = 
+                        isEmailInProgress ? 'blue' : 
+                        isEmailSent ? 'green' : 
+                        isEmailFailed ? 'red' : 'grey';
+
+                      const emailTooltip = 
+                        emailState === 'green' ? "Gmail API confirmed: Purchase order email submitted successfully" :
+                        emailState === 'blue' ? "PO email dispatch is currently in progress..." :
+                        emailState === 'red' ? (order.poEmailError || trk?.error ? `PO email failed: ${order.poEmailError || trk?.error}` : "PO email dispatch failed") :
+                        "PO email has not been attempted";
+
+                      // 2. WHATSAPP NOTIFICATION STATUS:
+                      // Green: Meta WhatsApp Cloud API successfully accepted the message.
+                      // Blue: WhatsApp dispatch is in progress.
+                      // Red: WhatsApp dispatch failed.
+                      // Grey: WhatsApp dispatch has not been attempted.
+                      // Important: "Accepted" means accepted by Meta Cloud API; "Delivered" requires confirmed delivery webhook.
+                      const isWaInProgress = retryingOrderWhatsApp === order.id || order.whatsappStatus === 'Sending' || order.whatsappStatus === 'In Progress';
+                      const isWaDelivered = Boolean(order.whatsappStatus === 'Delivered' || trk?.whatsappStatus === 'Delivered');
+                      const isWaAccepted = !isWaInProgress && Boolean(
+                        isWaDelivered || 
+                        order.whatsappStatus === 'Accepted' || 
+                        trk?.whatsappStatus === 'Accepted' || 
+                        (order.whatsappSent && order.whatsappStatus !== 'Failed' && trk?.whatsappStatus !== 'Failed')
+                      );
+                      const isWaFailed = !isWaInProgress && !isWaAccepted && Boolean(
+                        order.whatsappStatus === 'Failed' || 
+                        trk?.whatsappStatus === 'Failed' ||
+                        (order.originalOrders && order.originalOrders.some((s: any) => s.whatsappStatus === 'Failed'))
+                      );
+                      const waState: 'green' | 'blue' | 'red' | 'grey' = 
+                        isWaInProgress ? 'blue' : 
+                        isWaAccepted ? 'green' : 
+                        isWaFailed ? 'red' : 'grey';
+
+                      const waTooltip = 
+                        waState === 'green' ? (isWaDelivered ? "Meta WhatsApp: Delivery confirmed to customer device" : "Meta WhatsApp: Message accepted by Cloud API") :
+                        waState === 'blue' ? "WhatsApp dispatch is currently in progress..." :
+                        waState === 'red' ? (order.whatsappError || trk?.whatsappError ? `WhatsApp failed: ${order.whatsappError || trk?.whatsappError}` : "WhatsApp dispatch failed") :
+                        "WhatsApp dispatch has not been attempted";
 
                       return (
                         <div className="flex flex-row md:flex-col items-center gap-1.5 w-auto md:w-full">
-                          {/* Mail Icon badge - interactive trigger for email tracking/dispatch modal */}
-                          <button 
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedOrderForTracking(order);
-                            }}
+                          {/* MAIL STATUS INDICATOR */}
+                          <div 
                             className={cn(
-                              "w-full inline-flex items-center justify-center gap-1 py-1 px-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all cursor-pointer select-none hover:opacity-90 active:scale-95",
-                              isEmailSent 
-                                ? "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30 shadow-2xs" 
-                                : "bg-neutral-100 dark:bg-neutral-800/40 text-neutral-400 dark:text-neutral-500 border-neutral-200 dark:border-neutral-800 opacity-60 hover:opacity-100"
+                              "w-full inline-flex items-center justify-center gap-1 py-1 px-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all select-none cursor-default",
+                              emailState === 'green' && "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 shadow-2xs",
+                              emailState === 'blue' && "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30 shadow-2xs animate-pulse",
+                              emailState === 'red' && "bg-red-500/10 text-red-700 dark:text-red-300 border-red-500/30 shadow-2xs",
+                              emailState === 'grey' && "bg-neutral-100 dark:bg-neutral-800/40 text-neutral-400 dark:text-neutral-500 border-neutral-200 dark:border-neutral-800 opacity-60"
                             )}
-                            title={isEmailSent ? "PO Email sent to supplier - click to track" : "PO Email queued - click to dispatch or track"}
+                            title={emailTooltip}
                           >
-                            <Mail className={cn("w-3 h-3 shrink-0", isEmailSent ? "text-blue-600 dark:text-blue-400" : "text-neutral-400 dark:text-neutral-500")} />
+                            <Mail className={cn(
+                              "w-3 h-3 shrink-0",
+                              emailState === 'green' && "text-emerald-600 dark:text-emerald-400",
+                              emailState === 'blue' && "text-blue-600 dark:text-blue-400",
+                              emailState === 'red' && "text-red-600 dark:text-red-400",
+                              emailState === 'grey' && "text-neutral-400 dark:text-neutral-500"
+                            )} />
                             <span>Mail</span>
-                            {isEmailSent && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse shrink-0" />}
-                          </button>
+                            {emailState === 'green' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />}
+                            {emailState === 'blue' && <Loader2 className="w-2.5 h-2.5 animate-spin text-blue-600 dark:text-blue-400 shrink-0" />}
+                            {emailState === 'red' && <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />}
+                          </div>
 
-                          {/* WhatsApp Icon badge - interactive trigger to send/view WhatsApp */}
-                          <button 
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const subs = order.originalOrders || [];
-                              const firstSub = subs[0] || {};
-                              const buyerName = firstSub.buyer || order.buyer || 'Valued Merchant';
-                              const prof = resolveBuyerProfile(buyerName);
-                              const rawPhone = (firstSub.phone || order.phone || '').replace(/[^0-9]/g, '');
-                              const cleanPhone = (rawPhone.length >= 10 && rawPhone !== '9845012345' && rawPhone !== '9845000000')
-                                ? (rawPhone.length === 10 ? `91${rawPhone}` : rawPhone)
-                                : (prof?.phone ? (prof.phone.length === 10 ? `91${prof.phone}` : prof.phone) : '919945351166');
-                              const waMsg = encodeURIComponent(`Hello ${buyerName},\n\nOrder ${order.id} placed successfully.\n\nBrand: ${order.product || order.brand || 'keshar kali'}\nQuantity: ${order.items || order.qty} QTLS\nRate: ₹${order.rate || ''}\n\nThank you,\nTejas Canvassing`);
-                              window.open(`https://wa.me/${cleanPhone}?text=${waMsg}`, '_blank');
-                            }}
+                          {/* WHATSAPP STATUS INDICATOR */}
+                          <div 
                             className={cn(
-                              "w-full inline-flex items-center justify-center gap-1 py-1 px-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all cursor-pointer select-none hover:opacity-90 active:scale-95",
-                              isWhatsAppSent 
-                                ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 shadow-2xs" 
-                                : "bg-neutral-100 dark:bg-neutral-800/40 text-neutral-400 dark:text-neutral-500 border-neutral-200 dark:border-neutral-800 opacity-60 hover:opacity-100"
+                              "w-full inline-flex items-center justify-center gap-1 py-1 px-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all select-none cursor-default",
+                              waState === 'green' && "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 shadow-2xs",
+                              waState === 'blue' && "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30 shadow-2xs animate-pulse",
+                              waState === 'red' && "bg-red-500/10 text-red-700 dark:text-red-300 border-red-500/30 shadow-2xs",
+                              waState === 'grey' && "bg-neutral-100 dark:bg-neutral-800/40 text-neutral-400 dark:text-neutral-500 border-neutral-200 dark:border-neutral-800 opacity-60"
                             )}
-                            title={isWhatsAppSent ? "WhatsApp notification sent - click to open WhatsApp" : "Click to send WhatsApp confirmation to buyer"}
+                            title={waTooltip}
                           >
                             <svg 
-                              className={cn("w-3 h-3 fill-current shrink-0", isWhatsAppSent ? "text-emerald-600 dark:text-emerald-400" : "text-neutral-400 dark:text-neutral-500")} 
+                              className={cn(
+                                "w-3 h-3 fill-current shrink-0",
+                                waState === 'green' && "text-emerald-600 dark:text-emerald-400",
+                                waState === 'blue' && "text-blue-600 dark:text-blue-400",
+                                waState === 'red' && "text-red-600 dark:text-red-400",
+                                waState === 'grey' && "text-neutral-400 dark:text-neutral-500"
+                              )} 
                               viewBox="0 0 24 24"
                             >
                               <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/>
                             </svg>
                             <span className="truncate">WhatsApp</span>
-                            {isWhatsAppSent && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />}
-                          </button>
+                            {waState === 'green' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />}
+                            {waState === 'blue' && <Loader2 className="w-2.5 h-2.5 animate-spin text-blue-600 dark:text-blue-400 shrink-0" />}
+                            {waState === 'red' && <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />}
+                          </div>
                         </div>
                       );
                     })()}
@@ -3453,6 +3699,142 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                         </div>
                       </div>
                     </div>
+
+                    {/* Notification Diagnostics Panel */}
+                    {(() => {
+                      const trk = trackingRecordMap[order.id];
+
+                      // 1. Supplier PO Email: Sent / Failed / Pending
+                      const emailStatus: 'Sent' | 'Failed' | 'Pending' = (() => {
+                        if (order.purchaseOrderSent || order.poEmailStatus === 'Sent' || trk?.status === 'Sent' || trk?.gmailMessageId) {
+                          return 'Sent';
+                        }
+                        if (order.poEmailStatus === 'Failed' || trk?.status === 'Failed') {
+                          return 'Failed';
+                        }
+                        return 'Pending';
+                      })();
+                      const emailError = order.poEmailError || trk?.error || '';
+
+                      // 2. Customer WhatsApp: Accepted / Delivered / Failed / Pending
+                      // NOTE: We do NOT claim delivery solely because Meta accepted a message.
+                      const waStatus: 'Accepted' | 'Delivered' | 'Failed' | 'Pending' = (() => {
+                        if (order.whatsappStatus === 'Delivered' || trk?.whatsappStatus === 'Delivered') {
+                          return 'Delivered';
+                        }
+                        if (order.whatsappStatus === 'Accepted' || trk?.whatsappStatus === 'Accepted' || (order.whatsappSent && !order.whatsappStatus)) {
+                          return 'Accepted';
+                        }
+                        if (order.whatsappStatus === 'Failed' || trk?.whatsappStatus === 'Failed') {
+                          return 'Failed';
+                        }
+                        return 'Pending';
+                      })();
+                      const waError = order.whatsappError || trk?.whatsappError || '';
+
+                      const lastErrorMessage = (emailStatus === 'Failed' ? emailError : '') || (waStatus === 'Failed' ? waError : '') || order.poEmailError || order.whatsappError || '';
+
+                      const canRetryEmail = emailStatus !== 'Sent';
+                      const canRetryWhatsApp = waStatus !== 'Delivered' && waStatus !== 'Accepted';
+
+                      return (
+                        <div className="bg-surface-container-low/70 dark:bg-neutral-900/50 p-3.5 rounded-xl border border-outline-variant/30 space-y-2.5">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-[9px] font-black tracking-widest text-secondary uppercase flex items-center gap-1">
+                                <Activity className="w-3 h-3 text-primary" />
+                                Notifications:
+                              </span>
+
+                              {/* Supplier PO Email Badge */}
+                              <span className={cn(
+                                "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border shadow-2xs",
+                                emailStatus === 'Sent'
+                                  ? "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30"
+                                  : emailStatus === 'Failed'
+                                  ? "bg-red-500/10 text-red-700 dark:text-red-300 border-red-500/30"
+                                  : "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30"
+                              )}
+                              title={emailError ? `Supplier PO Email: ${emailStatus} - ${emailError}` : `Supplier PO Email: ${emailStatus}`}
+                              >
+                                <Mail className="w-3 h-3" />
+                                <span>PO Email: {emailStatus}</span>
+                                {emailStatus === 'Sent' && <CheckCircle2 className="w-2.5 h-2.5 text-blue-600 dark:text-blue-400" />}
+                                {emailStatus === 'Failed' && <XCircle className="w-2.5 h-2.5 text-red-600 dark:text-red-400" />}
+                              </span>
+
+                              {/* Customer WhatsApp Badge */}
+                              <span className={cn(
+                                "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border shadow-2xs",
+                                waStatus === 'Delivered'
+                                  ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                                  : waStatus === 'Accepted'
+                                  ? "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30"
+                                  : waStatus === 'Failed'
+                                  ? "bg-red-500/10 text-red-700 dark:text-red-300 border-red-500/30"
+                                  : "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30"
+                              )}
+                              title={waError ? `Customer WhatsApp: ${waStatus} - ${waError}` : `Customer WhatsApp: ${waStatus}`}
+                              >
+                                <MessageSquare className="w-3 h-3" />
+                                <span>Customer WhatsApp: {waStatus}</span>
+                                {waStatus === 'Delivered' && <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600 dark:text-emerald-400" />}
+                                {waStatus === 'Accepted' && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />}
+                                {waStatus === 'Failed' && <XCircle className="w-2.5 h-2.5 text-red-600 dark:text-red-400" />}
+                              </span>
+                            </div>
+
+                            {/* Retry Buttons */}
+                            <div className="flex items-center gap-2">
+                              {canRetryEmail && (
+                                <button
+                                  type="button"
+                                  disabled={retryingOrderEmail === order.id}
+                                  onClick={(e) => handleRetryEmail(order, e)}
+                                  className="btn-tactile inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-500/10 hover:bg-blue-600 text-blue-700 dark:text-blue-300 hover:text-white text-[10px] font-black uppercase tracking-wider border border-blue-500/30 transition-all cursor-pointer shadow-2xs disabled:opacity-50"
+                                  title="Retry sending PO Email to supplier"
+                                >
+                                  {retryingOrderEmail === order.id ? (
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                  ) : (
+                                    <RefreshCw className="w-3 h-3" />
+                                  )}
+                                  <span>Retry PO Email</span>
+                                </button>
+                              )}
+
+                              {canRetryWhatsApp && (
+                                <button
+                                  type="button"
+                                  disabled={retryingOrderWhatsApp === order.id}
+                                  onClick={(e) => handleRetryWhatsApp(order, e)}
+                                  className="btn-tactile inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-600 text-emerald-700 dark:text-emerald-300 hover:text-white text-[10px] font-black uppercase tracking-wider border border-emerald-500/30 transition-all cursor-pointer shadow-2xs disabled:opacity-50"
+                                  title="Retry sending WhatsApp notification to buyer(s)"
+                                >
+                                  {retryingOrderWhatsApp === order.id ? (
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                  ) : (
+                                    <RefreshCw className="w-3 h-3" />
+                                  )}
+                                  <span>Retry WhatsApp</span>
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Last Error Message Display */}
+                          {lastErrorMessage && (
+                            <div className="flex items-start gap-1.5 p-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-700 dark:text-red-300 text-[11px] font-medium">
+                              <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-red-600 dark:text-red-400" />
+                              <div className="flex-1 break-words">
+                                <span className="font-bold">Notification Error: </span>
+                                <span>{lastErrorMessage}</span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
 
 
                     {order.liftingRecords && order.liftingRecords.length > 0 && (
@@ -3860,12 +4242,12 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
 
                                      {/* Sub-order WhatsApp Action */}
                                      {(() => {
-                                       const subBuyer = sub.buyer || order.buyer || 'Valued Merchant';
-                                       const prof = resolveBuyerProfile(subBuyer);
+                                       const subBuyer = (sub.buyer || order.buyer || '').trim();
+                                       const prof = subBuyer ? resolveBuyerProfile(subBuyer) : null;
                                        const rawPhone = (sub.phone || '').replace(/[^0-9]/g, '');
                                        const cleanPhone = (rawPhone.length >= 10 && rawPhone !== '9845012345' && rawPhone !== '9845000000')
                                          ? (rawPhone.length === 10 ? `91${rawPhone}` : rawPhone)
-                                         : (prof.phone ? (prof.phone.length === 10 ? `91${prof.phone}` : prof.phone) : '919945351166');
+                                         : (prof?.phone ? (prof.phone.length === 10 ? `91${prof.phone}` : prof.phone) : '');
                                        const subItemBrand = (subBrand || 'Rice').replace(/\(\d+.*$/, '').trim();
                                        const waMsg = encodeURIComponent(
                                          `Hello ${subBuyer},\n\nOrder placed successfully.\n\nBrand: ${subItemBrand}\nQuantity: ${subQty.toFixed(2)} QTL\nRate: ₹${formatINR(subRate)}/QTL\n\nThank you,\nTejas Canvassing`
@@ -3875,10 +4257,16 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                                          <div className="flex flex-col items-end gap-1 shrink-0">
                                            <p className="text-[8px] font-black text-secondary uppercase tracking-tighter mb-0.5">WhatsApp</p>
                                            <a
-                                             href={`https://wa.me/${cleanPhone}?text=${waMsg}`}
+                                             href={cleanPhone ? `https://wa.me/${cleanPhone}?text=${waMsg}` : '#'}
                                              target="_blank"
                                              rel="noopener noreferrer"
-                                             onClick={(e) => e.stopPropagation()}
+                                             onClick={(e) => {
+                                               e.stopPropagation();
+                                               if (!cleanPhone) {
+                                                 e.preventDefault();
+                                                 alert(`No valid phone number found for buyer "${subBuyer || 'Buyer'}".`);
+                                               }
+                                             }}
                                              className="btn-tactile inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all border border-emerald-500/30 cursor-pointer shadow-2xs no-underline"
                                              title={`Send WhatsApp confirmation to ${subBuyer} for ${subItemBrand} (${subQty.toFixed(2)} QTL @ ₹${formatINR(subRate)})`}
                                            >

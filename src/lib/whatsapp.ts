@@ -3,8 +3,11 @@
  * Handles real-time auto-dispatching of order notifications via Meta WhatsApp Cloud API
  */
 
+import { getValidAuthToken, getAuthUser } from './auth';
+
 export interface WhatsAppOrderNotificationParams {
   to?: string;
+  phone?: string;
   buyerName?: string;
   brand?: string;
   qty?: string | number;
@@ -16,34 +19,52 @@ export interface WhatsAppOrderNotificationParams {
 
 export interface WhatsAppDispatchResult {
   success: boolean;
+  status: number;
+  deliveryStatus?: 'Accepted' | 'Delivered' | 'Failed' | 'Pending';
+  errorCode?: string | number;
+  message?: string;
   messageId?: string;
   gateway?: string;
   directUrl?: string;
   error?: string;
+  metaResponse?: any;
 }
 
 /**
- * Format phone number strictly to 12-digit Indian format (e.g. 919945351166)
+ * Format phone number strictly to 12-digit Indian format (e.g. 919876543210).
+ * Returns empty string if missing or invalid; NEVER uses fabricated fallbacks.
  */
 export function formatIndianWhatsAppPhone(rawPhone?: string): string {
-  if (!rawPhone) return '919945351166';
+  if (!rawPhone) return '';
   const digits = String(rawPhone).replace(/[^0-9]/g, '');
   if (digits.length === 10) return `91${digits}`;
   if (digits.startsWith('91') && digits.length === 12) return digits;
-  if (digits.length > 10) return `91${digits.slice(-10)}`;
-  return '919945351166';
+  if (digits.length > 10) {
+    const last10 = digits.slice(-10);
+    return `91${last10}`;
+  }
+  return '';
 }
 
 /**
- * Clean product name removing bracketed package sizing (e.g. "Keshar Kali (26kg Bag)" -> "Keshar Kali")
+ * Validates if the phone number is a valid 12-digit Indian phone (e.g. 91 + 10 digits starting with 6-9)
+ */
+export function isValidIndianPhone(rawPhone?: string): boolean {
+  const formatted = formatIndianWhatsAppPhone(rawPhone);
+  return /^91[6-9]\d{9}$/.test(formatted);
+}
+
+/**
+ * Clean product name removing bracketed package sizing (e.g. "Keshar Kali (26kg Bag)" -> "Keshar Kali").
+ * Returns clean name or empty string; NEVER uses fabricated fallbacks.
  */
 export function sanitizeBrandName(product?: string): string {
-  if (!product) return 'keshar kali';
+  if (!product) return '';
   return product
     .replace(/\(\d+.*?\)/g, '')
     .replace(/[\[\]]/g, '')
     .replace(/[\r\n\t]+/g, ' ')
-    .trim() || 'keshar kali';
+    .trim();
 }
 
 /**
@@ -52,57 +73,138 @@ export function sanitizeBrandName(product?: string): string {
 export async function dispatchOrderPlacedWhatsApp(
   params: WhatsAppOrderNotificationParams
 ): Promise<WhatsAppDispatchResult> {
-  const targetPhone = formatIndianWhatsAppPhone(params.to);
-  const cleanBuyer = String(params.buyerName || 'Valued Merchant').replace(/[\r\n\t]+/g, ' ').trim() || 'Valued Merchant';
-  const cleanBrand = sanitizeBrandName(params.brand);
-  const cleanQty = String(params.qty || '40').replace(/[^0-9.]/g, '').trim() || '40';
-  const cleanRate = String(params.rate || '10000').replace(/[^0-9.]/g, '').trim() || '10000';
-  const orderRef = params.orderId || params.poNumber || 'TC-ORDER';
+  const targetPhone = formatIndianWhatsAppPhone(params.to || params.phone);
+  if (!targetPhone || targetPhone.length !== 12) {
+    return {
+      success: false,
+      status: 400,
+      deliveryStatus: 'Failed',
+      errorCode: 'INVALID_PHONE_NUMBER',
+      error: `Invalid or missing buyer phone number: "${params.to || params.phone || ''}". Must be a valid 10-digit Indian mobile.`,
+      message: 'Invalid phone number'
+    };
+  }
 
-  const defaultMessage = `Hello ${cleanBuyer},\n\nOrder placed successfully.\n\nBrand: ${cleanBrand}\nQuantity: ${cleanQty} QTL\nRate: ₹${cleanRate}/QTL\n\nThank you,\nTejas Canvassing`;
+  const cleanBuyer = String(params.buyerName || '').replace(/[\r\n\t]+/g, ' ').trim();
+  if (!cleanBuyer) {
+    return {
+      success: false,
+      status: 400,
+      errorCode: 'MISSING_BUYER_NAME',
+      error: 'Buyer name is required for order notification.',
+      message: 'Missing buyer name'
+    };
+  }
+
+  const cleanBrand = sanitizeBrandName(params.brand);
+  if (!cleanBrand) {
+    return {
+      success: false,
+      status: 400,
+      errorCode: 'MISSING_BRAND',
+      error: 'Product brand is required for order notification.',
+      message: 'Missing product brand'
+    };
+  }
+
+  const numQty = parseFloat(String(params.qty || '').replace(/[^0-9.]/g, ''));
+  if (isNaN(numQty) || numQty <= 0) {
+    return {
+      success: false,
+      status: 400,
+      errorCode: 'INVALID_QUANTITY',
+      error: `Order quantity must be a positive number (got "${params.qty}").`,
+      message: 'Invalid quantity'
+    };
+  }
+
+  const numRate = parseFloat(String(params.rate || '').replace(/[^0-9.]/g, ''));
+  if (isNaN(numRate) || numRate <= 0) {
+    return {
+      success: false,
+      status: 400,
+      errorCode: 'INVALID_RATE',
+      error: `Order rate must be a positive number (got "${params.rate}").`,
+      message: 'Invalid rate'
+    };
+  }
+
+  const orderRef = String(params.orderId || params.poNumber || '').trim();
+  if (!orderRef) {
+    return {
+      success: false,
+      status: 400,
+      errorCode: 'MISSING_ORDER_REF',
+      error: 'Order reference / PO number is required.',
+      message: 'Missing order reference'
+    };
+  }
+
+  const cleanQtyStr = String(numQty);
+  const cleanRateStr = String(numRate);
+
+  const defaultMessage = `Hello ${cleanBuyer},\n\nOrder placed successfully.\n\nBrand: ${cleanBrand}\nQuantity: ${cleanQtyStr} QTL\nRate: ₹${cleanRateStr}/QTL\n\nThank you,\nTejas Canvassing`;
   const messageBody = params.customMessage || defaultMessage;
 
   console.log(`[WhatsApp Auto-Dispatch] Sending order notification to ${targetPhone} for ${cleanBuyer} (Order ${orderRef})...`);
 
   try {
+    const authToken = await getValidAuthToken();
+    const currentUser = getAuthUser();
+    const adminUserEmail = currentUser?.email || (typeof window !== 'undefined' ? (localStorage.getItem('userEmail') || 'nani@tejasc.in') : 'nani@tejasc.in');
+
+    const headers: Record<string, string> = { 
+      'Content-Type': 'application/json',
+      'x-requested-path': '/api/dispatch-whatsapp',
+      'x-admin-email': adminUserEmail,
+    };
+    if (authToken) {
+      headers['Authorization'] = `Bearer ${authToken}`;
+    }
+
     const res = await fetch('/api/dispatch-whatsapp?_path=/api/dispatch-whatsapp', {
       method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'x-requested-path': '/api/dispatch-whatsapp'
-      },
+      headers,
       keepalive: true,
       body: JSON.stringify({
         to: targetPhone,
         buyerName: cleanBuyer,
         brand: cleanBrand,
-        qty: cleanQty,
-        rate: cleanRate,
+        qty: cleanQtyStr,
+        rate: cleanRateStr,
         orderId: orderRef,
         poNumber: orderRef,
         message: messageBody,
-        templateName: 'order_notify',
-        templateId: '1016669984165776',
-        templateParams: [cleanBuyer, cleanBrand, cleanQty, cleanRate],
-        languageCode: 'en'
+        templateParams: [cleanBuyer, cleanBrand, cleanQtyStr, cleanRateStr]
       })
     });
 
     const data = await res.json().catch(() => ({}));
-    if (res.ok && (data.success || data.messageId)) {
-      console.log(`[WhatsApp Auto-Dispatch] Delivered successfully to ${targetPhone}! Message ID: ${data.messageId || 'sent'}`);
+    if (res.ok && data.success) {
+      console.log(`[WhatsApp Auto-Dispatch] Notification accepted by Meta API for ${targetPhone}! Message ID: ${data.messageId || 'sent'}`);
       return {
         success: true,
+        status: res.status,
+        deliveryStatus: 'Accepted',
         messageId: data.messageId,
         gateway: data.gateway || 'meta_whatsapp',
-        directUrl: data.directUrl
+        directUrl: data.directUrl,
+        message: data.message || 'WhatsApp notification accepted by Meta Cloud API',
+        metaResponse: data.metaResponse
       };
     } else {
-      console.warn(`[WhatsApp Auto-Dispatch] Backend returned notice:`, data);
+      const errorMsg = data.error || data.message || `WhatsApp dispatch failed with HTTP ${res.status}`;
+      const errorCode = data.errorCode || data.metaResponse?.error?.code || (res.status >= 500 ? 'SERVER_ERROR' : 'DISPATCH_FAILED');
+      console.warn(`[WhatsApp Auto-Dispatch] Backend/Meta returned error (HTTP ${res.status}, code ${errorCode}):`, errorMsg);
       return {
         success: false,
-        error: data.error || data.message || 'Notification queued',
-        directUrl: data.directUrl
+        status: res.status,
+        deliveryStatus: 'Failed',
+        errorCode,
+        error: errorMsg,
+        message: data.message || errorMsg,
+        directUrl: data.directUrl,
+        metaResponse: data.metaResponse
       };
     }
   } catch (err: any) {
@@ -110,9 +212,12 @@ export async function dispatchOrderPlacedWhatsApp(
     const directUrl = `https://api.whatsapp.com/send?phone=${targetPhone}&text=${encodeURIComponent(messageBody)}`;
     return {
       success: false,
-      error: err?.message || 'Network error',
+      status: 0,
+      deliveryStatus: 'Failed',
+      errorCode: 'NETWORK_ERROR',
+      error: err?.message || 'Network error communicating with WhatsApp dispatch endpoint',
+      message: err?.message || 'Network error',
       directUrl
     };
   }
 }
-

@@ -66,28 +66,6 @@ async function runTests() {
   // Dynamically import the express app to test endpoint in-process
   const { default: app } = await import('../api/index');
 
-  // Create a mock express request & response
-  let responseStatusCode = 0;
-  let responseBody: any = null;
-
-  const mockReq: any = {
-    body: mockReqBody,
-    get: (header: string) => (header === 'host' ? 'localhost:3000' : ''),
-    protocol: 'http',
-    headers: {},
-  };
-
-  const mockRes: any = {
-    status: (code: number) => {
-      responseStatusCode = code;
-      return mockRes;
-    },
-    json: (data: any) => {
-      responseBody = data;
-      return mockRes;
-    },
-  };
-
   // Find the dispatch-po route handler
   const router = (app as any)._router;
   const dispatchLayer = router.stack.find((layer: any) => {
@@ -100,9 +78,48 @@ async function runTests() {
   assert(Boolean(dispatchLayer), "Found /api/dispatch-po handler in express stack");
 
   if (dispatchLayer) {
-    await dispatchLayer.route.stack[0].handle(mockReq, mockRes);
+    // 8A. Unauthorized request to /api/dispatch-po must be rejected with 401
+    let unauthCode = 0;
+    let unauthBody: any = null;
+    const unauthReq: any = {
+      body: mockReqBody,
+      get: (header: string) => (header === 'host' ? 'localhost:3000' : ''),
+      protocol: 'http',
+      headers: {},
+    };
+    const unauthRes: any = {
+      status: (code: number) => { unauthCode = code; return unauthRes; },
+      json: (data: any) => { unauthBody = data; return unauthRes; },
+    };
+    await dispatchLayer.route.stack[0].handle(unauthReq, unauthRes);
+    assert(unauthCode === 401, `dispatch-po rejects unauthenticated requests with HTTP 401 (Got: ${unauthCode})`);
+    assert(unauthBody?.success === false, "unauthenticated request returns success: false");
 
-    assert(responseStatusCode === 200, `dispatch-po returns HTTP 200 (Got: ${responseStatusCode})`);
+    // 8B. Valid Admin request to /api/dispatch-po succeeds with 200
+    let responseStatusCode = 0;
+    let responseBody: any = null;
+    const authReq: any = {
+      body: mockReqBody,
+      get: (header: string) => (header === 'host' ? 'localhost:3000' : ''),
+      protocol: 'http',
+      headers: {
+        authorization: 'Bearer test-admin-token',
+        'x-admin-email': 'nani@tejasc.in',
+      },
+    };
+    const mockRes: any = {
+      status: (code: number) => {
+        responseStatusCode = code;
+        return mockRes;
+      },
+      json: (data: any) => {
+        responseBody = data;
+        return mockRes;
+      },
+    };
+    await dispatchLayer.route.stack[0].handle(authReq, mockRes);
+
+    assert(responseStatusCode === 200, `dispatch-po returns HTTP 200 for authorized admin (Got: ${responseStatusCode})`);
     assert(responseBody?.success === true, "dispatch-po returns success: true");
     assert(responseBody?.status === "Sent", `dispatch-po returns status: 'Sent' (Got: ${responseBody?.status})`);
     assert(responseBody?.isLiveSent === true, "dispatch-po returns isLiveSent: true");
@@ -112,6 +129,29 @@ async function runTests() {
     assert(trackingRecord?.status === "Sent", `Tracking record status is 'Sent' (Got: ${trackingRecord?.status})`);
     assert(Boolean(trackingRecord?.sentAt), `Tracking record sentAt is set: ${trackingRecord?.sentAt}`);
     assert(isOrderAlreadySent(testOrderId) === true, "isOrderAlreadySent returns true for sent order");
+
+    // 8C. Notification failure when supplier email is missing returns 400
+    let failCode = 0;
+    let failBody: any = null;
+    const failReq: any = {
+      body: {
+        ...mockReqBody,
+        to: "",
+        orderId: `TEST-FAIL-${Date.now()}`
+      },
+      get: (header: string) => (header === 'host' ? 'localhost:3000' : ''),
+      protocol: 'http',
+      headers: {
+        authorization: 'Bearer test-admin-token',
+      },
+    };
+    const failRes: any = {
+      status: (code: number) => { failCode = code; return failRes; },
+      json: (data: any) => { failBody = data; return failRes; },
+    };
+    await dispatchLayer.route.stack[0].handle(failReq, failRes);
+    assert(failCode === 400, `dispatch-po rejects missing supplier email with HTTP 400 (Got: ${failCode})`);
+    assert(failBody?.success === false, "missing supplier email returns success: false");
   }
 
   console.log(`\n--- Test Summary: ${passed} Passed, ${failed} Failed ---`);

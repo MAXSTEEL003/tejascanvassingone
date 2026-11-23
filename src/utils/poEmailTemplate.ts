@@ -440,15 +440,15 @@ export const resolveSupplierProfile = (supplierName: string): SupplierProfileDat
             };
           }
 
-          // Supplier registered without email -> use verified default mill email
+          // Supplier registered without valid authentic email
           return {
             name: matched.name || rawInput,
-            email: 'bhagwatirice@gmail.com',
-            phone: matched.phone || '9440188941',
+            email: '',
+            phone: matched.phone || '',
             gstin: matched.gstin || '',
             address: matched.address || '',
             contact: matched.contact || 'Operations Desk',
-            isConfigured: true
+            isConfigured: false
           };
         }
       }
@@ -460,14 +460,15 @@ export const resolveSupplierProfile = (supplierName: string): SupplierProfileDat
   // 2. Check verified canonical mill registry
   if (VERIFIED_MILL_REGISTRY[queryUpper]) {
     const v = VERIFIED_MILL_REGISTRY[queryUpper];
+    const email = isAuthenticSupplierEmail(v.email) ? v.email : '';
     return {
       name: rawInput,
-      email: isAuthenticSupplierEmail(v.email) ? v.email : 'bhagwatirice@gmail.com',
-      phone: v.phone || '9440188941',
+      email,
+      phone: v.phone || '',
       gstin: v.gstin || '',
       address: v.address || '',
       contact: v.contact || 'Operations Desk',
-      isConfigured: true
+      isConfigured: Boolean(email)
     };
   }
 
@@ -478,26 +479,27 @@ export const resolveSupplierProfile = (supplierName: string): SupplierProfileDat
 
   if (verifiedKey) {
     const v = VERIFIED_MILL_REGISTRY[verifiedKey];
+    const email = isAuthenticSupplierEmail(v.email) ? v.email : '';
     return {
       name: rawInput,
-      email: isAuthenticSupplierEmail(v.email) ? v.email : 'bhagwatirice@gmail.com',
-      phone: v.phone || '9440188941',
+      email,
+      phone: v.phone || '',
       gstin: v.gstin || '',
       address: v.address || '',
       contact: v.contact || 'Operations Desk',
-      isConfigured: true
+      isConfigured: Boolean(email)
     };
   }
 
-  // 3. Fallback: Default to verified milling partner email
+  // 3. Fallback: No verified email configured for unlisted mill
   return {
     name: rawInput,
-    email: 'bhagwatirice@gmail.com',
-    phone: '9440188941',
-    gstin: '29AABCB9876H1Z6',
+    email: '',
+    phone: '',
+    gstin: '',
     address: 'Industrial APMC Commercial Hub',
     contact: 'Operations Desk',
-    isConfigured: true
+    isConfigured: false
   };
 };
 

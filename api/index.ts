@@ -46,20 +46,24 @@ import {
   removeTestUpdates,
   clearAllMillerUpdates,
 } from "./millerUpdatesStore.js";
+import { verifyFirebaseIdToken } from "./firebaseTokenVerifier.js";
 
 const currentDir = typeof __dirname !== "undefined" ? __dirname : process.cwd();
+const isVercel = Boolean(process.env.VERCEL || process.env.NOW_REGION || process.env.AWS_LAMBDA_FUNCTION_NAME);
 
-const envCandidates = [
-  path.join(process.cwd(), ".env"),
-  path.join(process.cwd(), "tejascanvassingone-main", ".env"),
-  path.join(currentDir, ".env"),
-  path.join(currentDir, "..", ".env"),
-];
-for (const envFile of envCandidates) {
-  if (fs.existsSync(envFile)) {
-    dotenv.config({ path: envFile, override: true });
-  }
+// Local environment: Load ONLY the inner project's .env file (never parent ../.env).
+// In Vercel Production, environment variables injected by Vercel are authoritative and never overridden.
+const projectRoot = fs.existsSync(path.join(process.cwd(), "package.json")) && fs.existsSync(path.join(process.cwd(), "server.ts"))
+  ? process.cwd()
+  : fs.existsSync(path.join(currentDir, "package.json"))
+    ? currentDir
+    : path.join(process.cwd(), "tejascanvassingone-main");
+
+const projectEnv = path.join(projectRoot, ".env");
+if (!isVercel && fs.existsSync(projectEnv)) {
+  dotenv.config({ path: projectEnv, override: true });
 }
+const envCandidates = !isVercel && fs.existsSync(projectEnv) ? [projectEnv] : [];
 
 /* ==========================================================================
    SECTION 1: AUTHENTICATION & CREDENTIAL MANAGEMENT
@@ -1001,14 +1005,22 @@ whatsappWebhookRouter.post("", handlePostWebhook);
 const app = express();
 
 // Normalize req.url when rewritten by Vercel serverless proxy (/api/(.*) -> /api)
+// Normalize req.url when rewritten by Vercel serverless proxy (/api/(.*) -> /api?_path=/api/$1)
 app.use((req, _res, next) => {
-  const customPath = (
+  let customPath = (
     req.headers["x-requested-path"] || 
     req.headers["x-original-url"] || 
     req.headers["x-forwarded-uri"] || 
     req.headers["x-invoke-path"] || 
     (req.query?._path ? String(req.query._path) : undefined)
   ) as string | undefined;
+
+  if (!customPath && req.url && req.url.includes("_path=")) {
+    try {
+      const parsedUrl = new URL(req.url, "http://localhost");
+      customPath = parsedUrl.searchParams.get("_path") || undefined;
+    } catch {}
+  }
 
   if (customPath && typeof customPath === "string" && customPath.startsWith("/")) {
     req.url = customPath;
@@ -1036,7 +1048,7 @@ app.use((req, _res, next) => {
   if (req.method === "POST" && (req.url === "/" || req.url === "/api" || req.url === "/api/" || req.path === "/" || req.path === "/api")) {
     if (req.body?.to && (req.body?.poNumber || req.body?.supplierName || req.body?.htmlContent || req.body?.html || req.body?.batchId)) {
       req.url = "/api/dispatch-po";
-    } else if (req.body?.to && (req.body?.templateName || req.body?.brand || req.body?.buyerName || req.body?.message || req.body?.phoneNumberId)) {
+    } else if (req.body?.to && (req.body?.templateName || req.body?.brand || req.body?.buyerName || req.body?.message || req.body?.phoneNumberId || req.body?.templateParams)) {
       req.url = "/api/dispatch-whatsapp";
     }
   }
@@ -1197,7 +1209,7 @@ interface DispatchLogItem {
   subject?: string;
   message?: string;
   timestamp: string;
-  status: "sent" | "delivered" | "read" | "failed" | "delivered_real" | "delivered_simulated";
+  status: "sent" | "delivered" | "read" | "failed" | "delivered_real" | "delivered_simulated" | "accepted";
   details: string;
   directLink?: string;
   metaMessageId?: string;
@@ -1250,6 +1262,12 @@ setStatusUpdateListener((metaMessageId, status, timestamp, errors) => {
 
 // 1. AUTOMATIC PO DISPATCHING ENDPOINT (Section 5, 6, 9)
 app.post(["/api/dispatch-po", "/api/send-po-email", "/dispatch-po", "/send-po-email"], async (req, res) => {
+  if (!(await verifyAdminRequest(req, { disallowBodyPassword: true, failClosed: true }))) {
+    return res.status(401).json({
+      success: false,
+      error: "Unauthorized: Admin privileges required for purchase order dispatch. A verified Admin session token is required."
+    });
+  }
   try {
     const {
       to,
@@ -1351,7 +1369,7 @@ app.post(["/api/dispatch-po", "/api/send-po-email", "/dispatch-po", "/send-po-em
       ...(req.body.adminEmail ? [String(req.body.adminEmail).trim()] : []),
       process.env.VITE_ADMIN_GOOGLE_EMAIL_1 || "tejasadinarayan@gmail.com",
       process.env.VITE_ADMIN_GOOGLE_EMAIL_2 || "tejascanvassing@gmail.com",
-      process.env.GMAIL_SENDER_EMAIL || "nani@tejasc.in",
+      process.env.GMAIL_SENDER_EMAIL || process.env.GMAIL_USER_EMAIL || "nani@tejasc.in",
       process.env.SMTP_FROM,
       process.env.SMTP_USER,
       ...(req.body.from ? [String(req.body.from).trim()] : [])
@@ -1379,7 +1397,7 @@ app.post(["/api/dispatch-po", "/api/send-po-email", "/dispatch-po", "/send-po-em
     }
 
     // 1G. TRANSMIT VIA GMAIL API OAUTH 2.0 OR LIVE SMTP
-    const smtpUser = (process.env.SMTP_USER || process.env.GMAIL_USER || process.env.VITE_ADMIN_GOOGLE_EMAIL_1 || "tejasadinarayan@gmail.com").trim();
+    const smtpUser = (process.env.SMTP_USER || process.env.GMAIL_SENDER_EMAIL || process.env.GMAIL_USER_EMAIL || process.env.GMAIL_USER || "nani@tejasc.in").trim();
     const rawSmtpPass = (process.env.SMTP_PASS || process.env.GMAIL_APP_PASSWORD || process.env.GMAIL_PASS || "").trim();
     const smtpPass = rawSmtpPass.replace(/\s+/g, "");
     const hasSmtpConfig = Boolean(smtpUser && smtpPass);
@@ -1397,7 +1415,7 @@ app.post(["/api/dispatch-po", "/api/send-po-email", "/dispatch-po", "/send-po-em
       dispatchMethod = "test_environment";
     }
 
-    // Try Method 1: Gmail API OAuth (if server has OAuth configured or client provided a token)
+    // Try Method 1: Gmail API OAuth (prefer verified server-side OAuth over client tokens)
     if (!sentMessageId && (isServerOAuthConfigured || hasClientToken)) {
       try {
         const sendResult = await sendEmailViaGmailApi({
@@ -1406,17 +1424,23 @@ app.post(["/api/dispatch-po", "/api/send-po-email", "/dispatch-po", "/send-po-em
           subject: finalSubject,
           htmlContent: finalHtml,
           textContent: finalText,
-          accessToken: effectiveToken,
+          // If server OAuth is configured, always use server credentials; only use client token as secondary fallback
+          accessToken: isServerOAuthConfigured ? undefined : effectiveToken,
         });
         sentMessageId = sendResult.id;
         dispatchMethod = "gmail_api";
       } catch (gmailErr: any) {
         lastError = gmailErr?.message || "Gmail API failed";
         console.warn(`[Email Dispatcher] Gmail API attempt failed: ${lastError}`);
+        // If failed with client token and server OAuth was not attempted, try server OAuth if available
+        if (!isServerOAuthConfigured && hasClientToken) {
+          // Token may have been invalid
+          lastError = `Client Gmail token failed: ${gmailErr?.message || "Unauthorized"}`;
+        }
       }
     }
 
-    // Try Method 2: Verified SMTP transporter (primary/fallback)
+    // Try Method 2: Verified SMTP transporter (if SMTP_PASS is configured)
     if (!sentMessageId && hasSmtpConfig) {
       try {
         console.log(`[Email Dispatcher] Transmitting PO via SMTP transporter (${smtpUser}) to ${recipientEmail}...`);
@@ -1590,8 +1614,8 @@ app.get(["/api/auth/gmail/status", "/auth/gmail/status"], (req, res) => {
 });
 
 // 5. UPDATE GMAIL OAUTH CREDENTIALS ROUTE (Section 6)
-app.post(["/api/update-gmail-oauth-credentials", "/update-gmail-oauth-credentials"], (req, res) => {
-  if (!verifyAdminRequest(req)) {
+app.post(["/api/update-gmail-oauth-credentials", "/update-gmail-oauth-credentials"], async (req, res) => {
+  if (!(await verifyAdminRequest(req))) {
     return res.status(403).json({
       success: false,
       error: "Unauthorized: Admin privileges required to update Gmail OAuth credentials."
@@ -1746,7 +1770,7 @@ app.post(["/api/po-tracking/:orderId/retry", "/po-tracking/:orderId/retry"], asy
     const { token, dateStr } = generateAcknowledgementToken(orderId, record.recipientEmail);
     const ackUrl = `${baseUrl}/acknowledge-po?po=${encodeURIComponent(orderId)}&t=${token}&d=${dateStr}`;
 
-    const smtpUser = (process.env.SMTP_USER || process.env.GMAIL_USER || process.env.GMAIL_SENDER_EMAIL || "nani@tejasc.in").trim();
+    const smtpUser = (process.env.SMTP_USER || process.env.GMAIL_SENDER_EMAIL || process.env.GMAIL_USER_EMAIL || process.env.GMAIL_USER || "nani@tejasc.in").trim();
     const rawSmtpPass = (process.env.SMTP_PASS || process.env.GMAIL_APP_PASSWORD || process.env.GMAIL_PASS || "").trim();
     const smtpPass = rawSmtpPass.replace(/\s+/g, "");
     const hasSmtpConfig = Boolean(smtpUser && smtpPass);
@@ -1842,7 +1866,7 @@ app.post(["/api/po-tracking/:orderId/retry", "/po-tracking/:orderId/retry"], asy
  * Outbound synchronization route triggering server-to-server sync of a placed PO to Application B
  */
 app.post(["/api/integration/sync-po", "/integration/sync-po"], async (req, res) => {
-  if (!verifyAdminRequest(req)) {
+  if (!(await verifyAdminRequest(req))) {
     return res.status(401).json({
       success: false,
       error: "Unauthorized: Admin authorization required to synchronize with Supplier Portal.",
@@ -2291,24 +2315,32 @@ export function getMetaWhatsAppCredentials() {
     }
   }
 
-  const VERIFIED_SYSTEM_TOKEN = Buffer.from("RUFBT3pxenBLVzk0QlNuc1h2OE9RaFZIaGRpa2JqMGJSRmxjRjJWWkFaQjRDalpBc1J1YzhqSU5HMEZaQXNHeGFZcFJSOGt2U1BWMVhINUtkSU9oMkpBUlpCVlFWc0JaQ0ZGOGk2MDdXQlFXWkN1alJIT1Q0OVpCeW5RRUUxc3lteEs0VkZSRkJpUkNqUlFvTFpCSXNZWkJydkg2OHNFVW92dDJ5eThXdmU5ZGhQUTdKNG1yR3hNYmVQamd2RVlnZHh3dXdaRFpE", "base64").toString("utf-8");
-
-  // Standard defaults for public identifiers if not set in environment
-  if (!phoneId) phoneId = "1335387812999639";
-  if (!businessAccountId) businessAccountId = "1395351100324748";
-  if (!templateName) templateName = "order_notify";
-  if (!token || token.length < 50) token = VERIFIED_SYSTEM_TOKEN;
-
-  return { phoneId, token: token.replace(/^["']|["']$/g, '').trim(), templateName, businessAccountId };
+  return {
+    phoneId: phoneId.replace(/^["']|["']$/g, '').trim(),
+    token: token.replace(/^["']|["']$/g, '').trim(),
+    templateName: templateName.replace(/^["']|["']$/g, '').trim(),
+    businessAccountId: businessAccountId.replace(/^["']|["']$/g, '').trim()
+  };
 }
 
 export function getMetaTemplateName(): string {
   const creds = getMetaWhatsAppCredentials();
-  return creds.templateName || (process.env.META_WHATSAPP_TEMPLATE_NAME || "").trim() || "order_notify";
+  const configured = creds.templateName || (process.env.META_WHATSAPP_TEMPLATE_NAME || "").trim();
+  if (configured && configured !== "order_placed_notification") {
+    return configured;
+  }
+  return "order_notify";
 }
 
 // REAL DISPATCH ROUTER: WHATSAPP NOTIFICATIONS via Meta WhatsApp Cloud API or Direct WhatsApp
 app.post(["/api/dispatch-whatsapp", "/dispatch-whatsapp"], async (req, res) => {
+  if (!(await verifyAdminRequest(req, { disallowBodyPassword: true, failClosed: true }))) {
+    return res.status(401).json({
+      success: false,
+      error: "Unauthorized: Admin privileges required for WhatsApp dispatch. A verified Admin session token is required."
+    });
+  }
+
   const {
     to,
     buyerName,
@@ -2316,98 +2348,25 @@ app.post(["/api/dispatch-whatsapp", "/dispatch-whatsapp"], async (req, res) => {
     orderId,
     poNumber,
     contentSid,
-    phoneNumberId: reqPhoneId,
-    accessToken: reqToken,
-    templateName: reqTemplate,
-    templateId: reqTemplateId,
     templateParams: reqTemplateParams,
     languageCode,
-    aisensyApiKey, // backward-compat support
-    campaignName   // backward-compat support
   } = req.body;
 
+  // Enforce secure server-side Meta credentials only - never accept client tokens or phone IDs
   const metaCreds = getMetaWhatsAppCredentials();
-  const VERIFIED_SYSTEM_TOKEN = Buffer.from("RUFBT3pxenBLVzk0QlNuc1h2OE9RaFZIaGRpa2JqMGJSRmxjRjJWWkFaQjRDalpBc1J1YzhqSU5HMEZaQXNHeGFZcFJSOGt2U1BWMVhINUtkSU9oMkpBUlpCVlFWc0JaQ0ZGOGk2MDdXQlFXWkN1alJIT1Q0OVpCeW5RRUUxc3lteEs0VkZSRkJpUkNqUlFvTFpCSXNZWkJydkg2OHNFVW92dDJ5eThXdmU5ZGhQUTdKNG1yR3hNYmVQamd2RVlnZHh3dXdaRFpE", "base64").toString("utf-8");
-  const activePhoneId = String(reqPhoneId || metaCreds.phoneId || process.env.META_WHATSAPP_PHONE_NUMBER_ID || "1335387812999639").trim();
-  let activeToken = String(reqToken || metaCreds.token || process.env.META_WHATSAPP_TOKEN || aisensyApiKey || "").trim().replace(/^["']|["']$/g, '');
-  if (!activeToken || activeToken.length < 50 || activeToken.startsWith("EAAG") || activeToken.includes("undefined")) {
-    activeToken = VERIFIED_SYSTEM_TOKEN;
-  }
-  let activeTemplate = String(reqTemplate || reqTemplateId || metaCreds.templateName || getMetaTemplateName() || "order_notify").trim();
+  const activePhoneId = metaCreds.phoneId || process.env.META_WHATSAPP_PHONE_NUMBER_ID || "";
+  const activeToken = metaCreds.token || process.env.META_WHATSAPP_TOKEN || "";
+  const activeTemplate = metaCreds.templateName || (process.env.META_WHATSAPP_TEMPLATE_NAME && process.env.META_WHATSAPP_TEMPLATE_NAME !== "order_placed_notification" ? process.env.META_WHATSAPP_TEMPLATE_NAME : "") || "order_notify";
+  const activeLang = String(languageCode || process.env.META_WHATSAPP_LANGUAGE_CODE || "en").trim() || "en";
 
-  // If numeric template ID is provided (e.g. 1016669984165776) or alias, resolve to 'order_notify'
-  if (
-    activeTemplate === "order_notify" ||
-    activeTemplate === "1016669984165776" ||
-    activeTemplate === "order_notification" ||
-    activeTemplate === "order_placed_notification" ||
-    activeTemplate === "2124215635129424" ||
-    activeTemplate === "1085184067841699" ||
-    activeTemplate === "28756429200686824" ||
-    /^\d{10,}$/.test(activeTemplate)
-  ) {
-    activeTemplate = "order_notify";
-  }
-  let activeLang = String(languageCode || (activeTemplate === "order_notify" ? "en" : "en_US")).trim();
-
-  // Format templateParams and message for 'order_notify' (4 positional parameters: buyer, brand, qty, rate)
-  let templateParams = reqTemplateParams;
-  let finalMessage = String(message || "").trim();
-
-  if (activeTemplate === "order_notify") {
-    let pBuyer = String(buyerName || req.body.customerName || req.body.recipientName || "").trim();
-    let pBrand = String(req.body.brand || req.body.product || req.body.items || "").trim();
-    let pQty = String(req.body.qty || req.body.quantity || "").trim();
-    let pRate = String(req.body.rate || req.body.price || "").trim();
-
-    // If message is provided, parse parameters if missing
-    if (finalMessage) {
-      const buyerMatch = finalMessage.match(/Hello\s+([^,\n]+),/i);
-      if (buyerMatch && !pBuyer) pBuyer = buyerMatch[1].trim();
-
-      const brandMatch = finalMessage.match(/Brand:\s*([^\n]+)/i);
-      if (brandMatch && !pBrand) pBrand = brandMatch[1].trim();
-
-      const qtyMatch = finalMessage.match(/Quantity:\s*([0-9.]+)/i);
-      if (qtyMatch && !pQty) pQty = qtyMatch[1].trim();
-
-      const rateMatch = finalMessage.match(/Rate:\s*₹?([0-9.,]+)/i);
-      if (rateMatch && !pRate) pRate = rateMatch[1].replace(/,/g, '').trim();
-    }
-
-    if (Array.isArray(templateParams) && templateParams.length === 4) {
-      pBuyer = pBuyer || String(templateParams[0] || "");
-      pBrand = pBrand || String(templateParams[1] || "");
-      pQty = pQty || String(templateParams[2] || "");
-      pRate = pRate || String(templateParams[3] || "");
-    } else if (Array.isArray(templateParams) && templateParams.length > 0) {
-      if (!pBuyer && templateParams[0]) pBuyer = String(templateParams[0]);
-      if (!pBrand && templateParams[1]) pBrand = String(templateParams[1]);
-      if (!pQty && templateParams[2]) pQty = String(templateParams[2]);
-      if (!pRate && templateParams[3]) pRate = String(templateParams[3]);
-    }
-
-    // Default fallbacks matching user template (sanitized for Meta Cloud API parameter rules)
-    pBuyer = String(pBuyer || "Vision stores").replace(/[\r\n\t]+/g, ' ').trim().slice(0, 60) || "Vision stores";
-    pBrand = String(pBrand || "keshar kali").replace(/[\r\n\t]+/g, ' ').trim().slice(0, 60) || "keshar kali";
-    pQty = String(pQty || "40").replace(/[^0-9.]/g, '').trim() || "40";
-    pRate = String(pRate || "10000").replace(/[^0-9.]/g, '').trim() || "10000";
-
-    templateParams = [pBuyer, pBrand, pQty, pRate];
-
-    // Build canonical customer WhatsApp confirmation message
-    finalMessage = `Hello ${pBuyer},\n\nOrder placed successfully.\n\nBrand: ${pBrand}\nQuantity: ${pQty} QTL\nRate: ₹${pRate}/QTL\n\nThank you,\nTejas Canvassing`;
-  }
-
-  if (!to || (!finalMessage && !contentSid && !activeTemplate)) {
-    return res.status(400).json({ error: "Recipient phone number ('to') and either 'message', 'contentSid', or 'templateName' are required." });
+  if (!to || (!message && !contentSid && !activeTemplate && !reqTemplateParams)) {
+    return res.status(400).json({ error: "Recipient phone number ('to') and order notification details are required." });
   }
 
   const { e164, digits } = formatPhoneNumber(String(to));
-  const waDirectUrl = `https://api.whatsapp.com/send?phone=${digits}&text=${encodeURIComponent(finalMessage || message || "")}`;
+  const waDirectUrl = `https://api.whatsapp.com/send?phone=${digits}&text=${encodeURIComponent(message || "")}`;
 
-  // 1. Check for Meta WhatsApp Cloud API Credentials (prefer server-side environment variables)
-
+  // 1. Check for Meta WhatsApp Cloud API Credentials on server
   if (activePhoneId && activeToken) {
     console.log("[Meta WhatsApp Cloud API] Initiating dispatch:", {
       destination: digits,
@@ -2417,12 +2376,11 @@ app.post(["/api/dispatch-whatsapp", "/dispatch-whatsapp"], async (req, res) => {
     });
 
     try {
-      const sendMetaMessage = async (payload: any, tokenOverride?: string) => {
-        const tokenToUse = (tokenOverride || activeToken || metaCreds.token).trim();
+      const sendMetaMessage = async (payload: any) => {
         const response = await fetch(`https://graph.facebook.com/v21.0/${activePhoneId}/messages`, {
           method: "POST",
           headers: {
-            "Authorization": `Bearer ${tokenToUse}`,
+            "Authorization": `Bearer ${activeToken}`,
             "Content-Type": "application/json"
           },
           body: JSON.stringify(payload)
@@ -2433,9 +2391,29 @@ app.post(["/api/dispatch-whatsapp", "/dispatch-whatsapp"], async (req, res) => {
         return { response, data: parsed };
       };
 
+      // Validate template parameters for order notification
+      let pBuyer = String(buyerName || req.body.customerName || req.body.recipientName || "").trim();
+      let pBrand = String(req.body.brand || req.body.product || req.body.items || "").trim();
+      let pQty = String(req.body.qty || req.body.quantity || "").trim();
+      let pRate = String(req.body.rate || req.body.price || "").trim();
+
+      if (Array.isArray(reqTemplateParams) && reqTemplateParams.length >= 4) {
+        pBuyer = pBuyer || String(reqTemplateParams[0] || "").trim();
+        pBrand = pBrand || String(reqTemplateParams[1] || "").trim();
+        pQty = pQty || String(reqTemplateParams[2] || "").trim();
+        pRate = pRate || String(reqTemplateParams[3] || "").trim();
+      }
+
+      // Check if we have complete 4-parameter set for the approved template
+      const hasFullOrderParams = Boolean(pBuyer && pBrand && pQty && pRate);
+
       let metaPayload: any;
-      if (activeTemplate) {
-        const isNoParamTemplate = activeTemplate === "hello_world" || (Array.isArray(templateParams) && templateParams.length === 0);
+      let finalMessage = String(message || "").trim();
+
+      if (activeTemplate && hasFullOrderParams) {
+        const templateParamsList = [pBuyer, pBrand, pQty, pRate];
+        finalMessage = finalMessage || `Hello ${pBuyer},\n\nOrder placed successfully.\n\nBrand: ${pBrand}\nQuantity: ${pQty} QTL\nRate: ₹${pRate}/QTL\n\nThank you,\nTejas Canvassing`;
+
         metaPayload = {
           messaging_product: "whatsapp",
           recipient_type: "individual",
@@ -2444,22 +2422,15 @@ app.post(["/api/dispatch-whatsapp", "/dispatch-whatsapp"], async (req, res) => {
           template: {
             name: activeTemplate,
             language: { code: activeLang },
-            ...(isNoParamTemplate ? {} : {
-              components: [
-                {
-                  type: "body",
-                  parameters: Array.isArray(templateParams) && templateParams.length > 0
-                    ? templateParams.map((p: any) => ({ type: "text", text: String(p) }))
-                    : [
-                      { type: "text", text: String(buyerName || "Valued Merchant") },
-                      { type: "text", text: String(orderId || poNumber || message || "Rice procurement update from Tejas Canvassing.").substring(0, 1024) }
-                    ]
-                }
-              ]
-            })
+            components: [
+              {
+                type: "body",
+                parameters: templateParamsList.map(p => ({ type: "text", text: String(p) }))
+              }
+            ]
           }
         };
-      } else {
+      } else if (finalMessage) {
         metaPayload = {
           messaging_product: "whatsapp",
           recipient_type: "individual",
@@ -2467,80 +2438,18 @@ app.post(["/api/dispatch-whatsapp", "/dispatch-whatsapp"], async (req, res) => {
           type: "text",
           text: {
             preview_url: false,
-            body: String(message || "Rice procurement update from Tejas Canvassing.")
+            body: finalMessage
           }
         };
+      } else {
+        return res.status(400).json({
+          success: false,
+          error: `Template "${activeTemplate}" requires 4 parameters: buyerName, brand, qty, rate.`,
+          errorCode: "INVALID_TEMPLATE_PARAMS"
+        });
       }
 
-      let { response: metaResponse, data: metaData } = await sendMetaMessage(metaPayload);
-
-      // If token failed with 401 Unauthorized or code 190 (Invalid OAuth access token), retry with verified permanent System User Token!
-      if (!metaResponse.ok && (metaResponse.status === 401 || metaData?.error?.code === 190)) {
-        const VERIFIED_SYSTEM_TOKEN = Buffer.from("RUFBT3pxenBLVzk0QlNuc1h2OE9RaFZIaGRpa2JqMGJSRmxjRjJWWkFaQjRDalpBc1J1YzhqSU5HMEZaQXNHeGFZcFJSOGt2U1BWMVhINUtkSU9oMkpBUlpCVlFWc0JaQ0ZGOGk2MDdXQlFXWkN1alJIT1Q0OVpCeW5RRUUxc3lteEs0VkZSRkJpUkNqUlFvTFpCSXNZWkJydkg2OHNFVW92dDJ5eThXdmU5ZGhQUTdKNG1yR3hNYmVQamd2RVlnZHh3dXdaRFpE", "base64").toString("utf-8");
-        console.warn("[Meta WhatsApp] Received 401 from Meta (Token Invalid/Expired). Auto-retrying with verified permanent System User Token...");
-        const retryResult = await sendMetaMessage(metaPayload, VERIFIED_SYSTEM_TOKEN);
-        if (retryResult.response.ok && !retryResult.data.error) {
-          metaResponse = retryResult.response;
-          metaData = retryResult.data;
-          console.log("[Meta WhatsApp] Successfully delivered via permanent System User Token fallback!");
-        }
-      }
-
-      // If template failed due to parameter mismatch (132000) or missing template/translation (132001)
-      if (!metaResponse.ok && metaData.error && activeTemplate && (metaData.error.code === 132000 || metaData.error.code === 132001)) {
-        console.warn(`[Meta WhatsApp] Template '${activeTemplate}' (${activeLang}) returned code ${metaData.error.code}. Trying alternative language...`);
-        // Try fallback language (e.g. en vs en_US)
-        const altLang = activeLang === "en_US" ? "en" : "en_US";
-        const altPayload = {
-          ...metaPayload,
-          template: {
-            ...metaPayload.template,
-            language: { code: altLang }
-          }
-        };
-        const altResult = await sendMetaMessage(altPayload);
-        if (altResult.response.ok && !altResult.data.error) {
-          metaResponse = altResult.response;
-          metaData = altResult.data;
-          activeLang = altLang;
-        } else {
-          // If still failing because template is in Meta pending review, fallback to approved utility template hello_world to guarantee delivery
-          console.warn(`[Meta WhatsApp] Template '${activeTemplate}' pending Meta review. Falling back to approved 'hello_world' template...`);
-          const hwPayload = {
-            messaging_product: "whatsapp",
-            recipient_type: "individual",
-            to: digits,
-            type: "template",
-            template: {
-              name: "hello_world",
-              language: { code: "en_US" }
-            }
-          };
-          const hwResult = await sendMetaMessage(hwPayload);
-          if (hwResult.response.ok && !hwResult.data.error) {
-            metaResponse = hwResult.response;
-            metaData = hwResult.data;
-            metaData._pendingApprovalNotice = `Template '${activeTemplate}' is pending Meta review. Dispatched via approved utility template 'hello_world'.`;
-          } else if (message) {
-            // As fallback, attempt direct text
-            const fallbackTextPayload = {
-              messaging_product: "whatsapp",
-              recipient_type: "individual",
-              to: digits,
-              type: "text",
-              text: {
-                preview_url: false,
-                body: String(message)
-              }
-            };
-            const fallbackResult = await sendMetaMessage(fallbackTextPayload);
-            if (fallbackResult.response.ok && !fallbackResult.data.error) {
-              metaResponse = fallbackResult.response;
-              metaData = fallbackResult.data;
-            }
-          }
-        }
-      }
+      const { response: metaResponse, data: metaData } = await sendMetaMessage(metaPayload);
 
       console.log("[Meta WhatsApp API Response]:", {
         status: metaResponse.status,
@@ -2548,16 +2457,16 @@ app.post(["/api/dispatch-whatsapp", "/dispatch-whatsapp"], async (req, res) => {
       });
 
       if (metaResponse.ok && !metaData.error) {
-        const messageId = metaData.messages?.[0]?.id || "sent";
+        const messageId = metaData.messages?.[0]?.id || "accepted";
         const logged = recordDispatch({
           type: "whatsapp",
           target: e164,
-          recipientName: buyerName || "Buyer",
-          message: finalMessage || message || `Meta Template: ${activeTemplate || 'text'}`,
-          status: "sent",
-          deliveryStatus: "sent",
+          recipientName: buyerName || pBuyer || "Buyer",
+          message: finalMessage || `Meta Template: ${activeTemplate}`,
+          status: "accepted",
+          deliveryStatus: "accepted",
           metaMessageId: messageId,
-          details: `Successfully dispatched to Meta Graph API (Message ID: ${messageId}, Destination: ${digits}). Pending delivery confirmation from Webhook.`,
+          details: `Accepted by Meta Graph API (Message ID: ${messageId}, Destination: ${digits}). Awaiting delivery webhook confirmation.`,
           directLink: waDirectUrl
         });
 
@@ -2569,46 +2478,52 @@ app.post(["/api/dispatch-whatsapp", "/dispatch-whatsapp"], async (req, res) => {
               whatsappSentAt: new Date().toISOString(),
               whatsappMessageId: messageId,
             }, {
-              event: "WhatsApp Notification Sent",
-              details: `Automated WhatsApp confirmation delivered to ${digits} (Message ID: ${messageId})`,
+              event: "WhatsApp Notification Accepted",
+              details: `Notification accepted by Meta Graph API for ${digits} (Message ID: ${messageId}). Awaiting webhook delivery receipt.`,
               source: "backend",
             });
           } catch {}
         }
 
+        // Return HTTP 200 with clear Accepted status (not claiming delivered yet)
         return res.status(200).json({
           success: true,
           gateway: "meta_whatsapp",
-          isLiveSent: true,
-          status: "sent",
+          status: "Accepted",
+          isLiveSent: false,
           messageId,
           formattedPhone: e164,
           directUrl: waDirectUrl,
-          message: `WhatsApp alert successfully submitted to Meta Graph API for ${e164}! (Message ID: ${messageId})`,
+          message: `WhatsApp notification accepted by Meta Graph API for ${e164} (Message ID: ${messageId}). Delivery status will update via webhook.`,
           metaResponse: metaData,
           log: logged
         });
       } else {
         const errorMsg = metaData.error?.message || metaData.error?.error_user_msg || `Meta WhatsApp API error (HTTP ${metaResponse.status})`;
-        console.warn("[Meta WhatsApp Cloud API Error]:", errorMsg);
+        const errorCode = metaData.error?.code || metaResponse.status;
+        const httpStatus = metaResponse.status >= 400 ? metaResponse.status : 400;
+
+        console.warn(`[Meta WhatsApp Cloud API Error] HTTP ${httpStatus}, Code ${errorCode}:`, errorMsg);
 
         const logged = recordDispatch({
           type: "whatsapp",
           target: e164,
-          recipientName: buyerName || "Buyer",
-          message: finalMessage || message || `Meta Template: ${activeTemplate || 'text'}`,
+          recipientName: buyerName || pBuyer || "Buyer",
+          message: finalMessage || `Meta Template: ${activeTemplate}`,
           status: "failed",
-          details: `Meta WhatsApp Error: ${errorMsg}`,
+          details: `Meta WhatsApp Error (Code ${errorCode}): ${errorMsg}`,
           directLink: waDirectUrl
         });
 
-        return res.status(200).json({
+        return res.status(httpStatus).json({
           success: false,
           gateway: "meta_whatsapp",
+          status: "Failed",
           error: errorMsg,
+          errorCode,
+          metaResponse: metaData,
           directUrl: waDirectUrl,
           formattedPhone: e164,
-          metaResponse: metaData,
           log: logged
         });
       }
@@ -2618,7 +2533,7 @@ app.post(["/api/dispatch-whatsapp", "/dispatch-whatsapp"], async (req, res) => {
         type: "whatsapp",
         target: e164,
         recipientName: buyerName || "Buyer",
-        message: finalMessage || message || `Meta Template: ${activeTemplate || 'text'}`,
+        message: message || `Meta Template: ${activeTemplate}`,
         status: "failed",
         details: `Meta WhatsApp Network Error: ${networkErr?.message || "Failed to reach Meta Graph API"}`,
         directLink: waDirectUrl
@@ -2627,7 +2542,9 @@ app.post(["/api/dispatch-whatsapp", "/dispatch-whatsapp"], async (req, res) => {
       return res.status(502).json({
         success: false,
         gateway: "meta_whatsapp",
-        error: `Could not reach Meta WhatsApp Cloud API servers: ${networkErr?.message || "Network Timeout"}. Direct WhatsApp fallback available.`,
+        status: "Failed",
+        error: `Could not reach Meta WhatsApp Cloud API servers: ${networkErr?.message || "Network Timeout"}.`,
+        errorCode: "NETWORK_ERROR",
         directUrl: waDirectUrl,
         formattedPhone: e164,
         log: logged
@@ -2635,29 +2552,15 @@ app.post(["/api/dispatch-whatsapp", "/dispatch-whatsapp"], async (req, res) => {
     }
   }
 
-  // 2. Direct 1-Click WhatsApp Launcher (Default when Meta Cloud API is not configured)
-  console.info(`[WhatsApp Dispatcher] Meta WhatsApp Cloud API not configured. Running in direct mode with 1-click WhatsApp launcher.`);
-
-  const logged = recordDispatch({
-    type: "whatsapp",
-    target: e164,
-    recipientName: buyerName || "Buyer",
-    message: finalMessage || message || `Template: ${contentSid}`,
-    status: "delivered_simulated",
-    details: `Message logged in system audit trail; 1-click direct WhatsApp launcher generated.`,
-    directLink: waDirectUrl,
-  });
-
-  return res.status(200).json({
-    success: true,
-    status: "simulated_success",
-    isConfigured: false,
-    isLiveSent: false,
-    gateway: "direct",
-    formattedPhone: e164,
+  // If server credentials are missing, return 500 error
+  return res.status(500).json({
+    success: false,
+    gateway: "meta_whatsapp",
+    status: "Failed",
+    error: "Meta WhatsApp Cloud API credentials (phone number ID or token) are not configured on the server. Please define META_WHATSAPP_PHONE_NUMBER_ID and META_WHATSAPP_TOKEN.",
+    errorCode: "SERVER_CREDENTIALS_MISSING",
     directUrl: waDirectUrl,
-    message: `WhatsApp notification recorded in audit trail. Configure your Meta WhatsApp Cloud API credentials in Settings to dispatch automatically!`,
-    log: logged,
+    formattedPhone: e164
   });
 });
 
@@ -2694,21 +2597,47 @@ app.post(["/api/dispatch-sms", "/dispatch-sms"], async (req, res) => {
   });
 });
 
-// Helper to verify admin authorization for sensitive service credential updates
-export function verifyAdminRequest(req: express.Request): boolean {
+// Helper to verify admin authorization for sensitive operations and dispatch endpoints
+export async function verifyAdminRequest(
+  req: express.Request,
+  options: { disallowBodyPassword?: boolean; failClosed?: boolean } = {}
+): Promise<boolean> {
   const authHeader = req.headers.authorization || req.headers["x-auth-token"];
   const token = typeof authHeader === "string"
     ? (authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : authHeader.trim())
     : null;
 
+  // On dispatch endpoints (where disallowBodyPassword is true), failClosed defaults to true
+  const shouldFailClosed = options.failClosed ?? options.disallowBodyPassword ?? false;
+
   if (token) {
+    // 1. Check server-signed token HMAC (created via /api/auth/login)
     const payload = verifySignedToken(token);
     if (payload && payload.role === "admin") {
       return true;
     }
+
+    // 2. Cryptographically verify Firebase ID Token using Google's trusted public certificates & Admin SDK
+    const fbResult = await verifyFirebaseIdToken(token, undefined, {
+      checkRevoked: true,
+      failClosed: shouldFailClosed,
+    });
+    if (fbResult.valid && fbResult.isAdmin) {
+      return true;
+    }
+
+    // 3. Test token allowance ONLY during automated test execution
+    if (process.env.NODE_ENV === "test" && (token === "test-admin-token" || token === "test-firebase-token")) {
+      return true;
+    }
   }
 
-  // Accept admin password in body for backward-compatibility with direct admin actions
+  // Reject body password if disallowBodyPassword is set (strictly enforced on PO and WhatsApp notification dispatches)
+  if (options.disallowBodyPassword) {
+    return false;
+  }
+
+  // Accept admin password in body for administrative setup routes only
   const bodyPassword = req.body?.adminPassword || req.body?.password;
   if (bodyPassword) {
     const cleanPass = String(bodyPassword).trim();
@@ -2718,12 +2647,7 @@ export function verifyAdminRequest(req: express.Request): boolean {
     }
   }
 
-  // Accept authorized Google Admin email header
-  const adminEmail = req.headers["x-admin-email"] || req.headers["x-user-email"];
-  if (typeof adminEmail === "string" && adminEmail.toLowerCase().trim() === "nani@tejasc.in") {
-    return true;
-  }
-
+  // NEVER trust x-admin-email without verified authentication
   return false;
 }
 
@@ -2762,7 +2686,7 @@ app.get(["/api/dispatch-history", "/dispatch-history"], (req, res) => {
 
 // UPDATE & CONNECT META WHATSAPP CLOUD API ROUTE
 const handleUpdateMetaWhatsapp = async (req: any, res: any) => {
-  if (!verifyAdminRequest(req)) {
+  if (!(await verifyAdminRequest(req))) {
     return res.status(403).json({
       success: false,
       error: "Unauthorized: Admin privileges required to update Meta WhatsApp credentials."
@@ -2837,7 +2761,7 @@ app.post(["/api/update-meta-whatsapp-credentials", "/update-meta-whatsapp-creden
 
 // UPDATE & TEST SMTP CREDENTIALS ROUTE
 app.post(["/api/update-smtp-credentials", "/update-smtp-credentials"], async (req, res) => {
-  if (!verifyAdminRequest(req)) {
+  if (!(await verifyAdminRequest(req))) {
     return res.status(403).json({
       success: false,
       error: "Unauthorized: Admin privileges required to update SMTP credentials."
@@ -3098,6 +3022,11 @@ Rules:
       error: error.message || "Failed to scan and parse paper manifest using camera image.",
     });
   }
+});
+
+// Unhandled API Route 404 JSON Fallback (ensures API routes never return HTML index.html)
+app.all(["/api/*", "/api"], (req, res) => {
+  res.status(404).json({ error: "API endpoint not found", path: req.originalUrl || req.url });
 });
 
 // Global Express error handler
