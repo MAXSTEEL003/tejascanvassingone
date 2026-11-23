@@ -1473,6 +1473,9 @@ export default function OrdersDashboard() {
 
         const allPlaced = [...cloudPlaced, ...localPlaced];
         const validDeduplicated = getValidDeduplicatedPlacedOrders(allPlaced);
+        if (typeof window !== 'undefined') {
+          (window as any).__placedOrders = validDeduplicated;
+        }
         setPlacedOrdersList(validDeduplicated);
         const allPlacedIds = extractPlacedOrderIds(validDeduplicated);
         purgePlacedOrdersFromLocal(allPlacedIds);
@@ -1533,9 +1536,11 @@ export default function OrdersDashboard() {
           ) return;
           if (String(raw.id).startsWith('#ORD-99') || String(raw.id).startsWith('TC-0000')) return;
 
-          // Only keep local orders if they are unsynced offline drafts, do not resurrect orders deleted/placed from other devices
-          if (!mergedMap.has(normKey) && raw.isManual && raw._isLocalDraft) {
-            mergedMap.set(normKey, normalizeOrder(raw));
+          // Only keep local orders if they are unsynced offline drafts or pending orders, do not resurrect orders deleted/placed from other devices
+          if (!mergedMap.has(normKey)) {
+            if (raw.isManual || raw.orderType === 'manual' || raw._isLocalDraft || raw.status === 'Pending Approval') {
+              mergedMap.set(normKey, normalizeOrder(raw));
+            }
           }
         });
 
@@ -2397,8 +2402,8 @@ export default function OrdersDashboard() {
 
     const saved = JSON.parse(localStorage.getItem('procurement_requests') || '[]');
 
-    // Generate sequential buyer request reference starting strictly from MO-0001
-    const orderId = getNextManualOrderNumber();
+    // Generate sequential buyer request reference checking existing placed orders and active orders
+    const orderId = getNextManualOrderNumber(placedOrdersList);
 
     // Purge new ID from deleted set and clear cleared flag
     removeDeletedProcurementId(orderId);
@@ -2430,6 +2435,7 @@ export default function OrdersDashboard() {
       subOrderNo: orderId,
       orderType: 'manual',
       isManual: true,
+      _isLocalDraft: true,
       date: dateStr,
       createdAt: now.toISOString(),
       buyer: newOrder.buyer.trim(),

@@ -355,26 +355,59 @@ export function resolveGroupedPoNumber(order: any): string {
 
 /**
  * Generates sequential buyer request numbering for manual orders starting from MO-0001
+ * Intelligently scans both active procurement requests AND placed orders to prevent duplicate IDs.
+ * Base sequence floor is maintained at 152 (highest placed historical MO sub-order) to ensure no collisions.
  */
-export function getNextManualOrderNumber(): string {
+export function getNextManualOrderNumber(extraOrders?: any[]): string {
   try {
-    let maxIdx = 0;
-    const rawProc = localStorage.getItem('procurement_requests');
-    if (rawProc) {
-      const procs = JSON.parse(rawProc);
-      if (Array.isArray(procs)) {
-        procs.forEach((o: any) => {
-          if (!o) return;
-          const str = String(o.buyerRequestNo || o.orderNo || o.id || '');
-          const m = str.match(/MO[-_\s]*0*(\d+)/i);
-          if (m && m[1]) {
-            const num = parseInt(m[1], 10);
-            if (num > maxIdx && num < 100000) maxIdx = num;
-          }
-        });
+    let maxIdx = 152; // Historical floor across existing placed orders in the system
+
+    const scanOrder = (o: any) => {
+      if (!o) return;
+      const str = String(o.buyerRequestNo || o.orderNo || o.subOrderNo || o.id || '');
+      const m = str.match(/MO[-_\s]*0*(\d+)/i);
+      if (m && m[1]) {
+        const num = parseInt(m[1], 10);
+        if (num > maxIdx && num < 100000) maxIdx = num;
       }
+      if (Array.isArray(o.originalOrders)) {
+        o.originalOrders.forEach(scanOrder);
+      }
+      if (Array.isArray(o.items)) {
+        o.items.forEach(scanOrder);
+      }
+    };
+
+    // 1. Scan optional in-memory orders (e.g. current placed orders state)
+    if (Array.isArray(extraOrders)) {
+      extraOrders.forEach(scanOrder);
     }
 
+    // 2. Scan localStorage procurement_requests
+    const rawProc = localStorage.getItem('procurement_requests');
+    if (rawProc) {
+      try {
+        const procs = JSON.parse(rawProc);
+        if (Array.isArray(procs)) procs.forEach(scanOrder);
+      } catch {}
+    }
+
+    // 3. Scan localStorage placed_orders
+    const rawPlaced = localStorage.getItem('placed_orders');
+    if (rawPlaced) {
+      try {
+        const placed = JSON.parse(rawPlaced);
+        if (Array.isArray(placed)) placed.forEach(scanOrder);
+      } catch {}
+    }
+
+    // 4. Scan global window caches if available
+    if (typeof window !== 'undefined') {
+      const winPlaced = (window as any).__placedOrders || (window as any).__latestPlacedOrders;
+      if (Array.isArray(winPlaced)) winPlaced.forEach(scanOrder);
+    }
+
+    // 5. Check persistent localStorage counter
     const saved = parseInt(localStorage.getItem('mo_sequence_counter') || '0', 10);
     if (!isNaN(saved) && saved > maxIdx) maxIdx = saved;
 
@@ -382,30 +415,57 @@ export function getNextManualOrderNumber(): string {
     localStorage.setItem('mo_sequence_counter', String(nextIdx));
     return `MO-${String(nextIdx).padStart(4, '0')}`;
   } catch {
-    return 'MO-0001';
+    return 'MO-0153';
   }
 }
 
 /**
  * Generates sequential buyer request numbering for online store orders starting from SO-0001
+ * Intelligently scans active procurement requests, placed orders, and persistent counters.
  */
-export function getNextStoreOrderNumber(): string {
+export function getNextStoreOrderNumber(extraOrders?: any[]): string {
   try {
     let maxIdx = 0;
+
+    const scanOrder = (o: any) => {
+      if (!o) return;
+      const str = String(o.buyerRequestNo || o.orderNo || o.subOrderNo || o.id || '');
+      const m = str.match(/SO[-_\s]*0*(\d+)/i);
+      if (m && m[1]) {
+        const num = parseInt(m[1], 10);
+        if (num > maxIdx && num < 100000) maxIdx = num;
+      }
+      if (Array.isArray(o.originalOrders)) {
+        o.originalOrders.forEach(scanOrder);
+      }
+      if (Array.isArray(o.items)) {
+        o.items.forEach(scanOrder);
+      }
+    };
+
+    if (Array.isArray(extraOrders)) {
+      extraOrders.forEach(scanOrder);
+    }
+
     const rawProc = localStorage.getItem('procurement_requests');
     if (rawProc) {
-      const procs = JSON.parse(rawProc);
-      if (Array.isArray(procs)) {
-        procs.forEach((o: any) => {
-          if (!o) return;
-          const str = String(o.buyerRequestNo || o.orderNo || o.id || '');
-          const m = str.match(/SO[-_\s]*0*(\d+)/i);
-          if (m && m[1]) {
-            const num = parseInt(m[1], 10);
-            if (num > maxIdx && num < 100000) maxIdx = num;
-          }
-        });
-      }
+      try {
+        const procs = JSON.parse(rawProc);
+        if (Array.isArray(procs)) procs.forEach(scanOrder);
+      } catch {}
+    }
+
+    const rawPlaced = localStorage.getItem('placed_orders');
+    if (rawPlaced) {
+      try {
+        const placed = JSON.parse(rawPlaced);
+        if (Array.isArray(placed)) placed.forEach(scanOrder);
+      } catch {}
+    }
+
+    if (typeof window !== 'undefined') {
+      const winPlaced = (window as any).__placedOrders || (window as any).__latestPlacedOrders;
+      if (Array.isArray(winPlaced)) winPlaced.forEach(scanOrder);
     }
 
     const saved = parseInt(localStorage.getItem('so_sequence_counter') || '0', 10);
