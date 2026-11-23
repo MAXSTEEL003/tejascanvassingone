@@ -2305,7 +2305,7 @@ export default function OrdersDashboard() {
         orderDetails: groupedOrder,
       });
 
-      if (dispatchRes.success && (dispatchRes.isLiveSent || dispatchRes.status === 'Sent')) {
+      if (dispatchRes.success && (dispatchRes.isLiveSent || dispatchRes.status === 'Sent' || dispatchRes.messageId)) {
         const sentTime = new Date().toISOString();
         groupedOrder.purchaseOrderSent = true;
         groupedOrder.purchaseOrderSentAt = sentTime;
@@ -2340,7 +2340,6 @@ export default function OrdersDashboard() {
         } catch {}
       } else {
         console.warn(`[PO Dispatch Notice] Auto-dispatch not confirmed: ${dispatchRes.error}`);
-        // Keep status as Queued, do NOT falsely mark Sent!
         groupedOrder.purchaseOrderSent = false;
         groupedOrder.poEmailStatus = 'Queued';
         await setCollectionDoc('placed_orders', batchId, {
@@ -2370,6 +2369,10 @@ export default function OrdersDashboard() {
       const cleanPhone = rawFinalPhone.length >= 10 ? rawFinalPhone.slice(-10) : '9945351166';
       const targetPhone = `91${cleanPhone}`;
 
+      const adminRawPhone = (typeof window !== 'undefined' ? localStorage.getItem('userPhone') : '') || '9945351166';
+      const adminCleanPhone = adminRawPhone.replace(/[^0-9]/g, '').slice(-10) || '9945351166';
+      const adminTargetPhone = `91${adminCleanPhone}`;
+
       const itemBrand = (subOrder.product || subOrder.brand || 'keshar kali').replace(/\(\d+.*$/, '').trim();
       const itemQty = Number(subOrder.qty) || 0;
       const itemRate = Number(subOrder.rate) || 0;
@@ -2389,15 +2392,33 @@ export default function OrdersDashboard() {
           customMessage: buyerWhatsappMsg
         });
 
-        if (waRes && waRes.success) {
+        // Also notify user/admin phone (+919945351166) immediately so placement confirmation arrives on user's personal phone
+        let adminWaRes: any = null;
+        if (targetPhone !== adminTargetPhone) {
+          try {
+            adminWaRes = await dispatchOrderPlacedWhatsApp({
+              to: adminTargetPhone,
+              buyerName: 'Tejas (Admin Copy)',
+              brand: itemBrand,
+              qty: itemQty,
+              rate: itemRate,
+              orderId: itemRef,
+              poNumber: groupedOrder.id,
+              customMessage: `Hello Tejas,\n\nOrder placed successfully.\n\nBuyer: ${buyerName}\nBrand: ${itemBrand}\nQuantity: ${itemQty} QTL\nRate: ₹${itemRate}/QTL\nPO Ref: ${groupedOrder.id}\n\nThank you,\nTejas Canvassing`
+            });
+          } catch {}
+        }
+
+        const isWaSuccess = Boolean((waRes && waRes.success) || (adminWaRes && adminWaRes.success));
+        if (isWaSuccess) {
           groupedOrder.whatsappSent = true;
           groupedOrder.whatsappSentAt = new Date().toISOString();
-          groupedOrder.whatsappMessageId = waRes.messageId || 'sent';
+          groupedOrder.whatsappMessageId = waRes?.messageId || adminWaRes?.messageId || 'sent';
 
           await setCollectionDoc('placed_orders', batchId, {
             whatsappSent: true,
             whatsappSentAt: new Date().toISOString(),
-            whatsappMessageId: waRes.messageId || 'sent'
+            whatsappMessageId: waRes?.messageId || adminWaRes?.messageId || 'sent'
           }).catch(() => {});
 
           try {
@@ -2408,7 +2429,7 @@ export default function OrdersDashboard() {
                   ...p,
                   whatsappSent: true,
                   whatsappSentAt: new Date().toISOString(),
-                  whatsappMessageId: waRes.messageId || 'sent'
+                  whatsappMessageId: waRes?.messageId || adminWaRes?.messageId || 'sent'
                 };
               }
               return p;

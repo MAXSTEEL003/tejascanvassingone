@@ -67,7 +67,8 @@ import {
   normalizePlacedOrdersSequential, 
   invalidateOperationalOrdersCache,
   getPlacedOrderVolume,
-  parseOperationalDate
+  parseOperationalDate,
+  getValidDeduplicatedPlacedOrders
 } from '../utils/orderOperations';
 
 const BUYER_PROFILES: Record<string, { address: string; gstin: string; phone: string; email: string }> = {};
@@ -846,6 +847,32 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
             if (r.orderId) map[r.orderId] = r;
           });
           setTrackingRecordMap(map);
+
+          try {
+            const raw = localStorage.getItem('placed_orders');
+            if (raw) {
+              const placed = JSON.parse(raw);
+              let changed = false;
+              const updated = placed.map((p: any) => {
+                const trkRec = map[p.id];
+                if (trkRec && (trkRec.status === 'Sent' || trkRec.gmailMessageId) && (!p.purchaseOrderSent || p.poEmailStatus !== 'Sent')) {
+                  changed = true;
+                  return {
+                    ...p,
+                    purchaseOrderSent: true,
+                    purchaseOrderSentAt: trkRec.sentAt || p.purchaseOrderSentAt || new Date().toISOString(),
+                    poEmailStatus: 'Sent',
+                    smtpMessageId: trkRec.gmailMessageId || p.smtpMessageId
+                  };
+                }
+                return p;
+              });
+              if (changed) {
+                localStorage.setItem('placed_orders', JSON.stringify(updated));
+                setCurrentPlacedOrders(getValidDeduplicatedPlacedOrders(updated));
+              }
+            }
+          } catch {}
         }
       }
     } catch (e) {
@@ -3231,7 +3258,9 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                       const trk = trackingRecordMap[order.id];
                       const isEmailSent = Boolean(
                         order.purchaseOrderSent || 
+                        order.poEmailStatus === 'Sent' ||
                         trk?.status === 'Sent' || 
+                        trk?.gmailMessageId || 
                         trk?.acknowledgedAt || 
                         order.purchaseOrderSentAt
                       );
@@ -3239,8 +3268,6 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                         order.whatsappSent || 
                         order.whatsappSentAt || 
                         order.whatsappMessageId ||
-                        order.purchaseOrderSent || 
-                        order.purchaseOrderSentAt ||
                         (order.originalOrders && order.originalOrders.some((s: any) => s.whatsappSent || s.purchaseOrderSent))
                       );
 
@@ -3318,7 +3345,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                           )}
                           {(() => {
                             const trk = trackingRecordMap[order.id];
-                            const status = trk?.status || (order.purchaseOrderSent ? 'Sent' : 'Queued');
+                            const status = trk?.status || (order.purchaseOrderSent || order.poEmailStatus === 'Sent' ? 'Sent' : 'Queued');
                             const cfg = getStatusBadgeConfig(status);
                             const supplierEmail = trk?.recipientEmail || order.sellerEmail || '';
                             const isQueued = status === 'Queued' || status === 'Ready' || status === 'Pending';

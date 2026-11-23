@@ -1323,6 +1323,8 @@ app.post(["/api/dispatch-po", "/api/send-po-email", "/dispatch-po", "/send-po-em
 
     // 1E. COMPOSE CC RECIPIENTS (Ensure Admin receives a copy in their mailbox)
     const adminEmails = [
+      ...(req.body.cc ? String(req.body.cc).split(",").map((s: string) => s.trim()) : []),
+      ...(req.body.adminEmail ? [String(req.body.adminEmail).trim()] : []),
       process.env.VITE_ADMIN_GOOGLE_EMAIL_1 || "tejasadinarayan@gmail.com",
       process.env.VITE_ADMIN_GOOGLE_EMAIL_2 || "tejascanvassing@gmail.com",
       process.env.GMAIL_SENDER_EMAIL || "nani@tejasc.in",

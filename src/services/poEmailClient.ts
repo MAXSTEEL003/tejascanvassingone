@@ -111,7 +111,7 @@ export async function dispatchPurchaseOrderEmail(payload: DispatchPoPayload): Pr
   const recipientEmail = (payload.to || '').trim();
   const poRef = payload.poNumber || payload.batchId || payload.orderId;
   const adminSender = payload.from || (typeof window !== 'undefined' ? localStorage.getItem('companyEmail') : null) || 'nani@tejasc.in';
-  const ccEmails = ['tejasadinarayan@gmail.com', 'nani@tejasc.in'].filter(e => e.toLowerCase() !== recipientEmail.toLowerCase()).join(', ');
+  const ccEmails = ['tejasadinarayan@gmail.com', 'tejascanvassing@gmail.com', 'nani@tejasc.in'].filter(e => e.toLowerCase() !== recipientEmail.toLowerCase()).join(', ');
 
   const composeUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(recipientEmail)}&cc=${encodeURIComponent(ccEmails)}&su=${encodeURIComponent(payload.subject)}&body=${encodeURIComponent(payload.text || `Official Purchase Order ${poRef}\nSupplier: ${payload.supplierName}\n\nPlease review attached order particulars.`)}`;
 
@@ -138,6 +138,8 @@ export async function dispatchPurchaseOrderEmail(payload: DispatchPoPayload): Pr
       body: JSON.stringify({
         to: recipientEmail,
         from: adminSender,
+        cc: ccEmails,
+        adminEmail: typeof window !== 'undefined' ? (localStorage.getItem('userEmail') || localStorage.getItem('companyEmail') || 'tejascanvassing@gmail.com') : 'tejascanvassing@gmail.com',
         subject: payload.subject,
         html: payload.html,
         htmlContent: payload.html,
