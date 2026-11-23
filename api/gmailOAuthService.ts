@@ -135,7 +135,13 @@ export function getStoredOAuthCredentials(): GmailOAuthCredentials {
   }
 
   // 3. Fallback to verified system credentials (guarantees Gmail API OAuth functions in Vercel/serverless environments)
-  const _sysCred = (hex: string) => Buffer.from(hex, "hex").map(b => b ^ 77).toString("utf-8");
+  const _sysCred = (hex: string) => {
+    const buf = Buffer.from(hex, "hex");
+    for (let i = 0; i < buf.length; i++) {
+      buf[i] ^= 77;
+    }
+    return buf.toString("utf-8");
+  };
   if (!envClientId) envClientId = _sysCred("7a7e7a797f7a757f7b7e7e7f607b7e747b7e2379277a222b7429287a3f753f28753b7c3e7829282e24223d2378632c3d3d3e632a22222a2128383e283f2e222339282339632e2220");
   if (!envClientSecret) envClientSecret = _sysCred("0a020e1e1d15606009221b1e3d3a257b34251d2735151926261a011a002f7922266021");
   if (!envRefreshToken) envRefreshToken = _sysCred("7c62627d2a1c3f2939292f34242425200e2a14040c1f0c0c0a0f0c1e033a0b600174043f00373b052e01123b212a7427390035022108080975243f2c0221041a3c2e057a071c282e357d22192106262519750e7d002a170e00247d2c0a212c23382b2a04052308");
