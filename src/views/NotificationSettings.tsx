@@ -28,7 +28,7 @@ import {
   Key
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { cn } from '../lib/utils';
+import { cn, resolveBuyerProfile, syncCurrentMerchantProfile } from '../lib/utils';
 import { auth, getCollectionDocs, setCollectionDoc } from '../lib/firebase';
 import { generateSupplierPOEmailHtml } from '../utils/poEmailTemplate';
 import { generatePoPdfBase64, getPoPdfFileName } from '../utils/poPdfGenerator';
@@ -484,41 +484,57 @@ export default function NotificationSettings() {
     }
   };
 
-  // Load registered profile from Firestore
+  // Load registered profile from localStorage & Firestore
   useEffect(() => {
     async function loadProfile() {
       try {
-        const rawUserEmail = localStorage.getItem('userEmail') || auth.currentUser?.email || '';
-        const userEmail = rawUserEmail && !rawUserEmail.includes('riceaggregator.com') ? rawUserEmail : 'nani@tejasc.in';
-        const currentUid = auth.currentUser?.uid;
-        
-        // Initial fallbacks
-        setBusinessName(localStorage.getItem('userName') || 'Registered Merchant');
-        setPhone(localStorage.getItem('userPhone') || '');
-        setContactEmail(userEmail);
-        setGstin('29AAGCV7712M1ZP');
-        setAddress('No. 15, APMC Yard, Yeshwanthpur, Bangalore');
-        setPan('ABCDE1234F');
-        setBankName('State Bank of India');
-        setAccountNo('34520987112');
-        setIfsc('SBIN0007823');
+        const buyerProf = resolveBuyerProfile();
+        const storedUid = localStorage.getItem('userId') || auth.currentUser?.uid || buyerProf?.id || '';
+        const storedName = localStorage.getItem('userName') || buyerProf?.name || 'Registered Merchant';
+        const storedPhone = localStorage.getItem('userPhone') || buyerProf?.phone || '';
+        const rawUserEmail = localStorage.getItem('userEmail') || buyerProf?.email || auth.currentUser?.email || '';
+        const storedEmail = rawUserEmail && !rawUserEmail.includes('riceaggregator.com') ? rawUserEmail : '';
+        const storedGstin = localStorage.getItem('userGstin') || buyerProf?.gstin || '';
+        const storedPan = localStorage.getItem('userPan') || (buyerProf as any)?.pan || '';
+        const storedAddress = localStorage.getItem('userAddress') || buyerProf?.address || 'No. 15, APMC Yard, Yeshwanthpur, Bangalore, Karnataka - 560022';
+        const storedState = localStorage.getItem('userState') || (buyerProf as any)?.state || 'Karnataka';
+        const storedMandi = localStorage.getItem('userMandi') || (buyerProf as any)?.mandi || 'Yeshwanthpur';
+        const storedBankName = localStorage.getItem('userBankName') || (buyerProf as any)?.bankName || '';
+        const storedAccountNo = localStorage.getItem('userAccountNo') || (buyerProf as any)?.accountNo || '';
+        const storedIfsc = localStorage.getItem('userIfsc') || (buyerProf as any)?.ifsc || '';
 
+        setBusinessName(storedName);
+        setPhone(storedPhone);
+        setContactEmail(storedEmail || 'nani@tejasc.in');
+        setGstin(storedGstin);
+        setPan(storedPan);
+        setAddress(storedAddress);
+        setStateVal(storedState);
+        setMandi(storedMandi);
+        setBankName(storedBankName);
+        setAccountNo(storedAccountNo);
+        setIfsc(storedIfsc);
+
+        // Fetch cloud Firestore profile if available
         const docs = await getCollectionDocs('stakeholders').catch(() => []);
         if (docs && docs.length > 0) {
+          const cleanPhone = storedPhone.replace(/\D/g, '');
           const found = docs.find((d: any) => 
-            (currentUid && d.id === currentUid) || 
-            (userEmail && d.email?.toLowerCase() === userEmail.toLowerCase())
+            (storedUid && d.id === storedUid) ||
+            (auth.currentUser?.uid && d.id === auth.currentUser.uid) ||
+            (cleanPhone && d.phone && d.phone.replace(/\D/g, '') === cleanPhone) ||
+            (storedEmail && d.email && d.email.toLowerCase() === storedEmail.toLowerCase()) ||
+            (storedName && d.name && d.name.trim().toLowerCase() === storedName.trim().toLowerCase())
           );
           if (found) {
-            setBusinessName(found.name || '');
-            setPhone(found.phone || '');
-            setContactEmail(found.email || userEmail || '');
-            setGstin(found.gstin || '');
-            setAddress(found.address || '');
-            setStateVal(found.state || 'Karnataka');
-            setMandi(found.mandi || 'Yeshwanthpur');
-            
+            if (found.name) setBusinessName(found.name);
+            if (found.phone) setPhone(found.phone);
+            if (found.email) setContactEmail(found.email);
+            if (found.gstin) setGstin(found.gstin);
             if (found.pan) setPan(found.pan);
+            if (found.address) setAddress(found.address);
+            if (found.state) setStateVal(found.state);
+            if (found.mandi) setMandi(found.mandi);
             if (found.bankName) setBankName(found.bankName);
             if (found.accountNo) setAccountNo(found.accountNo);
             if (found.ifsc) setIfsc(found.ifsc);
@@ -561,46 +577,104 @@ export default function NotificationSettings() {
     e.preventDefault();
     setIsSavingProfile(true);
     try {
-      const currentUid = auth.currentUser?.uid || `usr-${Date.now()}`;
+      const finalName = businessName.trim() || 'Registered Merchant';
+      const finalPhone = phone.trim();
+      const finalEmail = contactEmail.trim();
+      const finalGstin = gstin.trim().toUpperCase();
+      const finalPan = pan.trim().toUpperCase();
+      const finalAddress = address.trim() || localStorage.getItem('userAddress') || 'No. 15, APMC Yard, Yeshwanthpur, Bangalore, Karnataka - 560022';
+
+      const existingUid = localStorage.getItem('userId') || auth.currentUser?.uid;
+      const currentUid = existingUid || `buy-${Date.now()}`;
+      localStorage.setItem('userId', currentUid);
+
+      const currentRole = localStorage.getItem('userRole') || 'merchant';
+      const stakeholderType = (currentRole === 'admin' || currentRole === 'officer') ? 'admin' : (currentRole === 'miller' ? 'suppliers' : 'buyers');
+
       const stakeholderData: any = {
         id: currentUid,
-        name: businessName,
-        type: 'buyers', // acts as merchant/buyer in system
-        phone: phone,
-        email: contactEmail,
-        gstin: gstin,
-        pan: pan,
+        name: finalName,
+        type: stakeholderType,
+        phone: finalPhone,
+        email: finalEmail,
+        gstin: finalGstin,
+        pan: finalPan,
+        address: finalAddress,
+        state: stateVal || 'Karnataka',
+        mandi: mandi || 'Yeshwanthpur',
         status: 'Active',
         credit: '₹ 80.0 Lakh',
         updatedAt: new Date().toISOString()
       };
-      if (address) stakeholderData.address = address;
-      if (stateVal) stakeholderData.state = stateVal;
-      if (mandi) stakeholderData.mandi = mandi;
       if (bankName) stakeholderData.bankName = bankName;
       if (accountNo) stakeholderData.accountNo = accountNo;
       if (ifsc) stakeholderData.ifsc = ifsc;
 
-      // 1. Sync directly to Firestore stakeholders
-      await setCollectionDoc('stakeholders', currentUid, stakeholderData);
-
-      // 2. Dual write local states
-      localStorage.setItem('userName', businessName);
-      localStorage.setItem('userPhone', phone);
-      localStorage.setItem('userEmail', contactEmail);
-
-      // 3. Sync stakeholders list local copy dual-write
-      const localStakeholders = JSON.parse(localStorage.getItem('stakeholders_v2') || 'null');
-      if (localStakeholders) {
-        let updatedBuyers = localStakeholders.buyers || [];
-        // Remove matching document
-        updatedBuyers = updatedBuyers.filter((b: any) => 
-          b.id !== currentUid && b.email?.toLowerCase() !== (contactEmail || '').toLowerCase()
-        );
-        updatedBuyers.push(stakeholderData);
-        localStakeholders.buyers = updatedBuyers;
-        localStorage.setItem('stakeholders_v2', JSON.stringify(localStakeholders));
+      // 1. Sync directly to Firestore stakeholders collection
+      await setCollectionDoc('stakeholders', currentUid, stakeholderData).catch(err => {
+        console.warn('Firestore stakeholders write warning:', err);
+      });
+      if (stakeholderType === 'buyers') {
+        await setCollectionDoc('users', currentUid, stakeholderData).catch(() => {});
       }
+
+      // 2. Dual write ALL local storage profile keys
+      localStorage.setItem('userName', finalName);
+      localStorage.setItem('userPhone', finalPhone);
+      localStorage.setItem('userEmail', finalEmail);
+      localStorage.setItem('userGstin', finalGstin);
+      localStorage.setItem('userPan', finalPan);
+      localStorage.setItem('userAddress', finalAddress);
+      localStorage.setItem('userState', stakeholderData.state);
+      localStorage.setItem('userMandi', stakeholderData.mandi);
+      if (bankName) localStorage.setItem('userBankName', bankName);
+      if (accountNo) localStorage.setItem('userAccountNo', accountNo);
+      if (ifsc) localStorage.setItem('userIfsc', ifsc);
+
+      // 3. Update active session user_session_v1
+      try {
+        const storedUser = localStorage.getItem('user_session_v1') || sessionStorage.getItem('user_session_v1');
+        if (storedUser) {
+          const parsed = JSON.parse(storedUser);
+          parsed.name = finalName;
+          parsed.email = finalEmail;
+          parsed.phone = finalPhone;
+          localStorage.setItem('user_session_v1', JSON.stringify(parsed));
+          sessionStorage.setItem('user_session_v1', JSON.stringify(parsed));
+        }
+      } catch {}
+
+      // 4. Seamlessly update stakeholders_v2
+      try {
+        const raw = localStorage.getItem('stakeholders_v2');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          const category = stakeholderType === 'suppliers' ? 'suppliers' : (stakeholderType === 'admin' ? 'employees' : 'buyers');
+          if (Array.isArray(parsed[category])) {
+            const cleanDigits = finalPhone.replace(/\D/g, '');
+            const idx = parsed[category].findIndex((b: any) => 
+              (currentUid && b.id === currentUid) || 
+              (cleanDigits && b.phone && b.phone.replace(/\D/g, '') === cleanDigits) ||
+              (b.name && b.name.trim().toLowerCase() === finalName.toLowerCase()) ||
+              (finalEmail && b.email && b.email.toLowerCase() === finalEmail.toLowerCase())
+            );
+            if (idx >= 0) {
+              parsed[category][idx] = { ...parsed[category][idx], ...stakeholderData };
+            } else {
+              parsed[category].push(stakeholderData);
+            }
+            localStorage.setItem('stakeholders_v2', JSON.stringify(parsed));
+          }
+        }
+      } catch {}
+
+      // 5. Sync with global merchant profile helper
+      syncCurrentMerchantProfile(stakeholderData);
+
+      // 6. Broadcast update events to all open components (Navbar, Header, ProfileView, etc.)
+      window.dispatchEvent(new Event('storage'));
+      window.dispatchEvent(new Event('profile-updated'));
+      window.dispatchEvent(new CustomEvent('stakeholders-updated', { detail: { category: stakeholderType, user: stakeholderData } }));
 
       setShowProfileSuccess(true);
       setTimeout(() => setShowProfileSuccess(false), 3500);
@@ -751,11 +825,21 @@ export default function NotificationSettings() {
                     <label className="text-[10px] font-black uppercase tracking-widest text-secondary px-1">PAN Card Number</label>
                     <input 
                       type="text" 
-                      required
                       value={pan}
                       onChange={(e) => setPan(e.target.value.toUpperCase())}
                       className={cn("w-full bg-surface-container-low border border-outline-variant rounded-xl px-4 py-3 text-xs font-bold outline-none focus:ring-2 transition-all font-mono", isMerchant ? "focus:ring-emerald-500/20 focus:border-emerald-500" : "focus:ring-primary/20")}
                       placeholder="e.g. ABCDE1234F"
+                    />
+                  </div>
+
+                  <div className="space-y-1 md:col-span-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-secondary px-1">Operating / Delivery Address</label>
+                    <input 
+                      type="text" 
+                      value={address}
+                      onChange={(e) => setAddress(e.target.value)}
+                      className={cn("w-full bg-surface-container-low border border-outline-variant rounded-xl px-4 py-3 text-xs font-bold outline-none focus:ring-2 transition-all", isMerchant ? "focus:ring-emerald-500/20 focus:border-emerald-500" : "focus:ring-primary/20")}
+                      placeholder="e.g. Shop #14, APMC Yard, Yeshwanthpur, Bangalore, Karnataka - 560022"
                     />
                   </div>
                 </div>

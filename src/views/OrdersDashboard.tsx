@@ -2375,7 +2375,7 @@ export default function OrdersDashboard() {
       const buyerWhatsappMsg = `Hello ${buyerName},\n\nOrder placed successfully.\n\nBrand: ${itemBrand}\nQuantity: ${itemQty} QTL\nRate: ₹${itemRate}/QTL\n\nThank you,\nTejas Canvassing`;
 
       try {
-        await dispatchOrderPlacedWhatsApp({
+        const waRes = await dispatchOrderPlacedWhatsApp({
           to: targetPhone,
           buyerName: buyerName,
           brand: itemBrand,
@@ -2385,6 +2385,37 @@ export default function OrdersDashboard() {
           poNumber: groupedOrder.id,
           customMessage: buyerWhatsappMsg
         });
+
+        if (waRes && waRes.success) {
+          groupedOrder.whatsappSent = true;
+          groupedOrder.whatsappSentAt = new Date().toISOString();
+          groupedOrder.whatsappMessageId = waRes.messageId || 'sent';
+
+          await setCollectionDoc('placed_orders', batchId, {
+            whatsappSent: true,
+            whatsappSentAt: new Date().toISOString(),
+            whatsappMessageId: waRes.messageId || 'sent'
+          }).catch(() => {});
+
+          try {
+            const savedPlaced = JSON.parse(localStorage.getItem('placed_orders') || '[]');
+            const updated = savedPlaced.map((p: any) => {
+              if (p.id === batchId) {
+                return {
+                  ...p,
+                  whatsappSent: true,
+                  whatsappSentAt: new Date().toISOString(),
+                  whatsappMessageId: waRes.messageId || 'sent'
+                };
+              }
+              return p;
+            });
+            localStorage.setItem('placed_orders', JSON.stringify(updated));
+            setPlacedOrdersList(getValidDeduplicatedPlacedOrders(updated));
+            window.dispatchEvent(new CustomEvent('placed-orders-updated'));
+            window.dispatchEvent(new Event('storage'));
+          } catch {}
+        }
 
         // Small delay between sequential WhatsApp dispatches to prevent rate-limiting and ensure delivery order
         await new Promise(resolve => setTimeout(resolve, 350));

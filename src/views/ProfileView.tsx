@@ -60,20 +60,20 @@ export default function ProfileView() {
 
     const syncProfileFromUsers = () => {
       const buyer = resolveBuyerProfile();
+      const currentName = localStorage.getItem('userName') || buyer?.name || 'Authorized Merchant';
+      const cleanName = currentName.includes('@') ? (currentName.split('@')[0].toUpperCase() || 'Authorized Merchant') : currentName;
+      const currentPhone = localStorage.getItem('userPhone') || buyer?.phone || '';
+      const currentGstin = localStorage.getItem('userGstin') || buyer?.gstin || '29AAGCV7712M1ZP';
+      const currentAddress = localStorage.getItem('userAddress') || buyer?.address || 'No. 15, APMC Yard, Yeshwanthpur, Bangalore, Karnataka - 560022';
+
+      setProfName(buyer?.name || cleanName);
+      setProfPhone(currentPhone);
+      setProfGstin(currentGstin);
+      setProfAddress(currentAddress);
+
       if (buyer) {
-        setProfName(buyer.name);
-        setProfPhone(buyer.phone || '');
-        setProfGstin(buyer.gstin || '29AAGCV7712M1ZP');
-        setProfAddress(buyer.address || 'No. 15, APMC Yard, Yeshwanthpur, Bangalore, Karnataka - 560022');
         setIsProfileLocked(Boolean(buyer.profileLocked));
         syncCurrentMerchantProfile(buyer);
-      } else {
-        const stored = localStorage.getItem('userName') || '';
-        if (stored.includes('@')) {
-          const clean = stored.split('@')[0].toUpperCase();
-          setProfName(clean);
-          localStorage.setItem('userName', clean);
-        }
       }
     };
 

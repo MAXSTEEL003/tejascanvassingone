@@ -3245,30 +3245,49 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
 
                       return (
                         <div className="flex flex-row md:flex-col items-center gap-1.5 w-auto md:w-full">
-                          {/* Mail Icon badge */}
-                          <div 
+                          {/* Mail Icon badge - interactive trigger for email tracking/dispatch modal */}
+                          <button 
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedOrderForTracking(order);
+                            }}
                             className={cn(
-                              "w-full inline-flex items-center justify-center gap-1 py-1 px-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all select-none",
+                              "w-full inline-flex items-center justify-center gap-1 py-1 px-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all cursor-pointer select-none hover:opacity-90 active:scale-95",
                               isEmailSent 
                                 ? "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30 shadow-2xs" 
-                                : "bg-neutral-100 dark:bg-neutral-800/40 text-neutral-400 dark:text-neutral-500 border-neutral-200 dark:border-neutral-800 opacity-50"
+                                : "bg-neutral-100 dark:bg-neutral-800/40 text-neutral-400 dark:text-neutral-500 border-neutral-200 dark:border-neutral-800 opacity-60 hover:opacity-100"
                             )}
-                            title={isEmailSent ? "PO Email sent to supplier" : "PO Email not sent"}
+                            title={isEmailSent ? "PO Email sent to supplier - click to track" : "PO Email queued - click to dispatch or track"}
                           >
                             <Mail className={cn("w-3 h-3 shrink-0", isEmailSent ? "text-blue-600 dark:text-blue-400" : "text-neutral-400 dark:text-neutral-500")} />
                             <span>Mail</span>
                             {isEmailSent && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse shrink-0" />}
-                          </div>
+                          </button>
 
-                          {/* WhatsApp Icon badge */}
-                          <div 
+                          {/* WhatsApp Icon badge - interactive trigger to send/view WhatsApp */}
+                          <button 
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const subs = order.originalOrders || [];
+                              const firstSub = subs[0] || {};
+                              const buyerName = firstSub.buyer || order.buyer || 'Valued Merchant';
+                              const prof = resolveBuyerProfile(buyerName);
+                              const rawPhone = (firstSub.phone || order.phone || '').replace(/[^0-9]/g, '');
+                              const cleanPhone = (rawPhone.length >= 10 && rawPhone !== '9845012345' && rawPhone !== '9845000000')
+                                ? (rawPhone.length === 10 ? `91${rawPhone}` : rawPhone)
+                                : (prof?.phone ? (prof.phone.length === 10 ? `91${prof.phone}` : prof.phone) : '919945351166');
+                              const waMsg = encodeURIComponent(`Hello ${buyerName},\n\nOrder ${order.id} placed successfully.\n\nBrand: ${order.product || order.brand || 'keshar kali'}\nQuantity: ${order.items || order.qty} QTLS\nRate: ₹${order.rate || ''}\n\nThank you,\nTejas Canvassing`);
+                              window.open(`https://wa.me/${cleanPhone}?text=${waMsg}`, '_blank');
+                            }}
                             className={cn(
-                              "w-full inline-flex items-center justify-center gap-1 py-1 px-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all select-none",
+                              "w-full inline-flex items-center justify-center gap-1 py-1 px-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all cursor-pointer select-none hover:opacity-90 active:scale-95",
                               isWhatsAppSent 
                                 ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 shadow-2xs" 
-                                : "bg-neutral-100 dark:bg-neutral-800/40 text-neutral-400 dark:text-neutral-500 border-neutral-200 dark:border-neutral-800 opacity-50"
+                                : "bg-neutral-100 dark:bg-neutral-800/40 text-neutral-400 dark:text-neutral-500 border-neutral-200 dark:border-neutral-800 opacity-60 hover:opacity-100"
                             )}
-                            title={isWhatsAppSent ? "WhatsApp notification sent to buyer" : "WhatsApp notification not sent"}
+                            title={isWhatsAppSent ? "WhatsApp notification sent - click to open WhatsApp" : "Click to send WhatsApp confirmation to buyer"}
                           >
                             <svg 
                               className={cn("w-3 h-3 fill-current shrink-0", isWhatsAppSent ? "text-emerald-600 dark:text-emerald-400" : "text-neutral-400 dark:text-neutral-500")} 
@@ -3278,7 +3297,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                             </svg>
                             <span className="truncate">WhatsApp</span>
                             {isWhatsAppSent && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />}
-                          </div>
+                          </button>
                         </div>
                       );
                     })()}
