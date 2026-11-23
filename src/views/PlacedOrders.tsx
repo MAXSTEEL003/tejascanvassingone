@@ -2954,15 +2954,6 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
         <div className="flex items-center gap-3 flex-wrap">
           <button 
             type="button"
-            onClick={() => navigate('/orders')}
-            className="flex items-center gap-2 px-5 py-2.5 bg-primary hover:bg-primary/95 text-on-primary rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md shadow-primary/20 hover:scale-105 active:scale-95 cursor-pointer"
-            title="Create and book a manual procurement order"
-          >
-            <Plus className="w-4 h-4 text-on-primary" />
-            <span>Create Manual Order</span>
-          </button>
-          <button 
-            type="button"
             onClick={() => {
               setIsDeleteAllModalOpen(true);
               setDeletePassword('');
