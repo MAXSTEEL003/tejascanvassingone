@@ -96,9 +96,13 @@ export function verifyPassword(password: string, expectedHash: string, salt: str
   }
 }
 
-// Pre-compute admin hash
-const adminSalt = "tejas_admin_salt_1977";
-const adminPasswordRecord = hashPassword(DEFAULT_ADMIN_PASS, adminSalt);
+// Pre-compute admin PBKDF2 hash (supports secure environment-injected hash or password)
+const envAdminHash = process.env.ADMIN_PASSWORD_HASH;
+const envAdminSalt = process.env.ADMIN_PASSWORD_SALT || "tejas_admin_salt_1977";
+const adminSalt = envAdminSalt;
+const adminPasswordRecord = envAdminHash
+  ? { hash: envAdminHash, salt: envAdminSalt }
+  : hashPassword(DEFAULT_ADMIN_PASS, adminSalt);
 
 // In-memory & disk-persisted store for staff & employee credentials
 interface EmployeeCredential {
@@ -272,7 +276,7 @@ authRouter.post("/login", (req, res) => {
       "nani"
     ];
     const isAdminUser = validAdminUsers.includes(lowerUser);
-    const isAdminPass = verifyPassword(cleanPass, adminPasswordRecord.hash, adminPasswordRecord.salt) || (DEFAULT_ADMIN_PASS && cleanPass === DEFAULT_ADMIN_PASS);
+    const isAdminPass = verifyPassword(cleanPass, adminPasswordRecord.hash, adminPasswordRecord.salt);
 
     // Check Admin Authentication
     if (roleHint === "admin" || isAdminUser) {
@@ -453,7 +457,7 @@ authRouter.post("/verify-action", (req, res) => {
   // Option B: Password-based verification
   if (password) {
     const clean = String(password).trim();
-    if (verifyPassword(clean, adminPasswordRecord.hash, adminPasswordRecord.salt) || (DEFAULT_ADMIN_PASS && clean === DEFAULT_ADMIN_PASS)) {
+    if (verifyPassword(clean, adminPasswordRecord.hash, adminPasswordRecord.salt)) {
       return res.json({ authorized: true, action: action || "generic" });
     }
   }
@@ -2719,8 +2723,7 @@ export async function verifyAdminRequest(
   const bodyPassword = req.body?.adminPassword || req.body?.password;
   if (bodyPassword) {
     const cleanPass = String(bodyPassword).trim();
-    const adminPass = process.env.ADMIN_PASSWORD || "adinarayan1977";
-    if (verifyPassword(cleanPass, adminPasswordRecord.hash, adminPasswordRecord.salt) || cleanPass === adminPass) {
+    if (verifyPassword(cleanPass, adminPasswordRecord.hash, adminPasswordRecord.salt)) {
       return true;
     }
   }

@@ -175,7 +175,6 @@ export async function dispatchOrderPlacedWhatsApp(
     const res = await fetch('/api/dispatch-whatsapp?_path=/api/dispatch-whatsapp', {
       method: 'POST',
       headers,
-      keepalive: true,
       body: JSON.stringify({
         to: targetPhone,
         buyerName: cleanBuyer,

@@ -31,7 +31,7 @@ export function buildPoPdfDocument(order: any, subOrders: any[] = []): jsPDF {
   
   // Header Logo (Official Company Symbol)
   try {
-    doc.addImage(TC_COMPANY_LOGO_BASE64, 'PNG', 14, 11, 14, 14);
+    doc.addImage(TC_COMPANY_LOGO_BASE64, 'PNG', 14, 11, 14, 14, undefined, 'FAST');
   } catch (err) {
     console.warn('[poPdfGenerator] Failed to embed official company logo:', err);
     doc.setFillColor(194, 36, 36);

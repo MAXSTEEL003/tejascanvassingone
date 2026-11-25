@@ -28,6 +28,8 @@ export function getAuthorizedAdminEmails(): string[] {
   return Array.from(new Set([...AUTHORIZED_ADMIN_EMAILS, customAdmin, envEmail1, envEmail2].filter(Boolean)));
 }
 
+export const DEFAULT_FIREBASE_API_KEY = "AIzaSyCrSNFnMxwSFIMQamZaNmwy1yWVqBU42l4";
+
 export function getExpectedFirebaseProjectId(): string {
   return (
     process.env.FIREBASE_PROJECT_ID ||
@@ -202,7 +204,7 @@ export async function checkFirebaseUserAccountStatus(
       ? options.apiKeyOverride
       : (process.env.FIREBASE_API_KEY ||
          process.env.VITE_FIREBASE_API_KEY ||
-         "")
+         DEFAULT_FIREBASE_API_KEY)
   ).trim();
 
   if (!apiKey) {

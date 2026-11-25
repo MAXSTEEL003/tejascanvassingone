@@ -175,7 +175,6 @@ export async function dispatchPurchaseOrderEmail(payload: DispatchPoPayload): Pr
     const res = await fetch('/api/dispatch-po?_path=/api/dispatch-po', {
       method: 'POST',
       headers,
-      keepalive: true,
       body: JSON.stringify({
         to: recipientEmail,
         from: adminSender,
