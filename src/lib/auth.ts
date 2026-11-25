@@ -56,48 +56,78 @@ export function getAuthToken(): string | null {
 }
 
 /**
- * Retrieves a valid auth token for API dispatch requests:
- * 1. Checks Firebase Auth live ID token if logged in with Firebase
- * 2. Checks sessionStorage/localStorage for stored session token
- * 3. Fallbacks to generating a client token for authorized admin
+ * Helper to check if a token is a purely client-generated mock token
+ * (created via createClientAuthToken, which lacks cryptographic server or Google verification).
  */
-export async function getValidAuthToken(): Promise<string | null> {
-  // 1. Live Firebase ID token
+export function isClientMockToken(token?: string | null): boolean {
+  if (!token || typeof token !== 'string') return true;
+  const parts = token.split('.');
+  if (parts.length !== 3) return true;
+  try {
+    const sig = parts[2];
+    const decodedSig = atob(sig.replace(/-/g, '+').replace(/_/g, '/'));
+    if (decodedSig.startsWith('sig_')) return true;
+  } catch {}
+  return false;
+}
+
+/**
+ * Retrieves a valid auth token for API dispatch requests:
+ * 1. Checks Firebase Auth live ID token if logged in with Firebase (awaiting authStateReady if needed)
+ * 2. Checks sessionStorage/localStorage for stored verified session token (e.g. server-signed HMAC or cached Firebase token)
+ * 3. Never returns a client-only mock token to administrative dispatch endpoints.
+ */
+export async function getValidAuthToken(forceRefresh = true): Promise<string | null> {
+  // 1. Live Firebase ID token from currently signed-in Firebase user
   try {
     if (typeof window !== 'undefined') {
       const { auth } = await import('./firebase');
+
+      // Wait for Firebase Auth to finish initializing from IndexedDB if not yet loaded
+      if (!auth.currentUser && typeof auth.authStateReady === 'function') {
+        try {
+          await Promise.race([
+            auth.authStateReady(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Auth ready timeout')), 2500))
+          ]);
+        } catch (e) {
+          console.warn('[Auth] authStateReady wait notice:', e);
+        }
+      }
+
       if (auth.currentUser) {
-        const idToken = await auth.currentUser.getIdToken(false);
-        if (idToken) return idToken;
+        try {
+          // Obtain fresh Firebase ID token (forceRefresh: true guarantees it is unexpired)
+          const idToken = await auth.currentUser.getIdToken(forceRefresh);
+          if (idToken) {
+            try {
+              sessionStorage.setItem(TOKEN_KEY, idToken);
+              localStorage.setItem(TOKEN_KEY, idToken);
+            } catch {}
+            return idToken;
+          }
+        } catch (tokenErr) {
+          console.warn('[Auth] Error getting fresh Firebase ID token:', tokenErr);
+          // Fallback to cached token if network error during force refresh
+          try {
+            const cachedIdToken = await auth.currentUser.getIdToken(false);
+            if (cachedIdToken) return cachedIdToken;
+          } catch {}
+        }
       }
     }
-  } catch {}
+  } catch (err) {
+    console.warn('[Auth] Firebase Auth error in getValidAuthToken:', err);
+  }
 
-  // 2. Stored session token
+  // 2. Stored session token (e.g. server-signed HMAC token from /api/auth/login or cached Firebase token)
   const storedToken = getAuthToken();
-  if (storedToken) return storedToken;
+  if (storedToken && !isClientMockToken(storedToken)) {
+    return storedToken;
+  }
 
-  // 3. Fallback client token if admin session exists in localStorage
-  try {
-    const user = getAuthUser();
-    if (user && (user.role === 'admin' || user.username === 'tejasadinarayan')) {
-      return createClientAuthToken(user);
-    }
-    if (typeof window !== 'undefined') {
-      const role = localStorage.getItem('userRole');
-      if (role === 'admin') {
-        const email = localStorage.getItem('userEmail') || 'nani@tejasc.in';
-        const name = localStorage.getItem('userName') || 'Tejas Adinarayan (Admin)';
-        return createClientAuthToken({
-          username: 'tejasadinarayan',
-          role: 'admin',
-          name,
-          email,
-        });
-      }
-    }
-  } catch {}
-
+  // Do NOT return a mock client token with fake signature. Returning a mock token
+  // to administrative dispatch endpoints guarantees an HTTP 401 error from the backend.
   return null;
 }
 
@@ -159,12 +189,14 @@ export function parseTokenPayload(token: string): AuthenticatedUser | null {
     if (parsed.exp && parsed.exp < now) {
       return null;
     }
+    const email = parsed.email ? String(parsed.email).toLowerCase().trim() : '';
+    const resolvedRole = parsed.role || (isAuthorizedAdminGoogleAccount(email) ? 'admin' : (email ? 'merchant' : undefined));
     return {
-      sub: parsed.sub,
-      username: parsed.username,
-      role: parsed.role,
-      name: parsed.name,
-      email: parsed.email,
+      sub: parsed.sub || parsed.user_id,
+      username: parsed.username || (email ? email.split('@')[0] : 'admin'),
+      role: resolvedRole || 'merchant',
+      name: parsed.name || (email ? email.split('@')[0] : 'Tejas Admin'),
+      email: email,
       millerName: parsed.millerName,
       millerCode: parsed.millerCode,
       phone: parsed.phone,

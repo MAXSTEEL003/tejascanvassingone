@@ -16,6 +16,7 @@ import {
   getDoc,
   getDocFromServer,
   writeBatch,
+  runTransaction,
   Firestore,
   onSnapshot
 } from 'firebase/firestore';
@@ -674,6 +675,48 @@ export async function setCollectionDoc(collectionName: string, docId: string, da
     invalidateCollectionCache(collectionName);
   } catch (error) {
     console.warn(`Firestore setDoc warning for ${collectionName}/${docId}:`, error);
+    throw error;
+  }
+}
+
+// Helper: Run an atomic Firestore transaction on a placed_orders document
+export async function runPlacedOrderTransaction<T = any>(
+  orderId: string,
+  updateFn: (currentDoc: any) => { updateFields?: Record<string, any>; shouldAbort?: boolean; abortReason?: string; result?: T } | null | undefined
+): Promise<{ aborted: boolean; abortReason?: string; data?: any; result?: T } | null> {
+  const rawId = String(orderId).trim().replace(/^#/, '');
+  const docRef = doc(db, 'placed_orders', rawId);
+
+  try {
+    const outcome = await runTransaction(db, async (transaction) => {
+      const snap = await transaction.get(docRef);
+      if (!snap.exists()) {
+        console.warn(`[runPlacedOrderTransaction] Document placed_orders/${rawId} does not exist in Firestore`);
+        return null;
+      }
+      const currentData = snap.data() || {};
+      const res = updateFn(currentData);
+      if (!res || res.shouldAbort) {
+        if (res?.abortReason) {
+          console.warn(`[runPlacedOrderTransaction] Aborted for ${rawId}: ${res.abortReason}`);
+        }
+        return { aborted: true, abortReason: res?.abortReason, data: currentData, result: res?.result };
+      }
+
+      const cleanUpdate = JSON.parse(JSON.stringify(res.updateFields || {}));
+      if (cleanUpdate && typeof cleanUpdate === 'object' && cleanUpdate.id) {
+        cleanUpdate.id = String(cleanUpdate.id).trim().replace(/^#/, '');
+      }
+
+      transaction.set(docRef, cleanUpdate, { merge: true });
+      return { aborted: false, data: { ...currentData, ...cleanUpdate }, result: res.result };
+    });
+
+    deleteDoc(doc(db, 'placed_orders', `#${rawId}`)).catch(() => {});
+    invalidateCollectionCache('placed_orders');
+    return outcome;
+  } catch (error) {
+    console.warn(`[runPlacedOrderTransaction] Transaction failed for placed_orders/${rawId}:`, error);
     throw error;
   }
 }

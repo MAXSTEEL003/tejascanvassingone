@@ -150,6 +150,18 @@ export async function dispatchOrderPlacedWhatsApp(
 
   try {
     const authToken = await getValidAuthToken();
+    if (!authToken) {
+      console.warn('[WhatsApp Auto-Dispatch] Missing valid Admin authentication session token.');
+      return {
+        success: false,
+        status: 401,
+        deliveryStatus: 'Failed',
+        errorCode: 'AUTH_REQUIRED',
+        error: 'Admin authentication required. Please sign in with an authorized Admin account to dispatch customer WhatsApp notifications.',
+        message: 'Admin authentication required. Please sign in with an authorized Admin account to dispatch customer WhatsApp notifications.'
+      };
+    }
+
     const currentUser = getAuthUser();
     const adminUserEmail = currentUser?.email || (typeof window !== 'undefined' ? (localStorage.getItem('userEmail') || 'nani@tejasc.in') : 'nani@tejasc.in');
 
@@ -157,10 +169,8 @@ export async function dispatchOrderPlacedWhatsApp(
       'Content-Type': 'application/json',
       'x-requested-path': '/api/dispatch-whatsapp',
       'x-admin-email': adminUserEmail,
+      'Authorization': `Bearer ${authToken}`
     };
-    if (authToken) {
-      headers['Authorization'] = `Bearer ${authToken}`;
-    }
 
     const res = await fetch('/api/dispatch-whatsapp?_path=/api/dispatch-whatsapp', {
       method: 'POST',
@@ -193,8 +203,11 @@ export async function dispatchOrderPlacedWhatsApp(
         metaResponse: data.metaResponse
       };
     } else {
-      const errorMsg = data.error || data.message || `WhatsApp dispatch failed with HTTP ${res.status}`;
-      const errorCode = data.errorCode || data.metaResponse?.error?.code || (res.status >= 500 ? 'SERVER_ERROR' : 'DISPATCH_FAILED');
+      let errorMsg = data.error || data.message || `WhatsApp dispatch failed with HTTP ${res.status}`;
+      if (res.status === 401 || errorMsg.toLowerCase().includes('unauthorized') || errorMsg.toLowerCase().includes('admin privileges')) {
+        errorMsg = 'Admin authentication required. Please sign in with an authorized Admin account to dispatch customer WhatsApp notifications.';
+      }
+      const errorCode = data.errorCode || data.metaResponse?.error?.code || (res.status === 401 ? 'UNAUTHORIZED' : (res.status >= 500 ? 'SERVER_ERROR' : 'DISPATCH_FAILED'));
       console.warn(`[WhatsApp Auto-Dispatch] Backend/Meta returned error (HTTP ${res.status}, code ${errorCode}):`, errorMsg);
       return {
         success: false,
@@ -202,7 +215,7 @@ export async function dispatchOrderPlacedWhatsApp(
         deliveryStatus: 'Failed',
         errorCode,
         error: errorMsg,
-        message: data.message || errorMsg,
+        message: errorMsg,
         directUrl: data.directUrl,
         metaResponse: data.metaResponse
       };

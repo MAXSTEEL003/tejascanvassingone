@@ -487,13 +487,18 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
       localStorage.setItem('userId', userUid);
       localStorage.setItem('tejas_intro_viewed', 'true');
 
-      const token = createClientAuthToken({
-        sub: userUid,
-        username: userEmail.split('@')[0] || 'tejasadinarayan',
-        role: 'admin',
-        name: userName,
-        email: userEmail,
-      });
+      let token: string;
+      try {
+        token = await user.getIdToken(true);
+      } catch {
+        token = createClientAuthToken({
+          sub: userUid,
+          username: userEmail.split('@')[0] || 'tejasadinarayan',
+          role: 'admin',
+          name: userName,
+          email: userEmail,
+        });
+      }
       setAuthSession(token, {
         sub: userUid,
         username: userEmail.split('@')[0] || 'tejasadinarayan',
@@ -554,18 +559,23 @@ export default function LoginView({ defaultTab = 'signin', secretRole, defaultPo
         localStorage.setItem('userId', userUid);
         localStorage.setItem('tejas_intro_viewed', 'true');
 
-        const token = createClientAuthToken({
-          sub: userUid,
-          username: userEmail.split('@')[0] || 'tejasadinarayan',
-          role: 'admin',
-          name: userName,
-          email: userEmail,
-        });
+        let token: string;
+        try {
+          token = await user.getIdToken(true);
+        } catch {
+          token = createClientAuthToken({
+            sub: userUid,
+            username: userEmail.split('@')[0] || 'tejasadinarayan',
+            role: 'admin',
+            name: userName || 'Tejas Adinarayan (Admin)',
+            email: userEmail,
+          });
+        }
         setAuthSession(token, {
           sub: userUid,
           username: userEmail.split('@')[0] || 'tejasadinarayan',
           role: 'admin',
-          name: userName,
+          name: userName || 'Tejas Adinarayan (Admin)',
           email: userEmail,
         });
 

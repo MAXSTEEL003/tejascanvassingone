@@ -5,7 +5,8 @@ import { AreaChart, Area, XAxis, ResponsiveContainer, Tooltip, CartesianGrid } f
 import { cn, formatINR, getRegisteredSuppliers, getPrimaryRegisteredSupplier, sanitizeSupplierName, removeDeletedPlacedOrderId } from '../lib/utils';
 import { useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
-import { getCollectionDocs, syncCollection, setCollectionDoc, deleteCollectionDoc, createLedgerEntriesForOrder, db } from '../lib/firebase';
+import { getCollectionDocs, syncCollection, setCollectionDoc, deleteCollectionDoc, createLedgerEntriesForOrder, db, runPlacedOrderTransaction } from '../lib/firebase';
+import { getSubOrderStableKey, mergeSubOrderNotificationOutcomes, applyEmailFailureGuard } from '../utils/orderNotificationMerge';
 import { doc, deleteDoc, collection, getDocs, onSnapshot } from 'firebase/firestore';
 import SearchableSelect from '../components/SearchableSelect';
 import { generateSupplierPOEmailHtml, resolveSupplierProfile, isAuthenticSupplierEmail } from '../utils/poEmailTemplate';
@@ -2526,24 +2527,72 @@ export default function OrdersDashboard() {
         finalWaError = failedWaRecipients.map((s: any) => `${s.buyer || 'Buyer'}: ${s.whatsappError}`).join('; ');
       }
 
-      // 3. Persist notification diagnostics back to Firestore placed_orders
-      const notificationUpdate = {
-        purchaseOrderSent: finalEmailStatus === 'Sent',
-        purchaseOrderSentAt: finalEmailStatus === 'Sent' ? new Date().toISOString() : undefined,
-        poEmailStatus: finalEmailStatus,
-        poEmailError: finalEmailError,
-        smtpMessageId: emailMessageId,
-        emailDispatchMethod: emailMethod,
-        whatsappSent: acceptedWaRecipients.length > 0,
-        whatsappSentAt: acceptedWaRecipients.length > 0 ? new Date().toISOString() : undefined,
-        whatsappStatus: finalWaStatus,
-        whatsappError: finalWaError,
-        originalOrders: updatedSubOrders
-      };
+      // 3. Persist notification diagnostics back to Firestore placed_orders atomically
+      let notificationUpdate: any = null;
+      await runPlacedOrderTransaction(batchId, (currentDoc) => {
+        const currentOriginal = (currentDoc && Array.isArray(currentDoc.originalOrders) && currentDoc.originalOrders.length > 0)
+          ? currentDoc.originalOrders
+          : updatedSubOrders;
 
-      await setCollectionDoc('placed_orders', batchId, notificationUpdate).catch(err => {
-        console.warn('[OrdersDashboard] Could not update notification status in Firestore:', err);
+        const { mergedSubOrders, overallWaStatus, overallWaError } = mergeSubOrderNotificationOutcomes(
+          currentOriginal,
+          updatedSubOrders.map((s: any) => ({
+            stableKey: getSubOrderStableKey(s),
+            subId: s.id,
+            supplierSubOrderNo: s.supplierSubOrderNo,
+            subOrderNo: s.subOrderNo,
+            buyerRequestNo: s.buyerRequestNo,
+            orderNo: s.orderNo,
+            phone: s.phone,
+            whatsappSent: s.whatsappSent,
+            whatsappStatus: s.whatsappStatus,
+            whatsappError: s.whatsappError,
+            whatsappMessageId: s.whatsappMessageId,
+            whatsappSentAt: s.whatsappSentAt,
+            adminCopySent: s.adminCopySent
+          })),
+          currentDoc
+        );
+
+        const emailGuard = applyEmailFailureGuard(currentDoc, finalEmailError || 'Email dispatch failed');
+        const poSent = finalEmailStatus === 'Sent' ? true : (emailGuard.shouldAbort ? true : false);
+        const poStatus = finalEmailStatus === 'Sent' ? 'Sent' : (emailGuard.shouldAbort ? 'Sent' : 'Failed');
+        const poErr = finalEmailStatus === 'Sent' ? null : (emailGuard.shouldAbort ? null : (finalEmailError || null));
+
+        notificationUpdate = {
+          purchaseOrderSent: poSent,
+          purchaseOrderSentAt: poSent ? (currentDoc?.purchaseOrderSentAt || new Date().toISOString()) : undefined,
+          poEmailStatus: poStatus,
+          poEmailError: poErr,
+          smtpMessageId: emailMessageId || currentDoc?.smtpMessageId,
+          emailDispatchMethod: emailMethod || currentDoc?.emailDispatchMethod,
+          whatsappSent: overallWaStatus === 'Accepted' || overallWaStatus === 'Delivered',
+          whatsappSentAt: (overallWaStatus === 'Accepted' || overallWaStatus === 'Delivered') ? (currentDoc?.whatsappSentAt || new Date().toISOString()) : undefined,
+          whatsappStatus: overallWaStatus,
+          whatsappError: overallWaError,
+          originalOrders: mergedSubOrders
+        };
+
+        return { updateFields: notificationUpdate };
+      }).catch(err => {
+        console.warn('[OrdersDashboard] Could not update notification status in Firestore atomically:', err);
       });
+
+      if (!notificationUpdate) {
+        notificationUpdate = {
+          purchaseOrderSent: finalEmailStatus === 'Sent',
+          purchaseOrderSentAt: finalEmailStatus === 'Sent' ? new Date().toISOString() : undefined,
+          poEmailStatus: finalEmailStatus,
+          poEmailError: finalEmailError || null,
+          smtpMessageId: emailMessageId,
+          emailDispatchMethod: emailMethod,
+          whatsappSent: acceptedWaRecipients.length > 0,
+          whatsappSentAt: acceptedWaRecipients.length > 0 ? new Date().toISOString() : undefined,
+          whatsappStatus: finalWaStatus,
+          whatsappError: finalWaError || null,
+          originalOrders: updatedSubOrders
+        };
+      }
 
       // 4. Update localStorage and active state
       try {

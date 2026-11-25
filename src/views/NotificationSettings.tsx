@@ -32,7 +32,7 @@ import { cn, resolveBuyerProfile, syncCurrentMerchantProfile } from '../lib/util
 import { auth, getCollectionDocs, setCollectionDoc } from '../lib/firebase';
 import { generateSupplierPOEmailHtml } from '../utils/poEmailTemplate';
 import { generatePoPdfBase64, getPoPdfFileName } from '../utils/poPdfGenerator';
-import { getAuthToken } from '../lib/auth';
+import { getAuthToken, getValidAuthToken } from '../lib/auth';
 
 interface NotificationSetting {
   id: string;
@@ -245,9 +245,13 @@ export default function NotificationSettings() {
         testSubOrders
       );
 
+      const authToken = await getValidAuthToken();
       const res = await fetch('/api/dispatch-po', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {})
+        },
         body: JSON.stringify({
           to: testSupplierEmail,
           from: 'nani@tejasc.in',
@@ -260,9 +264,13 @@ export default function NotificationSettings() {
       });
 
       const data = await res.json();
+      let feedbackText = data.message || (data.success ? 'Dispatched via Gmail API' : (data.error || 'Dispatch rejected'));
+      if (res.status === 401) {
+        feedbackText = 'Admin authentication required. Please sign in with an authorized Admin account to test PO email dispatch.';
+      }
       setTestFeedback({
         type: data.success ? 'success' : 'error',
-        text: `Gmail API Result: ${data.message || 'Dispatched via Gmail API'} (Status: ${data.status || 'OK'}${data.gmailMessageId ? `, Message ID: ${data.gmailMessageId}` : ''})`
+        text: `Gmail API Result: ${feedbackText} (Status: ${data.status || (res.ok ? 'OK' : 'Unauthorized')}${data.gmailMessageId ? `, Message ID: ${data.gmailMessageId}` : ''})`
       });
       fetchHistory();
       fetchGmailOAuthStatus();
@@ -439,9 +447,13 @@ export default function NotificationSettings() {
       if (customMetaToken.trim()) payload.accessToken = customMetaToken.trim();
       if (customMetaTemplateName.trim()) payload.templateName = customMetaTemplateName.trim();
 
+      const authToken = await getValidAuthToken();
       const res = await fetch('/api/dispatch-whatsapp', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {})
+        },
         body: JSON.stringify(payload)
       });
 
@@ -461,7 +473,9 @@ export default function NotificationSettings() {
         }
       } else {
         let errorText = data.error || data.message || 'Dispatch failed';
-        if (errorText.toLowerCase().includes('authentication error') || errorText.toLowerCase().includes('oauth')) {
+        if (res.status === 401 || errorText.toLowerCase().includes('unauthorized') || errorText.toLowerCase().includes('admin privileges')) {
+          errorText = 'Admin authentication required. Please sign in with an authorized Admin account to test WhatsApp notifications.';
+        } else if (errorText.toLowerCase().includes('authentication error') || errorText.toLowerCase().includes('oauth')) {
           errorText = 'Meta Access Token / Phone Number ID is expired or invalid. Please paste your active System User Access Token and Phone Number ID in the card below and save.';
         }
         setTestFeedback({

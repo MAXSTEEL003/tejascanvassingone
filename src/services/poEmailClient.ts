@@ -134,6 +134,17 @@ export async function dispatchPurchaseOrderEmail(payload: DispatchPoPayload): Pr
   // Path 1: Dispatch via Backend API endpoint (/api/dispatch-po)
   try {
     const authToken = await getValidAuthToken();
+    if (!authToken) {
+      console.warn('[PO Email Dispatch] Missing valid Admin authentication session token.');
+      return {
+        success: false,
+        isLiveSent: false,
+        status: 'Failed',
+        error: 'Admin authentication required. Please sign in with an authorized Admin account to dispatch purchase orders.',
+        gmailComposeUrl: composeUrl
+      };
+    }
+
     const currentUser = getAuthUser();
     const adminUserEmail = currentUser?.email || (typeof window !== 'undefined' ? (localStorage.getItem('userEmail') || 'nani@tejasc.in') : 'nani@tejasc.in');
 
@@ -141,10 +152,8 @@ export async function dispatchPurchaseOrderEmail(payload: DispatchPoPayload): Pr
       'Content-Type': 'application/json',
       'x-requested-path': '/api/dispatch-po',
       'x-admin-email': adminUserEmail,
+      'Authorization': `Bearer ${authToken}`
     };
-    if (authToken) {
-      headers['Authorization'] = `Bearer ${authToken}`;
-    }
 
     const res = await fetch('/api/dispatch-po?_path=/api/dispatch-po', {
       method: 'POST',
@@ -182,11 +191,15 @@ export async function dispatchPurchaseOrderEmail(payload: DispatchPoPayload): Pr
           gmailComposeUrl: composeUrl
         };
       }
+      let errorMsg = data.error || data.message || 'PO email dispatch was rejected by backend.';
+      if (res.status === 401 || errorMsg.toLowerCase().includes('unauthorized') || errorMsg.toLowerCase().includes('admin privileges')) {
+        errorMsg = 'Admin authentication required. Please sign in with an authorized Admin account to dispatch purchase orders.';
+      }
       return {
         success: false,
         isLiveSent: false,
         status: 'Failed',
-        error: data.error || data.message || 'PO email dispatch was rejected by backend.',
+        error: errorMsg,
         gmailComposeUrl: composeUrl
       };
     }
@@ -195,10 +208,15 @@ export async function dispatchPurchaseOrderEmail(payload: DispatchPoPayload): Pr
     let backendErrorMessage = '';
     if (contentType.includes('application/json')) {
       const errData = await res.json().catch(() => ({}));
-      backendErrorMessage = errData.error || errData.message || `Backend dispatch returned HTTP ${res.status}`;
+      const rawError = errData.error || errData.message || `Backend dispatch returned HTTP ${res.status}`;
+      backendErrorMessage = (res.status === 401 || rawError.toLowerCase().includes('unauthorized') || rawError.toLowerCase().includes('admin privileges'))
+        ? 'Admin authentication required. Please sign in with an authorized Admin account to dispatch purchase orders.'
+        : rawError;
     } else {
       // Backend returned HTML or non-JSON (e.g. routing error or server crash)
-      backendErrorMessage = `Backend returned non-JSON response (HTTP ${res.status}, ${contentType}). Check Vercel API routing.`;
+      backendErrorMessage = (res.status === 401)
+        ? 'Admin authentication required. Please sign in with an authorized Admin account to dispatch purchase orders.'
+        : `Backend returned non-JSON response (HTTP ${res.status}, ${contentType}). Check Vercel API routing.`;
     }
 
     console.warn('[PO Email Dispatch] Backend dispatch failed:', backendErrorMessage);

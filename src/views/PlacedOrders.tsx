@@ -49,7 +49,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { cn, formatINR, getRegisteredSuppliers, sanitizeSupplierName, getDeletedPlacedOrderIds, addDeletedPlacedOrderIds, removeDeletedPlacedOrderId, addDeletedProcurementIds, resolveBuyerProfile as resolveActiveBuyerProfile } from '../lib/utils';
-import { getCollectionDocs, setCollectionDoc, deleteCollectionDoc, markLedgerEntriesAsArrived, autoCreateArrivalEntryForIncomingLog, updateLedgersForLifting, removeArrivalEntryForSubOrder, db } from '../lib/firebase';
+import { getCollectionDocs, getSingleDoc, setCollectionDoc, deleteCollectionDoc, markLedgerEntriesAsArrived, autoCreateArrivalEntryForIncomingLog, updateLedgersForLifting, removeArrivalEntryForSubOrder, db, runPlacedOrderTransaction } from '../lib/firebase';
+import { getSubOrderStableKey, mergeSubOrderNotificationOutcomes, applyEmailFailureGuard, applyWhatsAppFailureGuard } from '../utils/orderNotificationMerge';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { verifyActionWithServer } from '../lib/auth';
 import { generateSupplierPOEmailHtml, generateSupplierPOA4PrintHtml, printPoDocument, resolveBuyerProfile, formatPoDate, resolveSupplierProfile, isAuthenticSupplierEmail } from '../utils/poEmailTemplate';
@@ -865,8 +866,8 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                   const emailFailed = Boolean(trkRec.status === 'Failed');
                   const waSent = Boolean(trkRec.whatsappSent || trkRec.whatsappMessageId || trkRec.whatsappStatus === 'Accepted' || trkRec.whatsappStatus === 'Delivered');
                   const waFailed = Boolean(trkRec.whatsappStatus === 'Failed');
-                  const needsEmailUpdate = (emailSent && (!p.purchaseOrderSent || p.poEmailStatus !== 'Sent')) || (emailFailed && p.poEmailStatus !== 'Failed');
-                  const needsWaUpdate = (waSent && !p.whatsappSent) || (waFailed && p.whatsappStatus !== 'Failed');
+                  const needsEmailUpdate = (emailSent && (!p.purchaseOrderSent || p.poEmailStatus !== 'Sent' || p.poEmailError)) || (emailFailed && p.poEmailStatus !== 'Failed');
+                  const needsWaUpdate = (waSent && (!p.whatsappSent || p.whatsappStatus !== (trkRec.whatsappStatus || 'Accepted') || p.whatsappError)) || (waFailed && p.whatsappStatus !== 'Failed');
                   if (needsEmailUpdate || needsWaUpdate) {
                     changed = true;
                     return {
@@ -874,11 +875,11 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                       purchaseOrderSent: emailSent ? true : (emailFailed ? false : p.purchaseOrderSent),
                       purchaseOrderSentAt: trkRec.sentAt || p.purchaseOrderSentAt || (emailSent ? new Date().toISOString() : undefined),
                       poEmailStatus: emailSent ? 'Sent' : (emailFailed ? 'Failed' : p.poEmailStatus),
-                      poEmailError: emailFailed ? (trkRec.error || p.poEmailError) : (emailSent ? undefined : p.poEmailError),
+                      poEmailError: emailFailed ? (trkRec.error || p.poEmailError) : (emailSent ? null : p.poEmailError),
                       smtpMessageId: trkRec.gmailMessageId || p.smtpMessageId,
                       whatsappSent: waSent ? true : (waFailed ? false : p.whatsappSent),
                       whatsappStatus: trkRec.whatsappStatus || (waSent ? 'Accepted' : (waFailed ? 'Failed' : p.whatsappStatus)),
-                      whatsappError: waFailed ? (trkRec.whatsappError || p.whatsappError) : p.whatsappError,
+                      whatsappError: waFailed ? (trkRec.whatsappError || p.whatsappError) : (waSent ? null : p.whatsappError),
                       whatsappSentAt: trkRec.whatsappSentAt || p.whatsappSentAt || (waSent ? new Date().toISOString() : undefined),
                       whatsappMessageId: trkRec.whatsappMessageId || p.whatsappMessageId || (waSent ? 'sent' : undefined)
                     };
@@ -930,14 +931,13 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
 
       if (!poRecipient || !isAuthenticSupplierEmail(poRecipient)) {
         const errorMsg = `Cannot send PO email: No valid authentic email configured for supplier "${supplierName}". Please configure an authentic email in Supplier Settings.`;
-        const updatedOrder = {
-          ...order,
-          poEmailStatus: 'Failed',
+        const emailValidationFailure = {
+          poEmailStatus: 'Failed' as const,
           poEmailError: errorMsg,
           purchaseOrderSent: false
         };
-        await setCollectionDoc('placed_orders', order.id, updatedOrder);
-        setCurrentPlacedOrders(prev => prev.map(o => o.id === order.id ? updatedOrder : o));
+        await setCollectionDoc('placed_orders', order.id, emailValidationFailure);
+        setCurrentPlacedOrders(prev => prev.map(o => o.id === order.id ? { ...o, ...emailValidationFailure } : o));
         alert(errorMsg);
         return;
       }
@@ -972,42 +972,65 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
       });
 
       if (dispatchRes.success && (dispatchRes.isLiveSent || dispatchRes.status === 'Sent')) {
-        const updatedOrder = {
-          ...order,
+        const emailSuccessFields = {
           purchaseOrderSent: true,
           purchaseOrderSentAt: new Date().toISOString(),
-          poEmailStatus: 'Sent',
-          poEmailError: undefined,
-          smtpMessageId: dispatchRes.messageId,
+          poEmailStatus: 'Sent' as const,
+          poEmailError: null,
+          smtpMessageId: dispatchRes.messageId || null,
           sellerEmail: poRecipient
         };
-        await setCollectionDoc('placed_orders', order.id, updatedOrder);
-        setCurrentPlacedOrders(prev => prev.map(o => o.id === order.id ? updatedOrder : o));
+        await runPlacedOrderTransaction(order.id, () => ({
+          updateFields: emailSuccessFields
+        }));
+        setCurrentPlacedOrders(prev => prev.map(o => o.id === order.id ? { ...o, ...emailSuccessFields } : o));
         fetchTrackingRecords();
       } else {
-        const errorMsg = dispatchRes.error || 'Live email transmission failed.';
-        const updatedOrder = {
-          ...order,
-          purchaseOrderSent: false,
-          poEmailStatus: 'Failed',
-          poEmailError: errorMsg
-        };
-        await setCollectionDoc('placed_orders', order.id, updatedOrder);
-        setCurrentPlacedOrders(prev => prev.map(o => o.id === order.id ? updatedOrder : o));
-        alert(`PO Email Retry Failed: ${errorMsg}`);
+        let errorMsg = dispatchRes.error || 'Live email transmission failed.';
+        if (errorMsg.toLowerCase().includes('unauthorized') || errorMsg.toLowerCase().includes('admin privileges')) {
+          errorMsg = 'Admin authentication required. Please sign in with an authorized Admin account to dispatch purchase orders.';
+        }
+
+        // Concurrency guard in atomic transaction: Do NOT overwrite a newer successful Sent state with a delayed failure
+        const txnRes = await runPlacedOrderTransaction(order.id, (currentDoc) => {
+          return applyEmailFailureGuard(currentDoc, errorMsg);
+        });
+
+        if (!txnRes?.aborted) {
+          const emailFailureFields = {
+            purchaseOrderSent: false,
+            poEmailStatus: 'Failed' as const,
+            poEmailError: errorMsg
+          };
+          setCurrentPlacedOrders(prev => prev.map(o => o.id === order.id ? { ...o, ...emailFailureFields } : o));
+          alert(`PO Email Retry Failed: ${errorMsg}`);
+        } else {
+          console.warn(`[PO Email Retry] Guarded against delayed failure overwrite in transaction: order ${order.id} is already in Sent state.`);
+        }
       }
     } catch (err: any) {
       console.error('Error retrying PO email:', err);
-      const errorMsg = err.message || 'PO email dispatch error';
-      const updatedOrder = {
-        ...order,
-        purchaseOrderSent: false,
-        poEmailStatus: 'Failed',
-        poEmailError: errorMsg
-      };
-      await setCollectionDoc('placed_orders', order.id, updatedOrder);
-      setCurrentPlacedOrders(prev => prev.map(o => o.id === order.id ? updatedOrder : o));
-      alert(`PO Email Retry Failed: ${errorMsg}`);
+      let errorMsg = err.message || 'PO email dispatch error';
+      if (errorMsg.toLowerCase().includes('unauthorized') || errorMsg.toLowerCase().includes('admin privileges')) {
+        errorMsg = 'Admin authentication required. Please sign in with an authorized Admin account to dispatch purchase orders.';
+      }
+
+      // Concurrency guard in atomic transaction: Do NOT overwrite a newer successful Sent state with a delayed exception
+      const txnRes = await runPlacedOrderTransaction(order.id, (currentDoc) => {
+        return applyEmailFailureGuard(currentDoc, errorMsg);
+      }).catch(() => null);
+
+      if (!txnRes?.aborted) {
+        const emailFailureFields = {
+          purchaseOrderSent: false,
+          poEmailStatus: 'Failed' as const,
+          poEmailError: errorMsg
+        };
+        setCurrentPlacedOrders(prev => prev.map(o => o.id === order.id ? { ...o, ...emailFailureFields } : o));
+        alert(`PO Email Retry Failed: ${errorMsg}`);
+      } else {
+        console.warn(`[PO Email Retry] Guarded against delayed exception overwrite in transaction: order ${order.id} is already in Sent state.`);
+      }
     } finally {
       setRetryingOrderEmail(null);
     }
@@ -1023,7 +1046,8 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
         ? order.originalOrders
         : [order];
 
-      const updatedSubs = await Promise.all(subs.map(async (sub: any) => {
+      const updatedSubsOutcomes = await Promise.all(subs.map(async (sub: any) => {
+        const stableKey = getSubOrderStableKey(sub);
         const buyerName = (sub.buyer || order.buyer || '').trim();
         const prof = buyerName ? resolveBuyerProfile(buyerName) : null;
         const rawPhone = String(sub.phone || (prof ? prof.phone : '') || '').replace(/\D/g, '');
@@ -1033,9 +1057,15 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
 
         if (!targetPhone) {
           return {
-            ...sub,
+            stableKey,
+            subId: sub.id || null,
+            supplierSubOrderNo: sub.supplierSubOrderNo || null,
+            subOrderNo: sub.subOrderNo || null,
+            buyerRequestNo: sub.buyerRequestNo || null,
+            orderNo: sub.orderNo || null,
+            phone: '',
             whatsappSent: false,
-            whatsappStatus: 'Failed',
+            whatsappStatus: 'Failed' as const,
             whatsappError: `No valid 10-digit phone number found for buyer "${buyerName || 'Unknown'}"`
           };
         }
@@ -1057,40 +1087,88 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
 
         const isAccepted = waRes.success && (waRes.deliveryStatus === 'Accepted' || waRes.status === 200);
         return {
-          ...sub,
+          stableKey,
+          subId: sub.id || null,
+          supplierSubOrderNo: sub.supplierSubOrderNo || null,
+          subOrderNo: sub.subOrderNo || null,
+          buyerRequestNo: sub.buyerRequestNo || null,
+          orderNo: sub.orderNo || null,
           phone: targetPhone,
           whatsappSent: isAccepted,
-          whatsappStatus: waRes.deliveryStatus || (isAccepted ? 'Accepted' : 'Failed'),
+          whatsappStatus: waRes.deliveryStatus || (isAccepted ? ('Accepted' as const) : ('Failed' as const)),
           whatsappError: waRes.error,
           whatsappMessageId: waRes.messageId,
           whatsappSentAt: isAccepted ? new Date().toISOString() : sub.whatsappSentAt
         };
       }));
 
-      const allAcceptedOrDelivered = updatedSubs.every((s: any) => s.whatsappStatus === 'Accepted' || s.whatsappStatus === 'Delivered');
-      const anyDelivered = updatedSubs.some((s: any) => s.whatsappStatus === 'Delivered');
-      const anyFailed = updatedSubs.some((s: any) => s.whatsappStatus === 'Failed');
-      const overallWaStatus = anyDelivered ? 'Delivered' : (allAcceptedOrDelivered ? 'Accepted' : (anyFailed ? 'Failed' : 'Pending'));
-      const overallWaError = updatedSubs.find((s: any) => s.whatsappError)?.whatsappError;
+      // Atomic transaction: Read fresh document inside transaction, match sub-orders strictly by stable unique ID,
+      // and update notification outcomes without overwriting concurrent sub-order modifications.
+      const txnResult = await runPlacedOrderTransaction(order.id, (currentDoc) => {
+        const latestOriginalOrders = (currentDoc && Array.isArray(currentDoc.originalOrders) && currentDoc.originalOrders.length > 0)
+          ? currentDoc.originalOrders
+          : (order.originalOrders || subs);
 
-      const updatedOrder = {
-        ...order,
-        originalOrders: updatedSubs,
-        whatsappSent: allAcceptedOrDelivered,
-        whatsappStatus: overallWaStatus,
-        whatsappError: overallWaError,
-        whatsappSentAt: allAcceptedOrDelivered ? new Date().toISOString() : order.whatsappSentAt
+        const { mergedSubOrders, overallWaStatus, overallWaError } = mergeSubOrderNotificationOutcomes(
+          latestOriginalOrders,
+          updatedSubsOutcomes,
+          currentDoc
+        );
+
+        const waNotificationFields = {
+          originalOrders: mergedSubOrders,
+          whatsappSent: overallWaStatus === 'Delivered' || overallWaStatus === 'Accepted',
+          whatsappStatus: overallWaStatus,
+          whatsappError: overallWaError,
+          whatsappSentAt: (overallWaStatus === 'Delivered' || overallWaStatus === 'Accepted')
+            ? (currentDoc?.whatsappSentAt || order.whatsappSentAt || new Date().toISOString())
+            : (currentDoc?.whatsappSentAt || order.whatsappSentAt || null)
+        };
+
+        return { 
+          updateFields: waNotificationFields, 
+          result: { 
+            waNotificationFields, 
+            anySubFailed: overallWaStatus === 'Failed', 
+            overallWaError 
+          } 
+        };
+      });
+
+      const committedUpdate = txnResult?.result?.waNotificationFields || {
+        originalOrders: subs,
+        whatsappSent: false,
+        whatsappStatus: 'Failed' as const,
+        whatsappError: 'Could not complete atomic transaction'
       };
 
-      await setCollectionDoc('placed_orders', order.id, updatedOrder);
-      setCurrentPlacedOrders(prev => prev.map(o => o.id === order.id ? updatedOrder : o));
+      setCurrentPlacedOrders(prev => prev.map(o => o.id === order.id ? { ...o, ...committedUpdate } : o));
 
-      if (anyFailed && overallWaError) {
-        alert(`Customer WhatsApp Retry issue: ${overallWaError}`);
+      try {
+        const saved = JSON.parse(localStorage.getItem('placed_orders') || '[]');
+        const updatedSaved = saved.map((o: any) => o.id === order.id ? { ...o, ...committedUpdate } : o);
+        localStorage.setItem('placed_orders', JSON.stringify(updatedSaved));
+      } catch {}
+
+      if (txnResult?.result?.anySubFailed && txnResult?.result?.overallWaError) {
+        let friendlyMsg = txnResult.result.overallWaError;
+        if (friendlyMsg.toLowerCase().includes('unauthorized') || friendlyMsg.toLowerCase().includes('admin privileges')) {
+          friendlyMsg = 'Admin authentication required. Please sign in with an authorized Admin account to dispatch customer WhatsApp notifications.';
+        }
+        alert(`Customer WhatsApp Retry issue: ${friendlyMsg}`);
       }
     } catch (err: any) {
       console.error('Error retrying WhatsApp:', err);
-      const errorMsg = err.message || 'WhatsApp dispatch error';
+      let errorMsg = err.message || 'WhatsApp dispatch error';
+      if (errorMsg.toLowerCase().includes('unauthorized') || errorMsg.toLowerCase().includes('admin privileges')) {
+        errorMsg = 'Admin authentication required. Please sign in with an authorized Admin account to dispatch customer WhatsApp notifications.';
+      }
+
+      // Concurrency guard in atomic transaction: Do NOT overwrite a newer successful Accepted/Delivered state with a delayed exception
+      await runPlacedOrderTransaction(order.id, (currentDoc) => {
+        return applyWhatsAppFailureGuard(currentDoc, errorMsg);
+      }).catch(() => null);
+
       alert(`Customer WhatsApp Retry Failed: ${errorMsg}`);
     } finally {
       setRetryingOrderWhatsApp(null);
@@ -2425,20 +2503,20 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
       if (dispatchRes.success && (dispatchRes.isLiveSent || dispatchRes.status === 'Sent')) {
         setPoLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Dispatch Success: PO email transmitted (${dispatchRes.method || 'SMTP'}) - ID: ${dispatchRes.messageId || 'OK'}`]);
 
-        const updatedOrder = {
-          ...poOrder,
+        const emailNotificationFields = {
           purchaseOrderSent: true,
           purchaseOrderSentAt: new Date().toISOString(),
-          poEmailStatus: 'Sent',
+          poEmailStatus: 'Sent' as const,
+          poEmailError: null,
           companyEmail: poSender || 'nani@tejasc.in',
           sellerEmail: poRecipient
         };
 
-        await setCollectionDoc('placed_orders', poOrder.id, updatedOrder);
-        setCurrentPlacedOrders(prev => prev.map(o => o.id === poOrder.id ? updatedOrder : o));
+        await setCollectionDoc('placed_orders', poOrder.id, emailNotificationFields);
+        setCurrentPlacedOrders(prev => prev.map(o => o.id === poOrder.id ? { ...o, ...emailNotificationFields } : o));
         
         const saved = JSON.parse(localStorage.getItem('placed_orders') || '[]');
-        const updatedSaved = saved.map((o: any) => o.id === poOrder.id ? updatedOrder : o);
+        const updatedSaved = saved.map((o: any) => o.id === poOrder.id ? { ...o, ...emailNotificationFields } : o);
         localStorage.setItem('placed_orders', JSON.stringify(updatedSaved));
         localStorage.setItem('companyEmail', poSender || 'nani@tejasc.in');
 
@@ -2450,32 +2528,47 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
           `[${new Date().toLocaleTimeString()}] Error: ${errorDetail}`,
           `[${new Date().toLocaleTimeString()}] You can open Gmail Web Compose using the button below to dispatch instantly.`
         ]);
-        const failedOrder = {
-          ...poOrder,
-          purchaseOrderSent: false,
-          poEmailStatus: 'Failed',
-          poEmailError: errorDetail
-        };
-        await setCollectionDoc('placed_orders', poOrder.id, failedOrder).catch(() => {});
-        setCurrentPlacedOrders(prev => prev.map(o => o.id === poOrder.id ? failedOrder : o));
-        const saved = JSON.parse(localStorage.getItem('placed_orders') || '[]');
-        const updatedSaved = saved.map((o: any) => o.id === poOrder.id ? failedOrder : o);
-        localStorage.setItem('placed_orders', JSON.stringify(updatedSaved));
-        setSendingSuccess(false);
+        // Concurrency guard in atomic transaction: check if order was already marked Sent
+        const txnRes = await runPlacedOrderTransaction(poOrder.id, (currentDoc) => {
+          return applyEmailFailureGuard(currentDoc, errorDetail);
+        }).catch(() => null);
+
+        if (!txnRes?.aborted) {
+          const emailFailureFields = {
+            purchaseOrderSent: false,
+            poEmailStatus: 'Failed' as const,
+            poEmailError: errorDetail
+          };
+          setCurrentPlacedOrders(prev => prev.map(o => o.id === poOrder.id ? { ...o, ...emailFailureFields } : o));
+          const saved = JSON.parse(localStorage.getItem('placed_orders') || '[]');
+          const updatedSaved = saved.map((o: any) => o.id === poOrder.id ? { ...o, ...emailFailureFields } : o);
+          localStorage.setItem('placed_orders', JSON.stringify(updatedSaved));
+          setSendingSuccess(false);
+        } else {
+          console.warn(`[PO Modal Dispatch] Guarded against delayed failure overwrite in transaction: order ${poOrder.id} is already in Sent state.`);
+        }
       }
     } catch (e: any) {
       console.error(e);
       const errorMsg = e.message || 'Communication error';
       setPoLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Error: ${errorMsg}`]);
-      const failedOrder = {
-        ...poOrder,
-        purchaseOrderSent: false,
-        poEmailStatus: 'Failed',
-        poEmailError: errorMsg
-      };
-      await setCollectionDoc('placed_orders', poOrder.id, failedOrder).catch(() => {});
-      setCurrentPlacedOrders(prev => prev.map(o => o.id === poOrder.id ? failedOrder : o));
-      setSendingSuccess(false);
+
+      // Concurrency guard in atomic transaction: check if order was already marked Sent
+      const txnRes = await runPlacedOrderTransaction(poOrder.id, (currentDoc) => {
+        return applyEmailFailureGuard(currentDoc, errorMsg);
+      }).catch(() => null);
+
+      if (!txnRes?.aborted) {
+        const emailFailureFields = {
+          purchaseOrderSent: false,
+          poEmailStatus: 'Failed' as const,
+          poEmailError: errorMsg
+        };
+        setCurrentPlacedOrders(prev => prev.map(o => o.id === poOrder.id ? { ...o, ...emailFailureFields } : o));
+        setSendingSuccess(false);
+      } else {
+        console.warn(`[PO Modal Dispatch] Guarded against delayed exception overwrite in transaction: order ${poOrder.id} is already in Sent state.`);
+      }
     } finally {
       setIsSendingPO(false);
     }
@@ -3732,7 +3825,25 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                       })();
                       const waError = order.whatsappError || trk?.whatsappError || '';
 
-                      const lastErrorMessage = (emailStatus === 'Failed' ? emailError : '') || (waStatus === 'Failed' ? waError : '') || order.poEmailError || order.whatsappError || '';
+                      const activeEmailError = emailStatus === 'Failed' ? (emailError || 'PO email dispatch failed') : '';
+                      const activeWaError = waStatus === 'Failed' ? (waError || 'Customer WhatsApp dispatch failed') : '';
+
+                      const lastErrorMessage = (() => {
+                        if (activeEmailError && activeWaError) {
+                          return `PO Email: ${activeEmailError} | Customer WhatsApp: ${activeWaError}`;
+                        }
+                        if (activeEmailError) {
+                          return activeEmailError.toLowerCase().includes('po email') || activeEmailError.toLowerCase().includes('purchase order')
+                            ? activeEmailError
+                            : `PO Email: ${activeEmailError}`;
+                        }
+                        if (activeWaError) {
+                          return activeWaError.toLowerCase().includes('whatsapp')
+                            ? activeWaError
+                            : `Customer WhatsApp: ${activeWaError}`;
+                        }
+                        return '';
+                      })();
 
                       const canRetryEmail = emailStatus !== 'Sent';
                       const canRetryWhatsApp = waStatus !== 'Delivered' && waStatus !== 'Accepted';
