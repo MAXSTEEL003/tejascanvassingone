@@ -1353,28 +1353,6 @@ app.post(["/api/dispatch-po", "/api/send-po-email", "/dispatch-po", "/send-po-em
     const ackUrl = `${baseUrl}/acknowledge-po?po=${encodeURIComponent(orderId)}&t=${token}&d=${dateStr}`;
     const trackingPixelUrl = `${baseUrl}/api/track-open?po=${encodeURIComponent(orderId)}&t=${token}`;
 
-    let effectivePdfBase64 = pdfBase64;
-    let effectivePdfFilename = pdfFilename || `PO_${poRef}_Tejas_Canvassing.pdf`;
-
-    if (!effectivePdfBase64) {
-      try {
-        const orderForPdf = orderDetails || {
-          id: orderId,
-          poNumber: poRef,
-          supplier,
-          date: new Date().toISOString()
-        };
-        const subOrdersForPdf = orderDetails?.originalOrders || [];
-        const poGen = await import("../src/utils/poPdfGenerator.js").catch(() => null);
-        if (poGen?.generatePoPdfBase64) {
-          effectivePdfBase64 = poGen.generatePoPdfBase64(orderForPdf, subOrdersForPdf);
-          effectivePdfFilename = poGen.getPoPdfFileName(orderForPdf);
-        }
-      } catch (pdfErr) {
-        console.warn(`[PO PDF Generator] Server-side fallback PDF generation skipped:`, pdfErr);
-      }
-    }
-
     // 1D. QUEUE EMAIL JOB (Section 7)
     queueEmailJob({
       orderId,
@@ -1382,8 +1360,6 @@ app.post(["/api/dispatch-po", "/api/send-po-email", "/dispatch-po", "/send-po-em
       supplierName: supplier,
       recipientEmail,
       acknowledgementUrl: ackUrl,
-      pdfFilename: effectivePdfFilename,
-      pdfSizeBytes: effectivePdfBase64 ? Buffer.from(effectivePdfBase64, 'base64').length : undefined,
     });
 
     updateTrackingStatus(orderId, { status: "Sending" }, {
@@ -1452,8 +1428,6 @@ app.post(["/api/dispatch-po", "/api/send-po-email", "/dispatch-po", "/send-po-em
           subject: finalSubject,
           htmlContent: finalHtml,
           textContent: finalText,
-          pdfBase64: effectivePdfBase64,
-          pdfFilename: effectivePdfFilename,
           // If server OAuth is configured, always use server credentials; only use client token as secondary fallback
           accessToken: isServerOAuthConfigured ? undefined : effectiveToken,
         });
@@ -1489,12 +1463,7 @@ app.post(["/api/dispatch-po", "/api/send-po-email", "/dispatch-po", "/send-po-em
               auth: { user: smtpUser, pass: smtpPass },
             });
 
-        const attachments: any[] = effectivePdfBase64 ? [{
-          filename: effectivePdfFilename,
-          content: Buffer.from(effectivePdfBase64, 'base64'),
-          contentType: 'application/pdf',
-        }] : [];
-
+        const attachments: any[] = [];
         if (finalHtml.includes('cid:company-logo') || finalHtml.includes('cid:logo')) {
           attachments.push({
             filename: 'logo.png',
@@ -1510,7 +1479,7 @@ app.post(["/api/dispatch-po", "/api/send-po-email", "/dispatch-po", "/send-po-em
           subject: finalSubject,
           html: finalHtml,
           text: finalText,
-          attachments,
+          attachments: attachments.length > 0 ? attachments : undefined,
         });
         sentMessageId = info.messageId;
         dispatchMethod = "smtp";
@@ -1829,27 +1798,6 @@ app.post(["/api/po-tracking/:orderId/retry", "/po-tracking/:orderId/retry"], asy
       return res.status(400).json({ success: false, error: "Official PO HTML content is required to dispatch." });
     }
 
-    let retryPdfBase64 = req.body?.pdfBase64;
-    let retryPdfFilename = req.body?.pdfFilename || record.pdfFilename || `PO_${orderId}_Tejas_Canvassing.pdf`;
-
-    if (!retryPdfBase64) {
-      try {
-        const orderForPdf = req.body?.orderDetails || {
-          id: orderId,
-          supplier: record.supplierName,
-          date: record.queuedAt || new Date().toISOString()
-        };
-        const subOrdersForPdf = req.body?.orderDetails?.originalOrders || [];
-        const poGen = await import("../src/utils/poPdfGenerator.js").catch(() => null);
-        if (poGen?.generatePoPdfBase64) {
-          retryPdfBase64 = poGen.generatePoPdfBase64(orderForPdf, subOrdersForPdf);
-          retryPdfFilename = poGen.getPoPdfFileName(orderForPdf);
-        }
-      } catch (err) {
-        console.warn(`[PO Retry] Failed to generate PDF for retry:`, err);
-      }
-    }
-
     if (hasOAuthConfig) {
       const sendResult = await sendEmailViaGmailApi({
         to: record.recipientEmail,
@@ -1857,8 +1805,6 @@ app.post(["/api/po-tracking/:orderId/retry", "/po-tracking/:orderId/retry"], asy
         subject,
         htmlContent,
         textContent,
-        pdfBase64: retryPdfBase64,
-        pdfFilename: retryPdfFilename,
       });
 
       const updated = updateTrackingStatus(orderId, {
@@ -1889,12 +1835,7 @@ app.post(["/api/po-tracking/:orderId/retry", "/po-tracking/:orderId/retry"], asy
             auth: { user: smtpUser, pass: smtpPass },
           });
 
-      const retryAttachments: any[] = retryPdfBase64 ? [{
-        filename: retryPdfFilename,
-        content: Buffer.from(retryPdfBase64, 'base64'),
-        contentType: 'application/pdf',
-      }] : [];
-
+      const retryAttachments: any[] = [];
       if (htmlContent.includes('cid:company-logo') || htmlContent.includes('cid:logo')) {
         retryAttachments.push({
           filename: 'logo.png',
@@ -1910,7 +1851,7 @@ app.post(["/api/po-tracking/:orderId/retry", "/po-tracking/:orderId/retry"], asy
         subject,
         html: htmlContent,
         text: textContent,
-        attachments: retryAttachments,
+        attachments: retryAttachments.length > 0 ? retryAttachments : undefined,
       });
 
       const updated = updateTrackingStatus(orderId, {

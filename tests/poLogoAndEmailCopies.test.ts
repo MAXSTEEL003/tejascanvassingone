@@ -151,9 +151,27 @@ async function runTests() {
   assert(testResponseBody?.success === true, "dispatch-po succeeded");
   assert(authReq.body.to === 'bhagwatirice@gmail.com', "Intended supplier email recipient bhagwatirice@gmail.com is strictly preserved");
 
-  // TEST 9: Build MIME message verification for PDF Attachment and CC Filtering
+  // TEST 9: Build MIME message verification for Direct HTML PO Email (No PDF Attachment)
   const { buildMimeMessage } = await import('../api/gmailOAuthService');
-  const mime = buildMimeMessage({
+  const mimeHtmlOnly = buildMimeMessage({
+    to: 'supplier@example.com',
+    cc: 'nani@tejasc.in',
+    subject: 'Official Purchase Order TC-1234',
+    htmlContent: emailHtml,
+    textContent: 'Purchase Order Text',
+  });
+
+  assert(mimeHtmlOnly.includes('Content-Type: multipart/alternative'), "Direct PO email MIME message is multipart/alternative (no PDF attachment)");
+  assert(!mimeHtmlOnly.includes('Content-Type: multipart/mixed'), "Direct PO email MIME does NOT contain multipart/mixed header");
+  assert(!mimeHtmlOnly.includes('Content-Type: application/pdf'), "Direct PO email MIME does NOT contain application/pdf");
+  assert(!mimeHtmlOnly.includes('Content-Disposition: attachment'), "Direct PO email MIME does NOT contain attachment disposition");
+  assert(mimeHtmlOnly.includes('https://www.tejascanvassing.com/logo.png'), "Direct PO email MIME contains official HTTPS logo in HTML body");
+  assert(!mimeHtmlOnly.includes('tejasadinarayan@gmail.com'), "MIME message does NOT contain tejasadinarayan@gmail.com");
+  assert(!mimeHtmlOnly.includes('tejascanvassing@gmail.com'), "MIME message does NOT contain tejascanvassing@gmail.com");
+  assert(mimeHtmlOnly.includes('nani@tejasc.in'), "MIME message retains official sender/admin nani@tejasc.in");
+
+  // TEST 9B: Optional PDF Attachment Backward Compatibility Check
+  const mimeWithPdf = buildMimeMessage({
     to: 'supplier@example.com',
     cc: 'nani@tejasc.in',
     subject: 'Official Purchase Order TC-1234',
@@ -162,13 +180,9 @@ async function runTests() {
     pdfBase64: pdfBase64,
     pdfFilename: 'PO_TC-1234_Tejas_Canvassing.pdf'
   });
-
-  assert(mime.includes('Content-Type: multipart/mixed'), "MIME message contains multipart/mixed header for PDF attachment");
-  assert(mime.includes('Content-Type: application/pdf; name="PO_TC-1234_Tejas_Canvassing.pdf"'), "MIME contains PDF attachment content type");
-  assert(mime.includes('Content-Disposition: attachment; filename="PO_TC-1234_Tejas_Canvassing.pdf"'), "MIME contains attachment disposition");
-  assert(!mime.includes('tejasadinarayan@gmail.com'), "MIME message does NOT contain tejasadinarayan@gmail.com");
-  assert(!mime.includes('tejascanvassing@gmail.com'), "MIME message does NOT contain tejascanvassing@gmail.com");
-  assert(mime.includes('nani@tejasc.in'), "MIME message retains official sender/admin nani@tejasc.in");
+  assert(mimeWithPdf.includes('Content-Type: multipart/mixed'), "MIME message contains multipart/mixed when PDF is explicitly provided");
+  assert(mimeWithPdf.includes('Content-Type: application/pdf; name="PO_TC-1234_Tejas_Canvassing.pdf"'), "MIME contains PDF attachment content type when provided");
+  assert(mimeWithPdf.includes('Content-Disposition: attachment; filename="PO_TC-1234_Tejas_Canvassing.pdf"'), "MIME contains attachment disposition when provided");
 
   // TEST 10: Supported CID Inline Image in MIME
   const mimeCid = buildMimeMessage({

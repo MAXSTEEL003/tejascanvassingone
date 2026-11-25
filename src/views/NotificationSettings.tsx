@@ -31,7 +31,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import { cn, resolveBuyerProfile, syncCurrentMerchantProfile } from '../lib/utils';
 import { auth, getCollectionDocs, setCollectionDoc } from '../lib/firebase';
 import { generateSupplierPOEmailHtml } from '../utils/poEmailTemplate';
-import { generatePoPdfBase64, getPoPdfFileName } from '../utils/poPdfGenerator';
 import { getAuthToken, getValidAuthToken } from '../lib/auth';
 
 interface NotificationSetting {

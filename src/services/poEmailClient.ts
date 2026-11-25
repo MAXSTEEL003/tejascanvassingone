@@ -10,7 +10,6 @@
  */
 
 import { getValidAuthToken, getAuthUser } from '../lib/auth';
-import { generatePoPdfBase64, getPoPdfFileName } from '../utils/poPdfGenerator';
 
 export interface DispatchPoPayload {
   to: string;
@@ -23,8 +22,6 @@ export interface DispatchPoPayload {
   batchId?: string;
   supplierName: string;
   orderDetails?: any;
-  pdfBase64?: string;
-  pdfFilename?: string;
 }
 
 export interface DispatchPoResult {
@@ -119,20 +116,7 @@ export async function dispatchPurchaseOrderEmail(payload: DispatchPoPayload): Pr
   // Remove automatic PO email copies to tejascanvassing@gmail.com and tejasadinarayan@gmail.com. Preserve nani@tejasc.in.
   const ccEmails = ['nani@tejasc.in'].filter(e => e.toLowerCase() !== recipientEmail.toLowerCase()).join(', ');
 
-  let pdfBase64 = payload.pdfBase64;
-  let pdfFilename = payload.pdfFilename;
-  if (!pdfBase64) {
-    try {
-      const orderObj = payload.orderDetails || { id: poRef, supplier: payload.supplierName, date: new Date() };
-      const subOrders = payload.orderDetails?.originalOrders || [];
-      pdfBase64 = generatePoPdfBase64(orderObj, subOrders);
-      pdfFilename = pdfFilename || getPoPdfFileName(orderObj);
-    } catch (pdfErr) {
-      console.warn('[PO Email Dispatch] Client-side PDF generation fallback error:', pdfErr);
-    }
-  }
-
-  const composeUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(recipientEmail)}&cc=${encodeURIComponent(ccEmails)}&su=${encodeURIComponent(payload.subject)}&body=${encodeURIComponent(payload.text || `Official Purchase Order ${poRef}\nSupplier: ${payload.supplierName}\n\nPlease review attached order particulars.`)}`;
+  const composeUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(recipientEmail)}&cc=${encodeURIComponent(ccEmails)}&su=${encodeURIComponent(payload.subject)}&body=${encodeURIComponent(payload.text || `Official Purchase Order ${poRef}\nSupplier: ${payload.supplierName}\n\nPlease review order particulars below.`)}`;
 
   if (!recipientEmail || !recipientEmail.includes('@')) {
     return {
@@ -190,8 +174,6 @@ export async function dispatchPurchaseOrderEmail(payload: DispatchPoPayload): Pr
         orderId: payload.orderId,
         supplierName: payload.supplierName,
         orderDetails: payload.orderDetails,
-        pdfBase64,
-        pdfFilename,
         accessToken: clientToken || undefined
       })
     });
