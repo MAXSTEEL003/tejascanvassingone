@@ -22,6 +22,7 @@ export interface DispatchPoPayload {
   batchId?: string;
   supplierName: string;
   orderDetails?: any;
+  authToken?: string;
 }
 
 export interface DispatchPoResult {
@@ -134,7 +135,7 @@ export async function dispatchPurchaseOrderEmail(payload: DispatchPoPayload): Pr
 
   // Path 1: Dispatch via Backend API endpoint (/api/dispatch-po)
   try {
-    const authToken = await getValidAuthToken();
+    const authToken = payload.authToken || await getValidAuthToken();
     if (!authToken) {
       console.warn('[PO Email Dispatch] Missing valid Admin authentication session token.');
       return {

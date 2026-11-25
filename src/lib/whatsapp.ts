@@ -15,6 +15,7 @@ export interface WhatsAppOrderNotificationParams {
   orderId?: string;
   poNumber?: string;
   customMessage?: string;
+  authToken?: string;
 }
 
 export interface WhatsAppDispatchResult {
@@ -149,7 +150,7 @@ export async function dispatchOrderPlacedWhatsApp(
   console.log(`[WhatsApp Auto-Dispatch] Sending order notification to ${targetPhone} for ${cleanBuyer} (Order ${orderRef})...`);
 
   try {
-    const authToken = await getValidAuthToken();
+    const authToken = params.authToken || await getValidAuthToken();
     if (!authToken) {
       console.warn('[WhatsApp Auto-Dispatch] Missing valid Admin authentication session token.');
       return {

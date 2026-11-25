@@ -22,7 +22,7 @@ import {
   getPlacedOrderVolume,
   getValidDeduplicatedPlacedOrders
 } from '../utils/orderOperations';
-import { getAuthToken, getAuthUser } from '../lib/auth';
+import { getAuthToken, getAuthUser, getValidAuthToken } from '../lib/auth';
 import merchantsDirectory from '../data/merchants_directory.json';
 import { dispatchPurchaseOrderEmail } from '../services/poEmailClient';
 
@@ -2290,6 +2290,7 @@ export default function OrdersDashboard() {
     });
 
     // 4. INDEPENDENT NOTIFICATION EXECUTION (Promise.allSettled: Email cannot block WhatsApp)
+    const validAuthToken = await getValidAuthToken();
     const subOrders = enrichedSelected;
     const emailHtml = generateSupplierPOEmailHtml(effectiveSupplier, groupedOrder, subOrders);
     const poSubject = `Tejas Canvassing: Purchase Order ${groupedOrder.id} - ${effectiveSupplier}`;
@@ -2326,6 +2327,7 @@ export default function OrdersDashboard() {
           orderId: groupedOrder.id,
           supplierName: effectiveSupplier,
           orderDetails: groupedOrder,
+          authToken: validAuthToken || undefined
         });
 
         if (dispatchRes.success && (dispatchRes.isLiveSent || dispatchRes.status === 'Sent' || dispatchRes.messageId)) {
@@ -2421,7 +2423,8 @@ export default function OrdersDashboard() {
           rate: itemRate,
           orderId: itemRef,
           poNumber: groupedOrder.id,
-          customMessage: buyerWhatsappMsg
+          customMessage: buyerWhatsappMsg,
+          authToken: validAuthToken || undefined
         });
       } catch (err: any) {
         waRes = { success: false, status: 0, error: err?.message || 'WhatsApp network dispatch failed' };
@@ -2439,7 +2442,8 @@ export default function OrdersDashboard() {
             rate: itemRate,
             orderId: itemRef,
             poNumber: groupedOrder.id,
-            customMessage: `Hello Tejas,\n\nOrder placed successfully.\n\nBuyer: ${subBuyer}\nBrand: ${itemBrand}\nQuantity: ${itemQty} QTL\nRate: ₹${itemRate}/QTL\nPO Ref: ${groupedOrder.id}\n\nThank you,\nTejas Canvassing`
+            customMessage: `Hello Tejas,\n\nOrder placed successfully.\n\nBuyer: ${subBuyer}\nBrand: ${itemBrand}\nQuantity: ${itemQty} QTL\nRate: ₹${itemRate}/QTL\nPO Ref: ${groupedOrder.id}\n\nThank you,\nTejas Canvassing`,
+            authToken: validAuthToken || undefined
           });
           adminCopySent = Boolean(adminRes?.success);
         } catch {}

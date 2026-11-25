@@ -56,6 +56,22 @@ export function getAuthToken(): string | null {
 }
 
 /**
+ * Safe base64 string decoder that works reliably across browser, Node.js, and worker runtimes.
+ */
+function safeBase64Decode(str: string): string {
+  try {
+    const normalized = str.replace(/-/g, '+').replace(/_/g, '/');
+    if (typeof atob === 'function') {
+      return atob(normalized);
+    }
+    if (typeof Buffer !== 'undefined') {
+      return Buffer.from(normalized, 'base64').toString('utf8');
+    }
+  } catch {}
+  return '';
+}
+
+/**
  * Helper to check if a token is a purely client-generated mock token
  * (created via createClientAuthToken, which lacks cryptographic server or Google verification).
  */
@@ -65,54 +81,111 @@ export function isClientMockToken(token?: string | null): boolean {
   if (parts.length !== 3) return true;
   try {
     const sig = parts[2];
-    const decodedSig = atob(sig.replace(/-/g, '+').replace(/_/g, '/'));
+    const decodedSig = safeBase64Decode(sig);
     if (decodedSig.startsWith('sig_')) return true;
   } catch {}
   return false;
 }
 
 /**
+ * Checks whether a token is a cryptographically signed HMAC Admin session token
+ * (issued server-side via /api/auth/login and signed with SERVER_AUTH_SECRET).
+ */
+export function isServerSignedAdminToken(token?: string | null): boolean {
+  if (!token || typeof token !== 'string') return false;
+  const parts = token.split('.');
+  if (parts.length !== 3) return false;
+  try {
+    const headerStr = safeBase64Decode(parts[0]);
+    if (!headerStr) return false;
+    const header = JSON.parse(headerStr);
+    if (header.alg !== 'HS256') return false;
+
+    if (isClientMockToken(token)) return false;
+
+    const payloadStr = safeBase64Decode(parts[1]);
+    if (!payloadStr) return false;
+    const payload = JSON.parse(payloadStr);
+    const now = Math.floor(Date.now() / 1000);
+
+    if (payload.role !== 'admin') return false;
+    if (payload.exp && payload.exp < now) return false;
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Retrieves a valid auth token for API dispatch requests:
- * 1. Checks Firebase Auth live ID token if logged in with Firebase (awaiting authStateReady if needed)
- * 2. Checks sessionStorage/localStorage for stored verified session token (e.g. server-signed HMAC or cached Firebase token)
- * 3. Never returns a client-only mock token to administrative dispatch endpoints.
+ * 1. Priority: Existing valid server-signed HMAC Admin token in session/localStorage.
+ *    When an admin signs in with username/password (e.g. admintejas1679), /api/auth/login
+ *    generates an HMAC token. This token is verified directly by verifySignedToken()
+ *    on the Express backend and must NEVER be shadowed, delayed, or overwritten by an
+ *    unverified Firebase Auth user.
+ * 2. Live Firebase ID token from currently signed-in Google Admin user (only if authorized
+ *    Google account with isAuthorizedAdminGoogleAccount).
+ * 3. Fallback: Any stored non-mock token whose payload has role === 'admin' and is unexpired.
+ * 4. Never returns a client-only mock token to administrative dispatch endpoints.
  */
 export async function getValidAuthToken(forceRefresh = true): Promise<string | null> {
-  // 1. Live Firebase ID token from currently signed-in Firebase user
+  // 1. Priority: Existing valid server-signed HMAC Admin token in session/localStorage
+  const storedToken = getAuthToken();
+  if (storedToken && isServerSignedAdminToken(storedToken)) {
+    return storedToken;
+  }
+
+  // 2. Live Firebase ID token from currently signed-in Google Admin user
   try {
     if (typeof window !== 'undefined') {
       const { auth } = await import('./firebase');
 
-      // Wait for Firebase Auth to finish initializing from IndexedDB if not yet loaded
-      if (!auth.currentUser && typeof auth.authStateReady === 'function') {
-        try {
-          await Promise.race([
-            auth.authStateReady(),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Auth ready timeout')), 2500))
-          ]);
-        } catch (e) {
-          console.warn('[Auth] authStateReady wait notice:', e);
+      // Check currently signed-in Firebase user
+      if (auth.currentUser) {
+        const userEmail = (auth.currentUser.email || '').toLowerCase().trim();
+        const isGoogleAdmin = isAuthorizedAdminGoogleAccount(userEmail);
+
+        // Only mint and return a Firebase ID token if this is an authorized Google Admin account
+        if (isGoogleAdmin) {
+          try {
+            const idToken = await auth.currentUser.getIdToken(forceRefresh);
+            if (idToken) {
+              try {
+                sessionStorage.setItem(TOKEN_KEY, idToken);
+                localStorage.setItem(TOKEN_KEY, idToken);
+              } catch {}
+              return idToken;
+            }
+          } catch (tokenErr) {
+            console.warn('[Auth] Error getting fresh Firebase ID token:', tokenErr);
+            try {
+              const cachedIdToken = await auth.currentUser.getIdToken(false);
+              if (cachedIdToken) return cachedIdToken;
+            } catch {}
+          }
         }
       }
 
-      if (auth.currentUser) {
+      // If no currentUser and no stored token, wait for Firebase authStateReady (up to 1500ms)
+      if (!auth.currentUser && !storedToken && typeof auth.authStateReady === 'function') {
         try {
-          // Obtain fresh Firebase ID token (forceRefresh: true guarantees it is unexpired)
-          const idToken = await auth.currentUser.getIdToken(forceRefresh);
-          if (idToken) {
-            try {
-              sessionStorage.setItem(TOKEN_KEY, idToken);
-              localStorage.setItem(TOKEN_KEY, idToken);
-            } catch {}
-            return idToken;
+          await Promise.race([
+            auth.authStateReady(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Auth ready timeout')), 1500))
+          ]);
+          if (auth.currentUser && isAuthorizedAdminGoogleAccount(auth.currentUser.email)) {
+            const idToken = await auth.currentUser.getIdToken(forceRefresh);
+            if (idToken) {
+              try {
+                sessionStorage.setItem(TOKEN_KEY, idToken);
+                localStorage.setItem(TOKEN_KEY, idToken);
+              } catch {}
+              return idToken;
+            }
           }
-        } catch (tokenErr) {
-          console.warn('[Auth] Error getting fresh Firebase ID token:', tokenErr);
-          // Fallback to cached token if network error during force refresh
-          try {
-            const cachedIdToken = await auth.currentUser.getIdToken(false);
-            if (cachedIdToken) return cachedIdToken;
-          } catch {}
+        } catch (e) {
+          console.warn('[Auth] authStateReady wait notice:', e);
         }
       }
     }
@@ -120,10 +193,12 @@ export async function getValidAuthToken(forceRefresh = true): Promise<string | n
     console.warn('[Auth] Firebase Auth error in getValidAuthToken:', err);
   }
 
-  // 2. Stored session token (e.g. server-signed HMAC token from /api/auth/login or cached Firebase token)
-  const storedToken = getAuthToken();
+  // 3. Fallback: Any stored non-mock token whose payload has role === 'admin' and is unexpired
   if (storedToken && !isClientMockToken(storedToken)) {
-    return storedToken;
+    const payload = parseTokenPayload(storedToken);
+    if (payload && payload.role === 'admin') {
+      return storedToken;
+    }
   }
 
   // Do NOT return a mock client token with fake signature. Returning a mock token
