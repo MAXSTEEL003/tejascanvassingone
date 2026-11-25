@@ -5,6 +5,17 @@ import { sanitizeSupplierName } from '../lib/utils';
 import { formatPoDate, resolveBuyerProfile } from './poEmailTemplate';
 import { resolveSubOrderNumber, resolveGroupedPoNumber } from './orderOperations';
 
+// Robust constructor resolution across browser Vite, Node.js ESM/CJS, and tsx test runners
+const jsPdfConstructor: typeof jsPDF = 
+  (jsPDF as any)?.jsPDF || 
+  (jsPDF as any)?.default?.jsPDF || 
+  (jsPDF as any)?.default || 
+  jsPDF;
+
+const applyAutoTable: typeof autoTable = 
+  (autoTable as any)?.default || 
+  autoTable;
+
 /**
  * Builds the official jsPDF Purchase Order document matching the exact
  * production layout of PO_TC-3425_Tejas_Canvassing.pdf.
@@ -13,61 +24,63 @@ import { resolveSubOrderNumber, resolveGroupedPoNumber } from './orderOperations
  * to guarantee 100% design and data parity.
  */
 export function buildPoPdfDocument(order: any, subOrders: any[] = []): jsPDF {
-  const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+  const doc = new jsPdfConstructor({ orientation: 'p', unit: 'mm', format: 'a4' });
   const supplierName = sanitizeSupplierName(order?.supplier || order?.origin, 'DIRECT MILL');
   const poRef = resolveGroupedPoNumber(order);
   const dateFormatted = formatPoDate(order?.date);
   
   // Header Logo (Official Company Symbol)
   try {
-    doc.addImage(TC_COMPANY_LOGO_BASE64, 'PNG', 14, 12, 12, 12);
-  } catch {
+    doc.addImage(TC_COMPANY_LOGO_BASE64, 'PNG', 14, 11, 14, 14);
+  } catch (err) {
+    console.warn('[poPdfGenerator] Failed to embed official company logo:', err);
     doc.setFillColor(194, 36, 36);
-    doc.roundedRect(14, 12, 12, 12, 2, 2, 'F');
+    doc.roundedRect(14, 11, 14, 14, 2, 2, 'F');
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(14);
     doc.setFont('helvetica', 'bold');
-    doc.text('TC', 16.5, 20);
+    doc.text('TC', 17.5, 20);
   }
 
   // Brand Name
   doc.setTextColor(15, 23, 42);
-  doc.setFontSize(17);
+  doc.setFontSize(16);
   doc.setFont('helvetica', 'bold');
-  doc.text('TEJAS CANVASSING', 30, 18);
-  doc.setFontSize(10.5);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(51, 65, 85);
-  doc.text('Bangalore Grain Brokerage & Supply Chain Logistics • APMC Yard, Yeshwanthpur, Bangalore', 30, 23);
-
-  // Right PO Info
-  doc.setFontSize(14);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(15, 23, 42);
-  doc.text('PURCHASE ORDER', 196, 17, { align: 'right' });
-  doc.setFontSize(10.5);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(29, 78, 216);
-  doc.text(`Grouped PO: ${poRef}`, 196, 22, { align: 'right' });
-  doc.setFontSize(9.5);
+  doc.text('TEJAS CANVASSING', 31, 16.5);
+  doc.setFontSize(8.5);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(71, 85, 105);
-  doc.text(`Date: ${dateFormatted}`, 196, 27, { align: 'right' });
+  doc.text('Bangalore Grain Brokerage & Supply Chain Logistics', 31, 21.5);
+  doc.text('APMC Yard, Yeshwanthpur, Bangalore - 560022', 31, 25.5);
+
+  // Right PO Info
+  doc.setFontSize(13);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(15, 23, 42);
+  doc.text('PURCHASE ORDER', 196, 16.5, { align: 'right' });
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(29, 78, 216);
+  doc.text(`Grouped PO: ${poRef}`, 196, 21.5, { align: 'right' });
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(71, 85, 105);
+  doc.text(`Date: ${dateFormatted}`, 196, 26, { align: 'right' });
 
   // Divider
   doc.setDrawColor(203, 213, 225);
-  doc.setLineWidth(0.5);
-  doc.line(14, 32, 196, 32);
+  doc.setLineWidth(0.4);
+  doc.line(14, 30, 196, 30);
 
   // Supplier Info
-  doc.setFontSize(12.5);
+  doc.setFontSize(12);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(15, 23, 42);
-  doc.text(`DEAR ${supplierName.toUpperCase()},`, 14, 40);
-  doc.setFontSize(11);
+  doc.text(`DEAR ${supplierName.toUpperCase()},`, 14, 37.5);
+  doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
-  doc.setTextColor(51, 65, 85);
-  doc.text("Today's consolidated orders issued under trade authorization:", 14, 45);
+  doc.setTextColor(71, 85, 105);
+  doc.text("Today's consolidated orders issued under trade authorization:", 14, 42.5);
 
   const itemsList = (subOrders && subOrders.length > 0)
     ? subOrders
@@ -108,8 +121,9 @@ export function buildPoPdfDocument(order: any, subOrders: any[] = []): jsPDF {
     return [dateCol, buyerDetails, product, qty, rate, loading];
   });
 
-  autoTable(doc, {
-    startY: 49,
+  applyAutoTable(doc, {
+    margin: { left: 14, right: 14 },
+    startY: 46,
     head: [['DATE', 'BUYER & CONSIGNEE DETAILS', 'PRODUCT', 'QTY (QTL)', 'RATE (RS)', 'LOGISTICS']],
     body: tableData,
     theme: 'grid',
@@ -117,21 +131,21 @@ export function buildPoPdfDocument(order: any, subOrders: any[] = []): jsPDF {
       fillColor: [241, 245, 249],
       textColor: [15, 23, 42],
       fontStyle: 'bold',
-      fontSize: 10.5,
+      fontSize: 9.5,
       halign: 'left'
     },
     styles: {
-      fontSize: 10,
+      fontSize: 8.5,
       textColor: [15, 23, 42],
-      cellPadding: 3,
+      cellPadding: 2.5,
       valign: 'top',
       lineColor: [203, 213, 225],
       lineWidth: 0.2
     },
     columnStyles: {
-      0: { cellWidth: 22 },
-      1: { cellWidth: 70 },
-      2: { cellWidth: 32 },
+      0: { cellWidth: 26 },
+      1: { cellWidth: 62 },
+      2: { cellWidth: 30 },
       3: { cellWidth: 18, halign: 'right' },
       4: { cellWidth: 20, halign: 'right' },
       5: { cellWidth: 26 }

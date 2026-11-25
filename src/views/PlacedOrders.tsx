@@ -4983,7 +4983,7 @@ export default function PlacedOrders({ forceMerchantView }: PlacedOrdersProps = 
                     </button>
                     {poRecipient && (
                       <a
-                        href={`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(poRecipient)}&cc=tejasadinarayan@gmail.com,nani@tejasc.in&su=${encodeURIComponent(poSubject)}&body=${encodeURIComponent(`Official Purchase Order ${poOrder.id}\nSupplier: ${poOrder.supplier || 'Supplier'}\nTotal: ${poOrder.total || ''}\nRemarks: ${poOrder.remarks || 'Standard dispatch'}\n\nPlease confirm delivery.`)}`}
+                        href={`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(poRecipient)}&cc=nani@tejasc.in&su=${encodeURIComponent(poSubject)}&body=${encodeURIComponent(`Official Purchase Order ${poOrder.id}\nSupplier: ${poOrder.supplier || 'Supplier'}\nTotal: ${poOrder.total || ''}\nRemarks: ${poOrder.remarks || 'Standard dispatch'}\n\nPlease confirm delivery.`)}`}
                         target="_blank"
                         rel="noreferrer"
                         className="px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md flex items-center gap-1.5 cursor-pointer no-underline"

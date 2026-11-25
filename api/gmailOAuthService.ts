@@ -2,6 +2,7 @@ import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import dotenv from "dotenv";
+import { TC_COMPANY_LOGO_BASE64 } from "../src/utils/logoBase64.js";
 
 // Load local environment files if present (inner project .env only; never parent ../.env)
 const currentDir = typeof __dirname !== "undefined" ? __dirname : process.cwd();
@@ -400,6 +401,9 @@ export function buildMimeMessage(options: {
   const cleanSubject = options.subject.replace(/[\r\n]/g, " ").trim();
   const encodedSubject = `=?UTF-8?B?${Buffer.from(cleanSubject).toString("base64")}?=`;
 
+  const hasCidLogo = Boolean(options.htmlContent && (options.htmlContent.includes("cid:company-logo") || options.htmlContent.includes("cid:logo")));
+  const hasMixed = Boolean(options.pdfBase64 || hasCidLogo);
+
   const headers = [
     `From: "Tejas Canvassing" <${effectiveSender}>`,
     `To: ${cleanTo}`,
@@ -408,7 +412,7 @@ export function buildMimeMessage(options: {
     `Date: ${new Date().toUTCString()}`,
     `Message-ID: <PO-${Date.now()}-${crypto.randomBytes(6).toString("hex")}@tejasc.in>`,
     `MIME-Version: 1.0`,
-    options.pdfBase64
+    hasMixed
       ? `Content-Type: multipart/mixed; boundary="${boundaryMixed}"`
       : `Content-Type: multipart/alternative; boundary="${boundaryAlt}"`,
   ].filter(Boolean).join("\r\n");
@@ -431,6 +435,21 @@ export function buildMimeMessage(options: {
     ``,
   ].join("\r\n");
 
+  let inlineLogoPart = "";
+  if (hasCidLogo) {
+    const rawLogo = TC_COMPANY_LOGO_BASE64.replace(/^data:image\/png;base64,/, "").replace(/\s+/g, "");
+    inlineLogoPart = [
+      `--${boundaryMixed}`,
+      `Content-Type: image/png; name="logo.png"`,
+      `Content-Transfer-Encoding: base64`,
+      `Content-ID: <company-logo>`,
+      `Content-Disposition: inline; filename="logo.png"`,
+      ``,
+      rawLogo,
+      ``,
+    ].join("\r\n");
+  }
+
   let attachmentPart = "";
   if (options.pdfBase64) {
     const filename = options.pdfFilename || "PO_Tejas_Canvassing.pdf";
@@ -447,7 +466,7 @@ export function buildMimeMessage(options: {
     ].join("\r\n");
   }
 
-  if (!options.pdfBase64) {
+  if (!hasMixed) {
     return [
       headers,
       ``,
@@ -468,6 +487,7 @@ export function buildMimeMessage(options: {
     htmlPart,
     `--${boundaryAlt}--`,
     ``,
+    inlineLogoPart,
     attachmentPart,
     `--${boundaryMixed}--`,
   ].filter(Boolean).join("\r\n");

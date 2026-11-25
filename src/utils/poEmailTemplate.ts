@@ -1,6 +1,9 @@
 import { sanitizeSupplierName } from '../lib/utils';
 import merchantsDirectory from '../data/merchants_directory.json';
 import { resolveSubOrderNumber, resolveGroupedPoNumber } from './orderOperations';
+import { TC_COMPANY_LOGO_BASE64 } from './logoBase64';
+
+export const TC_OFFICIAL_LOGO_URL = 'https://www.tejascanvassing.com/logo.png';
 
 export interface BuyerProfileData {
   address: string;
@@ -679,7 +682,7 @@ export const generateSupplierPOEmailHtml = (
     <table cellpadding="0" cellspacing="0" border="0" style="width: 100%; margin-bottom: 16px;">
       <tr>
         <td style="vertical-align: middle; padding-right: 14px; width: 48px;">
-          <div style="background-color: #0084ff; color: #ffffff; font-weight: bold; font-size: 22px; width: 48px; height: 48px; line-height: 48px; text-align: center; border-radius: 6px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">TC</div>
+          <img src="${TC_OFFICIAL_LOGO_URL}" alt="Tejas Canvassing" width="48" height="48" style="display: block; width: 48px; height: 48px; border-radius: 6px; object-fit: contain;" />
         </td>
         <td style="vertical-align: middle;">
           <div style="font-size: 20px; font-weight: bold; color: #000000; line-height: 1.2;">Tejas Canvassing</div>
@@ -919,7 +922,7 @@ export const generateSupplierPOA4PrintHtml = (
     <!-- Top Header & Business Details -->
     <div style="display: table; width: 100%; border-bottom: 2px solid #0f172a; padding-bottom: 12px; margin-bottom: 16px;">
       <div style="display: table-cell; vertical-align: middle; width: 50px;">
-        <div style="background-color: #0084ff; color: #ffffff; font-weight: 900; font-size: 22px; width: 46px; height: 46px; line-height: 46px; text-align: center; border-radius: 6px; font-family: sans-serif;">TC</div>
+        <img src="${TC_COMPANY_LOGO_BASE64}" alt="Tejas Canvassing" width="48" height="48" style="display: block; width: 48px; height: 48px; border-radius: 6px; object-fit: contain;" />
       </div>
       <div style="display: table-cell; vertical-align: middle; padding-left: 14px;">
         <div style="font-size: 20px; font-weight: 800; color: #0f172a; letter-spacing: -0.3px; line-height: 1.1;">Tejas Canvassing</div>
