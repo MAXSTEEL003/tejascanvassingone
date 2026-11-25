@@ -47,8 +47,7 @@ import {
   clearAllMillerUpdates,
 } from "./millerUpdatesStore.js";
 import { verifyFirebaseIdToken } from "./firebaseTokenVerifier.js";
-import { generatePoPdfBase64, getPoPdfFileName } from "../src/utils/poPdfGenerator.js";
-import { TC_COMPANY_LOGO_BASE64 } from "../src/utils/logoBase64.js";
+import { TC_COMPANY_LOGO_BASE64 } from "./logoBase64.js";
 
 const currentDir = typeof __dirname !== "undefined" ? __dirname : process.cwd();
 const isVercel = Boolean(process.env.VERCEL || process.env.NOW_REGION || process.env.AWS_LAMBDA_FUNCTION_NAME);
@@ -1362,10 +1361,13 @@ app.post(["/api/dispatch-po", "/api/send-po-email", "/dispatch-po", "/send-po-em
           date: new Date().toISOString()
         };
         const subOrdersForPdf = orderDetails?.originalOrders || [];
-        effectivePdfBase64 = generatePoPdfBase64(orderForPdf, subOrdersForPdf);
-        effectivePdfFilename = getPoPdfFileName(orderForPdf);
+        const poGen = await import("../src/utils/poPdfGenerator.js").catch(() => null);
+        if (poGen?.generatePoPdfBase64) {
+          effectivePdfBase64 = poGen.generatePoPdfBase64(orderForPdf, subOrdersForPdf);
+          effectivePdfFilename = poGen.getPoPdfFileName(orderForPdf);
+        }
       } catch (pdfErr) {
-        console.warn(`[PO PDF Generator] Server-side PDF generation failed:`, pdfErr);
+        console.warn(`[PO PDF Generator] Server-side fallback PDF generation skipped:`, pdfErr);
       }
     }
 
@@ -1834,8 +1836,11 @@ app.post(["/api/po-tracking/:orderId/retry", "/po-tracking/:orderId/retry"], asy
           date: record.queuedAt || new Date().toISOString()
         };
         const subOrdersForPdf = req.body?.orderDetails?.originalOrders || [];
-        retryPdfBase64 = generatePoPdfBase64(orderForPdf, subOrdersForPdf);
-        retryPdfFilename = getPoPdfFileName(orderForPdf);
+        const poGen = await import("../src/utils/poPdfGenerator.js").catch(() => null);
+        if (poGen?.generatePoPdfBase64) {
+          retryPdfBase64 = poGen.generatePoPdfBase64(orderForPdf, subOrdersForPdf);
+          retryPdfFilename = poGen.getPoPdfFileName(orderForPdf);
+        }
       } catch (err) {
         console.warn(`[PO Retry] Failed to generate PDF for retry:`, err);
       }

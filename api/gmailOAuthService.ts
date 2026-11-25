@@ -2,7 +2,7 @@ import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import dotenv from "dotenv";
-import { TC_COMPANY_LOGO_BASE64 } from "../src/utils/logoBase64.js";
+import { TC_COMPANY_LOGO_BASE64 } from "./logoBase64.js";
 
 // Load local environment files if present (inner project .env only; never parent ../.env)
 const currentDir = typeof __dirname !== "undefined" ? __dirname : process.cwd();
